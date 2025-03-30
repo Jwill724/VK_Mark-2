@@ -1,0 +1,20 @@
+#pragma once
+
+#include "common/Vk_Types.h"
+#include "vulkan/Window.h"
+
+namespace Engine {
+	GLFWwindow* getWindow();
+	bool getWindowFramebufferResize();
+	void resetWindowFramebufferSize();
+
+	VkExtent2D getWindowExtent();
+	DeletionQueue& getDeletionQueue();
+	VmaAllocator& getAllocator();
+
+	bool isInitialized();
+	bool hasRenderStopped();
+
+	// inits everything, controls runtime, and cleans up
+	void run();
+}

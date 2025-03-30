@@ -1,0 +1,34 @@
+# Ignore build and temp folders
+x64/Debug/
+x64/Release/
+*.obj
+*.pdb
+*.idb
+*.log
+*.tlog
+*.ipch
+*.pch
+*.aps
+*.ncb
+*.suo
+*.user
+*.opensdf
+*.sdf
+*.VC.db
+
+# Visual Studio cache files
+.vs/
+
+# CMake files (if you use it)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Ignore Vulkan SDK JSON cache if it ever pops up
+vk_layer_settings.txt
+
+# Don't ignore source/assets
+!src/
+!res/
+!vendor/
