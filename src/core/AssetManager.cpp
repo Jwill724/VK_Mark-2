@@ -26,7 +26,7 @@ namespace AssetManager {
 void AssetManager::transformMesh(GPUDrawPushConstants& pushConstants, float aspect) {
 	glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
 	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 1.f, 10000.f);
+	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 1.f, 10.f);
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis

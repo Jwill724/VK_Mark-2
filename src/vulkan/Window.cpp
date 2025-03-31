@@ -4,11 +4,20 @@
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
 	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-	win->framebufferResized = true;
+	win->windowResized = true;
 }
 
 bool WindowIsOpen(GLFWwindow* window) {
 	return !(glfwWindowShouldClose(window));
+}
+
+void Window::updateWindowSize() {
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(window, &width, &height);
+	while (width == 0 || height == 0) {
+		glfwGetFramebufferSize(window, &width, &height);
+		glfwWaitEvents();
+	}
 }
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {

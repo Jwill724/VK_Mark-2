@@ -29,7 +29,7 @@ namespace Backend {
 	// allocates swapchains and any other resources
 	void initBackend();
 
-	void recreateSwapchain();
+	void resizeSwapchain();
 
 	// deletes in proper order
 	void cleanupBackend();

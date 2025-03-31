@@ -5,5 +5,5 @@ struct Colored_frag
 
 float4 main(Colored_frag input) : SV_TARGET
 {
-    return float4(input.color, 1.0f);
+    return float4(input.color, 0.5f);
 }

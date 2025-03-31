@@ -179,9 +179,9 @@ void PipelineManager::setupGraphicsPipelineCofig(GraphicsPipeline& pipeline) {
 	PipelineConfigs::multisamplingConfig(pipeline._multisampling, VK_SAMPLE_COUNT_1_BIT, VK_FALSE);
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
-		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_FALSE);
+		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_TRUE, VK_BLEND_FACTOR_ONE);
 
-	PipelineConfigs::depthStencilConfig(pipeline._depthStencil, true, true, VK_FALSE, VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
 
 	PipelineConfigs::setColorAttachmentAndDepthFormat(pipeline._colorAttachmentformat,
 		Renderer::getDrawImage().imageFormat, pipeline._renderInfo, Renderer::getDepthImage().imageFormat);
@@ -209,9 +209,15 @@ void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& 
 	multisampling.alphaToCoverageEnable = VK_FALSE;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
-void PipelineConfigs::colorBlendingConfig(VkPipelineColorBlendAttachmentState& colorBlend, VkColorComponentFlags colorComponents, bool blendEnabled) {
+void PipelineConfigs::colorBlendingConfig(VkPipelineColorBlendAttachmentState& colorBlend, VkColorComponentFlags colorComponents, bool blendEnabled, VkBlendFactor blendFactor) {
 	colorBlend.colorWriteMask = colorComponents;
 	colorBlend.blendEnable = blendEnabled;
+	colorBlend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+	colorBlend.dstColorBlendFactor = blendFactor;
+	colorBlend.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlend.alphaBlendOp = VK_BLEND_OP_ADD;
 }
 void PipelineConfigs::setColorAttachmentAndDepthFormat(VkFormat& colorAttachmentformat, VkFormat colorFormat, VkPipelineRenderingCreateInfo& renderInfo, VkFormat depthFormat) {
 	colorAttachmentformat = colorFormat;

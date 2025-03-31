@@ -16,6 +16,9 @@ namespace Renderer {
 	VkExtent3D _drawExtent;
 	VkExtent3D getDrawExtent() { return _drawExtent; }
 
+	float _renderScale = 1.f;
+	float& getRenderScale() { return _renderScale; }
+
 	AllocatedImage _drawImage;
 	AllocatedImage& getDrawImage() { return _drawImage; }
 	AllocatedImage _depthImage;
@@ -55,8 +58,8 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	_drawExtent.width = _drawImage.imageExtent.width;
-	_drawExtent.height = _drawImage.imageExtent.height;
+	_drawExtent.height = std::min(Backend::getSwapchainExtent().height, _drawImage.imageExtent.height) * _renderScale;
+	_drawExtent.width = std::min(Backend::getSwapchainExtent().width, _drawImage.imageExtent.width) * _renderScale;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
@@ -141,8 +144,8 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 	VkViewport viewport = {};
 	viewport.x = 0;
 	viewport.y = 0;
-	viewport.width = (float)_drawExtent.width;
-	viewport.height = (float)_drawExtent.height;
+	viewport.width = static_cast<float>(_drawExtent.width);
+	viewport.height = static_cast<float>(_drawExtent.height);
 	viewport.minDepth = 0.f;
 	viewport.maxDepth = 1.f;
 
@@ -151,8 +154,8 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 	VkRect2D scissor = {};
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	scissor.extent.width = _drawExtent.width;
-	scissor.extent.height = _drawExtent.height;
+	scissor.extent.width = static_cast<float>(_drawExtent.width);
+	scissor.extent.height = static_cast<float>(_drawExtent.height);
 
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
@@ -161,7 +164,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	PushConstantDef& meshPipelinePCData = Pipelines::meshPipeline._pushConstantInfo;
 
-	float aspect = (float)_drawExtent.width / (float)_drawExtent.height;
+	float aspect = static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height);
 	AssetManager::transformMesh(push_constants, aspect);
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::meshPipeline.getPipelineLayout(),
@@ -212,7 +215,7 @@ void Renderer::RenderFrame() {
 	VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frame._swapchainSemaphore, VK_NULL_HANDLE, &imageIndex);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
 		vkQueueWaitIdle(Backend::getGraphicsQueue());
-		Backend::recreateSwapchain();
+		Backend::resizeSwapchain();
 		return;
 	}
 	else if (result != VK_SUCCESS) {
@@ -271,9 +274,7 @@ void Renderer::RenderFrame() {
 	presentInfo.pImageIndices = &imageIndex;
 
 	result = vkQueuePresentKHR(Backend::getPresentQueue(), &presentInfo);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || Engine::getWindowFramebufferResize()) {
-		Engine::resetWindowFramebufferSize();
-
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || Engine::windowModMode().windowResized) {
 		if (Backend::getGraphicsQueue() != Backend::getPresentQueue()) {
 			vkQueueWaitIdle(Backend::getPresentQueue());
 		}
@@ -281,7 +282,7 @@ void Renderer::RenderFrame() {
 			vkQueueWaitIdle(Backend::getGraphicsQueue());
 		}
 
-		Backend::recreateSwapchain();
+		Backend::resizeSwapchain();
 	}
 	else if (result != VK_SUCCESS) {
 		throw std::runtime_error("Failed to present swap chain image!");

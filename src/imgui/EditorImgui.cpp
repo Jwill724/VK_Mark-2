@@ -4,6 +4,7 @@
 
 #include "vulkan/Backend.h"
 #include "vulkan/PipelineManager.h"
+#include "renderer/Renderer.h"
 
 void EditorImgui::initImgui() {
 	//  the size of the pool is very oversize, but it's copied from imgui demo
@@ -75,6 +76,7 @@ void EditorImgui::initImgui() {
 
 // call at start of renderFrame
 void EditorImgui::renderImgui() {
+
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
@@ -83,6 +85,7 @@ void EditorImgui::renderImgui() {
 	//make imgui calculate internal draw structures
 
 	if (ImGui::Begin("background")) {
+		ImGui::SliderFloat("Render Scale", &Renderer::getRenderScale(), 0.3f, 1.f);
 
 		PipelineEffect& selected = Pipelines::drawImagePipeline.getBackgroundEffects();
 

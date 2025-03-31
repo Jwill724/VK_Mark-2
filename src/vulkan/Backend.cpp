@@ -53,7 +53,7 @@ namespace Backend {
 	void createSurface();
 	void pickPhysicalDevice();
 	void createLogicalDevice();
-	void initSwapchain();
+	void initSwapchainRenderImage();
 	void createSwapchain();
 	void cleanupSwapchain();
 	void createImageViews();
@@ -78,7 +78,7 @@ void Backend::initBackend() {
 
 	Renderer::getRenderImageAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
 
-	initSwapchain();
+	initSwapchainRenderImage();
 
 	DescriptorSetOverwatch::initAllDescriptors();
 
@@ -285,14 +285,16 @@ void Backend::createSwapchain() {
 	_swapchainExtent = extent;
 }
 
-void Backend::initSwapchain() {
+void Backend::initSwapchainRenderImage() {
 	createSwapchain();
 	createImageViews();
 
-	// draw image size will match the window
+	// draw image should match window extent
 	VkExtent3D drawImageExtent = {
-		Engine::getWindowExtent().width,
-		Engine::getWindowExtent().height,
+//		Engine::getWindowExtent().width,
+//		Engine::getWindowExtent().height,
+		1920,
+		1080,
 		1
 	};
 
@@ -321,20 +323,15 @@ void Backend::initSwapchain() {
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 }
 
-void Backend::recreateSwapchain() {
-	int width = 0, height = 0;
-	glfwGetFramebufferSize(Engine::getWindow(), &width, &height);
-	while (width == 0 || height == 0) {
-		glfwGetFramebufferSize(Engine::getWindow(), &width, &height);
-		glfwWaitEvents();
-	}
-
-	// clear past image for new one
-	Renderer::getRenderImageDeletionQueue().flush();
-
+void Backend::resizeSwapchain() {
 	cleanupSwapchain();
 
-	initSwapchain();
+	Engine::windowModMode().updateWindowSize();
+
+	createSwapchain();
+	createImageViews();
+
+	Engine::windowModMode().windowResized = false;
 
 	// updates the compute descriptors
 	if (DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet != VK_NULL_HANDLE) {
@@ -357,16 +354,14 @@ void Backend::recreateSwapchain() {
 }
 
 void Backend::cleanupSwapchain() {
-	// depth target needs to be cleaned here
-
-	for (size_t i = 0; i < _swapchainImageViews.size(); i++) {
-		vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
-	}
-
 	// do not ever touch this in any way or it breaks
 	if (_swapchain != VK_NULL_HANDLE) {
 		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 		_swapchain = VK_NULL_HANDLE;
+	}
+
+	for (size_t i = 0; i < _swapchainImageViews.size(); i++) {
+		vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
 	}
 }
 

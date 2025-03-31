@@ -26,6 +26,7 @@ namespace Renderer {
 
 	void init();
 	void setMeshes(std::vector<std::shared_ptr<MeshAsset>>& meshes);
+	float& getRenderScale();
 
 	void RenderFrame();
 	void cleanup();

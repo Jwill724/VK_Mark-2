@@ -6,8 +6,9 @@ bool WindowIsOpen(GLFWwindow* window);
 
 struct Window {
 	GLFWwindow* window = nullptr;
-	bool framebufferResized = false;
+	bool windowResized = false;
 
+	void updateWindowSize();
 	void initWindow(const uint32_t width, const uint32_t height);
 	void cleanupWindow();
 };
