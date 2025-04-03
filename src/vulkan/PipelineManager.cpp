@@ -3,7 +3,8 @@
 #include "PipelineManager.h"
 
 #include "vulkan/Backend.h"
-#include "renderer/renderer.h"
+#include "renderer/Renderer.h"
+#include "renderer/RenderScene.h"
 
 // TODO: need better way to setup scalability for push constant use
 void PipelineManager::setupPipelineLayouts() {
@@ -11,15 +12,6 @@ void PipelineManager::setupPipelineLayouts() {
 
 	// Set the push constant pool for the pipeline layouts that need it
 	PushConstantPool pcPool = VulkanUtils::CreatePushConstantPool(physicalDevice);
-//	uint32_t pcOffset = 0;
-
-	// Compute pipeline draw image
-//	setupPushConstantBlock(pcPool, pcOffset);
-
-	//bool pcAlloc = VulkanUtils::AllocatePushConstant(&pcPool, static_cast<uint32_t>(sizeof(PushConstantBlock)), &pcOffset);
-	//if (!pcAlloc) {
-	//	throw std::runtime_error("Failed to allocate push constants!");
-	//}
 
 	PushConstantDef drawImagePC = {
 		.enabled = true,
@@ -30,15 +22,9 @@ void PipelineManager::setupPipelineLayouts() {
 
 	// pipeline instances hold push constant information to share among shaders or textures
 	Pipelines::drawImagePipeline._pushConstantInfo = drawImagePC;
-
 	PipelineManager::createPipelineLayout(Pipelines::drawImagePipeline._computePipelineLayout, DescriptorSetOverwatch::getDrawImageDescriptors(),
 		&drawImagePC);
 
-	//// vertex shader mesh
-	//pcAlloc = VulkanUtils::AllocatePushConstant(&pcPool, static_cast<uint32_t>(sizeof(GPUDrawPushConstants)), &pcOffset);
-	//if (!pcAlloc) {
-	//	throw std::runtime_error("Failed to allocate push constants!");
-	//}
 
 	PushConstantDef meshPC = {
 		.enabled = true,
@@ -47,10 +33,12 @@ void PipelineManager::setupPipelineLayouts() {
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
 	};
 
-	Pipelines::meshPipeline._pushConstantInfo = meshPC;
+	DescriptorsCentral meshDescriptors = {
+		.descriptorLayout = RenderScene::getGPUSceneDescriptorLayout()
+	};
 
-	PipelineManager::createPipelineLayout(Pipelines::meshPipeline._pipelineLayout, DescriptorSetOverwatch::getMeshesDescriptors(),
-		&meshPC);
+	Pipelines::meshPipeline._pushConstantInfo = meshPC;
+	PipelineManager::createPipelineLayout(Pipelines::meshPipeline._pipelineLayout, meshDescriptors, &meshPC);
 }
 
 // THE PIPELINE MANAGER
@@ -62,23 +50,6 @@ VkPipelineShaderStageCreateInfo PipelineManager::createPipelineShaderStage(VkSha
 	shaderStageInfo.pName = "main";
 
 	return shaderStageInfo;
-}
-
-VkSampleCountFlagBits PipelineManager::getMaxUsableSampleCount() {
-	VkPhysicalDeviceProperties physicalDeviceProperties;
-	vkGetPhysicalDeviceProperties(Backend::getPhysicalDevice(), &physicalDeviceProperties);
-
-	VkSampleCountFlags counts =
-		physicalDeviceProperties.limits.framebufferColorSampleCounts &
-		physicalDeviceProperties.limits.framebufferDepthSampleCounts;
-	if (counts & VK_SAMPLE_COUNT_64_BIT) { return VK_SAMPLE_COUNT_64_BIT; }
-	if (counts & VK_SAMPLE_COUNT_32_BIT) { return VK_SAMPLE_COUNT_32_BIT; }
-	if (counts & VK_SAMPLE_COUNT_16_BIT) { return VK_SAMPLE_COUNT_16_BIT; }
-	if (counts & VK_SAMPLE_COUNT_8_BIT) { return VK_SAMPLE_COUNT_8_BIT; }
-	if (counts & VK_SAMPLE_COUNT_4_BIT) { return VK_SAMPLE_COUNT_4_BIT; }
-	if (counts & VK_SAMPLE_COUNT_2_BIT) { return VK_SAMPLE_COUNT_2_BIT; }
-
-	return VK_SAMPLE_COUNT_1_BIT;
 }
 
 void PipelineManager::createPipelineLayout(VkPipelineLayout& pipelineLayout, DescriptorsCentral& descriptors, const PushConstantDef* pushConstants) {
@@ -153,20 +124,11 @@ void PipelineManager::initPipelines() {
 
 	Engine::getDeletionQueue().push_function([=]() {
 		vkDestroyPipelineLayout(Backend::getDevice(), Pipelines::meshPipeline.getPipelineLayout(), nullptr);
+		Pipelines::meshPipeline._pipelineLayout = VK_NULL_HANDLE;
 		vkDestroyPipeline(Backend::getDevice(), Pipelines::meshPipeline.getPipeline(), nullptr);
+		Pipelines::meshPipeline._pipeline = VK_NULL_HANDLE;
 	});
 }
-
-// TODO: modularize pipeline config further
-//struct GraphicsPipelineOverrides {
-//	VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
-//	VkCullModeFlags cullMode = VK_CULL_MODE_NONE;
-//	VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
-//	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
-//	bool enableDepth = true;
-//	bool enableBlending = false;
-//	// Add more overrides as needed
-//};
 
 void PipelineManager::setupGraphicsPipelineCofig(GraphicsPipeline& pipeline) {
 	// Build the standard graphics pipeline stages
@@ -176,7 +138,7 @@ void PipelineManager::setupGraphicsPipelineCofig(GraphicsPipeline& pipeline) {
 
 	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, VK_POLYGON_MODE_FILL, 1.f, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
 
-	PipelineConfigs::multisamplingConfig(pipeline._multisampling, VK_SAMPLE_COUNT_1_BIT, VK_FALSE);
+	PipelineConfigs::multisamplingConfig(pipeline._multisampling, Renderer::getAvailableSampleCounts(), Renderer::getCurrentSampleCount(), VK_FALSE);
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_TRUE, VK_BLEND_FACTOR_ONE);
@@ -199,16 +161,46 @@ void PipelineConfigs::rasterizerConfig(VkPipelineRasterizationStateCreateInfo& r
 	rasterizer.cullMode = cullMode;
 	rasterizer.frontFace = frontFace;
 }
-// only first two configurable for now
-void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling, VkSampleCountFlagBits msaaSamples, bool sampleShadingEnabled) {
+
+// 1u, 2u, 4u, 8u, 16u, 32u, 64u for msaa counts
+void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling,
+	const std::vector<VkSampleCountFlags>& samples, uint32_t chosenMSAACount, bool sampleShadingEnabled) {
+
+	bool isPowerOfTwo = (chosenMSAACount != 0) && ((chosenMSAACount & (chosenMSAACount - 1)) == 0);
+	bool isWithinRange = (chosenMSAACount <= 64);
+	if (!isPowerOfTwo || !isWithinRange) {
+		throw std::runtime_error("Invalid MSAA count! Must be a power of two up to 64.");
+	}
+
+	// Default to sample count 1
+	VkSampleCountFlagBits msaaSample = VK_SAMPLE_COUNT_1_BIT;
+	if (static_cast<VkSampleCountFlagBits>(chosenMSAACount) == msaaSample) {
+		multisampling.rasterizationSamples = msaaSample;
+	}
+	else {
+		bool found = false;
+		for (auto sample : samples) {
+
+			if (sample == static_cast<VkSampleCountFlags>(chosenMSAACount)) {
+				msaaSample = static_cast<VkSampleCountFlagBits>(sample);
+				multisampling.rasterizationSamples = msaaSample;
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			throw std::runtime_error("Failed to find valid sample count!");
+		}
+	}
+
 	multisampling.sampleShadingEnable = sampleShadingEnabled;
-	multisampling.rasterizationSamples = msaaSamples;
 	multisampling.minSampleShading = 1.0f;
 	multisampling.pSampleMask = nullptr;
 	// no alpha to coverage either
 	multisampling.alphaToCoverageEnable = VK_FALSE;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
+
 void PipelineConfigs::colorBlendingConfig(VkPipelineColorBlendAttachmentState& colorBlend, VkColorComponentFlags colorComponents, bool blendEnabled, VkBlendFactor blendFactor) {
 	colorBlend.colorWriteMask = colorComponents;
 	colorBlend.blendEnable = blendEnabled;

@@ -5,6 +5,7 @@
 #include "utils/BufferUtils.h"
 #include "utils/RendererUtils.h"
 #include "vulkan/Backend.h"
+#include "renderer.h"
 
 // TODO: multi-threaded setup via #include <thread>
 
@@ -41,16 +42,38 @@ VkCommandBuffer CommandBuffer::createCommandBuffer(VkCommandPool commandPool) {
 	return commandBuffer;
 }
 
-void CommandBuffer::setupImmediateCmdBuffer(ImmCmdSubmitDef& cmdSubmit) {
+// Transfer and graphics queue usable
+void CommandBuffer::setupImmediateCmdBuffer(ImmCmdSubmitDef& cmdSubmit, VkQueue queue) {
 
-	cmdSubmit.immediateCmdPool = CommandBuffer::createCommandPool(Backend::getQueueFamilyIndices().graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+	uint32_t queueIndex;
+	if (queue == Backend::getGraphicsQueue()) {
+		queueIndex = Backend::getQueueFamilyIndices().graphicsFamily.value();
+	}
+	else if (queue == Backend::getTransferQueue()) {
+		queueIndex = Backend::getQueueFamilyIndices().transferFamily.value();
+	}
+	else {
+		throw std::runtime_error("Invalid queue passed into setupImmediateCmdBuffer");
+	}
+
+	cmdSubmit.immediateCmdPool = CommandBuffer::createCommandPool(queueIndex, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 	cmdSubmit.immediateCmdBuffer = CommandBuffer::createCommandBuffer(cmdSubmit.immediateCmdPool);
 	cmdSubmit.immediateFence = RendererUtils::createFence();
 
-	Engine::getDeletionQueue().push_function([=] {
-		vkDestroyCommandPool(Backend::getDevice(), cmdSubmit.immediateCmdPool, nullptr);
-		vkDestroyFence(Backend::getDevice(), cmdSubmit.immediateFence, nullptr);
-	});
+	// only want graphics pools throughout program lifetime
+	if (queueIndex == Backend::getQueueFamilyIndices().graphicsFamily.value()) {
+		Engine::getDeletionQueue().push_function([=] {
+			vkDestroyCommandPool(Backend::getDevice(), cmdSubmit.immediateCmdPool, nullptr);
+			vkDestroyFence(Backend::getDevice(), cmdSubmit.immediateFence, nullptr);
+		});
+	}
+	// will flush away the pool and fence when the rendering begins
+	else {
+		Renderer::getRenderImageDeletionQueue().push_function([=] {
+			vkDestroyCommandPool(Backend::getDevice(), cmdSubmit.immediateCmdPool, nullptr);
+			vkDestroyFence(Backend::getDevice(), cmdSubmit.immediateFence, nullptr);
+		});
+	}
 }
 
 void CommandBuffer::immediateCmdSubmit(std::function<void(VkCommandBuffer cmd)>&& function, ImmCmdSubmitDef& cmdSubmit, VkQueue queue) {
@@ -61,7 +84,6 @@ void CommandBuffer::immediateCmdSubmit(std::function<void(VkCommandBuffer cmd)>&
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 	};
-
 
 	VK_CHECK(vkBeginCommandBuffer(cmdSubmit.immediateCmdBuffer, &cmdBeginInfo));
 	function(cmdSubmit.immediateCmdBuffer);

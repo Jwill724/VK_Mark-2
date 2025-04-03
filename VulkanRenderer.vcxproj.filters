@@ -108,6 +108,9 @@
     <ClCompile Include="src\common\pch.cpp">
       <Filter>src\common</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\RenderScene.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\input\UserInput.h">
@@ -176,6 +179,9 @@
     <ClInclude Include="src\common\pch.h">
       <Filter>src\common</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\RenderScene.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat">
@@ -194,6 +200,9 @@
       <Filter>res\shaders</Filter>
     </None>
     <None Include="res\shaders\sky_comp.hlsl">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\tex_image_frag.hlsl">
       <Filter>res\shaders</Filter>
     </None>
   </ItemGroup>

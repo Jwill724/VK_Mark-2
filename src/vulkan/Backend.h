@@ -6,14 +6,16 @@
 
 namespace Backend {
 	VkInstance& getInstance();
+	VkSurfaceKHR& getSurface();
 	VkPhysicalDevice& getPhysicalDevice();
 	VkDevice& getDevice();
-	VkSurfaceKHR& getSurface();
 
+	// TODO: swapchain state struct
 	VkSwapchainKHR& getSwapchain();
 	VkExtent2D& getSwapchainExtent();
-	std::vector<VkImageView> getSwapchainImageViews();
-	std::vector<VkImage> getSwapchainImages();
+	std::vector<VkImageView>& getSwapchainImageViews();
+	std::vector<VkImage>& getSwapchainImages();
+	VkFormat& getSwapchainImageFormat();
 
 	QueueFamilyIndices& getQueueFamilyIndices();
 
@@ -21,9 +23,8 @@ namespace Backend {
 	VkQueue& getPresentQueue();
 	VkQueue& getTransferQueue();
 
-	VkFormat& getSwapchainImageFormat();
-
 	// api setup
+	// queues and devices
 	void initVulkan();
 
 	// allocates swapchains and any other resources

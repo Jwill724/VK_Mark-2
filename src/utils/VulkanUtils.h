@@ -22,6 +22,8 @@ namespace VulkanUtils {
 	bool loadShaderModule(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
 	VmaAllocator createAllocator(VkPhysicalDevice physicalDevice, VkDevice device, VkInstance instance);
 
+	std::vector<uint32_t> findSupportedSampleCounts(VkPhysicalDevice physicalDevice);
+
 	// Push constants
 	uint32_t GetMaxPushConstantSize(VkPhysicalDevice device);
 	PushConstantPool CreatePushConstantPool(VkPhysicalDevice device);

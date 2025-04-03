@@ -5,8 +5,7 @@
 
 namespace Engine {
 	GLFWwindow* getWindow();
-	bool getWindowFramebufferResize();
-	void resetWindowFramebufferSize();
+	Window& windowModMode();
 
 	VkExtent2D getWindowExtent();
 	DeletionQueue& getDeletionQueue();

@@ -18,6 +18,7 @@ struct AllocatedImage {
 	VkFormat imageFormat;
 	VmaAllocation allocation;
 	VkExtent3D imageExtent;
+	bool mipmapped;
 };
 
 // Device getters are required for this to work
@@ -76,17 +77,12 @@ struct DescriptorInfo {
 	uint32_t binding = 0;
 	VkShaderStageFlags stageFlags;
 
-	// For image descriptors
-	VkImageView imageView = VK_NULL_HANDLE;
-	VkSampler sampler = VK_NULL_HANDLE;
-	VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-	// For buffer descriptors
-	VkBuffer buffer = VK_NULL_HANDLE;
-	VkDeviceSize offset = VK_WHOLE_SIZE;
-	VkDeviceSize range = VK_WHOLE_SIZE;
-
 	void* pNext = nullptr;
+};
+
+struct ShaderStageInfo {
+	const char* filePath;
+	VkShaderStageFlagBits stage;
 };
 
 // Immediate command submit
@@ -124,7 +120,11 @@ struct GPUDrawPushConstants {
 	VkDeviceAddress vertexBuffer;
 };
 
-struct ShaderStageInfo {
-	const char* filePath;
-	VkShaderStageFlagBits stage;
+struct GPUSceneData {
+	glm::mat4 view;
+	glm::mat4 proj;
+	glm::mat4 viewproj;
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection; // w for sun power
+	glm::vec4 sunlightColor;
 };

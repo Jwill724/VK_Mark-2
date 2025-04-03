@@ -14,6 +14,16 @@ struct Vertex
     float4 color;
 };
 
+//cbuffer SceneData : register(b0)
+//{
+//    float4x4 view;
+//    float4x4 proj;
+//    float4x4 viewproj;
+//    float4 ambientColor;
+//    float4 sunlightDirection;
+//    float4 sunlightColor;
+//};
+
 struct PushConstants
 {
     float4x4 render_matrix;

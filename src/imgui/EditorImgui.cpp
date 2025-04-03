@@ -80,9 +80,6 @@ void EditorImgui::renderImgui() {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
-	//some imgui UI to test
-//	ImGui::ShowDemoWindow();
-	//make imgui calculate internal draw structures
 
 	if (ImGui::Begin("background")) {
 		ImGui::SliderFloat("Render Scale", &Renderer::getRenderScale(), 0.3f, 1.f);

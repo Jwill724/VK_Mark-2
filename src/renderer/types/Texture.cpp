@@ -1,4 +1,42 @@
+//#include
 #include "Texture.h"
+#include "renderer/Renderer.h"
+
+//AllocatedImage Texture::createTexImage() {
+//	size_t data_size = size.depth * size.width * size.height * 4;
+//	AllocatedBuffer uploadbuffer = BufferUtils::createBuffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, Renderer::getRenderImageAllocator());
+//
+//	memcpy(uploadbuffer.info.pMappedData, data, data_size);
+//
+//	AllocatedImage new_image = createTexImage(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
+//
+//	immediate_submit([&](VkCommandBuffer cmd) {
+//		vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+//
+//		VkBufferImageCopy copyRegion = {};
+//		copyRegion.bufferOffset = 0;
+//		copyRegion.bufferRowLength = 0;
+//		copyRegion.bufferImageHeight = 0;
+//
+//		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+//		copyRegion.imageSubresource.mipLevel = 0;
+//		copyRegion.imageSubresource.baseArrayLayer = 0;
+//		copyRegion.imageSubresource.layerCount = 1;
+//		copyRegion.imageExtent = size;
+//
+//		// copy the buffer into the image
+//		vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+//			&copyRegion);
+//
+//		vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+//			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+//		});
+//
+//	destroy_buffer(uploadbuffer);
+//
+//}
+
+
 //
 //void Texture::createTextureImage(const std::string& file) {
 //	_device = Backend::getDevice();

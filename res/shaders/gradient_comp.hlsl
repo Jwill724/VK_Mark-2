@@ -2,6 +2,8 @@
 // "float4" is the pixel format in the shader; the actual Vulkan format (rgba16f)
 // is set in your VkImage / pipeline config, not here.
 RWTexture2D<float4> image0 : register(u0);
+Texture2D<float4> inputImage : register(t1); // Read source
+SamplerState inputSampler : register(s1); // Sampler
 
 // Push constants do not exist as a native concept in HLSL,
 // but you can declare a cbuffer and then map it to push constants in Vulkan
@@ -36,13 +38,16 @@ void main(uint3 DTid : SV_DispatchThreadID)
     // Bounds check, just like "if (texelCoord.x < size.x && ...)"
     if (texelCoord.x < width && texelCoord.y < height)
     {
-        // Blend factor along Y
-        float blend = (float) (texelCoord.y) / (float) height;
+        float4 topColor = pc.data1;
+        float4 bottomColor = pc.data2;
+        float2 uv = float2(texelCoord) / float2(width, height);
 
-        // Lerp in HLSL is "lerp(a, b, t)" -> same as mix() in GLSL
-        float4 finalColor = lerp(topColor, bottomColor, blend);
+        float4 gradient = lerp(topColor, bottomColor, uv.y);
+        float4 geometry = inputImage.SampleLevel(inputSampler, uv, 0.0f);
 
-        // imageStore(image, texelCoord, finalColor) in GLSL -> image0[texelCoord] = finalColor
-        image0[texelCoord] = finalColor;
+        float alpha = saturate(geometry.a + length(geometry.rgb));
+        float4 result = lerp(gradient, geometry, alpha);
+
+        image0[texelCoord] = result;
     }
 }

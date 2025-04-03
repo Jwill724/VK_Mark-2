@@ -57,6 +57,27 @@ QueueFamilyIndices VulkanUtils::FindQueueFamilies(VkPhysicalDevice device, VkSur
 	return indices;
 }
 
+std::vector<uint32_t> VulkanUtils::findSupportedSampleCounts(VkPhysicalDevice physicalDevice) {
+	VkPhysicalDeviceProperties deviceProperties;
+	vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+
+	std::vector<uint32_t> sampleCounts;
+
+	VkSampleCountFlags counts = deviceProperties.limits.framebufferColorSampleCounts &
+		deviceProperties.limits.framebufferDepthSampleCounts;
+
+	if (counts & VK_SAMPLE_COUNT_64_BIT) { sampleCounts.push_back(64); }
+	if (counts & VK_SAMPLE_COUNT_32_BIT) { sampleCounts.push_back(32); }
+	if (counts & VK_SAMPLE_COUNT_16_BIT) { sampleCounts.push_back(16); }
+	if (counts & VK_SAMPLE_COUNT_8_BIT) { sampleCounts.push_back(8); }
+	if (counts & VK_SAMPLE_COUNT_4_BIT) { sampleCounts.push_back(4); }
+	if (counts & VK_SAMPLE_COUNT_2_BIT) { sampleCounts.push_back(2); }
+	sampleCounts.push_back(1); // Always allow no MSAA
+
+	return sampleCounts;
+}
+
+
 VkFormat VulkanUtils::findDepthFormat(VkPhysicalDevice device) {
 	return findSupportedFormat(
 		device,

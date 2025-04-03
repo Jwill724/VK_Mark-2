@@ -26,6 +26,7 @@ namespace Backend {
 
 	VkQueue _graphicsQueue = VK_NULL_HANDLE;
 	VkQueue& getGraphicsQueue() { return _graphicsQueue; }
+
 	VkQueue _presentQueue = VK_NULL_HANDLE;
 	VkQueue& getPresentQueue() { return _presentQueue; }
 
@@ -34,26 +35,23 @@ namespace Backend {
 	VkQueue& getTransferQueue() { return _transferQueue; }
 
 	VkSwapchainKHR _swapchain = VK_NULL_HANDLE;
-	VkSwapchainKHR& getSwapchain() { return _swapchain; }
-
 	std::vector<VkImage> _swapchainImages;
-	std::vector<VkImage> getSwapchainImages() { return _swapchainImages; }
-
 	// A view of image and describes how to access
 	std::vector<VkImageView> _swapchainImageViews;
-	std::vector<VkImageView> getSwapchainImageViews() { return _swapchainImageViews; }
-
 	VkFormat _swapchainImageFormat;
-	VkFormat& getSwapchainImageFormat() { return _swapchainImageFormat; }
-
 	VkExtent2D _swapchainExtent;
+
+	// TODO: swapchain state struct
+	VkSwapchainKHR& getSwapchain() { return _swapchain; }
 	VkExtent2D& getSwapchainExtent() { return _swapchainExtent; }
+	std::vector<VkImageView>& getSwapchainImageViews() { return _swapchainImageViews; }
+	std::vector<VkImage>& getSwapchainImages() { return _swapchainImages; }
+	VkFormat& getSwapchainImageFormat() { return _swapchainImageFormat; }
 
 	void createInstance();
 	void createSurface();
 	void pickPhysicalDevice();
 	void createLogicalDevice();
-	void initSwapchainRenderImage();
 	void createSwapchain();
 	void cleanupSwapchain();
 	void createImageViews();
@@ -66,9 +64,7 @@ void Backend::initVulkan() {
 	createSurface();
 	pickPhysicalDevice();
 	createLogicalDevice();
-}
 
-void Backend::initBackend() {
 	// setup allocations for engine and renderer
 	Engine::getAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
 	// the engine deletion queue is flushed once at cleanup
@@ -77,10 +73,14 @@ void Backend::initBackend() {
 	});
 
 	Renderer::getRenderImageAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
+}
 
-	initSwapchainRenderImage();
+void Backend::initBackend() {
+	Backend::createSwapchain();
+	Backend::createImageViews();
+	Renderer::setupRenderImages();
 
-	DescriptorSetOverwatch::initAllDescriptors();
+	DescriptorSetOverwatch::initDescriptors();
 
 	PipelineManager::initPipelines();
 
@@ -144,6 +144,8 @@ void Backend::pickPhysicalDevice() {
 			_physicalDevice = device;
 			// can be used throughout code now
 			_queueFamilyIndices = VulkanUtils::FindQueueFamilies(_physicalDevice, _surface);
+
+			Renderer::getAvailableSampleCounts() = VulkanUtils::findSupportedSampleCounts(_physicalDevice);
 			break;
 		}
 	}
@@ -177,7 +179,7 @@ void Backend::createLogicalDevice() {
 
 	VkPhysicalDeviceFeatures2 baseDeviceFeatures{};
 	baseDeviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-//	baseDeviceFeatures.samplerAnisotropy = VK_TRUE;
+	baseDeviceFeatures.features.samplerAnisotropy = VK_TRUE;
 
 	// vulkan 1.3 features
 	VkPhysicalDeviceVulkan13Features features13{};
@@ -285,44 +287,6 @@ void Backend::createSwapchain() {
 	_swapchainExtent = extent;
 }
 
-void Backend::initSwapchainRenderImage() {
-	createSwapchain();
-	createImageViews();
-
-	// draw image should match window extent
-	VkExtent3D drawImageExtent = {
-//		Engine::getWindowExtent().width,
-//		Engine::getWindowExtent().height,
-		1920,
-		1080,
-		1
-	};
-
-	auto& drawImage = Renderer::getDrawImage();
-	// hardcoding the draw format to 32 bit float
-	drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	drawImage.imageExtent = drawImageExtent;
-
-	VkImageUsageFlags drawImageUsages{};
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-	RendererUtils::createDynamicRenderImage(drawImage, drawImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
-
-	auto& depthImage = Renderer::getDepthImage();
-	depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	depthImage.imageExtent = drawImageExtent;
-
-	VkImageUsageFlags depthImageUsages{};
-	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-	RendererUtils::createDynamicRenderImage(depthImage, depthImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
-}
-
 void Backend::resizeSwapchain() {
 	cleanupSwapchain();
 
@@ -332,25 +296,6 @@ void Backend::resizeSwapchain() {
 	createImageViews();
 
 	Engine::windowModMode().windowResized = false;
-
-	// updates the compute descriptors
-	if (DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet != VK_NULL_HANDLE) {
-		VkDescriptorImageInfo imgInfo = {
-			.imageView = Renderer::getDrawImage().imageView,
-			.imageLayout = VK_IMAGE_LAYOUT_GENERAL
-		};
-
-		VkWriteDescriptorSet drawImageWrite = {
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet,
-			.dstBinding = 0,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-			.pImageInfo = &imgInfo
-		};
-
-		vkUpdateDescriptorSets(_device, 1, &drawImageWrite, 0, nullptr);
-	}
 }
 
 void Backend::cleanupSwapchain() {

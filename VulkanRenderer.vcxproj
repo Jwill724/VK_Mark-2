@@ -62,10 +62,9 @@
   <ItemGroup>
     <!-- PCH Generator -->
     <ClCompile Include="src\common\pch.cpp">
-     <PrecompiledHeader>Create</PrecompiledHeader>
-     <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeader>Create</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
-
     <!-- Files that use the PCH -->
     <ClCompile Include="src\core\AssetManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -77,6 +76,9 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\Descriptor.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\RenderScene.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\vulkan\Backend.cpp">
@@ -103,7 +105,6 @@
     <ClCompile Include="src\imgui\EditorImgui.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-
     <!-- No PCH for third-party or minimal logic files -->
     <ClCompile Include="src\Main.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -129,7 +130,6 @@
     <ClCompile Include="src\renderer\types\Texture.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
-
     <!-- 3rd-party code (no PCH) -->
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -177,6 +177,7 @@
     <ClInclude Include="src\core\AssetManager.h" />
     <ClInclude Include="src\file\File.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
+    <ClInclude Include="src\renderer\RenderScene.h" />
     <ClInclude Include="src\renderer\types\Mesh.h" />
     <ClInclude Include="src\renderer\types\Model.h" />
     <ClInclude Include="src\renderer\types\Texture.h" />
@@ -199,6 +200,7 @@
     <None Include="res\shaders\triangle_mesh_vert.hlsl" />
     <None Include="res\shaders\sky_comp.hlsl" />
     <None Include="res\shaders\gradient_comp.hlsl" />
+    <None Include="res\shaders\tex_image_frag.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="res\textures\master_chief_tex.jpg" />

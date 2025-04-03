@@ -54,7 +54,6 @@ void GraphicsPipeline::createPipeline() {
 	colorBlending.attachmentCount = 1;
 	colorBlending.pAttachments = &_colorBlendAttachment;
 
-	// completely clear VertexInputStateCreateInfo, as we have no need for it
 	VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
 	// build the actual pipeline

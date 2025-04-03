@@ -8,42 +8,139 @@
 #include "utils/BufferUtils.h"
 #include "utils/VulkanUtils.h"
 #include "utils/RendererUtils.h"
-
+#include "renderer/RenderScene.h"
 #include "renderer/CommandBuffer.h"
 
 namespace AssetManager {
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 	std::vector<std::shared_ptr<MeshAsset>>& getTestMeshes() { return testMeshes; }
 
+	GPUMeshBuffers rectangle;
+
+	// Textures
+	AllocatedImage _whiteImage;
+	AllocatedImage _blackImage;
+	AllocatedImage _greyImage;
+	AllocatedImage _errorCheckerboardImage;
+
+	std::vector<AllocatedImage> texImages;
+	std::vector<AllocatedImage>& getTexImages() { return texImages; }
+
+	VkSampler _defaultSamplerLinear;
+	VkSampler _defaultSamplerNearest;
+	VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
+	VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+
+	void initTextures();
 	DeletionQueue _assetDeletionQueue;
 	DeletionQueue& getAssetDeletionQueue() { return _assetDeletionQueue; }
 	VmaAllocator _assetAllocator;
 	VmaAllocator& getAssetAllocation() { return _assetAllocator; }
 
-	ImmCmdSubmitDef _immCmdSubmit{};
+	// for asset setup
+	// For now only area of engine to have this just for asset loading
+	ImmCmdSubmitDef _immGraphicsCmdSubmit{};
+	ImmCmdSubmitDef& getGraphicsCmdSubmit() { return _immGraphicsCmdSubmit; }
+
+	ImmCmdSubmitDef _immTransferCmdSubmit{};
+
+	void setupResources();
 }
 
-void AssetManager::transformMesh(GPUDrawPushConstants& pushConstants, float aspect) {
-	glm::mat4 view = glm::translate(glm::vec3{ 0, 0, -5 });
-	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 1.f, 10.f);
-
-	// invert the Y direction on projection matrix so that we are more similar
-	// to opengl and gltf axis
-	projection[1][1] *= -1;
-
-	pushConstants.worldMatrix = projection * view;
-}
-
+// all backend needs to call
 void AssetManager::loadAssets() {
 	_assetAllocator = VulkanUtils::createAllocator(Backend::getPhysicalDevice(), Backend::getDevice(), Backend::getInstance());
 	_assetDeletionQueue.push_function([=] {
 		vmaDestroyAllocator(_assetAllocator);
 	});
 
-	CommandBuffer::setupImmediateCmdBuffer(_immCmdSubmit);
+	// single command submit for copying and moving asset data
+	CommandBuffer::setupImmediateCmdBuffer(_immGraphicsCmdSubmit, Backend::getGraphicsQueue());
+
+	// only meant for pre rendering copies to gpu
+	CommandBuffer::setupImmediateCmdBuffer(_immTransferCmdSubmit, Backend::getTransferQueue());
 
 	testMeshes = loadGltfMeshes("res/models/basicmesh.glb").value();
+
+	initTextures();
+
+	setupResources();
+}
+
+void AssetManager::setupResources() {
+	RenderScene::setMeshes(testMeshes);
+}
+
+// TEXTURES
+void AssetManager::initTextures() {
+	// reuse for now
+	VkExtent3D texExtent = { 1, 1, 1 };
+
+	VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+	VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+	VkMemoryPropertyFlags memoryProp = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+
+	_whiteImage.imageExtent = texExtent;
+	_whiteImage.imageFormat = format;
+	_whiteImage.mipmapped = false;
+
+	_greyImage.imageExtent = texExtent;
+	_greyImage.imageFormat = format;
+	_greyImage.mipmapped = false;
+
+	_blackImage.imageExtent = texExtent;
+	_blackImage.imageFormat = format;
+	_blackImage.mipmapped = false;
+
+	//3 default textures, white, grey, black. 1 pixel each
+	// all same settings
+	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
+	RendererUtils::createTextureImage((void*)&white, _whiteImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
+	texImages.push_back(_whiteImage);
+
+	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
+	RendererUtils::createTextureImage((void*)&grey, _greyImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
+	texImages.push_back(_greyImage);
+
+	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
+	RendererUtils::createTextureImage((void*)&black, _blackImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
+	texImages.push_back(_blackImage);
+
+	//checkerboard image
+	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
+	std::array<uint32_t, 16 * 16 > pixels; //for 16x16 checkerboard texture
+	for (int x = 0; x < 16; x++) {
+		for (int y = 0; y < 16; y++) {
+			pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+		}
+	}
+
+	VkExtent3D checkerboardedImageExtent { 16, 16, 1 };
+
+	_errorCheckerboardImage.imageExtent = checkerboardedImageExtent;
+	_errorCheckerboardImage.imageFormat = format;
+	_errorCheckerboardImage.mipmapped = false;
+
+	RendererUtils::createTextureImage(pixels.data(), _errorCheckerboardImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
+	texImages.push_back(_errorCheckerboardImage);
+
+	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+
+	sampl.magFilter = VK_FILTER_NEAREST;
+	sampl.minFilter = VK_FILTER_NEAREST;
+
+	vkCreateSampler(Backend::getDevice(), &sampl, nullptr, &_defaultSamplerNearest);
+
+	sampl.magFilter = VK_FILTER_LINEAR;
+	sampl.minFilter = VK_FILTER_LINEAR;
+
+	vkCreateSampler(Backend::getDevice(), &sampl, nullptr, &_defaultSamplerLinear);
+
+	_assetDeletionQueue.push_function([&]() {
+		vkDestroySampler(Backend::getDevice(), _defaultSamplerNearest, nullptr);
+		vkDestroySampler(Backend::getDevice(), _defaultSamplerLinear, nullptr);
+	});
 }
 
 std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMeshes(const std::filesystem::path& filePath) {
@@ -180,7 +277,7 @@ GPUMeshBuffers AssetManager::uploadMesh(std::span<uint32_t> indices, std::span<V
 		VMA_MEMORY_USAGE_GPU_ONLY, _assetAllocator);
 
 	//find the address of the vertex buffer
-	VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,.buffer = newSurface.vertexBuffer.buffer };
+	VkBufferDeviceAddressInfo deviceAdressInfo{ .sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = newSurface.vertexBuffer.buffer };
 	newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(Backend::getDevice(), &deviceAdressInfo);
 
 	//create index buffer
@@ -220,8 +317,8 @@ GPUMeshBuffers AssetManager::uploadMesh(std::span<uint32_t> indices, std::span<V
 
 		vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy);
 	},
-	_immCmdSubmit,
-	Backend::getGraphicsQueue()
+	_immTransferCmdSubmit,
+	Backend::getTransferQueue()
 	);
 
 	BufferUtils::destroyBuffer(staging, _assetAllocator);

@@ -29,27 +29,76 @@ VkFence RendererUtils::createFence() {
 	return fence;
 }
 
-void RendererUtils::createDynamicRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
+// renderImage.imageExtent, imageFormat, mipmapped must be defined before use
+void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
 	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue& deletionQueue, VmaAllocator allocator) {
 
-	VkImageCreateInfo rimg_imageInfo{};
-	rimg_imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	rimg_imageInfo.imageType = VK_IMAGE_TYPE_2D;
-	rimg_imageInfo.extent = renderImage.imageExtent;
-	rimg_imageInfo.arrayLayers = 1;
-	rimg_imageInfo.mipLevels = 1;
-	rimg_imageInfo.format = renderImage.imageFormat;
-	rimg_imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	rimg_imageInfo.usage = usage;
-	rimg_imageInfo.samples = samples;
-	rimg_imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	rimg_imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	size_t dataSize = renderImage.imageExtent.depth * renderImage.imageExtent.width * renderImage.imageExtent.height * 4;
+	AllocatedBuffer uploadbuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 
-	VmaAllocationCreateInfo rimg_allocInfo = {};
-	rimg_allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	rimg_allocInfo.requiredFlags = properties;
+	memcpy(uploadbuffer.info.pMappedData, data, dataSize);
 
-	VK_CHECK(vmaCreateImage(allocator, &rimg_imageInfo, &rimg_allocInfo, &renderImage.image, &renderImage.allocation, nullptr));
+	createRenderImage(renderImage, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		properties, samples, deletionQueue, allocator);
+
+	CommandBuffer::immediateCmdSubmit([&](VkCommandBuffer cmd) {
+
+		RendererUtils::transitionImage(cmd, renderImage.image, renderImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		VkBufferImageCopy copyRegion = {};
+		copyRegion.bufferOffset = 0;
+		copyRegion.bufferRowLength = 0;
+		copyRegion.bufferImageHeight = 0;
+
+		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		copyRegion.imageSubresource.mipLevel = 0;
+		copyRegion.imageSubresource.baseArrayLayer = 0;
+		copyRegion.imageSubresource.layerCount = 1;
+		copyRegion.imageExtent = renderImage.imageExtent;
+
+		// copy the buffer into the image
+		vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, renderImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+			&copyRegion);
+
+		RendererUtils::transitionImage(cmd, renderImage.image, renderImage.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		},
+		AssetManager::getGraphicsCmdSubmit(),
+		Backend::getGraphicsQueue()
+	);
+
+	BufferUtils::destroyBuffer(uploadbuffer, allocator);
+}
+
+// renderImage.imageExtent, imageFormat, mipmapped must be defined before use
+void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
+	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue& deletionQueue, VmaAllocator allocator) {
+
+	VkImageCreateInfo imgInfo{};
+	imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imgInfo.imageType = VK_IMAGE_TYPE_2D;
+	imgInfo.extent = renderImage.imageExtent;
+	imgInfo.arrayLayers = 1;
+	imgInfo.format = renderImage.imageFormat;
+	imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imgInfo.usage = usage;
+	imgInfo.samples = samples;
+	imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	if (renderImage.mipmapped) {
+		imgInfo.mipLevels = static_cast<uint32_t>
+			(std::floor(std::log2(std::max<uint32_t>(renderImage.imageExtent.width, renderImage.imageExtent.height)))) + 1;
+	}
+	else {
+		imgInfo.mipLevels = 1;
+	}
+
+	VmaAllocationCreateInfo imgAllocInfo = {};
+	imgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	imgAllocInfo.requiredFlags = properties;
+
+	VK_CHECK(vmaCreateImage(allocator, &imgInfo, &imgAllocInfo, &renderImage.image, &renderImage.allocation, nullptr));
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -57,7 +106,7 @@ void RendererUtils::createDynamicRenderImage(AllocatedImage& renderImage, VkImag
 	viewInfo.image = renderImage.image;
 	viewInfo.format = renderImage.imageFormat;
 	viewInfo.subresourceRange.aspectMask = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
 	viewInfo.subresourceRange.layerCount = 1;
 	viewInfo.subresourceRange.baseMipLevel = 0;
 	viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -97,81 +146,76 @@ void RendererUtils::transitionImage(VkCommandBuffer cmd, VkImage image, VkFormat
 	}
 	else {
 		aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-
-		imageBarrier.subresourceRange.aspectMask = aspectMask;
-		imageBarrier.subresourceRange.baseMipLevel = 0;
-		imageBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-		imageBarrier.subresourceRange.baseArrayLayer = 0;
-		imageBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-
-		//imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		//imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-		//imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		//imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-
-		// Select the correct pipeline stages and access masks based on layouts
-		switch (currentLayout) {
-		case VK_IMAGE_LAYOUT_UNDEFINED:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-			imageBarrier.srcAccessMask = 0; // No dependencies
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-			imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-			break;
-		default:
-			imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-			break;
-		}
-
-		switch (newLayout) {
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_NONE; // No need for shader access
-			break;
-		default:
-			imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-			break;
-		}
-
-		VkDependencyInfo depInfo{};
-		depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-		depInfo.pNext = nullptr;
-		depInfo.imageMemoryBarrierCount = 1;
-		depInfo.pImageMemoryBarriers = &imageBarrier;
-
-		vkCmdPipelineBarrier2(cmd, &depInfo);
 	}
+
+	imageBarrier.subresourceRange.aspectMask = aspectMask;
+	imageBarrier.subresourceRange.baseMipLevel = 0;
+	imageBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+	imageBarrier.subresourceRange.baseArrayLayer = 0;
+	imageBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
+	// Select the correct pipeline stages and access masks based on layouts
+	switch (currentLayout) {
+	case VK_IMAGE_LAYOUT_UNDEFINED:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		imageBarrier.srcAccessMask = 0; // No dependencies
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+		break;
+	default:
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+		break;
+	}
+
+	switch (newLayout) {
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_NONE; // No need for shader access
+		break;
+	default:
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+		break;
+	}
+
+	VkDependencyInfo depInfo{};
+	depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	depInfo.pNext = nullptr;
+	depInfo.imageMemoryBarrierCount = 1;
+	depInfo.pImageMemoryBarriers = &imageBarrier;
+
+	vkCmdPipelineBarrier2(cmd, &depInfo);
 }
 
 void RendererUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize) {
@@ -198,7 +242,7 @@ void RendererUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImag
 	blitRegion.dstSubresource.mipLevel = 0;
 
 	VkBlitImageInfo2 blitInfo{};
-	blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2,
+	blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
 	blitInfo.pNext = nullptr;
 
 	blitInfo.dstImage = destination;

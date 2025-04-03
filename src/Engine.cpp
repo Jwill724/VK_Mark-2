@@ -3,12 +3,13 @@
 #include "renderer/Renderer.h"
 #include "imgui/EditorImgui.h"
 #include "core/AssetManager.h"
+#include "renderer/RenderScene.h"
 
 namespace Engine {
 	Window _window;
 	GLFWwindow* getWindow() { return _window.window; }
-	bool getWindowFramebufferResize() { return _window.framebufferResized; }
-	void resetWindowFramebufferSize() { _window.framebufferResized = false; }
+	// just returns the whole window struct for its use
+	Window& windowModMode() { return _window; }
 
 	DeletionQueue _mainDeletionQueue;
 	VmaAllocator _allocator;
@@ -16,7 +17,7 @@ namespace Engine {
 	DeletionQueue& getDeletionQueue() { return _mainDeletionQueue; }
 	VmaAllocator& getAllocator() { return _allocator; }
 
-	VkExtent2D _windowExtent = { 800, 600 };
+	VkExtent2D _windowExtent = { 800, 800 };
 	VkExtent2D getWindowExtent() { return _windowExtent; }
 
 	bool _isInitialized{ false };
@@ -26,12 +27,6 @@ namespace Engine {
 
 	void init();
 	void cleanup();
-
-	void setupResources();
-}
-
-void Engine::setupResources() {
-	Renderer::setMeshes(AssetManager::getTestMeshes());
 }
 
 void Engine::init() {
@@ -39,7 +34,6 @@ void Engine::init() {
 	Backend::initVulkan();
 
 	AssetManager::loadAssets();
-	setupResources();
 
 	Backend::initBackend();
 
@@ -50,11 +44,12 @@ void Engine::run() {
 	init();
 	Renderer::init();
 
+	glfwSetWindowFocusCallback(_window.window, EditorImgui::MyWindowFocusCallback);
+
 	// main loop
 	while (WindowIsOpen(_window.window)) {
 		glfwPollEvents();
 
-		glfwSetWindowFocusCallback(_window.window, EditorImgui::MyWindowFocusCallback);
 		EditorImgui::renderImgui();
 		Renderer::RenderFrame();
 	}
