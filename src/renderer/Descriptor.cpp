@@ -88,11 +88,12 @@ void DescriptorManager::destroyPools() {
 	fullPools.clear();
 }
 
-void DescriptorManager::addBinding(uint32_t binding, VkDescriptorType type) {
+void DescriptorManager::addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags) {
 	VkDescriptorSetLayoutBinding newBind {
 		.binding = binding,
 		.descriptorType = type,
-		.descriptorCount = 1
+		.descriptorCount = 1,
+		.stageFlags = stageFlags
 	};
 
 	_bindings.push_back(newBind);
@@ -202,11 +203,6 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 }
 
-void DescriptorManager::setupDescriptorLayout(DescriptorsCentral& descriptors) {
-	addBinding(descriptors.descriptorInfo.binding, descriptors.descriptorInfo.type);
-	descriptors.descriptorLayout = createSetLayout(descriptors.descriptorInfo.stageFlags);
-}
-
 namespace DescriptorSetOverwatch {
 	// allocates pools and layouts
 	// global
@@ -227,34 +223,31 @@ void DescriptorSetOverwatch::initDescriptors() {
 
 	descriptorManager.init(10, sizes);
 
-	Engine::getDeletionQueue().push_function([&]() {
-		descriptorManager.destroyPools();
-	});
-
-	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
+	descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT);
 
 	drawImageDescriptors.descriptorLayout = descriptorManager.createSetLayout(VK_SHADER_STAGE_COMPUTE_BIT);
 	drawImageDescriptors.descriptorSet = descriptorManager.allocateDescriptor(drawImageDescriptors.descriptorLayout);
 
-
 	descriptorManager.clearBinding();
 
-
 	// meshes
-	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
-	RenderScene::getGPUSceneDescriptorLayout() = descriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT);
+	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT); // for vertex buffer
+	descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); // for texture
+	RenderScene::getGPUSceneDescriptorLayout() = descriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+
+//	descriptorManager.clearBinding();
 
 	// textures
 	//descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	//RenderScene::_singleImageDescriptorLayout = descriptorManager.createSetLayout(VK_SHADER_STAGE_FRAGMENT_BIT);
-	//descriptorManager.clearBinding();
+	//RenderScene::getSingleImageDescriptorLayout() = descriptorManager.createSetLayout(VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	DescriptorWriter drawImageWriter;
-	drawImageWriter.writeImage(0, Renderer::getPostProcessImage().imageView, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	drawImageWriter.writeImage(1, Renderer::getDrawImage().imageView, AssetManager::getDefaultSamplerLinear(), VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	drawImageWriter.writeImage(0, Renderer::getPostProcessImage().imageView, VK_NULL_HANDLE,
+		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	drawImageWriter.writeImage(1, Renderer::getDrawImage().imageView, AssetManager::getDefaultSamplerLinear(),
+		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	drawImageWriter.updateSet(Backend::getDevice(), drawImageDescriptors.descriptorSet);
-
 
 
 	Engine::getDeletionQueue().push_function([&]() {
@@ -262,6 +255,6 @@ void DescriptorSetOverwatch::initDescriptors() {
 
 		vkDestroyDescriptorSetLayout(Backend::getDevice(), drawImageDescriptors.descriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::getGPUSceneDescriptorLayout(), nullptr);
-	//	vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::_singleImageDescriptorLayout, nullptr);
+	//	vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::getSingleImageDescriptorLayout(), nullptr);
 	});
 }

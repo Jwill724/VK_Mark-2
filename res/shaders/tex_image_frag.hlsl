@@ -1,6 +1,6 @@
 // Texture and sampler declarations
-Texture2D displayTexture : register(t0);
-SamplerState sampler0 : register(s0);
+Texture2D displayTexture : register(t1);
+SamplerState sampler0 : register(s1);
 
 struct TexColor
 {

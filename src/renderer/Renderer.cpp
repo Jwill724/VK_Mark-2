@@ -49,45 +49,14 @@ namespace Renderer {
 	uint32_t getCurrentSampleCount() { return _currentSampleCount; }
 }
 
-void Renderer::init() {
-	QueueFamilyIndices qFamIndices = Backend::getQueueFamilyIndices();
-
-	for (auto& frame : _frames) {
-		frame._graphicsCmdPool = CommandBuffer::createCommandPool(qFamIndices.graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-		frame._graphicsCmdBuffer = CommandBuffer::createCommandBuffer(frame._graphicsCmdPool);
-
-		frame._swapchainSemaphore = RendererUtils::createSemaphore();
-		frame._renderSemaphore = RendererUtils::createSemaphore();
-		frame._renderFence = RendererUtils::createFence();
-
-
-		// create a descriptor pool
-		std::vector<PoolSizeRatio> frameSizes = {
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
-		};
-
-		frame._frameDescriptors = DescriptorManager{};
-		frame._frameDescriptors.init(1000, frameSizes);
-
-		std::cout << "frame index[ " << frame._graphicsCmdBuffer << std::endl;
-
-		Engine::getDeletionQueue().push_function([&]() {
-			frame._frameDescriptors.destroyPools();
-		});
-	}
-}
-
 void Renderer::setupRenderImages() {
 	// draw image should match window extent
 	VkExtent3D drawImageExtent = {
 			Engine::getWindowExtent().width,
 			Engine::getWindowExtent().height,
-		//	1920,
-		//	1080,
-			1
+			//	1920,
+			//	1080,
+				1
 	};
 
 	// hardcoding the draw format to 32 bit float
@@ -121,7 +90,8 @@ void Renderer::setupRenderImages() {
 	RendererUtils::createRenderImage(_postProcessImage, postUsages,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
-	_currentSampleCount = 4u; // MSAA SETTING
+	// MSAA SETTING  8 is the max allowed
+	_currentSampleCount = 8u;
 	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(_currentSampleCount);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
@@ -148,6 +118,37 @@ void Renderer::setupRenderImages() {
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 }
 
+void Renderer::init() {
+	QueueFamilyIndices qFamIndices = Backend::getQueueFamilyIndices();
+
+	for (auto& frame : _frames) {
+		frame._graphicsCmdPool = CommandBuffer::createCommandPool(qFamIndices.graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+		frame._graphicsCmdBuffer = CommandBuffer::createCommandBuffer(frame._graphicsCmdPool);
+
+		frame._swapchainSemaphore = RendererUtils::createSemaphore();
+		frame._renderSemaphore = RendererUtils::createSemaphore();
+		frame._renderFence = RendererUtils::createFence();
+
+
+		// create a descriptor pool
+		std::vector<PoolSizeRatio> frameSizes = {
+			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
+		};
+
+		frame._frameDescriptors = DescriptorManager{};
+		frame._frameDescriptors.init(1000, frameSizes);
+
+		std::cout << "frame index[ " << frame._graphicsCmdBuffer << std::endl;
+
+		Engine::getDeletionQueue().push_function([&]() {
+			frame._frameDescriptors.destroyPools();
+		});
+	}
+}
+
 void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 	VkCommandBufferBeginInfo cmdBeginInfo{};
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -160,7 +161,10 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 
 	// Transition to color/depth attachment layouts
 	RendererUtils::transitionImage(cmd, _drawImage.image, _drawImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	RendererUtils::transitionImage(cmd, _msaaImage.image, _msaaImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	if (_currentSampleCount != 1u) {
+		RendererUtils::transitionImage(cmd, _msaaImage.image, _msaaImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	}
 	RendererUtils::transitionImage(cmd, _depthImage.image, _depthImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	// Render scene
@@ -218,14 +222,13 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 	VkRenderingAttachmentInfo colorAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
-		.imageView = _msaaImage.imageView,
+		.imageView = (_currentSampleCount == 1u) ? _drawImage.imageView : _msaaImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT,
-		.resolveImageView = _drawImage.imageView,
-		.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.resolveMode = (_currentSampleCount == 1u) ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
+		.resolveImageView = (_currentSampleCount == 1u) ? VK_NULL_HANDLE : _drawImage.imageView,
+		.resolveImageLayout = (_currentSampleCount == 1u) ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.clearValue = {}
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
 	};
 
 	VkRenderingAttachmentInfo depthAttachment = {
@@ -239,7 +242,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
 	};
-	depthAttachment.clearValue.depthStencil.depth = 0.f;
+	depthAttachment.clearValue.depthStencil.depth = 1.f;
 
 	VkRenderingInfo renderInfo = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
@@ -277,15 +280,6 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	//VkDescriptorSet imageSet = getCurrentFrame()._frameDescriptors.allocateDescriptor(RenderScene::_singleImageDescriptorLayout);
-	//{
-	//	DescriptorWriter writer;
-	//	writer.writeImage(0, AssetManager::getTexImages().back().imageView, AssetManager::getDefaultSamplerNearest(),
-	//		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-	//	writer.updateSet(Backend::getDevice(), imageSet);
-	//}
-
 	GPUDrawPushConstants push_constants;
 
 	// Mesh transforming
@@ -296,10 +290,12 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	PushConstantDef& meshPipelinePCData = Pipelines::meshPipeline._pushConstantInfo;
 
+	// vertex data, matrix transformations
 	vkCmdPushConstants(cmd, Pipelines::meshPipeline.getPipelineLayout(), meshPipelinePCData.stageFlags, meshPipelinePCData.offset,
 		meshPipelinePCData.size, &push_constants);
-	vkCmdBindIndexBuffer(cmd, RenderScene::_sceneMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdDrawIndexed(cmd, RenderScene::_sceneMeshes[2]->surfaces[0].count, 1, RenderScene::_sceneMeshes[2]->surfaces[0].startIndex, 0, 0);
+
+	vkCmdBindIndexBuffer(cmd, RenderScene::_sceneMeshes[currentSceneIndex]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdDrawIndexed(cmd, RenderScene::_sceneMeshes[currentSceneIndex]->surfaces[0].count, 1, RenderScene::_sceneMeshes[currentSceneIndex]->surfaces[0].startIndex, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }

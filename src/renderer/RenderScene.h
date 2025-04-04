@@ -3,6 +3,8 @@
 #include "core/AssetManager.h"
 #include "Renderer.h"
 
+static unsigned int currentSceneIndex = 1;
+
 namespace RenderScene {
 	GPUSceneData& getCurrentSceneData();
 
@@ -13,7 +15,7 @@ namespace RenderScene {
 //	extern VkDescriptorSetLayout _singleImageDescriptorLayout;
 
 	VkDescriptorSetLayout& getGPUSceneDescriptorLayout();
-//	VkDescriptorSetLayout& getSingleImageDescriptorLayout();
+	VkDescriptorSetLayout& getSingleImageDescriptorLayout();
 	void transformMesh(GPUDrawPushConstants& pushConstants, float aspect);
 	void renderDrawScene(VkCommandBuffer cmd, FrameData& frame);
 }

@@ -108,9 +108,14 @@ void PipelineManager::initPipelines() {
 	};
 
 	ShaderStageInfo color = {
-		.filePath = "res/shaders/colored_frag.spv",
+		.filePath = "res/shaders/tex_image_frag.spv",
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT
 	};
+
+	//ShaderStageInfo color = {
+	//	.filePath = "res/shaders/colored_frag.spv",
+	//	.stage = VK_SHADER_STAGE_FRAGMENT_BIT
+	//};
 
 	triangleMeshShaderStages.push_back(meshTriangle);
 	triangleMeshShaderStages.push_back(color);
@@ -136,14 +141,14 @@ void PipelineManager::setupGraphicsPipelineCofig(GraphicsPipeline& pipeline) {
 
 	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
 
-	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, VK_POLYGON_MODE_FILL, 1.f, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, VK_POLYGON_MODE_FILL, 1.f, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
 
 	PipelineConfigs::multisamplingConfig(pipeline._multisampling, Renderer::getAvailableSampleCounts(), Renderer::getCurrentSampleCount(), VK_FALSE);
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_TRUE, VK_BLEND_FACTOR_ONE);
 
-	PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, VK_COMPARE_OP_GREATER_OR_EQUAL);
+	PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
 
 	PipelineConfigs::setColorAttachmentAndDepthFormat(pipeline._colorAttachmentformat,
 		Renderer::getDrawImage().imageFormat, pipeline._renderInfo, Renderer::getDepthImage().imageFormat);

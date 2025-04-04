@@ -81,24 +81,24 @@ void mainImage(out float4 fragColor, float2 fragCoord)
     // Add the star value uniformly to the background color.
     vColor += float3(starVal, starVal, starVal);
 
-//    float4 background = float4(vColor, 1.0f);
+    float4 background = float4(vColor, 1.0f);
 
-//// Add stars on top of the gradient
-//    background.rgb += starVal;
+// Add stars on top of the gradient
+    background.rgb += starVal;
 
-//// Blend background + geometry based on alpha (or let geometry sit on top if opaque)
-//    float4 previousColor = inputImage.SampleLevel(inputSampler, fragCoord / iResolution, 0.0f);
+// Blend background + geometry based on alpha (or let geometry sit on top if opaque)
+    float4 previousColor = inputImage.SampleLevel(inputSampler, fragCoord / iResolution, 0.0f);
 
-//// Just alpha-blend the background under the mesh
-//    fragColor = lerp(background, previousColor, previousColor.a);
+// Just alpha-blend the background under the mesh
+    fragColor = lerp(background, previousColor, previousColor.a);
 
-    float3 bgColor = vColor + float3(starVal, starVal, starVal);
-    float3 geometry = inputImage.SampleLevel(inputSampler, fragCoord / iResolution, 0.5f).rgb;
+    //float3 bgColor = vColor + float3(starVal, starVal, starVal);
+    //float3 geometry = inputImage.SampleLevel(inputSampler, fragCoord / iResolution, 1.f).rgb;
 
-    float blendAmount = 0.8f;
-    float3 result = lerp(bgColor, geometry, blendAmount);
+    //float blendAmount = 0.8f;
+    //float3 result = lerp(bgColor, geometry, blendAmount);
 
-    fragColor = float4(result, 1.0f);
+    //fragColor = float4(result, 1.0f);
 }
 
 [numthreads(16, 16, 1)]

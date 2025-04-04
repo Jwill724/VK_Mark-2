@@ -22,6 +22,7 @@ namespace AssetManager {
 	AllocatedImage _blackImage;
 	AllocatedImage _greyImage;
 	AllocatedImage _errorCheckerboardImage;
+	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
 
 	std::vector<AllocatedImage> texImages;
 	std::vector<AllocatedImage>& getTexImages() { return texImages; }
@@ -103,7 +104,7 @@ void AssetManager::initTextures() {
 	RendererUtils::createTextureImage((void*)&grey, _greyImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
 	texImages.push_back(_greyImage);
 
-	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0));
+	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
 	RendererUtils::createTextureImage((void*)&black, _blackImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
 	texImages.push_back(_blackImage);
 
@@ -194,7 +195,6 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMes
 					indices.push_back(static_cast<uint32_t>(idx + initial_vtx));
 				});
 
-
 			// load vertex positions
 			fastgltf::Accessor& posAccessor = asset->accessors[p.findAttribute("POSITION")->accessorIndex];
 			vertices.resize(vertices.size() + posAccessor.count);
@@ -227,11 +227,12 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMes
 
 				fastgltf::iterateAccessorWithIndex<glm::vec2>(asset.get(), asset.get().accessors[(*uv).accessorIndex],
 					[&](glm::vec2 v, size_t index) {
+						//vertices[initial_vtx + index].uv_x = v.x;
+						//vertices[initial_vtx + index].uv_y = v.y;
 						vertices[initial_vtx + index].uv_x = v.x;
 						vertices[initial_vtx + index].uv_y = v.y;
 					});
 			}
-
 
 			// load vertex colors
 			auto colors = p.findAttribute("COLOR_0");
@@ -247,7 +248,7 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMes
 
 
 		// display the vertex normals
-		constexpr bool OverrideColors = true;
+		constexpr bool OverrideColors = false;
 		if (OverrideColors) {
 			for (Vertex& vtx : vertices) {
 				vtx.color = glm::vec4(vtx.normal, 1.f);

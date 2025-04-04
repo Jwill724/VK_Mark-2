@@ -5,6 +5,18 @@ struct VSOutput
     float2 uv : TEXCOORD0;
 };
 
+//struct SceneData
+//{
+//    float4x4 view;
+//    float4x4 proj;
+//    float4x4 viewproj;
+//    float4 ambientColor;
+//    float4 sunlightDirection;
+//    float4 sunlightColor;
+//};
+
+//StructuredBuffer<SceneData> sceneData : register(t0);
+
 struct Vertex
 {
     float3 pos;
@@ -14,15 +26,7 @@ struct Vertex
     float4 color;
 };
 
-//cbuffer SceneData : register(b0)
-//{
-//    float4x4 view;
-//    float4x4 proj;
-//    float4x4 viewproj;
-//    float4 ambientColor;
-//    float4 sunlightDirection;
-//    float4 sunlightColor;
-//};
+StructuredBuffer<Vertex> vertexBuffer : register(t0);
 
 struct PushConstants
 {
@@ -33,10 +37,10 @@ struct PushConstants
 [[vk::push_constant]]
 PushConstants pc;
 
-StructuredBuffer<Vertex> vertexBuffer;
-
 VSOutput main(uint vertexID : SV_VertexID)
 {
+//    SceneData scene = sceneData[0];
+
     Vertex v = vertexBuffer[vertexID];
 
     VSOutput o;

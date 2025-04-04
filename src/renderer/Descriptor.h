@@ -44,12 +44,10 @@ struct DescriptorManager {
 	VkDescriptorSetLayout createSetLayout(VkShaderStageFlags shaderStages, void* pNext = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
 	VkDescriptorSet allocateDescriptor(VkDescriptorSetLayout layout, void* pNext = nullptr);
 	void clearPools();
-	void addBinding(uint32_t binding, VkDescriptorType type);
+	void addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags);
 	void clearBinding();
 
 	void init(uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
-
-	void setupDescriptorLayout(DescriptorsCentral& descriptors);
 };
 
 namespace DescriptorSetOverwatch {
@@ -60,9 +58,3 @@ namespace DescriptorSetOverwatch {
 	// backend calls once
 	void initDescriptors();
 }
-
-struct UniformBufferObject {
-	alignas(16) glm::mat4 model;
-	alignas(16) glm::mat4 view;
-	alignas(16) glm::mat4 proj;
-};

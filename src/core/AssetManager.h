@@ -20,6 +20,8 @@ namespace AssetManager {
 
 	std::vector<AllocatedImage>& getTexImages();
 
+	AllocatedImage& getCheckboardTex();
+
 	VkSampler getDefaultSamplerLinear();
 	VkSampler getDefaultSamplerNearest();
 
