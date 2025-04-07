@@ -4,6 +4,7 @@
 #include "renderer/Renderer.h"
 #include "PipelineManager.h"
 #include "imgui/EditorImgui.h"
+#include "input/UserInput.h"
 #include "Engine.h"
 
 namespace Backend {
@@ -80,7 +81,7 @@ void Backend::initBackend() {
 	Backend::createImageViews();
 	Renderer::setupRenderImages();
 
-	DescriptorSetOverwatch::initDescriptors();
+	DescriptorSetOverwatch::initGlobalDescriptors();
 
 	PipelineManager::initPipelines();
 
@@ -296,6 +297,8 @@ void Backend::resizeSwapchain() {
 	createImageViews();
 
 	Engine::windowModMode().windowResized = false;
+
+	UserInput::resetMouse(Engine::getWindow());
 }
 
 void Backend::cleanupSwapchain() {

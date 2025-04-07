@@ -5,19 +5,8 @@
 #include "renderer/Descriptor.h"
 #include "Backend.h"
 
-VkPipelineShaderStageCreateInfo GraphicsPipeline::setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue) {
-	VkShaderModule shaderModule;
-	VulkanUtils::loadShaderModule(shaderFile, Backend::getDevice(), &shaderModule);
-	VkPipelineShaderStageCreateInfo shaderStage = PipelineManager::createPipelineShaderStage(stage, shaderModule);
 
-	shaderDeleteQueue.push_function([=] {
-		vkDestroyShaderModule(Backend::getDevice(), shaderModule, nullptr);
-	});
-
-	return shaderStage;
-}
-
-void GraphicsPipeline::initializePipelineSTypes() {
+void PipelineBuilder::initializePipelineSTypes() {
 	// clear all of the structs we need back to 0 with their correct stype
 
 	_inputAssembly = { .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
@@ -31,7 +20,7 @@ void GraphicsPipeline::initializePipelineSTypes() {
 	_renderInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 }
 
-void GraphicsPipeline::createPipeline() {
+VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig) {
 	VkDevice device = Backend::getDevice();
 
 	// make viewport state from our stored viewport and scissor.
@@ -63,8 +52,8 @@ void GraphicsPipeline::createPipeline() {
 	// connect the renderInfo to the pNext extension mechanism
 	pipelineInfo.pNext = &_renderInfo;
 
-	pipelineInfo.stageCount = static_cast<uint32_t>(_shaderStages.size());
-	pipelineInfo.pStages = _shaderStages.data();
+	pipelineInfo.stageCount = static_cast<uint32_t>(pipelineConfig.shaderStages.size());
+	pipelineInfo.pStages = pipelineConfig.shaderStages.data();
 	pipelineInfo.pVertexInputState = &_vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &_inputAssembly;
 	pipelineInfo.pViewportState = &viewportState;
@@ -84,9 +73,12 @@ void GraphicsPipeline::createPipeline() {
 
 	// its easy to error out on create graphics pipeline, so we handle it a bit
 	// better than the common VK_CHECK case
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &_pipeline) != VK_SUCCESS) {
+	VkPipeline pipeline;
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create pipeline!");
 	}
+
+	return pipeline;
 }
 
 // TODO: modularize the compute pipeline more, need to break the functionality inside into discrete parts.... maybe

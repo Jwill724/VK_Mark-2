@@ -6,6 +6,7 @@
 #include "imgui/EditorImgui.h"
 #include "vulkan/Backend.h"
 #include "RenderScene.h"
+#include "SceneGraph.h"
 
 namespace Renderer {
 	unsigned int _frameNumber{ 0 };
@@ -51,17 +52,15 @@ namespace Renderer {
 
 void Renderer::setupRenderImages() {
 	// draw image should match window extent
-	VkExtent3D drawImageExtent = {
-			Engine::getWindowExtent().width,
-			Engine::getWindowExtent().height,
-			//	1920,
-			//	1080,
-				1
+	_drawExtent = {
+		Engine::getWindowExtent().width,
+		Engine::getWindowExtent().height,
+		1
 	};
 
 	// hardcoding the draw format to 32 bit float
 	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_drawImage.imageExtent = drawImageExtent;
+	_drawImage.imageExtent = _drawExtent;
 	_drawImage.mipmapped = false;
 
 	VkImageUsageFlags drawImageUsages{};
@@ -78,7 +77,7 @@ void Renderer::setupRenderImages() {
 
 	// post process image
 	_postProcessImage.imageFormat = _drawImage.imageFormat;
-	_postProcessImage.imageExtent = drawImageExtent;
+	_postProcessImage.imageExtent = _drawExtent;
 	_postProcessImage.mipmapped = false;
 
 	VkImageUsageFlags postUsages{};
@@ -91,11 +90,11 @@ void Renderer::setupRenderImages() {
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
 	// MSAA SETTING  8 is the max allowed
-	_currentSampleCount = 8u;
+	_currentSampleCount = 4u;
 	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(_currentSampleCount);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
-	_msaaImage.imageExtent = drawImageExtent;
+	_msaaImage.imageExtent = _drawExtent;
 	_msaaImage.mipmapped = false;
 
 	VkImageUsageFlags msaaImageUsages{};
@@ -108,7 +107,7 @@ void Renderer::setupRenderImages() {
 
 	// DEPTH
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_depthImage.imageExtent = drawImageExtent;
+	_depthImage.imageExtent = _drawExtent;
 	_depthImage.mipmapped = false;
 
 	VkImageUsageFlags depthImageUsages{};
@@ -141,12 +140,13 @@ void Renderer::init() {
 		frame._frameDescriptors = DescriptorManager{};
 		frame._frameDescriptors.init(1000, frameSizes);
 
-		std::cout << "frame index[ " << frame._graphicsCmdBuffer << std::endl;
-
 		Engine::getDeletionQueue().push_function([&]() {
 			frame._frameDescriptors.destroyPools();
 		});
 	}
+
+	RenderScene::createSceneData();
+	RenderScene::setMeshes(AssetManager::getTestMeshes());
 }
 
 void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -259,8 +259,6 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	vkCmdBeginRendering(cmd, &renderInfo);
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::meshPipeline.getPipeline());
-
 	//set dynamic viewport and scissor
 	VkViewport viewport = {};
 	viewport.x = 0;
@@ -280,22 +278,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-	GPUDrawPushConstants push_constants;
-
-	// Mesh transforming
-	float aspect = static_cast<float>(_drawExtent.width) / static_cast<float>(_drawExtent.height);
-	RenderScene::transformMesh(push_constants, aspect);
-
 	RenderScene::renderDrawScene(cmd, getCurrentFrame());
-
-	PushConstantDef& meshPipelinePCData = Pipelines::meshPipeline._pushConstantInfo;
-
-	// vertex data, matrix transformations
-	vkCmdPushConstants(cmd, Pipelines::meshPipeline.getPipelineLayout(), meshPipelinePCData.stageFlags, meshPipelinePCData.offset,
-		meshPipelinePCData.size, &push_constants);
-
-	vkCmdBindIndexBuffer(cmd, RenderScene::_sceneMeshes[currentSceneIndex]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdDrawIndexed(cmd, RenderScene::_sceneMeshes[currentSceneIndex]->surfaces[0].count, 1, RenderScene::_sceneMeshes[currentSceneIndex]->surfaces[0].startIndex, 0, 0);
 
 	vkCmdEndRendering(cmd);
 }
@@ -326,6 +309,8 @@ void Renderer::RenderFrame() {
 	VkSwapchainKHR swapchain = Backend::getSwapchain();
 
 	auto& frame = getCurrentFrame();
+
+	RenderScene::updateScene();
 
 	VK_CHECK(vkWaitForFences(device, 1, &frame._renderFence, VK_TRUE, UINT64_MAX));
 
@@ -415,6 +400,8 @@ void Renderer::RenderFrame() {
 
 void Renderer::cleanup() {
 	VkDevice device = Backend::getDevice();
+
+	RenderScene::metalRoughMaterial.clearResources(device);
 
 	for (auto& frame : _frames) {
 		vkDestroyCommandPool(device, frame._graphicsCmdPool, nullptr);

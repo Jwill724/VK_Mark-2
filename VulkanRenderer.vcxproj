@@ -69,7 +69,16 @@
     <ClCompile Include="src\core\AssetManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\input\UserInput.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\renderer\Renderer.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\SceneGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\CommandBuffer.cpp">
@@ -116,9 +125,6 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\vulkan\Window.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\input\UserInput.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\types\Mesh.cpp">
@@ -170,6 +176,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\pch.h" />
+    <ClInclude Include="src\input\Camera.h" />
     <ClInclude Include="src\input\UserInput.h" />
     <ClInclude Include="src\Engine.h" />
     <ClInclude Include="src\ErrorChecking.h" />
@@ -178,6 +185,7 @@
     <ClInclude Include="src\file\File.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\RenderScene.h" />
+    <ClInclude Include="src\renderer\SceneGraph.h" />
     <ClInclude Include="src\renderer\types\Mesh.h" />
     <ClInclude Include="src\renderer\types\Model.h" />
     <ClInclude Include="src\renderer\types\Texture.h" />
@@ -195,19 +203,19 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat" />
-    <None Include="res\shaders\colored_frag.hlsl" />
-    <None Include="res\shaders\colored_triangle_vert.hlsl" />
-    <None Include="res\shaders\triangle_mesh_vert.hlsl" />
+    <None Include="res\shaders\input_structures.glsl" />
+    <None Include="res\shaders\mesh_frag.frag" />
+    <None Include="res\shaders\input_structures.hlsl" />
+    <None Include="res\shaders\mesh_vert.vert" />
     <None Include="res\shaders\sky_comp.hlsl" />
     <None Include="res\shaders\gradient_comp.hlsl" />
     <None Include="res\shaders\tex_image_frag.hlsl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="res\textures\master_chief_tex.jpg" />
-    <None Include="res\textures\the-library-uv-map.jpg" />
-    <None Include="res\models\the_library.obj" />
     <None Include="res\models\monkey.glb" />
     <None Include="res\models\basicmesh.glb" />
+    <None Include="res\models\structure_mat.glb" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->

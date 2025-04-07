@@ -3,15 +3,6 @@
 #include <utils/BufferUtils.h>
 #include <common/Vk_Types.h>
 
-// always initialize the DescriptorInfo since it holds stage and binding info
-struct DescriptorsCentral {
-	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
-	DescriptorInfo descriptorInfo{};
-
-	bool enableDescriptorsSetAndLayout = true; // on by default
-};
-
 struct PoolSizeRatio {
 	VkDescriptorType type;
 	float ratio;
@@ -42,7 +33,7 @@ struct DescriptorManager {
 	void destroyPools();
 	VkDescriptorPool createDescriptorPool(uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
 	VkDescriptorSetLayout createSetLayout(VkShaderStageFlags shaderStages, void* pNext = nullptr, VkDescriptorSetLayoutCreateFlags flags = 0);
-	VkDescriptorSet allocateDescriptor(VkDescriptorSetLayout layout, void* pNext = nullptr);
+	VkDescriptorSet allocateDescriptor(VkDevice device, VkDescriptorSetLayout layout, void* pNext = nullptr);
 	void clearPools();
 	void addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags);
 	void clearBinding();
@@ -56,5 +47,5 @@ namespace DescriptorSetOverwatch {
 	DescriptorsCentral& getDrawImageDescriptors();
 
 	// backend calls once
-	void initDescriptors();
+	void initGlobalDescriptors();
 }

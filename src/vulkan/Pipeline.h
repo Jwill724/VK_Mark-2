@@ -2,16 +2,14 @@
 
 #include "common/Vk_Types.h"
 
-struct GraphicsPipeline {
-	VkPipeline getPipeline() { return _pipeline; }
-	VkPipelineLayout& getPipelineLayout() { return _pipelineLayout; }
+// pipeline is now a creation tool
+struct PipelineBuilder {
 
-	VkPipeline _pipeline = VK_NULL_HANDLE;
+	PipelineBuilder() {
+		initializePipelineSTypes();
+	}
+
 	VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;
-
-	PushConstantDef _pushConstantInfo{};
-
-	std::vector<VkPipelineShaderStageCreateInfo> _shaderStages;
 
 	VkPipelineInputAssemblyStateCreateInfo _inputAssembly{};
 	VkPipelineRasterizationStateCreateInfo _rasterizer{};
@@ -22,8 +20,8 @@ struct GraphicsPipeline {
 	VkFormat _colorAttachmentformat{};
 
 	void initializePipelineSTypes();
-	void createPipeline();
-	VkPipelineShaderStageCreateInfo setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue);
+
+	VkPipeline createPipeline(PipelineConfigPresent pipelineConfig);
 };
 
 struct ComputePipeline {

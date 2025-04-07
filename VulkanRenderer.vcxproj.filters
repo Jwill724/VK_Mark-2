@@ -28,6 +28,9 @@
     <ClCompile Include="src\input\UserInput.cpp">
       <Filter>src\input</Filter>
     </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp">
+      <Filter>src\input</Filter>
+    </ClCompile>
     <ClCompile Include="src\renderer\types\Mesh.cpp">
       <Filter>src\renderer\types</Filter>
     </ClCompile>
@@ -111,9 +114,18 @@
     <ClCompile Include="src\renderer\RenderScene.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\SceneGraph.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp">
+      <Filter>src\input</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\input\UserInput.h">
+      <Filter>src\input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\Camera.h">
       <Filter>src\input</Filter>
     </ClInclude>
     <ClInclude Include="src\Engine.h">
@@ -182,18 +194,18 @@
     <ClInclude Include="src\renderer\RenderScene.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\SceneGraph.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\Camera.h">
+      <Filter>src\input</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat">
       <Filter>res\shaders</Filter>
     </None>
-    <None Include="res\shaders\colored_frag.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
-    <None Include="res\shaders\colored_triangle_vert.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
-    <None Include="res\shaders\triangle_mesh_vert.hlsl">
+    <None Include="res\shaders\tex_image_frag.hlsl">
       <Filter>res\shaders</Filter>
     </None>
     <None Include="res\shaders\gradient_comp.hlsl">
@@ -202,7 +214,16 @@
     <None Include="res\shaders\sky_comp.hlsl">
       <Filter>res\shaders</Filter>
     </None>
-    <None Include="res\shaders\tex_image_frag.hlsl">
+    <None Include="res\shaders\input_structures.hlsl">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\mesh_vert.vert">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\input_structures.glsl">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\mesh_frag.frag">
       <Filter>res\shaders</Filter>
     </None>
   </ItemGroup>
@@ -210,16 +231,13 @@
     <None Include="res\textures\master_chief_tex.jpg">
       <Filter>res\textures</Filter>
     </None>
-    <None Include="res\textures\the-library-uv-map.jpg">
-      <Filter>res\textures</Filter>
-    </None>
-    <None Include="res\models\the_library.obj">
-      <Filter>res\models</Filter>
-    </None>
     <None Include="res\models\monkey.glb">
       <Filter>res\models</Filter>
     </None>
     <None Include="res\models\basicmesh.glb">
+      <Filter>res\models</Filter>
+    </None>
+    <None Include="res\models\structure_mat.glb">
       <Filter>res\models</Filter>
     </None>
   </ItemGroup>

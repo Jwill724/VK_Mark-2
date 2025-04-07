@@ -1,16 +1,18 @@
 #pragma once
 
+#include "common/Vk_Types.h"
 #include "Pipeline.h"
-#include "renderer/Descriptor.h"
 
 namespace PipelineManager {
+	VkPipelineLayout setupPipelineLayout(PipelineConfigPresent& pipelineInfo);
+	VkPipelineShaderStageCreateInfo setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue);
+
 	// only function needed outside of pipeline system
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	void createPipelineLayout(VkPipelineLayout& pipelineLayout, DescriptorsCentral& descriptors, const PushConstantDef* pushConstants);
-	void setupPipelineLayouts();
 
-	void setupGraphicsPipelineCofig(GraphicsPipeline& pipeline);
-	void setupShaders(GraphicsPipeline& pipeline, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelineConfigPresent& settings);
+	void setupShaders(std::vector<VkPipelineShaderStageCreateInfo>& shaderStages, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue);
 
 	// backend calls this
 	void initPipelines();
@@ -18,7 +20,8 @@ namespace PipelineManager {
 
 namespace Pipelines {
 	inline ComputePipeline drawImagePipeline;
-	inline GraphicsPipeline meshPipeline;
+	inline PipelineConfigPresent metalRoughMatConfigs;
+//	inline PipelineBuilder meshPipeline;
 }
 
 namespace PipelineConfigs {

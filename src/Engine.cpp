@@ -3,7 +3,6 @@
 #include "renderer/Renderer.h"
 #include "imgui/EditorImgui.h"
 #include "core/AssetManager.h"
-#include "renderer/RenderScene.h"
 
 namespace Engine {
 	Window _window;
@@ -25,6 +24,9 @@ namespace Engine {
 	bool stopRendering{ false };
 	bool hasRenderStopped() { return stopRendering; }
 
+	float lastTime = 0;
+	float& getLastTimeCount() { return lastTime; }
+
 	void init();
 	void cleanup();
 }
@@ -45,12 +47,14 @@ void Engine::run() {
 	Renderer::init();
 
 	glfwSetWindowFocusCallback(_window.window, EditorImgui::MyWindowFocusCallback);
+	lastTime = static_cast<float>(glfwGetTime());
 
 	// main loop
 	while (WindowIsOpen(_window.window)) {
 		glfwPollEvents();
 
 		EditorImgui::renderImgui();
+
 		Renderer::RenderFrame();
 	}
 

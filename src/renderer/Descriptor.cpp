@@ -88,6 +88,7 @@ void DescriptorManager::destroyPools() {
 	fullPools.clear();
 }
 
+// should always clear binding before
 void DescriptorManager::addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags) {
 	VkDescriptorSetLayoutBinding newBind {
 		.binding = binding,
@@ -121,7 +122,7 @@ VkDescriptorSetLayout DescriptorManager::createSetLayout(VkShaderStageFlags shad
 	return set;
 }
 
-VkDescriptorSet DescriptorManager::allocateDescriptor(VkDescriptorSetLayout layout, void* pNext) {
+VkDescriptorSet DescriptorManager::allocateDescriptor(VkDevice device, VkDescriptorSetLayout layout, void* pNext) {
 
 	VkDescriptorPool poolToUse = getPool();
 
@@ -134,7 +135,7 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(VkDescriptorSetLayout layo
 	};
 
 	VkDescriptorSet ds;
-	VkResult result = vkAllocateDescriptorSets(Backend::getDevice(), &allocInfo, &ds);
+	VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &ds);
 
 	if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL) {
 		fullPools.push_back(poolToUse);
@@ -142,7 +143,7 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(VkDescriptorSetLayout layo
 		poolToUse = getPool();
 		allocInfo.descriptorPool = poolToUse;
 
-		VK_CHECK(vkAllocateDescriptorSets(Backend::getDevice(), &allocInfo, &ds));
+		VK_CHECK(vkAllocateDescriptorSets(device, &allocInfo, &ds));
 	}
 	else {
 		VK_CHECK(result);
@@ -204,8 +205,7 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 }
 
 namespace DescriptorSetOverwatch {
-	// allocates pools and layouts
-	// global
+	// global descriptor builder, setups layouts and pools, can allocate for them
 	DescriptorManager descriptorManager;
 
 	DescriptorsCentral drawImageDescriptors{};
@@ -213,12 +213,12 @@ namespace DescriptorSetOverwatch {
 }
 
 // all backend needs to call
-void DescriptorSetOverwatch::initDescriptors() {
+void DescriptorSetOverwatch::initGlobalDescriptors() {
 	//create a descriptor pool that will hold 10 sets with 1 image each
 	std::vector<PoolSizeRatio> sizes =
 	{
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 }
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 }
 	};
 
 	descriptorManager.init(10, sizes);
@@ -226,21 +226,17 @@ void DescriptorSetOverwatch::initDescriptors() {
 	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
 	descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT);
 
-	drawImageDescriptors.descriptorLayout = descriptorManager.createSetLayout(VK_SHADER_STAGE_COMPUTE_BIT);
-	drawImageDescriptors.descriptorSet = descriptorManager.allocateDescriptor(drawImageDescriptors.descriptorLayout);
+	VkDescriptorSetLayout drawImageLayout = descriptorManager.createSetLayout(VK_SHADER_STAGE_COMPUTE_BIT);
+
+	drawImageDescriptors.descriptorSet = descriptorManager.allocateDescriptor(Backend::getDevice(), drawImageLayout);
+	drawImageDescriptors.descriptorLayouts.push_back(drawImageLayout);
 
 	descriptorManager.clearBinding();
 
 	// meshes
-	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT); // for vertex buffer
+	descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT); // for vertex buffer
 	descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); // for texture
 	RenderScene::getGPUSceneDescriptorLayout() = descriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-
-//	descriptorManager.clearBinding();
-
-	// textures
-	//descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	//RenderScene::getSingleImageDescriptorLayout() = descriptorManager.createSetLayout(VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	DescriptorWriter drawImageWriter;
 	drawImageWriter.writeImage(0, Renderer::getPostProcessImage().imageView, VK_NULL_HANDLE,
@@ -253,8 +249,7 @@ void DescriptorSetOverwatch::initDescriptors() {
 	Engine::getDeletionQueue().push_function([&]() {
 		descriptorManager.destroyPools();
 
-		vkDestroyDescriptorSetLayout(Backend::getDevice(), drawImageDescriptors.descriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(Backend::getDevice(), drawImageDescriptors.descriptorLayouts.back(), nullptr);
 		vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::getGPUSceneDescriptorLayout(), nullptr);
-	//	vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::getSingleImageDescriptorLayout(), nullptr);
 	});
 }

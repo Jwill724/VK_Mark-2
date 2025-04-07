@@ -14,6 +14,8 @@ namespace Engine {
 	bool isInitialized();
 	bool hasRenderStopped();
 
+	float& getLastTimeCount();
+
 	// inits everything, controls runtime, and cleans up
 	void run();
 }

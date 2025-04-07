@@ -11,6 +11,8 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
+#include <memory>
 
 struct AllocatedImage {
 	VkImage image;
@@ -96,6 +98,7 @@ struct AllocatedBuffer {
 	VkBuffer buffer;
 	VmaAllocation allocation;
 	VmaAllocationInfo info;
+	void* mapped = nullptr;
 };
 
 struct Vertex {
@@ -120,11 +123,121 @@ struct GPUDrawPushConstants {
 	VkDeviceAddress vertexBuffer;
 };
 
-struct GPUSceneData {
+struct GPUSceneData{
 	glm::mat4 view;
 	glm::mat4 proj;
 	glm::mat4 viewproj;
 	glm::vec4 ambientColor;
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
+};
+
+struct MaterialPipeline {
+	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout;
+};
+
+enum class MaterialPass : uint8_t {
+	MainColor,
+	Transparent,
+	Other
+};
+
+struct MaterialInstance {
+	MaterialPipeline* pipeline;
+	VkDescriptorSet materialSet;
+	MaterialPass passType;
+};
+
+struct GLTFMaterial {
+	MaterialInstance data;
+};
+
+struct GPUGLTFMaterial {
+	glm::vec4 colorFactors;
+	glm::vec4 metal_rough_factors;
+	glm::vec4 extra[14];
+};
+
+static_assert(sizeof(GPUGLTFMaterial) == 256);
+
+// asset characteristics
+struct GeoSurface {
+	uint32_t startIndex;
+	uint32_t count;
+	std::shared_ptr<GLTFMaterial> material;
+};
+
+struct MeshAsset {
+	std::string name;
+
+	std::vector<GeoSurface> surfaces;
+	GPUMeshBuffers meshBuffers;
+};
+
+
+// always initialize the DescriptorInfo since it holds stage and binding info
+struct DescriptorsCentral {
+	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+	std::vector<VkDescriptorSetLayout> descriptorLayouts;
+	DescriptorInfo descriptorInfo{};
+
+	bool enableDescriptorsSetAndLayout = true; // on by default
+};
+
+// Pipeline
+struct PipelineConfigPresent {
+
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
+
+	bool enableBlending = false;
+	bool enableDepthTest = true;
+	bool enableBackfaceCulling = true;
+
+	VkPolygonMode polygonMode;
+	VkPrimitiveTopology topology;
+	VkCompareOp depthCompareOp;
+
+	PushConstantDef pushConstantsInfo;
+	DescriptorsCentral descriptorSetInfo;
+
+	VkFormat colorFormat;
+	VkFormat depthFormat;
+};
+
+struct DrawContext;
+
+// base class for a renderable dynamic object
+class IRenderable {
+
+	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) = 0;
+};
+
+// implementation of a drawable scene node.
+// the scene node can hold children and will also keep a transform to propagate
+// to them
+struct Node : public IRenderable {
+
+	// parent pointer must be a weak pointer to avoid circular dependencies
+	std::weak_ptr<Node> parent;
+	std::vector<std::shared_ptr<Node>> children;
+
+	glm::mat4 localTransform;
+	glm::mat4 worldTransform;
+
+	void refreshTransform(const glm::mat4& parentMatrix)
+	{
+		worldTransform = parentMatrix * localTransform;
+		for (auto c : children) {
+			c->refreshTransform(worldTransform);
+		}
+	}
+
+	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx)
+	{
+		// draw children
+		for (auto& c : children) {
+			c->Draw(topMatrix, ctx);
+		}
+	}
 };

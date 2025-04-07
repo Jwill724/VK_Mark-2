@@ -132,6 +132,8 @@ AllocatedBuffer BufferUtils::createBuffer(size_t allocSize, VkBufferUsageFlags u
 	// allocate the buffer
 	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info));
 
+	newBuffer.mapped = newBuffer.info.pMappedData;
+
 	return newBuffer;
 }
 

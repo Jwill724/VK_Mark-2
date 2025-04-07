@@ -19,6 +19,8 @@ namespace AssetManager {
 
 	// Textures
 	AllocatedImage _whiteImage;
+	AllocatedImage& getWhiteImage() { return _whiteImage; }
+
 	AllocatedImage _blackImage;
 	AllocatedImage _greyImage;
 	AllocatedImage _errorCheckerboardImage;
@@ -44,8 +46,6 @@ namespace AssetManager {
 	ImmCmdSubmitDef& getGraphicsCmdSubmit() { return _immGraphicsCmdSubmit; }
 
 	ImmCmdSubmitDef _immTransferCmdSubmit{};
-
-	void setupResources();
 }
 
 // all backend needs to call
@@ -64,12 +64,6 @@ void AssetManager::loadAssets() {
 	testMeshes = loadGltfMeshes("res/models/basicmesh.glb").value();
 
 	initTextures();
-
-	setupResources();
-}
-
-void AssetManager::setupResources() {
-	RenderScene::setMeshes(testMeshes);
 }
 
 // TEXTURES
@@ -227,8 +221,6 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMes
 
 				fastgltf::iterateAccessorWithIndex<glm::vec2>(asset.get(), asset.get().accessors[(*uv).accessorIndex],
 					[&](glm::vec2 v, size_t index) {
-						//vertices[initial_vtx + index].uv_x = v.x;
-						//vertices[initial_vtx + index].uv_y = v.y;
 						vertices[initial_vtx + index].uv_x = v.x;
 						vertices[initial_vtx + index].uv_y = v.y;
 					});
@@ -245,7 +237,6 @@ std::optional<std::vector<std::shared_ptr<MeshAsset>>> AssetManager::loadGltfMes
 			}
 			newmesh.surfaces.push_back(newSurface);
 		}
-
 
 		// display the vertex normals
 		constexpr bool OverrideColors = false;
@@ -274,7 +265,7 @@ GPUMeshBuffers AssetManager::uploadMesh(std::span<uint32_t> indices, std::span<V
 	GPUMeshBuffers newSurface;
 
 	//create vertex buffer
-	newSurface.vertexBuffer = BufferUtils::createBuffer(vertexBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	newSurface.vertexBuffer = BufferUtils::createBuffer(vertexBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 		VMA_MEMORY_USAGE_GPU_ONLY, _assetAllocator);
 
 	//find the address of the vertex buffer

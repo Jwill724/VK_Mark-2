@@ -6,39 +6,19 @@
 #include "renderer/Renderer.h"
 #include "renderer/RenderScene.h"
 
-// TODO: need better way to setup scalability for push constant use
-void PipelineManager::setupPipelineLayouts() {
-	VkPhysicalDevice physicalDevice = Backend::getPhysicalDevice();
-
-	// Set the push constant pool for the pipeline layouts that need it
-	PushConstantPool pcPool = VulkanUtils::CreatePushConstantPool(physicalDevice);
-
-	PushConstantDef drawImagePC = {
-		.enabled = true,
-		.offset = 0,
-		.size = static_cast<uint32_t>(sizeof(PushConstantBlock)), 	// 64 bytes in size per block
-		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+// TODO: add push constants as parameter
+VkPipelineLayout PipelineManager::setupPipelineLayout(PipelineConfigPresent& pipelineInfo) {
+	PushConstantDef matrixRange = {
+		.enabled = pipelineInfo.pushConstantsInfo.enabled,
+		.offset = pipelineInfo.pushConstantsInfo.offset,
+		.size = pipelineInfo.pushConstantsInfo.size,
+		.stageFlags = pipelineInfo.pushConstantsInfo.stageFlags
 	};
 
-	// pipeline instances hold push constant information to share among shaders or textures
-	Pipelines::drawImagePipeline._pushConstantInfo = drawImagePC;
-	PipelineManager::createPipelineLayout(Pipelines::drawImagePipeline._computePipelineLayout, DescriptorSetOverwatch::getDrawImageDescriptors(),
-		&drawImagePC);
+	VkPipelineLayout pipelineLayout;
+	createPipelineLayout(pipelineLayout, pipelineInfo.descriptorSetInfo, &matrixRange);
 
-
-	PushConstantDef meshPC = {
-		.enabled = true,
-		.offset = 0,
-		.size = static_cast<uint32_t>(sizeof(GPUDrawPushConstants)), // 72 bytes
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-	};
-
-	DescriptorsCentral meshDescriptors = {
-		.descriptorLayout = RenderScene::getGPUSceneDescriptorLayout()
-	};
-
-	Pipelines::meshPipeline._pushConstantInfo = meshPC;
-	PipelineManager::createPipelineLayout(Pipelines::meshPipeline._pipelineLayout, meshDescriptors, &meshPC);
+	return pipelineLayout;
 }
 
 // THE PIPELINE MANAGER
@@ -62,8 +42,8 @@ void PipelineManager::createPipelineLayout(VkPipelineLayout& pipelineLayout, Des
 		pipelineLayoutInfo.pSetLayouts = nullptr;
 	}
 	else {
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = &descriptors.descriptorLayout;
+		pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptors.descriptorLayouts.size());
+		pipelineLayoutInfo.pSetLayouts = descriptors.descriptorLayouts.data();
 	}
 
 	VkPushConstantRange pushConstantRange{};
@@ -82,76 +62,86 @@ void PipelineManager::createPipelineLayout(VkPipelineLayout& pipelineLayout, Des
 	VK_CHECK(vkCreatePipelineLayout(Backend::getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout));
 }
 
-void PipelineManager::setupShaders(GraphicsPipeline& pipeline, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue) {
-	pipeline._shaderStages.clear();
+void PipelineManager::setupShaders(std::vector<VkPipelineShaderStageCreateInfo>& shaderStages, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue) {
+	shaderStages.clear();
 
 	for (auto& shaders : shaderStageInfo) {
-		VkPipelineShaderStageCreateInfo shader = pipeline.setShader(shaders.filePath, shaders.stage, shaderDeletionQueue);
-		pipeline._shaderStages.push_back(shader);
+		VkPipelineShaderStageCreateInfo shader = setShader(shaders.filePath, shaders.stage, shaderDeletionQueue);
+		shaderStages.push_back(shader);
 	}
 }
 
-void PipelineManager::initPipelines() {
-	// setup shader module deletion and flush at the end
-	DeletionQueue shaderDeletionQ;
+VkPipelineShaderStageCreateInfo PipelineManager::setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue) {
+	VkShaderModule shaderModule;
+	VulkanUtils::loadShaderModule(shaderFile, Backend::getDevice(), &shaderModule);
+	VkPipelineShaderStageCreateInfo shaderStage = createPipelineShaderStage(stage, shaderModule);
 
-	setupPipelineLayouts();
+	shaderDeleteQueue.push_function([=] {
+		vkDestroyShaderModule(Backend::getDevice(), shaderModule, nullptr);
+		});
 
-	// COMPUTE PIPELINE
-	Pipelines::drawImagePipeline.createComputePipeline(Engine::getDeletionQueue());
-
-	// eventually asset loading will need this
-	std::vector<ShaderStageInfo> triangleMeshShaderStages;
-	ShaderStageInfo meshTriangle = {
-		.filePath = "res/shaders/triangle_mesh_vert.spv",
-		.stage = VK_SHADER_STAGE_VERTEX_BIT
-	};
-
-	ShaderStageInfo color = {
-		.filePath = "res/shaders/tex_image_frag.spv",
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT
-	};
-
-	//ShaderStageInfo color = {
-	//	.filePath = "res/shaders/colored_frag.spv",
-	//	.stage = VK_SHADER_STAGE_FRAGMENT_BIT
-	//};
-
-	triangleMeshShaderStages.push_back(meshTriangle);
-	triangleMeshShaderStages.push_back(color);
-	setupShaders(Pipelines::meshPipeline, triangleMeshShaderStages, shaderDeletionQ);
-
-	setupGraphicsPipelineCofig(Pipelines::meshPipeline);
-
-	Pipelines::meshPipeline.createPipeline();
-
-	shaderDeletionQ.flush();
-
-	Engine::getDeletionQueue().push_function([=]() {
-		vkDestroyPipelineLayout(Backend::getDevice(), Pipelines::meshPipeline.getPipelineLayout(), nullptr);
-		Pipelines::meshPipeline._pipelineLayout = VK_NULL_HANDLE;
-		vkDestroyPipeline(Backend::getDevice(), Pipelines::meshPipeline.getPipeline(), nullptr);
-		Pipelines::meshPipeline._pipeline = VK_NULL_HANDLE;
-	});
+	return shaderStage;
 }
 
-void PipelineManager::setupGraphicsPipelineCofig(GraphicsPipeline& pipeline) {
-	// Build the standard graphics pipeline stages
-	pipeline.initializePipelineSTypes(); // might delete this
+void PipelineManager::initPipelines() {
+	// compute pipeline
+	// using older method, push constants stored in pipeline struct
 
-	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
+	// compute pipelines push constant
+	Pipelines::drawImagePipeline._pushConstantInfo = {
+		.enabled = true,
+		.offset = 0,
+		.size = static_cast<uint32_t>(sizeof(PushConstantBlock)),
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+	};
 
-	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, VK_POLYGON_MODE_FILL, 1.f, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+	PipelineConfigPresent computePipelinePCInfo;
+	computePipelinePCInfo.pushConstantsInfo = Pipelines::drawImagePipeline._pushConstantInfo;
+
+	// descriptor sets def
+	computePipelinePCInfo.descriptorSetInfo.descriptorLayouts = DescriptorSetOverwatch::getDrawImageDescriptors().descriptorLayouts;
+
+	Pipelines::drawImagePipeline.getComputePipelineLayout() = setupPipelineLayout(computePipelinePCInfo);
+
+	Pipelines::drawImagePipeline.createComputePipeline(Engine::getDeletionQueue());
+
+
+	// Default pipelines setup
+	Pipelines::metalRoughMatConfigs.pushConstantsInfo = {
+		.enabled = true,
+		.offset = 0,
+		.size = static_cast<uint32_t>(sizeof(GPUDrawPushConstants)),
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+	};
+
+	RenderScene::metalRoughMaterial.buildPipelines(Pipelines::metalRoughMatConfigs);
+}
+
+void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelineConfigPresent& settings) {
+
+	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, settings.topology, VK_FALSE);
+
+	if (settings.enableBackfaceCulling) {
+		PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.f, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+	}
+	else {
+		PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.f, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+	}
 
 	PipelineConfigs::multisamplingConfig(pipeline._multisampling, Renderer::getAvailableSampleCounts(), Renderer::getCurrentSampleCount(), VK_FALSE);
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
-		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, VK_TRUE, VK_BLEND_FACTOR_ONE);
+		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, settings.enableBlending, VK_BLEND_FACTOR_ONE);
 
-	PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, VK_COMPARE_OP_LESS_OR_EQUAL);
+	if (settings.enableDepthTest) {
+		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
+	}
+	else {
+		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
+	}
 
 	PipelineConfigs::setColorAttachmentAndDepthFormat(pipeline._colorAttachmentformat,
-		Renderer::getDrawImage().imageFormat, pipeline._renderInfo, Renderer::getDepthImage().imageFormat);
+		settings.colorFormat, pipeline._renderInfo, settings.depthFormat);
 }
 
 // PIPELINE CONFIGURATION
