@@ -297,8 +297,6 @@ void Backend::resizeSwapchain() {
 	createImageViews();
 
 	Engine::windowModMode().windowResized = false;
-
-	UserInput::resetMouse(Engine::getWindow());
 }
 
 void Backend::cleanupSwapchain() {

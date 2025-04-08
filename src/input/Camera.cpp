@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "Camera.h"
+#include "imgui/EditorImgui.h"
 
 void Camera::update(GLFWwindow* window, float& lastTime) {
 	float currentTime = static_cast<float>(glfwGetTime());
@@ -18,19 +19,22 @@ void Camera::processInput(GLFWwindow* window, float dt) {
 	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 15.f : 5.f;
 	float speed = baseSpeed * dt;
 
-	// Mouse rotation
-	if (UserInput::mouse.leftPressed) {
-		float sensitivity = 0.2f;
-		yaw += UserInput::mouse.delta.x * sensitivity;
-		pitch -= UserInput::mouse.delta.y * sensitivity;
+	// Mouse rotation, imgui can be properly used with free cam
+	if (!ImGui::GetIO().WantCaptureMouse && UserInput::mouse.leftPressed) {
+		float sensitivity = 30.f;
+		yaw -= UserInput::mouse.delta.x* sensitivity;
+		pitch += UserInput::mouse.delta.y * sensitivity;
 		pitch = std::clamp(pitch, -89.f, 89.f);
 	}
 
-	glm::vec3 front;
-	front.x = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
-	front.y = sin(glm::radians(pitch));
-	front.z = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
-	front = glm::normalize(front);
+	float radPitch = glm::radians(pitch);
+	float radYaw = glm::radians(yaw);
+
+	glm::vec3 front = glm::normalize(glm::vec3(
+		cos(radPitch) * cos(radYaw),
+		sin(radPitch),
+		cos(radPitch) * sin(radYaw)
+	));
 
 	glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.f, 1.f, 0.f)));
 	glm::vec3 up = glm::normalize(glm::cross(right, front));

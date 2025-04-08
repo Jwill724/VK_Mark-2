@@ -1,6 +1,7 @@
 #include "Window.h"
 #include <stdexcept>
 #include <iostream>
+#include "Engine.h"
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
 	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
@@ -18,6 +19,10 @@ void Window::updateWindowSize() {
 		glfwGetFramebufferSize(window, &width, &height);
 		glfwWaitEvents();
 	}
+
+	// Ensures global window extent is up to date
+	Engine::getWindowExtent().width = static_cast<uint32_t>(width);
+	Engine::getWindowExtent().height = static_cast<uint32_t>(height);
 }
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {

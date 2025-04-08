@@ -107,7 +107,7 @@ void RenderScene::updateScene() {
 	glm::mat4 view = mainCamera.getViewMatrix();
 
 	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 0.1f, 1000.f);
+	glm::mat4 projection = glm::perspective(glm::radians(45.f), aspect, 0.1f, 1000.f);
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis

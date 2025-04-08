@@ -16,7 +16,10 @@ namespace UserInput {
 		float scrollOffset;
 		bool leftPressed;
 		bool rightPressed;
+		bool justClicked;
 
+		// Used for setting up a [1, -1] for virtual mouse position
+		// Mouse will spin out if window extent isn't 1:1
 		struct NormalizedPos {
 			float x, y;
 		} normalized;
@@ -27,7 +30,7 @@ namespace UserInput {
 
 		MouseState() :
 			position(0.f), delta(0.f), scrollOffset(0.f),
-			leftPressed(false), rightPressed(false),
+			leftPressed(false), rightPressed(false), justClicked(false),
 			normalized{ 0.f, 0.f }, mousePos{ 0.0, 0.0 } {}
 
 		void update(GLFWwindow* window);
@@ -45,7 +48,4 @@ namespace UserInput {
 
 	// in current scope of defined instance
 	void updateLocalInput(GLFWwindow* window);
-
-	// updates cursor position relative to window size
-	void resetMouse(GLFWwindow* window);
 }

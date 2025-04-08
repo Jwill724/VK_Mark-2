@@ -2,7 +2,7 @@
 #include <iostream>
 
 int main() {
-	std::cout << "Who is the real yn?" << std::endl;
+	std::cout << "Dead Horse! Only in Atlanta" << std::endl;
 	try {
 		Engine::run();
 	}

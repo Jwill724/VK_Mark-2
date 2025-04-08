@@ -9,18 +9,18 @@ namespace UserInput {
 	KeyboardState keyboard;
 
 	static glm::vec2 lastPos;
-	static bool firstMouse = true;
+	static bool firstMouse = false;
 	static bool hideCursor = false;
 
 	void SetCursorPos(GLFWwindow* window, VkExtent2D windowExtent);
-	void NormalizeMousePos(GLFWwindow* window, MouseState& mouse, VkExtent2D windowExtent);
+	void NormalizeMousePos(GLFWwindow* window, VkExtent2D windowExtent);
 }
 
 void UserInput::SetCursorPos(GLFWwindow* window, VkExtent2D windowExtent) {
 	glfwSetCursorPos(window, static_cast<double>(windowExtent.width / 2.0), static_cast<double>(windowExtent.height / 2.0));
 }
 
-void UserInput::NormalizeMousePos(GLFWwindow* window, MouseState& mouse, VkExtent2D windowExtent) {
+void UserInput::NormalizeMousePos(GLFWwindow* window, VkExtent2D windowExtent) {
 	glfwGetCursorPos(window, &mouse.mousePos.x, &mouse.mousePos.y);
 	float aspectRatio = static_cast<float>(windowExtent.width) / static_cast<float>(windowExtent.height);
 	mouse.normalized.x = (2.f * static_cast<float>(mouse.mousePos.x) / static_cast<float>(windowExtent.width) - 1.f) * aspectRatio;
@@ -28,10 +28,12 @@ void UserInput::NormalizeMousePos(GLFWwindow* window, MouseState& mouse, VkExten
 }
 
 void UserInput::MouseState::update(GLFWwindow* window) {
-	double xpos, ypos;
-	glfwGetCursorPos(window, &xpos, &ypos);
 
-	position = glm::vec2(xpos, ypos);
+	VkExtent2D* windowExtent = &Engine::getWindowExtent();
+
+	NormalizeMousePos(window, *windowExtent);
+
+	position = glm::vec2(mouse.normalized.x, mouse.normalized.y);
 
 	if (firstMouse) {
 		lastPos = position;
@@ -41,23 +43,33 @@ void UserInput::MouseState::update(GLFWwindow* window) {
 	delta = position - lastPos;
 	lastPos = position;
 
-	VkExtent2D windowExtent = Engine::getWindowExtent();
-	double centerX = windowExtent.width / 2.0;
-	double centerY = windowExtent.height / 2.0;
-
 	leftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
+	// free cam setup
 	if (leftPressed) {
-		if (!hideCursor) {
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
-			SetCursorPos(window, windowExtent);
-			hideCursor = true;
-			glfwSetCursorPos(window, centerX, centerY);
-			lastPos = glm::vec2(centerX, centerY);
-		}
-		else {
-			glfwSetCursorPos(window, centerX, centerY);
-			lastPos = glm::vec2(centerX, centerY); // prevent frame jump
+		// imgui can be properly used with free cam
+		if (!ImGui::GetIO().WantCaptureMouse) {
+			if (!hideCursor) {
+				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+				SetCursorPos(window, *windowExtent);
+				hideCursor = true;
+				justClicked = true;
+			}
+
+			SetCursorPos(window, *windowExtent); // always reset to center
+
+			NormalizeMousePos(window, Engine::getWindowExtent());
+			position = glm::vec2(mouse.normalized.x, mouse.normalized.y);
+
+			if (justClicked) {
+				lastPos = position;
+				justClicked = false; // now we allow delta on next frame
+				delta = glm::vec2(0.f); // prevent one-frame spike
+			}
+			else {
+				delta = position - lastPos;
+				lastPos = position;
+			}
 		}
 	}
 	else {
@@ -67,10 +79,17 @@ void UserInput::MouseState::update(GLFWwindow* window) {
 		}
 	}
 
+	// does nothing for now
 	rightPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 }
 
 void UserInput::KeyboardState::update(GLFWwindow* window) {
+	// First check if window is closing
+	keys[GLFW_KEY_ESCAPE] = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+	if (keys[GLFW_KEY_ESCAPE]) {
+		glfwSetWindowShouldClose(window, true);
+	}
+
 	keys[GLFW_KEY_W] = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
 	keys[GLFW_KEY_A] = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
 	keys[GLFW_KEY_S] = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
@@ -89,17 +108,4 @@ bool UserInput::KeyboardState::isPressed(int key) const {
 void UserInput::updateLocalInput(GLFWwindow* window) {
 	mouse.update(window);
 	keyboard.update(window);
-}
-
-// TODO: Cursor doesn't align properly with middle of screen during resizing. But why?
-void UserInput::resetMouse(GLFWwindow* window) {
-	VkExtent2D windowExtent = Engine::getWindowExtent();
-	double centerX = static_cast<double>(windowExtent.width) / 2.0;
-	double centerY = static_cast<double>(windowExtent.height) / 2.0;
-
-	glfwSetCursorPos(window, centerX, centerY);
-
-	lastPos = glm::vec2(centerX, centerY);
-	mouse.position = lastPos;
-	firstMouse = true;
 }

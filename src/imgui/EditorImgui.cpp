@@ -5,6 +5,7 @@
 #include "vulkan/Backend.h"
 #include "vulkan/PipelineManager.h"
 #include "renderer/Renderer.h"
+#include "input/UserInput.h"
 
 void EditorImgui::initImgui() {
 	//  the size of the pool is very oversize, but it's copied from imgui demo

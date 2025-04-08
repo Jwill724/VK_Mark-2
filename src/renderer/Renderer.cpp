@@ -89,7 +89,9 @@ void Renderer::setupRenderImages() {
 	RendererUtils::createRenderImage(_postProcessImage, postUsages,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
+
 	// MSAA SETTING  8 is the max allowed
+	// TODO: set this up somewhere besides here
 	_currentSampleCount = 4u;
 	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(_currentSampleCount);
 
@@ -104,6 +106,7 @@ void Renderer::setupRenderImages() {
 	// msaa color attachment to the draw image
 	RendererUtils::createRenderImage(_msaaImage, msaaImageUsages,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+
 
 	// DEPTH
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;

@@ -7,7 +7,7 @@ namespace Engine {
 	GLFWwindow* getWindow();
 	Window& windowModMode();
 
-	VkExtent2D getWindowExtent();
+	VkExtent2D& getWindowExtent();
 	DeletionQueue& getDeletionQueue();
 	VmaAllocator& getAllocator();
 

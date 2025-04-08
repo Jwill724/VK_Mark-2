@@ -73,30 +73,6 @@ namespace BufferUtils {
 		endSingleTimeCommands(device, commandBuffer, commandPool, queue);
 	}
 
-	//void createBuffer(VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-	//	VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
-
-	//	VkBufferCreateInfo bufferInfo{};
-	//	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	//	bufferInfo.size = size;
-	//	bufferInfo.usage = usage;
-	//	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-	//	VK_CHECK(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer));
-
-	//	VkMemoryRequirements memRequirements{};
-	//	vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-	//	VkMemoryAllocateInfo allocInfo{};
-	//	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	//	allocInfo.allocationSize = memRequirements.size;
-	//	allocInfo.memoryTypeIndex = VulkanUtils::FindMemoryType(Backend::getPhysicalDevice(), memRequirements.memoryTypeBits, properties);
-
-	//	VK_CHECK(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory));
-
-	//	vkBindBufferMemory(device, buffer, bufferMemory, 0);
-	//}
-
 	VkImageView createImageView(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;

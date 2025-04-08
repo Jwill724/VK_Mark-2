@@ -17,7 +17,7 @@ namespace Engine {
 	VmaAllocator& getAllocator() { return _allocator; }
 
 	VkExtent2D _windowExtent = { 800, 800 };
-	VkExtent2D getWindowExtent() { return _windowExtent; }
+	VkExtent2D& getWindowExtent() { return _windowExtent; }
 
 	bool _isInitialized{ false };
 	bool isInitialized() { return _isInitialized; }
