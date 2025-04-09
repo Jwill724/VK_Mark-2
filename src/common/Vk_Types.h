@@ -161,10 +161,17 @@ struct GPUGLTFMaterial {
 
 static_assert(sizeof(GPUGLTFMaterial) == 256);
 
+struct Bounds {
+	glm::vec3 origin;
+	float sphereRadius;
+	glm::vec3 extents;
+};
+
 // asset characteristics
 struct GeoSurface {
 	uint32_t startIndex;
 	uint32_t count;
+	Bounds bounds;
 	std::shared_ptr<GLTFMaterial> material;
 };
 

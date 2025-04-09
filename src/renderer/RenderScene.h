@@ -40,17 +40,20 @@ struct GLTFMetallic_Roughness {
 namespace RenderScene {
 	GPUSceneData& getCurrentSceneData();
 
+	extern std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+
 	extern Camera mainCamera;
 
 	extern DrawContext mainDrawContext;
 	extern GLTFMetallic_Roughness metalRoughMaterial;
 
-	void setMeshes(std::vector<std::shared_ptr<MeshAsset>>& meshes);
+	// setups up loadedscene meshes and camera
+	void setScene();
 
 	inline std::vector<std::shared_ptr<MeshAsset>> _sceneMeshes;
 
 	VkDescriptorSetLayout& getGPUSceneDescriptorLayout();
-	VkDescriptorSetLayout& getSingleImageDescriptorLayout();
+
 	void updateScene();
 	void renderDrawScene(VkCommandBuffer cmd, FrameData& frame);
 	void createSceneData();

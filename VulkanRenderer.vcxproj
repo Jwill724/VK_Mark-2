@@ -43,6 +43,7 @@
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)vendor\GLFW\lib;$(ProjectDir)vendor\Vulkan\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -54,6 +55,7 @@
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)vendor\GLFW\lib;$(ProjectDir)vendor\Vulkan\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -173,6 +175,9 @@
     <ClCompile Include="vendor\simdjson\simdjson.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="vendor\fmt\format.cc">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\pch.h" />
@@ -216,6 +221,7 @@
     <None Include="res\models\monkey.glb" />
     <None Include="res\models\basicmesh.glb" />
     <None Include="res\models\structure_mat.glb" />
+    <None Include="res\models\structure.glb" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->

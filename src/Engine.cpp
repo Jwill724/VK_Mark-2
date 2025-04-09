@@ -3,6 +3,7 @@
 #include "renderer/Renderer.h"
 #include "imgui/EditorImgui.h"
 #include "core/AssetManager.h"
+#include "renderer/RenderScene.h"
 
 namespace Engine {
 	Window _window;
@@ -16,7 +17,7 @@ namespace Engine {
 	DeletionQueue& getDeletionQueue() { return _mainDeletionQueue; }
 	VmaAllocator& getAllocator() { return _allocator; }
 
-	VkExtent2D _windowExtent = { 800, 800 };
+	VkExtent2D _windowExtent = { 1200, 1000 };
 	VkExtent2D& getWindowExtent() { return _windowExtent; }
 
 	bool _isInitialized{ false };
@@ -33,11 +34,10 @@ namespace Engine {
 
 void Engine::init() {
 	_window.initWindow(_windowExtent.width, _windowExtent.height);
-	Backend::initVulkan();
-
-	AssetManager::loadAssets();
 
 	Backend::initBackend();
+
+	AssetManager::loadAssets();
 
 	_isInitialized = true;
 }
@@ -58,6 +58,8 @@ void Engine::run() {
 		Renderer::RenderFrame();
 	}
 
+	stopRendering = true;
+
 	cleanup();
 }
 
@@ -65,6 +67,8 @@ void Engine::cleanup() {
 	if (_isInitialized) {
 		_isInitialized = false;
 		vkDeviceWaitIdle(Backend::getDevice());
+
+		RenderScene::loadedScenes.clear();
 
 		AssetManager::getAssetDeletionQueue().flush();
 

@@ -16,7 +16,7 @@ void Camera::update(GLFWwindow* window, float& lastTime) {
 void Camera::processInput(GLFWwindow* window, float dt) {
 	UserInput::updateLocalInput(window);
 
-	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 15.f : 5.f;
+	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 60.f : 30.f;
 	float speed = baseSpeed * dt;
 
 	// Mouse rotation, imgui can be properly used with free cam
@@ -74,7 +74,7 @@ glm::mat4 Camera::getRotationMatrix() {
 }
 
 void Camera::reset() {
-	position = glm::vec3(0, 0, 5);
+	position = glm::vec3(30.f, -00.f, -085.f);
 	pitch = 0.f;
 	yaw = -90.f;
 }

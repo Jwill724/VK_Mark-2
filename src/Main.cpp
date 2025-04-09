@@ -1,13 +1,14 @@
 #include "Engine.h"
-#include <iostream>
+#include "fmt/core.h"
 
 int main() {
-	std::cout << "Dead Horse! Only in Atlanta" << std::endl;
+	fmt::print("Dead Horse! Only in Atlanta\n");
+
 	try {
 		Engine::run();
 	}
 	catch (const std::exception& e) {
-		std::cerr << e.what() << std::endl;
+		fmt::print("Exception: {}\n", e.what());
 		return EXIT_FAILURE;
 	}
 

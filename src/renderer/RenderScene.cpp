@@ -14,7 +14,8 @@ namespace RenderScene {
 	Camera mainCamera;
 
 	DrawContext mainDrawContext;
-	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 
 	MaterialInstance _defaultData;
 	GLTFMetallic_Roughness metalRoughMaterial;
@@ -22,7 +23,6 @@ namespace RenderScene {
 	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
 	VkDescriptorSetLayout _singleImageDescriptorLayout;
 	VkDescriptorSetLayout& getGPUSceneDescriptorLayout() { return _gpuSceneDataDescriptorLayout; }
-	VkDescriptorSetLayout& getSingleImageDescriptorLayout() { return _singleImageDescriptorLayout; }
 }
 
 void RenderScene::renderDrawScene(VkCommandBuffer cmd, FrameData& frame) {
@@ -68,46 +68,28 @@ void RenderScene::renderDrawScene(VkCommandBuffer cmd, FrameData& frame) {
 	}
 }
 
-void RenderScene::setMeshes(std::vector<std::shared_ptr<MeshAsset>>& meshes) {
-	for (auto& m : meshes) {
-		std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-		newNode->mesh = m;
-
-		newNode->localTransform = glm::mat4{ 1.f };
-		newNode->worldTransform = glm::mat4{ 1.f };
-
-		for (auto& s : newNode->mesh->surfaces) {
-			s.material = std::make_shared<GLTFMaterial>(_defaultData);
-		}
-
-		loadedNodes[m->name] = std::move(newNode);
-	}
-
-	// CAMERA SETUP IN SET MESHES TEMP
+void RenderScene::setScene() {
 	mainCamera.velocity = glm::vec3(0.f);
-	mainCamera.position = glm::vec3(0, 0, 5);
+	mainCamera.position = glm::vec3(30.f, -00.f, -085.f);
 
 	mainCamera.pitch = 0;
 	mainCamera.yaw = -90.f;
+
+	//AssetManager::getAssetDeletionQueue().push_function([=]() {
+	//	loadedScenes.clear();
+	//});
 }
 
 // Mesh transforms
 void RenderScene::updateScene() {
-
 	float aspect = static_cast<float>(Renderer::getDrawExtent().width) / static_cast<float>(Renderer::getDrawExtent().height);
-
-	mainDrawContext.OpaqueSurfaces.clear();
-
-	//for (auto& m : loadedNodes) {
-	//	m.second->Draw(glm::mat4{ 1.f }, mainDrawContext);
-	//}
 
 	mainCamera.update(Engine::getWindow(), Engine::getLastTimeCount());
 
 	glm::mat4 view = mainCamera.getViewMatrix();
 
 	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(45.f), aspect, 0.1f, 1000.f);
+	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 0.1f, 1000.f);
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis
@@ -121,15 +103,10 @@ void RenderScene::updateScene() {
 	sceneData.sunlightColor = glm::vec4(1.f);
 	sceneData.sunlightDirection = glm::vec4(0, 1, 0.5, 1.f);
 
-	for (int x = -3; x < 3; x++) {
+	mainDrawContext.OpaqueSurfaces.clear(); // Clear from last frame
 
-		glm::mat4 scale = glm::scale(glm::vec3{ 0.2f });
-		glm::mat4 translation = glm::translate(glm::vec3{ x, 1, 0 });
-
-		loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-	}
-
-	loadedNodes["Suzanne"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
+	mainDrawContext.sceneData = sceneData;
+	loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
 }
 
 // setups descriptors, push constants, shaders too
@@ -152,13 +129,13 @@ void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo)
 	PipelineManager::setupShaders(pipelineInfo.shaderStages, stageInfo, shaderDeletionQ);
 
 	// descriptors setup
-	DescriptorSetOverwatch::descriptorManager.clearBinding();
+	DescriptorSetOverwatch::imageDescriptorManager.clearBinding();
 
-	DescriptorSetOverwatch::descriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
-	DescriptorSetOverwatch::descriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
-	DescriptorSetOverwatch::descriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+	DescriptorSetOverwatch::imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+	DescriptorSetOverwatch::imageDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+	DescriptorSetOverwatch::imageDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	materialLayout = DescriptorSetOverwatch::descriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	materialLayout = DescriptorSetOverwatch::imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	pipelineInfo.descriptorSetInfo.descriptorLayouts = { RenderScene::getGPUSceneDescriptorLayout(), materialLayout };
 
@@ -173,7 +150,7 @@ void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo)
 	PipelineBuilder pipeline_builder;
 	pipelineInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	pipelineInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	pipelineInfo.enableBackfaceCulling = true;
+	pipelineInfo.enableBackfaceCulling = false;
 	pipelineInfo.enableBlending = false;
 	pipelineInfo.enableDepthTest = true;
 	pipelineInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
@@ -260,11 +237,10 @@ void RenderScene::createSceneData() {
 	materialResources.dataBufferOffset = 0;
 
 	_defaultData = metalRoughMaterial.writeMaterial(Backend::getDevice(), MaterialPass::MainColor,
-		materialResources, DescriptorSetOverwatch::descriptorManager);
+		materialResources, DescriptorSetOverwatch::imageDescriptorManager);
 }
 
-void GLTFMetallic_Roughness::clearResources(VkDevice device)
-{
+void GLTFMetallic_Roughness::clearResources(VkDevice device) {
 	vkDestroyDescriptorSetLayout(device, materialLayout, nullptr);
 	vkDestroyPipelineLayout(device, transparentPipeline.pipelineLayout, nullptr);
 

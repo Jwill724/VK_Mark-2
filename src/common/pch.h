@@ -9,6 +9,7 @@
 #include <array>
 #include <functional>
 #include <deque>
+#include "fmt/core.h"
 
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>

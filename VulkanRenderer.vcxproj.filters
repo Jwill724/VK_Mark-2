@@ -103,11 +103,6 @@
     <ClCompile Include="vendor\im_gui\imgui_tables.cpp">
       <Filter>vendor\im_gui</Filter>
     </ClCompile>
-    <ClCompile Include="vendor\Vulkan\include\vma\vma.cpp" />
-    <ClCompile Include="vendor\fastgltf\fastgltf.cpp" />
-    <ClCompile Include="vendor\fastgltf\base64.cpp" />
-    <ClCompile Include="vendor\fastgltf\io.cpp" />
-    <ClCompile Include="vendor\simdjson\simdjson.cpp" />
     <ClCompile Include="src\common\pch.cpp">
       <Filter>src\common</Filter>
     </ClCompile>
@@ -238,6 +233,9 @@
       <Filter>res\models</Filter>
     </None>
     <None Include="res\models\structure_mat.glb">
+      <Filter>res\models</Filter>
+    </None>
+    <None Include="res\models\structure.glb">
       <Filter>res\models</Filter>
     </None>
   </ItemGroup>

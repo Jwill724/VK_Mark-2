@@ -15,7 +15,7 @@ uint32_t VulkanUtils::FindMemoryType(VkPhysicalDevice device, uint32_t typeFilte
 	throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-// TODO: queue manager system for active and inactive queues
+// TODO: Add compute queue support
 QueueFamilyIndices VulkanUtils::FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
 	QueueFamilyIndices indices;
 
@@ -27,7 +27,7 @@ QueueFamilyIndices VulkanUtils::FindQueueFamilies(VkPhysicalDevice device, VkSur
 
 	int i = 0;
 	for (const auto& queueFamily : queueFamilies) {
-		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+		if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			indices.graphicsFamily = i;
 		}
 

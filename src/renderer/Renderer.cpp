@@ -92,7 +92,7 @@ void Renderer::setupRenderImages() {
 
 	// MSAA SETTING  8 is the max allowed
 	// TODO: set this up somewhere besides here
-	_currentSampleCount = 4u;
+	_currentSampleCount = 8u;
 	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(_currentSampleCount);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
@@ -148,8 +148,15 @@ void Renderer::init() {
 		});
 	}
 
+	DescriptorWriter drawImageWriter;
+	drawImageWriter.writeImage(0, _postProcessImage.imageView, VK_NULL_HANDLE,
+		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	drawImageWriter.writeImage(1, _drawImage.imageView, AssetManager::getDefaultSamplerLinear(),
+		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	drawImageWriter.updateSet(Backend::getDevice(), DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet);
+
 	RenderScene::createSceneData();
-	RenderScene::setMeshes(AssetManager::getTestMeshes());
+	RenderScene::setScene();
 }
 
 void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {

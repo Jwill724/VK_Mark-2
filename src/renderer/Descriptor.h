@@ -41,11 +41,17 @@ struct DescriptorManager {
 	void init(uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
 };
 
+// global descriptor builder, setups layouts and pools, can allocate for them
 namespace DescriptorSetOverwatch {
-	extern DescriptorManager descriptorManager;
+	extern DescriptorManager imageDescriptorManager;
+	extern DescriptorManager assetDescriptorManager;
 
 	DescriptorsCentral& getDrawImageDescriptors();
 
-	// backend calls once
-	void initGlobalDescriptors();
+	// render images
+	void initImageDescriptors();
+
+	// total asset data size
+	// assets must be loaded before calling
+	void initAssetDescriptors(size_t size);
 }

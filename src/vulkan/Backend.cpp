@@ -59,7 +59,7 @@ namespace Backend {
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 }
 
-void Backend::initVulkan() {
+void Backend::initBackend() {
 	createInstance();
 	BackendTools::setupDebugMessenger(_instance, _debugMessenger);
 	createSurface();
@@ -74,23 +74,22 @@ void Backend::initVulkan() {
 	});
 
 	Renderer::getRenderImageAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
-}
 
-void Backend::initBackend() {
 	Backend::createSwapchain();
 	Backend::createImageViews();
 	Renderer::setupRenderImages();
 
-	DescriptorSetOverwatch::initGlobalDescriptors();
+	DescriptorSetOverwatch::initImageDescriptors();
 
 	PipelineManager::initPipelines();
-
 	EditorImgui::initImgui();
 }
 
 void Backend::createInstance() {
-	if (BackendTools::enableValidationLayers && !BackendTools::checkValidationLayerSupport()) {
-		std::cout << "Validation layers off\n";
+	if (BackendTools::enableValidationLayers) {
+		if (!BackendTools::checkValidationLayerSupport()) {
+			std::cout << "Validation layers requested, but not available!" << std::endl;
+		}
 	}
 
 	VkApplicationInfo appInfo{};
@@ -99,7 +98,7 @@ void Backend::createInstance() {
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 3, 0);
 	appInfo.pEngineName = "No Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_3; // might change to 1.4 in the future
+	appInfo.apiVersion = VK_API_VERSION_1_3;
 
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
