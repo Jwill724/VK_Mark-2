@@ -209,18 +209,6 @@
     <None Include="res\shaders\compile_shaders.bat">
       <Filter>res\shaders</Filter>
     </None>
-    <None Include="res\shaders\tex_image_frag.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
-    <None Include="res\shaders\gradient_comp.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
-    <None Include="res\shaders\sky_comp.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
-    <None Include="res\shaders\input_structures.hlsl">
-      <Filter>res\shaders</Filter>
-    </None>
     <None Include="res\shaders\mesh_vert.vert">
       <Filter>res\shaders</Filter>
     </None>
@@ -228,6 +216,12 @@
       <Filter>res\shaders</Filter>
     </None>
     <None Include="res\shaders\mesh_frag.frag">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\sky_comp.comp">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\gradient_comp.comp">
       <Filter>res\shaders</Filter>
     </None>
   </ItemGroup>

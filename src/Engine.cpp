@@ -20,7 +20,7 @@ namespace Engine {
 	DeletionQueue& getDeletionQueue() { return _mainDeletionQueue; }
 	VmaAllocator& getAllocator() { return _allocator; }
 
-	VkExtent2D _windowExtent = { 1200, 1000 };
+	VkExtent2D _windowExtent = { 1600, 1000 };
 	VkExtent2D& getWindowExtent() { return _windowExtent; }
 
 	bool _isInitialized{ false };

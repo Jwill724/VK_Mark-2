@@ -11,7 +11,7 @@ if not exist "%VULKAN_BIN%\glslangValidator.exe" (
 )
 
 echo Compiling GLSL shaders ...
-for %%F in (*.vert *.frag) do (
+for %%F in (*.vert *.frag *.comp) do (
     echo Compiling %%F ...
     "%VULKAN_BIN%\glslangValidator.exe" -V %INCLUDE_PATH% -o "%%~nF.spv" "%%F"
 )

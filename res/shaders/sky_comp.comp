@@ -1,0 +1,82 @@
+#version 460
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_shader_image_load_formatted : enable
+#extension GL_EXT_shader_image_store_extended : enable
+
+layout (local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Binding layout: image0 = u0, inputImage = t1, sampler = s1
+layout(binding = 0, rgba32f) uniform image2D image0;
+layout(binding = 1) uniform sampler2D inputImage;
+
+// Push constants
+layout(push_constant) uniform PushConstants {
+    vec4 data1;
+    vec4 data2;
+    vec4 data3;
+    vec4 data4;
+} pc;
+
+// Return random noise in the range [0.0, 1.0], as a function of vec
+float Noise2d(vec2 vec) {
+    float xhash = cos(vec.x * 37.0);
+    float yhash = cos(vec.y * 57.0);
+    return fract(415.92653 * (xhash + yhash));
+}
+
+float NoisyStarField(vec2 vSamplePos, float fThreshhold) {
+    float starVal = Noise2d(vSamplePos);
+    if (starVal >= fThreshhold)
+        starVal = pow((starVal - fThreshhold) / (1.0 - fThreshhold), 6.0);
+    else
+        starVal = 0.0;
+    return starVal;
+}
+
+float StableStarField(vec2 vSamplePos, float fThreshhold) {
+    vec2 floorSample = floor(vSamplePos);
+    float fractX = fract(vSamplePos.x);
+    float fractY = fract(vSamplePos.y);
+
+    float v1 = NoisyStarField(floorSample, fThreshhold);
+    float v2 = NoisyStarField(floorSample + vec2(0.0, 1.0), fThreshhold);
+    float v3 = NoisyStarField(floorSample + vec2(1.0, 0.0), fThreshhold);
+    float v4 = NoisyStarField(floorSample + vec2(1.0, 1.0), fThreshhold);
+
+    float starVal = v1 * (1.0 - fractX) * (1.0 - fractY)
+                  + v2 * (1.0 - fractX) * fractY
+                  + v3 * fractX * (1.0 - fractY)
+                  + v4 * fractX * fractY;
+
+    return starVal;
+}
+
+void mainImage(out vec4 fragColor, vec2 fragCoord) {
+    ivec2 texSize = imageSize(image0);
+    vec2 iResolution = vec2(texSize);
+
+    vec3 vColor = pc.data1.rgb * (fragCoord.y / iResolution.y);
+    float threshold = pc.data1.a;
+
+    vec2 vSamplePos = fragCoord + vec2(0.2, -0.06);
+
+    float starVal = StableStarField(vSamplePos, threshold);
+    vColor += vec3(starVal);
+
+    vec4 background = vec4(vColor + vec3(starVal), 1.0);
+
+    vec4 previousColor = texture(inputImage, fragCoord / iResolution);
+
+    fragColor = mix(background, previousColor, previousColor.a);
+}
+
+void main() {
+    ivec2 texelCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 texSize = imageSize(image0);
+
+    if (texelCoord.x < texSize.x && texelCoord.y < texSize.y) {
+        vec4 color;
+        mainImage(color, vec2(texelCoord));
+        imageStore(image0, texelCoord, color);
+    }
+}

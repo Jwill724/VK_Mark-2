@@ -80,21 +80,21 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 void ComputePipeline::createComputePipeline(DeletionQueue& deletionQueue) {
 	VkDevice device = Backend::getDevice();
 
-	VkShaderModule computeDrawShader;
-	if (!VulkanUtils::loadShaderModule("res/shaders/gradient_comp.spv", device, &computeDrawShader)) {
-		throw std::runtime_error("Failed to build compute shader!");
+	VkShaderModule gradientCompShader;
+	if (!VulkanUtils::loadShaderModule("res/shaders/gradient_comp.spv", device, &gradientCompShader)) {
+		throw std::runtime_error("Failed to build gradient compute shader!");
 	}
 
-	VkShaderModule skyShader;
-	if (!VulkanUtils::loadShaderModule("res/shaders/sky_comp.spv", device, &skyShader)) {
-		throw std::runtime_error("Failed to build sky shader!");
+	VkShaderModule skyCompShader;
+	if (!VulkanUtils::loadShaderModule("res/shaders/sky_comp.spv", device, &skyCompShader)) {
+		throw std::runtime_error("Failed to build sky compute shader shader!");
 	}
 
 	VkPipelineShaderStageCreateInfo stageInfo = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.pNext = nullptr,
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.module = computeDrawShader,
+		.module = gradientCompShader,
 		.pName = "main"
 	};
 
@@ -116,7 +116,7 @@ void ComputePipeline::createComputePipeline(DeletionQueue& deletionQueue) {
 
 	VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &gradient.pipeline));
 
-	computePipelineCreateInfo.stage.module = skyShader;
+	computePipelineCreateInfo.stage.module = skyCompShader;
 
 	PipelineEffect sky;
 	sky.layout = _computePipelineLayout;
@@ -132,8 +132,8 @@ void ComputePipeline::createComputePipeline(DeletionQueue& deletionQueue) {
 	backgroundEffects.push_back(gradient);
 	backgroundEffects.push_back(sky);
 
-	vkDestroyShaderModule(device, computeDrawShader, nullptr);
-	vkDestroyShaderModule(device, skyShader, nullptr);
+	vkDestroyShaderModule(device, gradientCompShader, nullptr);
+	vkDestroyShaderModule(device, skyCompShader, nullptr);
 
 	deletionQueue.push_function([=] {
 		vkDestroyPipelineLayout(Backend::getDevice(), _computePipelineLayout, nullptr);
