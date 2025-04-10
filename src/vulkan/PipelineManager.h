@@ -3,6 +3,11 @@
 #include "common/Vk_Types.h"
 #include "Pipeline.h"
 
+namespace Pipelines {
+	inline ComputePipeline postProcessPipeline;
+	inline PipelineConfigPresent metalRoughMatConfigs;
+}
+
 namespace PipelineManager {
 	VkPipelineLayout setupPipelineLayout(PipelineConfigPresent& pipelineInfo);
 	VkPipelineShaderStageCreateInfo setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue);
@@ -16,12 +21,6 @@ namespace PipelineManager {
 
 	// backend calls this
 	void initPipelines();
-}
-
-namespace Pipelines {
-	inline ComputePipeline drawImagePipeline;
-	inline PipelineConfigPresent metalRoughMatConfigs;
-//	inline PipelineBuilder meshPipeline;
 }
 
 namespace PipelineConfigs {

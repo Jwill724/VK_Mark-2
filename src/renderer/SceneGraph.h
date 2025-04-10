@@ -17,6 +17,7 @@ bool is_visible(const RenderObject& obj, const glm::mat4& viewproj);
 
 struct DrawContext {
 	std::vector<RenderObject> OpaqueSurfaces;
+	std::vector<RenderObject> TransparentSurfaces;
 	GPUSceneData sceneData;
 };
 

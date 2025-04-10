@@ -28,4 +28,6 @@ namespace VulkanUtils {
 	uint32_t GetMaxPushConstantSize(VkPhysicalDevice device);
 	PushConstantPool CreatePushConstantPool(VkPhysicalDevice device);
 	bool AllocatePushConstant(PushConstantPool* pool, uint32_t size, uint32_t* offsetOut);
+
+	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask);
 }

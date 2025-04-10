@@ -2,8 +2,6 @@
 #include "fmt/core.h"
 
 int main() {
-	fmt::print("Dead Horse! Only in Atlanta\n");
-
 	try {
 		Engine::run();
 	}

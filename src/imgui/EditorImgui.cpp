@@ -17,13 +17,13 @@ void EditorImgui::initImgui() {
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
 		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		//{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		//{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 } };
+		//{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		//{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		//{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
 
 	VkDescriptorPoolCreateInfo pool_info = {};
 	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -75,21 +75,37 @@ void EditorImgui::initImgui() {
 	});
 }
 
-// call at start of renderFrame
+// call before RenderFrame
 void EditorImgui::renderImgui() {
+
+	auto& stats = Engine::getStats();
 
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	if (ImGui::Begin("background")) {
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.f, 0.f));
+//	ImGui::SetNextWindowBgAlpha(1.f);
+	ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
+
+	ImGui::Text("FPS: %.1f", 1000.f / stats.frametime);
+	ImGui::Text("frame time %f ms", stats.frametime);
+	ImGui::Text("draw time %f ms", stats.meshDrawTime);
+	ImGui::Text("update time %f ms", stats.sceneUpdateTime);
+	ImGui::Text("triangles %i", stats.triangleCount);
+	ImGui::Text("draws %i", stats.drawcallCount);
+
+	ImGui::End();
+
+	if (ImGui::Begin("Background")) {
+
 		ImGui::SliderFloat("Render Scale", &Renderer::getRenderScale(), 0.3f, 1.f);
 
-		PipelineEffect& selected = Pipelines::drawImagePipeline.getBackgroundEffects();
+		PipelineEffect& selected = Pipelines::postProcessPipeline.getBackgroundEffects();
 
 		ImGui::Text("Selected effect: ", selected.name);
 
-		ImGui::SliderInt("Effect Index", &Pipelines::drawImagePipeline.getCurrentBackgroundEffect(), 0, static_cast<int>(Pipelines::drawImagePipeline.backgroundEffects.size()) - 1);
+		ImGui::SliderInt("Effect Index", &Pipelines::postProcessPipeline.getCurrentBackgroundEffect(), 0, static_cast<int>(Pipelines::postProcessPipeline.backgroundEffects.size()) - 1);
 
 		ImGui::InputFloat4("data1", (float*)&selected.data.data1);
 		ImGui::InputFloat4("data2", (float*)&selected.data.data2);
@@ -101,6 +117,7 @@ void EditorImgui::renderImgui() {
 	ImGui::Render();
 }
 
+// draws into a swapchain image
 void EditorImgui::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView, bool shouldClear) {
 	VkClearValue clearValue{};
 	clearValue.color = { 0.0f, 0.0f, 0.0f, 1.0f }; // Black clear color
@@ -122,7 +139,7 @@ void EditorImgui::drawImgui(VkCommandBuffer cmd, VkImageView targetImageView, bo
 	renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 	renderingInfo.colorAttachmentCount = 1;
 	renderingInfo.pColorAttachments = &colorAttachment;
-	renderingInfo.renderArea = { {0, 0}, { Backend::getSwapchainExtent().width, Backend::getSwapchainExtent().height } };
+	renderingInfo.renderArea = { {0, 0}, { Backend::getSwapchainExtent().width,  Backend::getSwapchainExtent().height} };
 	renderingInfo.layerCount = 1;
 	renderingInfo.viewMask = 0;
 

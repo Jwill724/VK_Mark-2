@@ -22,15 +22,12 @@ namespace Renderer {
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();
 	FrameData& getCurrentFrame();
-	VkExtent3D getDrawExtent();
+	VkExtent3D& getDrawExtent();
 	VkImageView& getDrawImageView();
 	DeletionQueue& getRenderImageDeletionQueue();
 	VmaAllocator& getRenderImageAllocator();
 	float& getRenderScale();
 	AllocatedImage& getPostProcessImage();
-
-//	uint32_t getRenderImagesSampleCount();
-//	uint32_t getCurrentMSAAIndex();
 
 	uint32_t getCurrentSampleCount();
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();

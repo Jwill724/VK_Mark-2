@@ -2,6 +2,7 @@
 
 #include "common/Vk_Types.h"
 #include "vulkan/Window.h"
+#include "core/EngineStats.h"
 
 namespace Engine {
 	GLFWwindow* getWindow();
@@ -10,6 +11,8 @@ namespace Engine {
 	VkExtent2D& getWindowExtent();
 	DeletionQueue& getDeletionQueue();
 	VmaAllocator& getAllocator();
+
+	EngineStats& getStats();
 
 	bool isInitialized();
 	bool hasRenderStopped();

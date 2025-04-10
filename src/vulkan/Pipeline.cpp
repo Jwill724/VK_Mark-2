@@ -32,8 +32,6 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 	viewportState.viewportCount = 1;
 	viewportState.scissorCount = 1;
 
-	// setup dummy color blending. We arent using transparent objects yet
-	// the blending is just "no blend", but we do write to the color attachment
 	VkPipelineColorBlendStateCreateInfo colorBlending = {};
 	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	colorBlending.pNext = nullptr;
@@ -45,9 +43,6 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 
 	VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
-	// build the actual pipeline
-    // we now use all of the info structs we have been writing into into this one
-    // to create the pipeline
 	VkGraphicsPipelineCreateInfo pipelineInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	// connect the renderInfo to the pNext extension mechanism
 	pipelineInfo.pNext = &_renderInfo;

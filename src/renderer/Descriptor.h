@@ -46,7 +46,7 @@ namespace DescriptorSetOverwatch {
 	extern DescriptorManager imageDescriptorManager;
 	extern DescriptorManager assetDescriptorManager;
 
-	DescriptorsCentral& getDrawImageDescriptors();
+	DescriptorsCentral& getPostProcessDescriptors();
 
 	// render images
 	void initImageDescriptors();

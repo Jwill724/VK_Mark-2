@@ -6,6 +6,40 @@
 #include "renderer/Renderer.h"
 #include "renderer/RenderScene.h"
 
+void PipelineManager::initPipelines() {
+	// compute pipeline
+	// using older method, push constants stored in pipeline struct
+
+	// compute pipelines push constant
+	Pipelines::postProcessPipeline._pushConstantInfo = {
+		.enabled = true,
+		.offset = 0,
+		.size = static_cast<uint32_t>(sizeof(PushConstantBlock)),
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
+	};
+
+	PipelineConfigPresent computePipelinePCInfo;
+	computePipelinePCInfo.pushConstantsInfo = Pipelines::postProcessPipeline._pushConstantInfo;
+
+	// descriptor sets def
+	computePipelinePCInfo.descriptorSetInfo.descriptorLayouts = DescriptorSetOverwatch::getPostProcessDescriptors().descriptorLayouts;
+
+	Pipelines::postProcessPipeline.getComputePipelineLayout() = setupPipelineLayout(computePipelinePCInfo);
+
+	Pipelines::postProcessPipeline.createComputePipeline(Engine::getDeletionQueue());
+
+
+	// Default pipelines setup
+	Pipelines::metalRoughMatConfigs.pushConstantsInfo = {
+		.enabled = true,
+		.offset = 0,
+		.size = static_cast<uint32_t>(sizeof(GPUDrawPushConstants)),
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
+	};
+
+	RenderScene::metalRoughMaterial.buildPipelines(Pipelines::metalRoughMatConfigs);
+}
+
 // TODO: add push constants as parameter
 VkPipelineLayout PipelineManager::setupPipelineLayout(PipelineConfigPresent& pipelineInfo) {
 	PushConstantDef matrixRange = {
@@ -81,40 +115,6 @@ VkPipelineShaderStageCreateInfo PipelineManager::setShader(const char* shaderFil
 		});
 
 	return shaderStage;
-}
-
-void PipelineManager::initPipelines() {
-	// compute pipeline
-	// using older method, push constants stored in pipeline struct
-
-	// compute pipelines push constant
-	Pipelines::drawImagePipeline._pushConstantInfo = {
-		.enabled = true,
-		.offset = 0,
-		.size = static_cast<uint32_t>(sizeof(PushConstantBlock)),
-		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT
-	};
-
-	PipelineConfigPresent computePipelinePCInfo;
-	computePipelinePCInfo.pushConstantsInfo = Pipelines::drawImagePipeline._pushConstantInfo;
-
-	// descriptor sets def
-	computePipelinePCInfo.descriptorSetInfo.descriptorLayouts = DescriptorSetOverwatch::getDrawImageDescriptors().descriptorLayouts;
-
-	Pipelines::drawImagePipeline.getComputePipelineLayout() = setupPipelineLayout(computePipelinePCInfo);
-
-	Pipelines::drawImagePipeline.createComputePipeline(Engine::getDeletionQueue());
-
-
-	// Default pipelines setup
-	Pipelines::metalRoughMatConfigs.pushConstantsInfo = {
-		.enabled = true,
-		.offset = 0,
-		.size = static_cast<uint32_t>(sizeof(GPUDrawPushConstants)),
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT
-	};
-
-	RenderScene::metalRoughMaterial.buildPipelines(Pipelines::metalRoughMatConfigs);
 }
 
 void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelineConfigPresent& settings) {

@@ -5,8 +5,6 @@
 #include "vulkan/PipelineManager.h"
 #include "input/Camera.h"
 
-static unsigned int currentSceneIndex = 1;
-
 struct GLTFMetallic_Roughness {
 	MaterialPipeline opaquePipeline;
 	MaterialPipeline transparentPipeline;
@@ -47,8 +45,7 @@ namespace RenderScene {
 	extern DrawContext mainDrawContext;
 	extern GLTFMetallic_Roughness metalRoughMaterial;
 
-	// setups up loadedscene meshes and camera
-	void setScene();
+	void setCamera();
 
 	inline std::vector<std::shared_ptr<MeshAsset>> _sceneMeshes;
 

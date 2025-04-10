@@ -115,6 +115,12 @@
     <ClCompile Include="src\input\Camera.cpp">
       <Filter>src\input</Filter>
     </ClCompile>
+    <ClCompile Include="vendor\Vulkan\include\vma\vma.cpp" />
+    <ClCompile Include="vendor\fastgltf\fastgltf.cpp" />
+    <ClCompile Include="vendor\fastgltf\base64.cpp" />
+    <ClCompile Include="vendor\fastgltf\io.cpp" />
+    <ClCompile Include="vendor\simdjson\simdjson.cpp" />
+    <ClCompile Include="vendor\fmt\format.cc" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\input\UserInput.h">
@@ -195,6 +201,9 @@
     <ClInclude Include="src\input\Camera.h">
       <Filter>src\input</Filter>
     </ClInclude>
+    <ClInclude Include="src\core\EngineStats.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat">
@@ -223,9 +232,6 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\textures\master_chief_tex.jpg">
-      <Filter>res\textures</Filter>
-    </None>
     <None Include="res\models\monkey.glb">
       <Filter>res\models</Filter>
     </None>
@@ -236,6 +242,9 @@
       <Filter>res\models</Filter>
     </None>
     <None Include="res\models\structure.glb">
+      <Filter>res\models</Filter>
+    </None>
+    <None Include="res\models\town4new.glb">
       <Filter>res\models</Filter>
     </None>
   </ItemGroup>

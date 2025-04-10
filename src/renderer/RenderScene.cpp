@@ -21,12 +21,48 @@ namespace RenderScene {
 	GLTFMetallic_Roughness metalRoughMaterial;
 
 	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
-	VkDescriptorSetLayout _singleImageDescriptorLayout;
 	VkDescriptorSetLayout& getGPUSceneDescriptorLayout() { return _gpuSceneDataDescriptorLayout; }
 }
 
+void RenderScene::setCamera() {
+	mainCamera.velocity = glm::vec3(0.f);
+	mainCamera.position = glm::vec3(30.f, -00.f, -085.f);
+
+	mainCamera.pitch = 0;
+	mainCamera.yaw = -90.f;
+}
+
 void RenderScene::renderDrawScene(VkCommandBuffer cmd, FrameData& frame) {
+	//reset counters
+	auto& stats = Engine::getStats();
+
+	stats.drawcallCount = 0;
+	stats.triangleCount = 0;
+
+	//begin clock
+	auto start = std::chrono::system_clock::now();
+
 	VkDevice device = Backend::getDevice();
+
+	// SORT INDICES OF DRAW ARRAY
+	std::vector<uint32_t> opaque_draws;
+	opaque_draws.reserve(mainDrawContext.OpaqueSurfaces.size());
+
+	for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) {
+		opaque_draws.push_back(i);
+	}
+
+	// sort the opaque surfaces by material and mesh
+	std::sort(opaque_draws.begin(), opaque_draws.end(), [&](const auto& iA, const auto& iB) {
+		const RenderObject& A = mainDrawContext.OpaqueSurfaces[iA];
+		const RenderObject& B = mainDrawContext.OpaqueSurfaces[iB];
+		if (A.material == B.material) {
+			return A.indexBuffer < B.indexBuffer;
+		}
+		else {
+			return A.material < B.material;
+		}
+	});
 
 	AllocatedBuffer gpuSceneDataBuffer = BufferUtils::createBuffer(sizeof(GPUSceneData),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, Renderer::getRenderImageAllocator());
@@ -49,39 +85,94 @@ void RenderScene::renderDrawScene(VkCommandBuffer cmd, FrameData& frame) {
 
 	PushConstantDef matsPipePC = Pipelines::metalRoughMatConfigs.pushConstantsInfo;
 
-	// Will fix later, inefficient to do all these draws
-	for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces) {
+	// draw state tracking
+	MaterialPipeline* lastPipeline = nullptr;
+	MaterialInstance* lastMaterial = nullptr;
+	VkBuffer lastIndexBuffer = VK_NULL_HANDLE;
 
-		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipelineLayout, 0, 1, &sceneDescriptor, 0, nullptr);
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipelineLayout, 1, 1, &draw.material->materialSet, 0, nullptr);
+	auto extent = Renderer::getDrawExtent();
 
-		vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+	auto draw = [&](const RenderObject& r) {
+		if (r.material != lastMaterial) {
+			lastMaterial = r.material;
+			//rebind pipeline and descriptors if the material changed
+			if (r.material->pipeline != lastPipeline) {
 
-		GPUDrawPushConstants pushConstants;
-		pushConstants.vertexBuffer = draw.vertexBufferAddress;
-		pushConstants.worldMatrix = draw.transform;
+				lastPipeline = r.material->pipeline;
+				vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
+				vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipelineLayout, 0, 1,
+					&sceneDescriptor, 0, nullptr);
 
-		vkCmdPushConstants(cmd, draw.material->pipeline->pipelineLayout, matsPipePC.stageFlags, matsPipePC.offset, matsPipePC.size, &pushConstants);
+				VkViewport viewport = {};
+				viewport.x = 0;
+				viewport.y = 0;
+				viewport.width = static_cast<float>(extent.width);
+				viewport.height = static_cast<float>(extent.height);
+				viewport.minDepth = 0.f;
+				viewport.maxDepth = 1.f;
 
-		vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+				vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+				VkRect2D scissor = {};
+				scissor.offset.x = 0;
+				scissor.offset.y = 0;
+				scissor.extent.width = extent.width;
+				scissor.extent.height = extent.height;
+
+				vkCmdSetScissor(cmd, 0, 1, &scissor);
+			}
+
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipelineLayout, 1, 1,
+				&r.material->materialSet, 0, nullptr);
+		}
+		//rebind index buffer if needed
+		if (r.indexBuffer != lastIndexBuffer) {
+			lastIndexBuffer = r.indexBuffer;
+			vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+		// calculate final mesh matrix
+		GPUDrawPushConstants push_constants;
+		push_constants.worldMatrix = r.transform;
+		push_constants.vertexBuffer = r.vertexBufferAddress;
+
+		vkCmdPushConstants(cmd, r.material->pipeline->pipelineLayout, matsPipePC.stageFlags, matsPipePC.offset, matsPipePC.size, &push_constants);
+
+		vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
+		//stats
+		stats.drawcallCount++;
+		stats.triangleCount += r.indexCount / 3;
+	};
+
+	for (auto& r : opaque_draws) {
+		draw(mainDrawContext.OpaqueSurfaces[r]);
 	}
-}
 
-void RenderScene::setScene() {
-	mainCamera.velocity = glm::vec3(0.f);
-	mainCamera.position = glm::vec3(30.f, -00.f, -085.f);
+	// need depth sort
+	for (auto& r : mainDrawContext.TransparentSurfaces) {
+		draw(r);
+	}
 
-	mainCamera.pitch = 0;
-	mainCamera.yaw = -90.f;
+	mainDrawContext.OpaqueSurfaces.clear();
+	mainDrawContext.TransparentSurfaces.clear();
 
-	//AssetManager::getAssetDeletionQueue().push_function([=]() {
-	//	loadedScenes.clear();
-	//});
+	auto end = std::chrono::system_clock::now();
+
+	//convert to microseconds (integer), and then come back to miliseconds
+	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.meshDrawTime = elapsed.count() / 1000.f;
 }
 
 // Mesh transforms
 void RenderScene::updateScene() {
+	//reset counters
+	auto& stats = Engine::getStats();
+
+	stats.drawcallCount = 0;
+	stats.triangleCount = 0;
+
+	//begin clock
+	auto start = std::chrono::system_clock::now();
+
 	float aspect = static_cast<float>(Renderer::getDrawExtent().width) / static_cast<float>(Renderer::getDrawExtent().height);
 
 	mainCamera.update(Engine::getWindow(), Engine::getLastTimeCount());
@@ -89,7 +180,7 @@ void RenderScene::updateScene() {
 	glm::mat4 view = mainCamera.getViewMatrix();
 
 	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), aspect, 0.1f, 1000.f);
+	glm::mat4 projection = glm::perspective(glm::radians(80.f), aspect, 0.1f, 10000.f);
 
 	// invert the Y direction on projection matrix so that we are more similar
 	// to opengl and gltf axis
@@ -107,7 +198,14 @@ void RenderScene::updateScene() {
 
 	mainDrawContext.sceneData = sceneData;
 	loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
+
+	auto end = std::chrono::system_clock::now();
+
+	//convert to microseconds (integer), and then come back to miliseconds
+	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+	stats.sceneUpdateTime = elapsed.count() / 1000.f;
 }
+
 
 // setups descriptors, push constants, shaders too
 void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo) {
@@ -150,7 +248,7 @@ void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo)
 	PipelineBuilder pipeline_builder;
 	pipelineInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	pipelineInfo.polygonMode = VK_POLYGON_MODE_FILL;
-	pipelineInfo.enableBackfaceCulling = false;
+	pipelineInfo.enableBackfaceCulling = true;
 	pipelineInfo.enableBlending = false;
 	pipelineInfo.enableDepthTest = true;
 	pipelineInfo.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
@@ -163,12 +261,12 @@ void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo)
 
 	opaquePipeline.pipeline = pipeline_builder.createPipeline(pipelineInfo);
 
-	if (opaquePipeline.pipeline == VK_NULL_HANDLE) {
-		std::cout << "Error: Opaque pipeline was not created properly.\n";
-	}
-	else {
-		std::cout << "Opaque pipeline built: " << opaquePipeline.pipeline << "\n";
-	}
+	//if (opaquePipeline.pipeline == VK_NULL_HANDLE) {
+	//	std::cout << "Error: Opaque pipeline was not created properly.\n";
+	//}
+	//else {
+	//	std::cout << "Opaque pipeline built: " << opaquePipeline.pipeline << "\n";
+	//}
 
 	// transparent pipeline
 	pipelineInfo.enableBlending = true;
@@ -180,12 +278,12 @@ void GLTFMetallic_Roughness::buildPipelines(PipelineConfigPresent& pipelineInfo)
 
 	transparentPipeline.pipeline = pipeline_builder.createPipeline(pipelineInfo);
 
-	if (transparentPipeline.pipeline == VK_NULL_HANDLE) {
-		std::cout << "Error: Transparent pipeline was not created properly.\n";
-	}
-	else {
-		std::cout << "Transparent pipeline built: " << transparentPipeline.pipeline << "\n";
-	}
+	//if (transparentPipeline.pipeline == VK_NULL_HANDLE) {
+	//	std::cout << "Error: Transparent pipeline was not created properly.\n";
+	//}
+	//else {
+	//	std::cout << "Transparent pipeline built: " << transparentPipeline.pipeline << "\n";
+	//}
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 }

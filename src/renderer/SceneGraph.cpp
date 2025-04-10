@@ -3,8 +3,7 @@
 #include "SceneGraph.h"
 #include "RenderScene.h"
 
-void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
-{
+void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
 	glm::mat4 nodeMatrix = topMatrix * worldTransform;
 
 	for (auto& s : mesh->surfaces) {
@@ -17,8 +16,6 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 		def.transform = nodeMatrix;
 		def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
 
-		ctx.OpaqueSurfaces.push_back(def);
-
 		if (is_visible(def, ctx.sceneData.viewproj)) {
 			ctx.OpaqueSurfaces.push_back(def);
 		}
@@ -27,7 +24,7 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
 	// recurse down
 	Node::Draw(topMatrix, ctx);
 }
-
+// Frustum culling
 bool is_visible(const RenderObject& obj, const glm::mat4& viewproj) {
     std::array<glm::vec3, 8> corners{
         glm::vec3 { 1, 1, 1 },

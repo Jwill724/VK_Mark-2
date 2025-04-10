@@ -174,13 +174,16 @@
     </ClCompile>
     <ClCompile Include="vendor\simdjson\simdjson.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</BufferSecurityCheck>
     </ClCompile>
     <ClCompile Include="vendor\fmt\format.cc">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\pch.h" />
+    <ClInclude Include="src\core\EngineStats.h" />
     <ClInclude Include="src\input\Camera.h" />
     <ClInclude Include="src\input\UserInput.h" />
     <ClInclude Include="src\Engine.h" />
@@ -217,11 +220,11 @@
     <None Include="res\shaders\tex_image_frag.hlsl" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\textures\master_chief_tex.jpg" />
     <None Include="res\models\monkey.glb" />
     <None Include="res\models\basicmesh.glb" />
     <None Include="res\models\structure_mat.glb" />
     <None Include="res\models\structure.glb" />
+    <None Include="res\models\town4new.glb" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->
@@ -249,11 +252,14 @@
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">_UNICODE;UNICODE;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MultiThreadedDLL</RuntimeLibrary>
+      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</BufferSecurityCheck>
     </ClCompile>
     <ClCompile>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_UNICODE;UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">pch.h</PrecompiledHeaderFile>
+      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

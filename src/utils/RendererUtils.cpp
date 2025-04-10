@@ -3,6 +3,7 @@
 #include "RendererUtils.h"
 #include "vulkan/Backend.h"
 #include "renderer/Renderer.h"
+#include "renderer/types/Texture.h"
 
 VkSemaphore RendererUtils::createSemaphore() {
 	VkDevice device = Backend::getDevice();
@@ -29,9 +30,8 @@ VkFence RendererUtils::createFence() {
 	return fence;
 }
 
-// renderImage.imageExtent, imageFormat, mipmapped must be defined before use
 void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
-	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue& deletionQueue, VmaAllocator allocator) {
+	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue* deletionQueue, VmaAllocator allocator) {
 
 	size_t dataSize = renderImage.imageExtent.depth * renderImage.imageExtent.width * renderImage.imageExtent.height * 4;
 	AllocatedBuffer uploadbuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
@@ -60,19 +60,23 @@ void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, 
 		vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, renderImage.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
 			&copyRegion);
 
-		RendererUtils::transitionImage(cmd, renderImage.image, renderImage.imageFormat,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		},
-		AssetManager::getGraphicsCmdSubmit(),
-		Backend::getGraphicsQueue()
+		if (renderImage.mipmapped) {
+			Textures::generateMipmaps(cmd, renderImage);
+		}
+		else {
+			RendererUtils::transitionImage(cmd, renderImage.image, renderImage.imageFormat,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+	},
+	AssetManager::getGraphicsCmdSubmit(),
+	Backend::getGraphicsQueue()
 	);
 
 	BufferUtils::destroyBuffer(uploadbuffer, allocator);
 }
 
-// renderImage.imageExtent, imageFormat, mipmapped must be defined before use
 void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
-	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue& deletionQueue, VmaAllocator allocator) {
+	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue* deletionQueue, VmaAllocator allocator) {
 
 	VkImageCreateInfo imgInfo{};
 	imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -87,8 +91,7 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	if (renderImage.mipmapped) {
-		imgInfo.mipLevels = static_cast<uint32_t>
-			(std::floor(std::log2(std::max<uint32_t>(renderImage.imageExtent.width, renderImage.imageExtent.height)))) + 1;
+		imgInfo.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(renderImage.imageExtent.width, renderImage.imageExtent.height)))) + 1;
 	}
 	else {
 		imgInfo.mipLevels = 1;
@@ -113,15 +116,23 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 
 	VK_CHECK(vkCreateImageView(Backend::getDevice(), &viewInfo, nullptr, &renderImage.imageView));
 
-	auto* imageView = &renderImage.imageView;
-	auto* image = &renderImage.image;
+	// Textures image creation is used with this function and it has seperate cleanup
+	if (deletionQueue) {
+		auto* imageView = &renderImage.imageView;
+		auto* image = &renderImage.image;
 
-	deletionQueue.push_function([=]() {
-		vkDestroyImageView(Backend::getDevice(), renderImage.imageView, nullptr);
-		*imageView = VK_NULL_HANDLE;
-		vmaDestroyImage(allocator, renderImage.image, renderImage.allocation);
-		*image = VK_NULL_HANDLE;
-	});
+		deletionQueue->push_function([=]() {
+			vkDestroyImageView(Backend::getDevice(), renderImage.imageView, nullptr);
+			*imageView = VK_NULL_HANDLE;
+			vmaDestroyImage(allocator, renderImage.image, renderImage.allocation);
+			*image = VK_NULL_HANDLE;
+		});
+	}
+}
+
+void RendererUtils::destroyTexImage(VkDevice device, const AllocatedImage& img, VmaAllocator allocator) {
+	vkDestroyImageView(device, img.imageView, nullptr);
+	vmaDestroyImage(allocator, img.image, img.allocation);
 }
 
 void RendererUtils::transitionImage(VkCommandBuffer cmd, VkImage image, VkFormat format, VkImageLayout currentLayout, VkImageLayout newLayout) {

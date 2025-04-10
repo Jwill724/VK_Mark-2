@@ -14,6 +14,9 @@ namespace Engine {
 	DeletionQueue _mainDeletionQueue;
 	VmaAllocator _allocator;
 
+	EngineStats stats;
+	EngineStats& getStats() { return stats; }
+
 	DeletionQueue& getDeletionQueue() { return _mainDeletionQueue; }
 	VmaAllocator& getAllocator() { return _allocator; }
 
@@ -51,11 +54,17 @@ void Engine::run() {
 
 	// main loop
 	while (WindowIsOpen(_window.window)) {
+		auto start = std::chrono::system_clock::now();
+
 		glfwPollEvents();
 
 		EditorImgui::renderImgui();
 
 		Renderer::RenderFrame();
+
+		auto end = std::chrono::system_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+		stats.frametime = elapsed.count() / 1000.f;
 	}
 
 	stopRendering = true;

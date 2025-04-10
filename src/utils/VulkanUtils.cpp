@@ -189,3 +189,13 @@ bool VulkanUtils::AllocatePushConstant(PushConstantPool* pool, uint32_t size, ui
 	pool->usedSize += alignedSize;
 	return true;
 }
+
+VkImageSubresourceRange VulkanUtils::imageSubresourceRange(VkImageAspectFlags aspectMask) {
+	VkImageSubresourceRange subImg{};
+	subImg.aspectMask = aspectMask;
+	subImg.baseMipLevel = 0;
+	subImg.levelCount = VK_REMAINING_MIP_LEVELS;
+	subImg.baseArrayLayer = 0;
+	subImg.layerCount = VK_REMAINING_ARRAY_LAYERS;
+	return subImg;
+}

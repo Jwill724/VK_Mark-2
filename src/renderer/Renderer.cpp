@@ -15,7 +15,7 @@ namespace Renderer {
 	FrameData& getCurrentFrame() { return _frames[_frameNumber % MAX_FRAMES_IN_FLIGHT]; }
 
 	VkExtent3D _drawExtent;
-	VkExtent3D getDrawExtent() { return _drawExtent; }
+	VkExtent3D& getDrawExtent() { return _drawExtent; }
 
 	float _renderScale = 1.f;
 	float& getRenderScale() { return _renderScale; }
@@ -53,8 +53,8 @@ namespace Renderer {
 void Renderer::setupRenderImages() {
 	// draw image should match window extent
 	_drawExtent = {
-		Engine::getWindowExtent().width,
-		Engine::getWindowExtent().height,
+		static_cast<uint32_t>(Engine::getWindowExtent().width * _renderScale),
+		static_cast<uint32_t>(Engine::getWindowExtent().height * _renderScale),
 		1
 	};
 
@@ -73,7 +73,7 @@ void Renderer::setupRenderImages() {
 	// non sampled image
 	// primary draw image color target
 	RendererUtils::createRenderImage(_drawImage, drawImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
 	// post process image
 	_postProcessImage.imageFormat = _drawImage.imageFormat;
@@ -87,7 +87,7 @@ void Renderer::setupRenderImages() {
 
 	// compute draw image for post processing
 	RendererUtils::createRenderImage(_postProcessImage, postUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
 
 	// MSAA SETTING  8 is the max allowed
@@ -105,7 +105,7 @@ void Renderer::setupRenderImages() {
 
 	// msaa color attachment to the draw image
 	RendererUtils::createRenderImage(_msaaImage, msaaImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 
 
 	// DEPTH
@@ -117,7 +117,7 @@ void Renderer::setupRenderImages() {
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 	RendererUtils::createRenderImage(_depthImage, depthImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
 }
 
 void Renderer::init() {
@@ -153,10 +153,10 @@ void Renderer::init() {
 		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 	drawImageWriter.writeImage(1, _drawImage.imageView, AssetManager::getDefaultSamplerLinear(),
 		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	drawImageWriter.updateSet(Backend::getDevice(), DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet);
+	drawImageWriter.updateSet(Backend::getDevice(), DescriptorSetOverwatch::getPostProcessDescriptors().descriptorSet);
 
 	RenderScene::createSceneData();
-	RenderScene::setScene();
+	RenderScene::setCamera();
 }
 
 void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
@@ -227,7 +227,6 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 }
 
 void Renderer::drawGeometry(VkCommandBuffer cmd) {
-
 	//begin a render pass  connected to our draw image
 	VkRenderingAttachmentInfo colorAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -269,25 +268,6 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 
 	vkCmdBeginRendering(cmd, &renderInfo);
 
-	//set dynamic viewport and scissor
-	VkViewport viewport = {};
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = static_cast<float>(_drawExtent.width);
-	viewport.height = static_cast<float>(_drawExtent.height);
-	viewport.minDepth = 0.f;
-	viewport.maxDepth = 1.f;
-
-	vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-	VkRect2D scissor = {};
-	scissor.offset.x = 0;
-	scissor.offset.y = 0;
-	scissor.extent.width = static_cast<uint32_t>(_drawExtent.width);
-	scissor.extent.height = static_cast<uint32_t>(_drawExtent.height);
-
-	vkCmdSetScissor(cmd, 0, 1, &scissor);
-
 	RenderScene::renderDrawScene(cmd, getCurrentFrame());
 
 	vkCmdEndRendering(cmd);
@@ -296,22 +276,22 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 // requires push constants to render
 void Renderer::drawBackground(VkCommandBuffer cmd) {
 	// The current shader
-	PipelineEffect& effect = Pipelines::drawImagePipeline.getBackgroundEffects();
+	PipelineEffect& effect = Pipelines::postProcessPipeline.getBackgroundEffects();
 
-	VkPipelineLayout& drawImgPipelineLayout = Pipelines::drawImagePipeline.getComputePipelineLayout();
+	VkPipelineLayout& drawImgPipelineLayout = Pipelines::postProcessPipeline.getComputePipelineLayout();
 
-	PushConstantDef& pipelinePCData = Pipelines::drawImagePipeline._pushConstantInfo;
+	PushConstantDef& pipelinePCData = Pipelines::postProcessPipeline._pushConstantInfo;
 
 	// bind the background compute pipeline
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, drawImgPipelineLayout,
-		0, 1, &DescriptorSetOverwatch::getDrawImageDescriptors().descriptorSet, 0, nullptr);
+		0, 1, &DescriptorSetOverwatch::getPostProcessDescriptors().descriptorSet, 0, nullptr);
 
 	vkCmdPushConstants(cmd, drawImgPipelineLayout, pipelinePCData.stageFlags, pipelinePCData.offset , pipelinePCData.size, &effect.data);
 
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0)), static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0)), 1);
+	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.f)), static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.f)), 1);
 }
 
 void Renderer::RenderFrame() {

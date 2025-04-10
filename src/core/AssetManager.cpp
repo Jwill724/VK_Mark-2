@@ -11,6 +11,7 @@
 #include "renderer/RenderScene.h"
 #include "renderer/CommandBuffer.h"
 #include "renderer/Descriptor.h"
+#include "renderer/types/Texture.h"
 
 namespace AssetManager {
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
@@ -24,9 +25,6 @@ namespace AssetManager {
 	AllocatedImage _greyImage;
 	AllocatedImage _errorCheckerboardImage;
 	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
-
-	std::vector<AllocatedImage> texImages;
-	std::vector<AllocatedImage>& getTexImages() { return texImages; }
 
 	VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;
@@ -62,7 +60,7 @@ void AssetManager::loadAssets() {
 
 	initTextures();
 
-	std::string structurePath = { "res/models/structure.glb" };
+	std::string structurePath = { "res/models/structure_mat.glb" };
 	auto structureFile = loadGltf(structurePath);
 
 	assert(structureFile.has_value());
@@ -114,29 +112,26 @@ void AssetManager::initTextures() {
 
 	_whiteImage.imageExtent = texExtent;
 	_whiteImage.imageFormat = format;
-	_whiteImage.mipmapped = false;
+	_whiteImage.mipmapped = true;
 
 	_greyImage.imageExtent = texExtent;
 	_greyImage.imageFormat = format;
-	_greyImage.mipmapped = false;
+	_greyImage.mipmapped = true;
 
 	_blackImage.imageExtent = texExtent;
 	_blackImage.imageFormat = format;
-	_blackImage.mipmapped = false;
+	_blackImage.mipmapped = true;
 
 	//3 default textures, white, grey, black. 1 pixel each
 	// all same settings
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	RendererUtils::createTextureImage((void*)&white, _whiteImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
-	texImages.push_back(_whiteImage);
+	RendererUtils::createTextureImage((void*)&white, _whiteImage, usage, memoryProp, samples, &_assetDeletionQueue, _assetAllocator);
 
 	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-	RendererUtils::createTextureImage((void*)&grey, _greyImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
-	texImages.push_back(_greyImage);
+	RendererUtils::createTextureImage((void*)&grey, _greyImage, usage, memoryProp, samples, &_assetDeletionQueue, _assetAllocator);
 
 	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1));
-	RendererUtils::createTextureImage((void*)&black, _blackImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
-	texImages.push_back(_blackImage);
+	RendererUtils::createTextureImage((void*)&black, _blackImage, usage, memoryProp, samples, &_assetDeletionQueue, _assetAllocator);
 
 	//checkerboard image
 	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
@@ -151,10 +146,9 @@ void AssetManager::initTextures() {
 
 	_errorCheckerboardImage.imageExtent = checkerboardedImageExtent;
 	_errorCheckerboardImage.imageFormat = format;
-	_errorCheckerboardImage.mipmapped = false;
+	_errorCheckerboardImage.mipmapped = true;
 
-	RendererUtils::createTextureImage(pixels.data(), _errorCheckerboardImage, usage, memoryProp, samples, _assetDeletionQueue, _assetAllocator);
-	texImages.push_back(_errorCheckerboardImage);
+	RendererUtils::createTextureImage(pixels.data(), _errorCheckerboardImage, usage, memoryProp, samples, &_assetDeletionQueue, _assetAllocator);
 
 	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
 
@@ -235,7 +229,6 @@ GPUMeshBuffers AssetManager::uploadMesh(std::span<uint32_t> indices, std::span<V
 	return newSurface;
 }
 
-
 std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_view filePath) {
 	fmt::print("Loading GLTF: {}\n", filePath);
 
@@ -256,7 +249,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 		fastgltf::Options::DontRequireValidAssetMember |
 		fastgltf::Options::AllowDouble |
 		fastgltf::Options::LoadGLBBuffers |
-		fastgltf::Options::LoadExternalBuffers;
+		fastgltf::Options::LoadExternalBuffers |
+		fastgltf::Options::LoadExternalImages;
 
 	auto type = fastgltf::determineGltfFileType(data.get());
 	fastgltf::Asset gltf;
@@ -310,12 +304,21 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 
 	// MeshNodes depend on meshes, meshes depend on materials, and materials on textures
 
-	//for (fastgltf::Image& image: gltf.images) {
-	//	images.push_back(_errorCheckerboardImage);
-	//}
+	// load all textures
+	for (fastgltf::Image& image : gltf.images) {
+		std::optional<AllocatedImage> img = Textures::loadImage(gltf, image);
 
-	for (size_t i = 0; i < gltf.images.size(); ++i) {
-		images.push_back(_errorCheckerboardImage);
+		if (img.has_value()) {
+			images.push_back(*img);
+			file.images[image.name.c_str()] = *img;
+			fmt::print("Loaded texture {}\n", image.name);
+		}
+		else {
+			// we failed to load, so lets give the slot a default white texture to not
+			// completely break loading
+			images.push_back(_errorCheckerboardImage);
+			fmt::print("gltf failed to load texture {}\n", image.name);
+		}
 	}
 
 	// create buffer to hold the material data
@@ -545,27 +548,30 @@ void LoadedGLTF::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
 }
 
 void LoadedGLTF::clearAll() {
+	auto device = Backend::getDevice();
+	auto allocator = AssetManager::getAssetAllocation();
+
 	vkQueueWaitIdle(Backend::getGraphicsQueue());
 
 	DescriptorSetOverwatch::assetDescriptorManager.destroyPools();
-	BufferUtils::destroyBuffer(materialDataBuffer, AssetManager::getAssetAllocation());
+
+	BufferUtils::destroyBuffer(materialDataBuffer, allocator);
 
 	for (auto& [k, v] : meshes) {
-
-		BufferUtils::destroyBuffer(v->meshBuffers.indexBuffer, AssetManager::getAssetAllocation());
-		BufferUtils::destroyBuffer(v->meshBuffers.vertexBuffer, AssetManager::getAssetAllocation());
+		BufferUtils::destroyBuffer(v->meshBuffers.indexBuffer, allocator);
+		BufferUtils::destroyBuffer(v->meshBuffers.vertexBuffer, allocator);
 	}
 
-	//for (auto& [k, v] : images) {
+	for (auto& [k, v] : images) {
+		if (v.image == AssetManager::getCheckboardTex().image) {
+			//dont destroy the default images
+			continue;
+		}
 
-	//	if (v.image == AssetManager::getCheckboardTex().image) {
-	//		//dont destroy the default images
-	//		continue;
-	//	}
-	//	destroyImage(v);
-	//}
+		RendererUtils::destroyTexImage(device, v, allocator);
+	}
 
 	for (auto& sampler : samplers) {
-		vkDestroySampler(Backend::getDevice(), sampler, nullptr);
+		vkDestroySampler(device, sampler, nullptr);
 	}
 }
