@@ -9,8 +9,13 @@ namespace DescriptorSetOverwatch {
 	DescriptorManager imageDescriptorManager;
 	DescriptorManager assetDescriptorManager;
 
-	DescriptorsCentral postProcessImgDescriptors{};
+	DescriptorsCentral skyboxDescriptors;
+
+	DescriptorsCentral postProcessImgDescriptors;
 	DescriptorsCentral& getPostProcessDescriptors() { return postProcessImgDescriptors; }
+
+	DescriptorsCentral cubeMappingDescriptors;
+	DescriptorsCentral& getCubeMappingDescriptors() { return cubeMappingDescriptors; }
 }
 
 // gltf loader asset descriptors
@@ -36,28 +41,64 @@ void DescriptorSetOverwatch::initImageDescriptors() {
 
 	imageDescriptorManager.init(10, poolSizes);
 
+	// sky box
+	imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+	VkDescriptorSetLayout skyboxDescriptorLayout = imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_FRAGMENT_BIT);
+	skyboxDescriptors.descriptorLayouts.push_back(skyboxDescriptorLayout);
+
+	PipelinePresents::skyboxPipelineSettings.descriptorSetInfo = skyboxDescriptors;
+
+	imageDescriptorManager.clearBinding();
+
+
 	// post process image
 	imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
 	imageDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VkDescriptorSetLayout postProcessImgLayout = imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_COMPUTE_BIT);
-
 	postProcessImgDescriptors.descriptorSet = imageDescriptorManager.allocateDescriptor(Backend::getDevice(), postProcessImgLayout);
 	postProcessImgDescriptors.descriptorLayouts.push_back(postProcessImgLayout);
 
 	imageDescriptorManager.clearBinding();
+
+
+	imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT);
+	imageDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT);
+
+	VkDescriptorSetLayout cubeMappingLayout = imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_COMPUTE_BIT);
+	cubeMappingDescriptors.descriptorSet = imageDescriptorManager.allocateDescriptor(Backend::getDevice(), cubeMappingLayout);
+	cubeMappingDescriptors.descriptorLayouts.push_back(cubeMappingLayout);
+
+	imageDescriptorManager.clearBinding();
+
 
 	// meshes
 	imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT); // for vertex buffer
 	imageDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT); // for texture
 	RenderScene::getGPUSceneDescriptorLayout() = imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	Engine::getDeletionQueue().push_function([&]() {
+	imageDescriptorManager.clearBinding();
+
+
+	imageDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT);
+	imageDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+	imageDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT);
+
+	// Material layout is lifetime is controlled my metalRoughMaterial
+	VkDescriptorSetLayout materialLayout = imageDescriptorManager.createSetLayout(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+	std::vector<VkDescriptorSetLayout> descriptorLayouts = { RenderScene::getGPUSceneDescriptorLayout(), materialLayout };
+
+	RenderScene::metalRoughMaterial.materialLayout = materialLayout;
+	PipelinePresents::metalRoughMatSettings.descriptorSetInfo.descriptorLayouts = descriptorLayouts;
+
+	Engine::getDeletionQueue().push_function([=]() {
 		imageDescriptorManager.destroyPools();
 
+		vkDestroyDescriptorSetLayout(Backend::getDevice(), cubeMappingDescriptors.descriptorLayouts.back(), nullptr);
+		vkDestroyDescriptorSetLayout(Backend::getDevice(), skyboxDescriptors.descriptorLayouts.back(), nullptr);
 		vkDestroyDescriptorSetLayout(Backend::getDevice(), postProcessImgDescriptors.descriptorLayouts.back(), nullptr);
 		vkDestroyDescriptorSetLayout(Backend::getDevice(), RenderScene::getGPUSceneDescriptorLayout(), nullptr);
-		});
+	});
 }
 
 void DescriptorManager::init(uint32_t maxSets, std::span<PoolSizeRatio> poolRatios) {

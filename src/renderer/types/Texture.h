@@ -5,5 +5,6 @@
 
 namespace Textures {
 	std::optional<AllocatedImage> loadImage(fastgltf::Asset& asset, fastgltf::Image& image);
-	void generateMipmaps(VkCommandBuffer cmd, AllocatedImage image);
+	void generateMipmaps(VkCommandBuffer cmd, AllocatedImage& image);
+	VkSampler createSampler(VkFilter filter, VkSamplerAddressMode addressMode, float maxAniso);
 }

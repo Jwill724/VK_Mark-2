@@ -25,8 +25,6 @@ namespace Backend {
 
 	// api setup
 	// queues and devices
-	void initVulkan();
-
 	// allocates swapchains and any other resources
 	void initBackend();
 

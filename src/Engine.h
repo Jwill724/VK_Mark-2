@@ -2,7 +2,7 @@
 
 #include "common/Vk_Types.h"
 #include "vulkan/Window.h"
-#include "core/EngineStats.h"
+#include "core/EngineState.h"
 
 namespace Engine {
 	GLFWwindow* getWindow();

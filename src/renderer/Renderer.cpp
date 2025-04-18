@@ -6,7 +6,9 @@
 #include "imgui/EditorImgui.h"
 #include "vulkan/Backend.h"
 #include "RenderScene.h"
-#include "SceneGraph.h"
+#include "RenderGraph.h"
+
+uint32_t MSAACOUNT = 8u;
 
 namespace Renderer {
 	unsigned int _frameNumber{ 0 };
@@ -31,6 +33,9 @@ namespace Renderer {
 	AllocatedImage _postProcessImage;
 	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
 
+	AllocatedImage _skyboxImage;
+	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
+
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
 
 	VkImageView& getDrawImageView() { return _drawImage.imageView; }
@@ -41,13 +46,12 @@ namespace Renderer {
 	VmaAllocator& getRenderImageAllocator() { return _renderImageAllocator; }
 
 	void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
-	void drawBackground(VkCommandBuffer cmd);
+	void colorCorrectPass(VkCommandBuffer cmd);
 	void drawGeometry(VkCommandBuffer cmd);
 
+	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
-	uint32_t _currentSampleCount = 1u;
-	uint32_t getCurrentSampleCount() { return _currentSampleCount; }
 }
 
 void Renderer::setupRenderImages() {
@@ -61,7 +65,6 @@ void Renderer::setupRenderImages() {
 	// hardcoding the draw format to 32 bit float
 	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_drawImage.imageExtent = _drawExtent;
-	_drawImage.mipmapped = false;
 
 	VkImageUsageFlags drawImageUsages{};
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -73,12 +76,11 @@ void Renderer::setupRenderImages() {
 	// non sampled image
 	// primary draw image color target
 	RendererUtils::createRenderImage(_drawImage, drawImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
 
 	// post process image
 	_postProcessImage.imageFormat = _drawImage.imageFormat;
 	_postProcessImage.imageExtent = _drawExtent;
-	_postProcessImage.mipmapped = false;
 
 	VkImageUsageFlags postUsages{};
 	postUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
@@ -87,17 +89,12 @@ void Renderer::setupRenderImages() {
 
 	// compute draw image for post processing
 	RendererUtils::createRenderImage(_postProcessImage, postUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
 
-
-	// MSAA SETTING  8 is the max allowed
-	// TODO: set this up somewhere besides here
-	_currentSampleCount = 8u;
-	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(_currentSampleCount);
+	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(MSAACOUNT);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
 	_msaaImage.imageExtent = _drawExtent;
-	_msaaImage.mipmapped = false;
 
 	VkImageUsageFlags msaaImageUsages{};
 	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -105,19 +102,28 @@ void Renderer::setupRenderImages() {
 
 	// msaa color attachment to the draw image
 	RendererUtils::createRenderImage(_msaaImage, msaaImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &_renderImageDeletionQueue, _renderImageAllocator);
 
 
 	// DEPTH
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
 	_depthImage.imageExtent = _drawExtent;
-	_depthImage.mipmapped = false;
 
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
 	RendererUtils::createRenderImage(_depthImage, depthImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &Renderer::getRenderImageDeletionQueue(), Renderer::getRenderImageAllocator());
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &_renderImageDeletionQueue, _renderImageAllocator);
+
+
+	// SKYBOX
+	VkExtent3D skyboxCubeExtent = { 2048, 2048, 1 };
+	_skyboxImage.imageExtent = skyboxCubeExtent;
+	_skyboxImage.imageFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+	_skyboxImage.isCubeMap = true;
+
+	RendererUtils::createRenderImage(_skyboxImage, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
 }
 
 void Renderer::init() {
@@ -172,10 +178,12 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 	// Transition to color/depth attachment layouts
 	RendererUtils::transitionImage(cmd, _drawImage.image, _drawImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-	if (_currentSampleCount != 1u) {
+	if (MSAACOUNT != 1u) {
 		RendererUtils::transitionImage(cmd, _msaaImage.image, _msaaImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 	RendererUtils::transitionImage(cmd, _depthImage.image, _depthImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+	RendererUtils::transitionImage(cmd, _skyboxImage.image, _skyboxImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	// Render scene
 	drawGeometry(cmd);
@@ -197,7 +205,7 @@ void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
 	RendererUtils::transitionImage(cmd, _postProcessImage.image, _postProcessImage.imageFormat, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
 
 	// Run compute shader on post-process image
-	drawBackground(cmd);
+	colorCorrectPass(cmd);
 
 	// Transition post-process image to SRC for copy to swapchain
 	RendererUtils::transitionImage(cmd, _postProcessImage.image, _postProcessImage.imageFormat, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -231,11 +239,11 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 	VkRenderingAttachmentInfo colorAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
-		.imageView = (_currentSampleCount == 1u) ? _drawImage.imageView : _msaaImage.imageView,
+		.imageView = (MSAACOUNT == 1u) ? _drawImage.imageView : _msaaImage.imageView,
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.resolveMode = (_currentSampleCount == 1u) ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
-		.resolveImageView = (_currentSampleCount == 1u) ? VK_NULL_HANDLE : _drawImage.imageView,
-		.resolveImageLayout = (_currentSampleCount == 1u) ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.resolveMode = (MSAACOUNT == 1u) ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
+		.resolveImageView = (MSAACOUNT == 1u) ? VK_NULL_HANDLE : _drawImage.imageView,
+		.resolveImageLayout = (MSAACOUNT == 1u) ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
 	};
@@ -274,21 +282,21 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 }
 
 // requires push constants to render
-void Renderer::drawBackground(VkCommandBuffer cmd) {
+void Renderer::colorCorrectPass(VkCommandBuffer cmd) {
 	// The current shader
-	PipelineEffect& effect = Pipelines::postProcessPipeline.getBackgroundEffects();
+	auto& effect = Pipelines::postProcessPipeline.getComputeEffect();
 
-	VkPipelineLayout& drawImgPipelineLayout = Pipelines::postProcessPipeline.getComputePipelineLayout();
+	auto& layout = Pipelines::postProcessPipeline._computePipelineLayout;
 
-	PushConstantDef& pipelinePCData = Pipelines::postProcessPipeline._pushConstantInfo;
+	auto& pcData = PipelinePresents::colorCorrectionPipelineSettings.pushConstantsInfo;
 
 	// bind the background compute pipeline
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
 
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, drawImgPipelineLayout,
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout,
 		0, 1, &DescriptorSetOverwatch::getPostProcessDescriptors().descriptorSet, 0, nullptr);
 
-	vkCmdPushConstants(cmd, drawImgPipelineLayout, pipelinePCData.stageFlags, pipelinePCData.offset , pipelinePCData.size, &effect.data);
+	vkCmdPushConstants(cmd, layout, pcData.stageFlags, pcData.offset, pcData.size, &effect.data);
 
 	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
 	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.f)), static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.f)), 1);

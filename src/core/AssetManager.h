@@ -3,7 +3,7 @@
 #include "common/Vk_Types.h"
 #include <unordered_map>
 #include <filesystem>
-#include "renderer/SceneGraph.h"
+#include "renderer/RenderGraph.h"
 
 struct LoadedGLTF : public IRenderable {
 	// storage for all the data on a given glTF file
@@ -14,6 +14,8 @@ struct LoadedGLTF : public IRenderable {
 
 	// nodes that dont have a parent, for iterating through the file in tree order
 	std::vector<std::shared_ptr<Node>> topNodes;
+
+	std::filesystem::path basePath;
 
 	std::vector<VkSampler> samplers;
 
@@ -34,6 +36,8 @@ namespace AssetManager {
 
 	VkSampler getDefaultSamplerLinear();
 	VkSampler getDefaultSamplerNearest();
+
+	std::filesystem::path& getBasePath();
 
 	void loadAssets();
 	std::vector<std::shared_ptr<MeshAsset>>& getTestMeshes();

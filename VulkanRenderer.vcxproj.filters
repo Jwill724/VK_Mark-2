@@ -109,7 +109,7 @@
     <ClCompile Include="src\renderer\RenderScene.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\SceneGraph.cpp">
+    <ClCompile Include="src\renderer\RenderGraph.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\input\Camera.cpp">
@@ -121,11 +121,14 @@
     <ClCompile Include="vendor\fastgltf\io.cpp" />
     <ClCompile Include="vendor\simdjson\simdjson.cpp" />
     <ClCompile Include="vendor\fmt\format.cc" />
+    <ClCompile Include="src\core\EngineState.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\types\LightCube.cpp">
+      <Filter>src\renderer\types</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\input\UserInput.h">
-      <Filter>src\input</Filter>
-    </ClInclude>
     <ClInclude Include="src\input\Camera.h">
       <Filter>src\input</Filter>
     </ClInclude>
@@ -195,14 +198,20 @@
     <ClInclude Include="src\renderer\RenderScene.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\SceneGraph.h">
+    <ClInclude Include="src\renderer\RenderGraph.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\input\Camera.h">
       <Filter>src\input</Filter>
     </ClInclude>
-    <ClInclude Include="src\core\EngineStats.h">
+    <ClInclude Include="src\core\EngineState.h">
       <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\types\LightCube.h">
+      <Filter>src\renderer\types</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\UserInput.h">
+      <Filter>src\renderer</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -218,10 +227,22 @@
     <None Include="res\shaders\mesh_frag.frag">
       <Filter>res\shaders</Filter>
     </None>
-    <None Include="res\shaders\sky_comp.comp">
+    <None Include="res\shaders\hdr2cubemap_comp.comp">
       <Filter>res\shaders</Filter>
     </None>
-    <None Include="res\shaders\gradient_comp.comp">
+    <None Include="res\shaders\color_correction_comp.comp">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\aabb_frag.frag">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\aabb_vert.vert">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\skybox_frag.frag">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\skybox_vert.vert">
       <Filter>res\shaders</Filter>
     </None>
   </ItemGroup>
@@ -239,6 +260,12 @@
       <Filter>res\models</Filter>
     </None>
     <None Include="res\models\town4new.glb">
+      <Filter>res\models</Filter>
+    </None>
+    <None Include="res\models\cubeskybox.glb">
+      <Filter>res\models</Filter>
+    </None>
+    <None Include="res\models\terrain.glb">
       <Filter>res\models</Filter>
     </None>
   </ItemGroup>

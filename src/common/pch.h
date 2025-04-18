@@ -10,6 +10,7 @@
 #include <array>
 #include <functional>
 #include <deque>
+#include <cmath>
 #include "fmt/core.h"
 
 #include <vulkan/vulkan.h>

@@ -4,19 +4,47 @@
 #include "Pipeline.h"
 
 namespace Pipelines {
+	inline GraphicsPipeline opaquePipeline;
+	inline GraphicsPipeline transparentPipeline;
+	inline GraphicsPipeline wireframePipeline;
+	inline GraphicsPipeline boundingBoxPipeline;
+	inline GraphicsPipeline skyboxPipeline;
+
 	inline ComputePipeline postProcessPipeline;
-	inline PipelineConfigPresent metalRoughMatConfigs;
+	inline ComputePipeline hdr2cubemapPipeline;
 }
 
+namespace PipelinePresents {
+	inline PipelinePresent metalRoughMatSettings;
+	inline PipelinePresent opaqueSettings;
+	inline PipelinePresent transparentSettings;
+	inline PipelinePresent wireframeSettings;
+	inline PipelinePresent boundingBoxSettings;
+	inline PipelinePresent skyboxPipelineSettings;
+
+
+	// === Compute pipeline setings ===
+	// The primary use is for the push constant, descriptors, and shaderstages
+	inline PipelinePresent colorCorrectionPipelineSettings;
+	inline PipelinePresent hdr2cubemapPipelineSettings;
+}
+
+enum class PipelineType {
+	Opaque,
+	Transparent,
+	Wireframe,
+	BoundingBoxes
+};
+
 namespace PipelineManager {
-	VkPipelineLayout setupPipelineLayout(PipelineConfigPresent& pipelineInfo);
+	VkPipelineLayout setupPipelineLayout(PipelinePresent& pipelineInfo);
 	VkPipelineShaderStageCreateInfo setShader(const char* shaderFile, VkShaderStageFlagBits stage, DeletionQueue& shaderDeleteQueue);
 
 	// only function needed outside of pipeline system
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	void createPipelineLayout(VkPipelineLayout& pipelineLayout, DescriptorsCentral& descriptors, const PushConstantDef* pushConstants);
 
-	void setupPipelineConfig(PipelineBuilder& pipeline, PipelineConfigPresent& settings);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings);
 	void setupShaders(std::vector<VkPipelineShaderStageCreateInfo>& shaderStages, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue);
 
 	// backend calls this
