@@ -10,8 +10,10 @@ struct Camera {
 	// horizontal rotation
 	float yaw{ 0.f };
 
+	glm::vec3 currentView;
+
 	glm::mat4 getViewMatrix();
-	glm::mat4 getRotationMatrix();
+	glm::mat4 getRotationMatrix() const;
 
 	void processInput(GLFWwindow* window, float dt);
 

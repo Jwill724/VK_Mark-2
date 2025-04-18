@@ -7,7 +7,7 @@
 #include "vulkan/Backend.h"
 
 std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgltf::Image& image) {
-	AllocatedImage newImage{};
+	AllocatedImage newImage;
 
 	int width, height, nrChannels;
 
@@ -20,9 +20,10 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 			assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
 			assert(filePath.uri.isLocalPath());   // We're only capable of loading local files.
 
-			const std::string path(filePath.uri.path().begin(), filePath.uri.path().end()); // Thanks C++.
+			std::filesystem::path relativePath(filePath.uri.path().begin(), filePath.uri.path().end());
+			std::filesystem::path fullPath = AssetManager::getBasePath() / relativePath;
 
-			unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
+			unsigned char* data = stbi_load(fullPath.string().c_str(), &width, &height, &nrChannels, 4);
 
 			if (data) {
 				VkExtent3D imagesize;
@@ -44,10 +45,12 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 					AssetManager::getAssetAllocation()
 				);
 
+				//fmt::print("Image source is {}\n", image.data.index());
+
 				stbi_image_free(data);
 			}
 			else {
-				fmt::print("stbi_load failed for file: {}\n", path);
+				fmt::print("stbi_load failed for file: {}\n", fullPath.string());
 			}
 		},
 
@@ -78,6 +81,8 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 					AssetManager::getAssetAllocation()
 				);
 
+				//fmt::print("Image source is {}\n", image.data.index());
+
 				stbi_image_free(data);
 			}
 			else {
@@ -90,9 +95,6 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 			auto& buffer = asset.buffers[bufferView.bufferIndex];
 
 			std::visit(fastgltf::visitor{
-				[](auto& arg) {
-					fmt::print("fastgltf::visitor fallback in BufferView: unsupported buffer source {}\n", typeid(arg).name());
-				},
 
 				[&](fastgltf::sources::Array& array) {
 					unsigned char* data = stbi_load_from_memory(
@@ -102,11 +104,7 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 					);
 
 					if (data) {
-						VkExtent3D imagesize;
-						imagesize.width = width;
-						imagesize.height = height;
-						imagesize.depth = 1;
-
+						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
 						newImage.imageExtent = imagesize;
 						newImage.mipmapped = true;
 						newImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
@@ -124,8 +122,58 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 						stbi_image_free(data);
 					}
 					else {
-						fmt::print("stbi_load_from_memory failed (BufferView->Array)\n");
+						 fmt::print("stbi_load_from_memory failed (BufferView->Array)\n");
 					}
+				},
+
+
+				[&](fastgltf::sources::URI& uri) {
+					assert(uri.uri.isLocalPath());
+					std::filesystem::path bufferPath = AssetManager::getBasePath() / std::string(uri.uri.path());
+					std::ifstream file(bufferPath, std::ios::binary);
+
+					if (!file) {
+						fmt::print("Failed to open external buffer file: {}\n", bufferPath.string());
+						return;
+					}
+
+					file.seekg(0, std::ios::end);
+					size_t size = file.tellg();
+					file.seekg(0, std::ios::beg);
+
+					std::vector<uint8_t> dataBuf(size);
+					file.read(reinterpret_cast<char*>(dataBuf.data()), size);
+
+					unsigned char* data = stbi_load_from_memory(
+						dataBuf.data() + bufferView.byteOffset,
+						static_cast<int>(bufferView.byteLength),
+						&width, &height, &nrChannels, 4
+					);
+
+					if (data) {
+						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
+						newImage.imageExtent = imagesize;
+						newImage.mipmapped = true;
+						newImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+
+						RendererUtils::createTextureImage(
+							data,
+							newImage,
+							VK_IMAGE_USAGE_SAMPLED_BIT,
+							VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+							VK_SAMPLE_COUNT_1_BIT,
+							nullptr,
+							AssetManager::getAssetAllocation()
+						);
+
+						stbi_image_free(data);
+					}
+					else {
+						fmt::print("stbi_load_from_memory failed for external buffer file: {}\n", bufferPath.string());
+					}
+				},
+				[](auto& arg) {
+					fmt::print("Unsupported buffer source inside BufferView: {}\n", typeid(arg).name());
 				}
 			}, buffer.data);
 		}
@@ -140,88 +188,118 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 	}
 }
 
-void Textures::generateMipmaps(VkCommandBuffer cmd, AllocatedImage image) {
-	VkExtent2D imageSize = { image.imageExtent.width, image.imageExtent.height };
+void Textures::generateMipmaps(VkCommandBuffer cmd, AllocatedImage& image) {
+	uint32_t mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(image.imageExtent.width, image.imageExtent.height)))) + 1;
+	VkImage img = image.image;
 
-	// Check if image format supports linear blitting
-	VkFormatProperties formatProperties;
-	vkGetPhysicalDeviceFormatProperties(Backend::getPhysicalDevice(), image.imageFormat, &formatProperties);
-	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
-		throw std::runtime_error("Texture image format does not support linear blitting!");
+	VkImageMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.image = img;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+	barrier.subresourceRange.levelCount = 1;
+
+	int32_t mipWidth = static_cast<int32_t>(image.imageExtent.width);
+	int32_t mipHeight = static_cast<int32_t>(image.imageExtent.height);
+
+	for (uint32_t i = 1; i < mipLevels; i++) {
+		// Transition mip i - 1 to SRC
+		barrier.subresourceRange.baseMipLevel = i - 1;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		VkImageBlit blit{};
+		blit.srcOffsets[0] = { 0, 0, 0 };
+		blit.srcOffsets[1] = { mipWidth, mipHeight, 1 };
+		blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.mipLevel = i - 1;
+		blit.srcSubresource.baseArrayLayer = 0;
+		blit.srcSubresource.layerCount = 1;
+
+		blit.dstOffsets[0] = { 0, 0, 0 };
+		blit.dstOffsets[1] = { std::max(mipWidth / 2, 1), std::max(mipHeight / 2, 1), 1 };
+		blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.dstSubresource.mipLevel = i;
+		blit.dstSubresource.baseArrayLayer = 0;
+		blit.dstSubresource.layerCount = 1;
+
+		vkCmdBlitImage(
+			cmd,
+			img, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &blit,
+			VK_FILTER_LINEAR
+		);
+
+		// Transition mip i - 1 to SHADER_READ_ONLY
+		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		mipWidth = std::max(mipWidth / 2, 1);
+		mipHeight = std::max(mipHeight / 2, 1);
 	}
 
-	int mipLevels = int(std::floor(std::log2(std::max(imageSize.width, imageSize.height)))) + 1;
-	for (int mip = 0; mip < mipLevels; mip++) {
+	// Transition last mip level to SHADER_READ_ONLY
+	barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-		VkExtent2D halfSize = imageSize;
-		halfSize.width /= 2;
-		halfSize.height /= 2;
+	vkCmdPipelineBarrier(
+		cmd,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrier
+	);
+}
 
-		halfSize.width = std::max(1u, halfSize.width);
-		halfSize.height = std::max(1u, halfSize.height);
+VkSampler Textures::createSampler(VkFilter filter, VkSamplerAddressMode addressMode, float maxAniso) {
+	VkSamplerCreateInfo samplerInfo = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.magFilter = filter;
+	samplerInfo.minFilter = filter;
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerInfo.addressModeU = addressMode;
+	samplerInfo.addressModeV = addressMode;
+	samplerInfo.addressModeW = addressMode;
+	samplerInfo.mipLodBias = 0.f;
+	samplerInfo.anisotropyEnable = VK_TRUE;
+	samplerInfo.maxAnisotropy = maxAniso;
+	samplerInfo.compareEnable = VK_FALSE;
+	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerInfo.minLod = 0.f;
+	samplerInfo.maxLod = FLT_MAX;
+	samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+	samplerInfo.unnormalizedCoordinates = VK_FALSE;
 
-		VkImageMemoryBarrier2 imageBarrier{ .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2, .pNext = nullptr };
-
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT;
-
-		imageBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		imageBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-
-		VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		imageBarrier.subresourceRange = VulkanUtils::imageSubresourceRange(aspectMask);
-		imageBarrier.subresourceRange.levelCount = 1;
-		imageBarrier.subresourceRange.baseMipLevel = mip;
-		imageBarrier.image = image.image;
-
-		VkDependencyInfo depInfo{ .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .pNext = nullptr };
-		depInfo.imageMemoryBarrierCount = 1;
-		depInfo.pImageMemoryBarriers = &imageBarrier;
-
-		vkCmdPipelineBarrier2(cmd, &depInfo);
-
-		if (mip < mipLevels - 1) {
-			VkImageBlit2 blitRegion{ .sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2, .pNext = nullptr };
-
-			blitRegion.srcOffsets[1].x = imageSize.width;
-			blitRegion.srcOffsets[1].y = imageSize.height;
-			blitRegion.srcOffsets[1].z = 1;
-
-			blitRegion.dstOffsets[1].x = halfSize.width;
-			blitRegion.dstOffsets[1].y = halfSize.height;
-			blitRegion.dstOffsets[1].z = 1;
-
-			blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			blitRegion.srcSubresource.baseArrayLayer = 0;
-			blitRegion.srcSubresource.layerCount = 1;
-			blitRegion.srcSubresource.mipLevel = mip;
-
-			blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			blitRegion.dstSubresource.baseArrayLayer = 0;
-			blitRegion.dstSubresource.layerCount = 1;
-			blitRegion.dstSubresource.mipLevel = mip + 1;
-
-			VkBlitImageInfo2 blitInfo{ .sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr };
-			blitInfo.dstImage = image.image;
-			blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-			blitInfo.srcImage = image.image;
-			blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-			blitInfo.filter = VK_FILTER_LINEAR;
-			blitInfo.regionCount = 1;
-			blitInfo.pRegions = &blitRegion;
-
-			vkCmdBlitImage2(cmd, &blitInfo);
-
-			imageSize = halfSize;
-		}
-
-		if (halfSize.width == 0 || halfSize.height == 0) {
-			break;
-		}
-	}
-
-	// transition all mip levels into the final read_only layout
-	RendererUtils::transitionImage(cmd, image.image, image.imageFormat, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	VkSampler sampler;
+	VK_CHECK(vkCreateSampler(Backend::getDevice(), &samplerInfo, nullptr, &sampler));
+	return sampler;
 }

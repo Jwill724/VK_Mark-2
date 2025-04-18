@@ -6,6 +6,7 @@
 #include "vulkan/PipelineManager.h"
 #include "renderer/Renderer.h"
 #include "input/UserInput.h"
+#include "renderer/RenderScene.h"
 
 void EditorImgui::initImgui() {
 	//  the size of the pool is very oversize, but it's copied from imgui demo
@@ -17,13 +18,13 @@ void EditorImgui::initImgui() {
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
 		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-		//{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-		//{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 } };
-		//{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-		//{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-		//{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
 
 	VkDescriptorPoolCreateInfo pool_info = {};
 	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -87,7 +88,7 @@ void EditorImgui::renderImgui() {
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.f, 0.f));
 //	ImGui::SetNextWindowBgAlpha(1.f);
 	ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
-
+	ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::mainCamera.position.x, RenderScene::mainCamera.position.y, RenderScene::mainCamera.position.z);
 	ImGui::Text("FPS: %.1f", 1000.f / stats.frametime);
 	ImGui::Text("frame time %f ms", stats.frametime);
 	ImGui::Text("draw time %f ms", stats.meshDrawTime);
@@ -97,23 +98,40 @@ void EditorImgui::renderImgui() {
 
 	ImGui::End();
 
-	if (ImGui::Begin("Background")) {
+	// -- DEBUG TOOLS WINDOW --
+	ImGui::Begin("Debug");
 
+	// Pipeline override section
+	if (ImGui::CollapsingHeader("Pipeline Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::Checkbox("Pipeline Override", &pipelineOverride.enabled);
+
+		static int selected = static_cast<int>(pipelineOverride.selected);
+		const char* names[] = { "Opaque", "Transparent", "Wireframe" };
+
+		if (ImGui::Combo("Force Pipeline", &selected, names, IM_ARRAYSIZE(names))) {
+			pipelineOverride.selected = static_cast<PipelineType>(selected);
+		}
+
+		if (ImGui::TreeNode("Debug Draw")) {
+			ImGui::Checkbox("Draw AABB", &RenderSceneSettings::drawBoundingBoxes);
+			ImGui::TreePop();
+		}
+	}
+
+	// Background controls section (Compute shader/post process effects)
+	if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::SliderFloat("Render Scale", &Renderer::getRenderScale(), 0.3f, 1.f);
 
-		PipelineEffect& selected = Pipelines::postProcessPipeline.getBackgroundEffects();
+		ComputeEffect& selected = Pipelines::postProcessPipeline.getComputeEffect();
 
-		ImGui::Text("Selected effect: ", selected.name);
+		ImGui::Text("Color Correction");
 
-		ImGui::SliderInt("Effect Index", &Pipelines::postProcessPipeline.getCurrentBackgroundEffect(), 0, static_cast<int>(Pipelines::postProcessPipeline.backgroundEffects.size()) - 1);
-
-		ImGui::InputFloat4("data1", (float*)&selected.data.data1);
-		ImGui::InputFloat4("data2", (float*)&selected.data.data2);
-		ImGui::InputFloat4("data3", (float*)&selected.data.data3);
-		ImGui::InputFloat4("data4", (float*)&selected.data.data4);
+		ImGui::SliderFloat("Brightness", &selected.data.data1.x, 0.0f, 2.0f);
+		ImGui::SliderFloat("Saturation", &selected.data.data1.y, 0.0f, 2.0f);
+		ImGui::SliderFloat("Contrast", &selected.data.data1.z, 0.0f, 2.0f);
 	}
-	ImGui::End();
 
+	ImGui::End();
 	ImGui::Render();
 }
 

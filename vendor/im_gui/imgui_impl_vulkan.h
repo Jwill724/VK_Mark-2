@@ -132,7 +132,7 @@ IMGUI_IMPL_API bool             ImGui_ImplVulkan_LoadFunctions(uint32_t api_vers
 struct ImGui_ImplVulkan_RenderState
 {
     VkCommandBuffer     CommandBuffer;
-    VkPipeline          Pipeline;
+    VkPipeline          Pipelines;
     VkPipelineLayout    PipelineLayout;
 };
 
@@ -200,7 +200,7 @@ struct ImGui_ImplVulkanH_Window
     VkSurfaceFormatKHR  SurfaceFormat;
     VkPresentModeKHR    PresentMode;
     VkRenderPass        RenderPass;
-    VkPipeline          Pipeline;               // The window pipeline may uses a different VkRenderPass than the one passed in ImGui_ImplVulkan_InitInfo
+    VkPipeline          Pipelines;               // The window pipeline may uses a different VkRenderPass than the one passed in ImGui_ImplVulkan_InitInfo
     bool                UseDynamicRendering;
     bool                ClearEnable;
     VkClearValue        ClearValue;

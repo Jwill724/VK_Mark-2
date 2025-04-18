@@ -20,11 +20,9 @@ void PipelineBuilder::initializePipelineSTypes() {
 	_renderInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 }
 
-VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig) {
+VkPipeline PipelineBuilder::createPipeline(PipelinePresent pipelineSettings) {
 	VkDevice device = Backend::getDevice();
 
-	// make viewport state from our stored viewport and scissor.
-	// at the moment we wont support multiple viewports or scissors
 	VkPipelineViewportStateCreateInfo viewportState = {};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 	viewportState.pNext = nullptr;
@@ -44,11 +42,10 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 	VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 
 	VkGraphicsPipelineCreateInfo pipelineInfo = { .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	// connect the renderInfo to the pNext extension mechanism
 	pipelineInfo.pNext = &_renderInfo;
 
-	pipelineInfo.stageCount = static_cast<uint32_t>(pipelineConfig.shaderStages.size());
-	pipelineInfo.pStages = pipelineConfig.shaderStages.data();
+	pipelineInfo.stageCount = static_cast<uint32_t>(pipelineSettings.shaderStages.size());
+	pipelineInfo.pStages = pipelineSettings.shaderStages.data();
 	pipelineInfo.pVertexInputState = &_vertexInputInfo;
 	pipelineInfo.pInputAssemblyState = &_inputAssembly;
 	pipelineInfo.pViewportState = &viewportState;
@@ -66,8 +63,6 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 
 	pipelineInfo.pDynamicState = &dynamicInfo;
 
-	// its easy to error out on create graphics pipeline, so we handle it a bit
-	// better than the common VK_CHECK case
 	VkPipeline pipeline;
 	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create pipeline!");
@@ -76,68 +71,27 @@ VkPipeline PipelineBuilder::createPipeline(PipelineConfigPresent pipelineConfig)
 	return pipeline;
 }
 
-// TODO: modularize the compute pipeline more, need to break the functionality inside into discrete parts.... maybe
-void ComputePipeline::createComputePipeline(DeletionQueue& deletionQueue) {
+// Shader stages will determine how many effects are made per pipeline
+std::vector<ComputeEffect> ComputePipelineBuilder::build(ComputePipeline& pipeline, PipelinePresent& settings) {
 	VkDevice device = Backend::getDevice();
 
-	VkShaderModule gradientCompShader;
-	if (!VulkanUtils::loadShaderModule("res/shaders/gradient_comp.spv", device, &gradientCompShader)) {
-		throw std::runtime_error("Failed to build gradient compute shader!");
+	std::vector<ComputeEffect> outEffects;
+	for (size_t i = 0; i < settings.shaderStagesInfo.size(); i++) {
+		VkComputePipelineCreateInfo computePipelineCreateInfo = {
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+			.pNext = nullptr,
+			.stage = settings.shaderStages[i],
+			.layout = pipeline._computePipelineLayout,
+		};
+
+		ComputeEffect effect{};
+		effect.name = settings.shaderStagesInfo[i].shaderName;
+		effect.data = settings.shaderStagesInfo[i].pushConstantData;
+		effect.pcInfo = settings.pushConstantsInfo;
+
+		VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &effect.pipeline));
+		outEffects.push_back(effect);
 	}
 
-	VkShaderModule skyCompShader;
-	if (!VulkanUtils::loadShaderModule("res/shaders/sky_comp.spv", device, &skyCompShader)) {
-		throw std::runtime_error("Failed to build sky compute shader shader!");
-	}
-
-	VkPipelineShaderStageCreateInfo stageInfo = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-		.pNext = nullptr,
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.module = gradientCompShader,
-		.pName = "main"
-	};
-
-	VkComputePipelineCreateInfo computePipelineCreateInfo = {
-		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-		.pNext = nullptr,
-		.stage = stageInfo,
-		.layout = _computePipelineLayout,
-	};
-
-	PipelineEffect gradient;
-	gradient.layout = _computePipelineLayout;
-	gradient.name = "gradient";
-	gradient.data = {};
-
-	//default colors
-	gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-	gradient.data.data2 = glm::vec4(0, 0, 1, 1);
-
-	VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &gradient.pipeline));
-
-	computePipelineCreateInfo.stage.module = skyCompShader;
-
-	PipelineEffect sky;
-	sky.layout = _computePipelineLayout;
-	sky.name = "sky";
-	sky.data = {};
-
-	//default sky parameters
-	sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
-
-	VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &sky.pipeline));
-
-	//add the 2 background effects into the array
-	backgroundEffects.push_back(gradient);
-	backgroundEffects.push_back(sky);
-
-	vkDestroyShaderModule(device, gradientCompShader, nullptr);
-	vkDestroyShaderModule(device, skyCompShader, nullptr);
-
-	deletionQueue.push_function([=] {
-		vkDestroyPipelineLayout(Backend::getDevice(), _computePipelineLayout, nullptr);
-		vkDestroyPipeline(Backend::getDevice(), sky.pipeline, nullptr);
-		vkDestroyPipeline(Backend::getDevice(), gradient.pipeline, nullptr);
-	});
+	return outEffects;
 }

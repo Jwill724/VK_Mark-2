@@ -167,9 +167,9 @@ namespace std
   };
 
   template <>
-  struct hash<VULKAN_HPP_NAMESPACE::Pipeline>
+  struct hash<VULKAN_HPP_NAMESPACE::Pipelines>
   {
-    std::size_t operator()( VULKAN_HPP_NAMESPACE::Pipeline const & pipeline ) const VULKAN_HPP_NOEXCEPT
+    std::size_t operator()( VULKAN_HPP_NAMESPACE::Pipelines const & pipeline ) const VULKAN_HPP_NOEXCEPT
     {
       return std::hash<VkPipeline>{}( static_cast<VkPipeline>( pipeline ) );
     }

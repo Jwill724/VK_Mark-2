@@ -2,6 +2,7 @@
 
 #include "Camera.h"
 #include "imgui/EditorImgui.h"
+#include "renderer/RenderScene.h"
 
 void Camera::update(GLFWwindow* window, float& lastTime) {
 	float currentTime = static_cast<float>(glfwGetTime());
@@ -14,9 +15,9 @@ void Camera::update(GLFWwindow* window, float& lastTime) {
 }
 
 void Camera::processInput(GLFWwindow* window, float dt) {
-	UserInput::updateLocalInput(window);
+	UserInput::updateLocalInput(window, true, true);
 
-	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 60.f : 30.f;
+	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 80.f : 20.f;
 	float speed = baseSpeed * dt;
 
 	// Mouse rotation, imgui can be properly used with free cam
@@ -36,19 +37,37 @@ void Camera::processInput(GLFWwindow* window, float dt) {
 		cos(radPitch) * sin(radYaw)
 	));
 
+	currentView = front;
+
 	glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.f, 1.f, 0.f)));
 	glm::vec3 up = glm::normalize(glm::cross(right, front));
 
-	velocity = glm::vec3(0.f);
-	if (UserInput::keyboard.isPressed(GLFW_KEY_W)) velocity += front;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_S)) velocity -= front;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_A)) velocity -= right;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_D)) velocity += right;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_SPACE)) velocity += up;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) velocity -= up;
+	// for world orientation relative to the camera movements
+	glm::vec3 upWorld(0.f, 1.f, 0.f);
+	glm::vec3 flatFoward = glm::normalize(glm::vec3(currentView.x, 0.f, currentView.z));
+	glm::vec3 rightFoward = glm::normalize(glm::vec3(right.x, 0.f, right.z));
 
-	if (glm::length(velocity) > 0.f)
+	float extraVertSpeed = 1000.f;
+
+	glm::vec3 horiz = glm::vec3(0.f);
+	if (UserInput::keyboard.isPressed(GLFW_KEY_W)) horiz += flatFoward;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_S)) horiz -= flatFoward;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_A)) horiz -= rightFoward;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_D)) horiz += rightFoward;
+
+	glm::vec3 vert = glm::vec3(0.f);
+	if (UserInput::keyboard.isPressed(GLFW_KEY_SPACE)) vert += up * upWorld * extraVertSpeed;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld * extraVertSpeed;
+
+	if (glm::length(horiz) > 0.f) horiz = glm::normalize(horiz);
+	velocity = (horiz * extraVertSpeed) + vert;
+
+	if (glm::length(velocity) > 0.f) {
 		velocity = glm::normalize(velocity) * speed;
+	}
+	else {
+		velocity = glm::vec3(0.f);
+	}
 
 	if (UserInput::keyboard.isPressed(GLFW_KEY_R)) {
 		reset();
@@ -56,16 +75,10 @@ void Camera::processInput(GLFWwindow* window, float dt) {
 }
 
 glm::mat4 Camera::getViewMatrix() {
-	glm::vec3 front;
-	front.x = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
-	front.y = sin(glm::radians(pitch));
-	front.z = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
-	front = glm::normalize(front);
-
-	return glm::lookAt(position, position + front, glm::vec3(0.f, 1.f, 0.f));
+	return glm::lookAt(position, position + currentView, glm::vec3(0.f, 1.f, 0.f));
 }
 
-glm::mat4 Camera::getRotationMatrix() {
+glm::mat4 Camera::getRotationMatrix() const {
 	glm::quat pitchRotation = glm::angleAxis(glm::radians(pitch), glm::vec3{ 1.f, 0.f, 0.f });
 	glm::quat yawRotation = glm::angleAxis(glm::radians(yaw), glm::vec3{ 0.f, 1.f, 0.f });
 
@@ -74,7 +87,7 @@ glm::mat4 Camera::getRotationMatrix() {
 }
 
 void Camera::reset() {
-	position = glm::vec3(30.f, -00.f, -085.f);
+	position = SPAWNPOINT;
 	pitch = 0.f;
 	yaw = -90.f;
 }

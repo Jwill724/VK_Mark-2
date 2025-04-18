@@ -21,26 +21,20 @@ struct PipelineBuilder {
 
 	void initializePipelineSTypes();
 
-	VkPipeline createPipeline(PipelineConfigPresent pipelineConfig);
+	VkPipeline createPipeline(PipelinePresent pipelineSettings);
 };
 
 struct ComputePipeline {
-	VkPipeline getComputePipeline() { return _computePipeline; }
-	VkPipelineLayout& getComputePipelineLayout() { return _computePipelineLayout; }
+	ComputeEffect& getComputeEffect() { return compEffects[currEffect]; }
+	int& getCurrentComputeEffect() { return currEffect; }
 
-	PipelineEffect& getBackgroundEffects() { return backgroundEffects[currentBackgroundEffect]; }
-	int& getCurrentBackgroundEffect() { return currentBackgroundEffect; }
-
-	VkPipeline _computePipeline = VK_NULL_HANDLE;
 	VkPipelineLayout _computePipelineLayout = VK_NULL_HANDLE;
 
 	// compute shader stuff
-	std::vector<PipelineEffect> backgroundEffects;
-	int currentBackgroundEffect{ 0 };
+	std::vector<ComputeEffect> compEffects;
+	int currEffect{ 0 };
+};
 
-	// The pipelines available push constants
-	PushConstantDef _pushConstantInfo{};
-
-	// DescriptorSetOverwatch holds the descriptor information for our pipeline
-	void createComputePipeline(DeletionQueue& deletionQueue);
+struct ComputePipelineBuilder {
+	std::vector<ComputeEffect> build(ComputePipeline& pipeline, PipelinePresent& settings);
 };

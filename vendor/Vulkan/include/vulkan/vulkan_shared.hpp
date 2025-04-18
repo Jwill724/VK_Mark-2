@@ -597,14 +597,14 @@ namespace VULKAN_HPP_NAMESPACE
   using SharedPipelineCache = SharedHandle<PipelineCache>;
 
   template <>
-  class SharedHandleTraits<Pipeline>
+  class SharedHandleTraits<Pipelines>
   {
   public:
     using DestructorType = Device;
-    using deleter        = ObjectDestroyShared<Pipeline>;
+    using deleter        = ObjectDestroyShared<Pipelines>;
   };
 
-  using SharedPipeline = SharedHandle<Pipeline>;
+  using SharedPipeline = SharedHandle<Pipelines>;
 
   template <>
   class SharedHandleTraits<PipelineLayout>

@@ -9,6 +9,7 @@
 #include <functional>
 #include <deque>
 #include <optional>
+#include <unordered_set>
 #include <span>
 #include <string>
 #include <vector>
@@ -20,7 +21,9 @@ struct AllocatedImage {
 	VkFormat imageFormat;
 	VmaAllocation allocation;
 	VkExtent3D imageExtent;
-	bool mipmapped;
+	VkImageView storageView; // Only use for skybox array
+	bool mipmapped = false;
+	bool isCubeMap = false;
 };
 
 // Device getters are required for this to work
@@ -63,11 +66,10 @@ struct PushConstantBlock {
 };
 
 // Final rendering data for recording
-struct PipelineEffect {
+struct ComputeEffect {
 	const char* name;
 
 	VkPipeline pipeline;
-	VkPipelineLayout layout;
 
 	// Push constant data
 	PushConstantBlock data;
@@ -83,8 +85,11 @@ struct DescriptorInfo {
 };
 
 struct ShaderStageInfo {
+	const char* shaderName; // optional: main use for compute shaders
 	const char* filePath;
 	VkShaderStageFlagBits stage;
+
+	PushConstantBlock pushConstantData;
 };
 
 // Immediate command submit
@@ -130,21 +135,23 @@ struct GPUSceneData{
 	glm::vec4 ambientColor;
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
-};
-
-struct MaterialPipeline {
-	VkPipeline pipeline;
-	VkPipelineLayout pipelineLayout;
+	glm::vec4 cameraPosition;
 };
 
 enum class MaterialPass : uint8_t {
 	MainColor,
 	Transparent,
+	SkyBox,
 	Other
 };
 
+struct GraphicsPipeline {
+	VkPipeline pipeline;
+	VkPipelineLayout layout;
+};
+
 struct MaterialInstance {
-	MaterialPipeline* pipeline;
+	GraphicsPipeline* pipeline;
 	VkDescriptorSet materialSet;
 	MaterialPass passType;
 };
@@ -161,17 +168,24 @@ struct GPUGLTFMaterial {
 
 static_assert(sizeof(GPUGLTFMaterial) == 256);
 
-struct Bounds {
+struct Frustum {
+	glm::vec4 planes[6]; // Plane equation: ax + by + cz + d = 0
+	glm::vec3 points[8];
+};
+
+struct AABB {
+	glm::vec3 vmin; // origin: 0.5f * (vmin + vmax)
+	glm::vec3 vmax; // extent: 0.5f * (vmax - vmin)
 	glm::vec3 origin;
+	glm::vec3 extent;
 	float sphereRadius;
-	glm::vec3 extents;
 };
 
 // asset characteristics
 struct GeoSurface {
 	uint32_t startIndex;
 	uint32_t count;
-	Bounds bounds;
+	AABB aabb;
 	std::shared_ptr<GLTFMaterial> material;
 };
 
@@ -181,7 +195,6 @@ struct MeshAsset {
 	std::vector<GeoSurface> surfaces;
 	GPUMeshBuffers meshBuffers;
 };
-
 
 // always initialize the DescriptorInfo since it holds stage and binding info
 struct DescriptorsCentral {
@@ -193,17 +206,20 @@ struct DescriptorsCentral {
 };
 
 // Pipeline
-struct PipelineConfigPresent {
-
+struct PipelinePresent {
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
 	bool enableBlending = false;
 	bool enableDepthTest = true;
-	bool enableBackfaceCulling = true;
+	bool enableDepthWrite = true;
 
 	VkPolygonMode polygonMode;
 	VkPrimitiveTopology topology;
 	VkCompareOp depthCompareOp;
+	VkCullModeFlagBits cullMode;
+	VkFrontFace frontFace;
+
+	std::vector<ShaderStageInfo> shaderStagesInfo;
 
 	PushConstantDef pushConstantsInfo;
 	DescriptorsCentral descriptorSetInfo;
@@ -247,4 +263,9 @@ struct Node : public IRenderable {
 			c->Draw(topMatrix, ctx);
 		}
 	}
+};
+
+// Checking if the vector is out of range for aabb vertices
+inline auto isFiniteVec3 = [](const glm::vec3& v) {
+	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
 };

@@ -33,7 +33,24 @@ VkFence RendererUtils::createFence() {
 void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
 	VkMemoryPropertyFlags properties, VkSampleCountFlagBits samples, DeletionQueue* deletionQueue, VmaAllocator allocator) {
 
-	size_t dataSize = renderImage.imageExtent.depth * renderImage.imageExtent.width * renderImage.imageExtent.height * 4;
+	// bytes-per-channel (float) * channels-per-pixel * layers
+	size_t layerCount = renderImage.isCubeMap ? renderImage.imageExtent.depth : 1;
+
+	size_t pixelBytes = 0;
+
+	switch (renderImage.imageFormat) {
+	case VK_FORMAT_R8G8B8A8_UNORM:
+		pixelBytes = sizeof(uint8_t) * 4; // 4 bytes
+		break;
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+		pixelBytes = sizeof(float) * 4; // 16 bytes
+		break;
+	default:
+		throw std::runtime_error("Unsupported texture format in createTextureImage");
+	}
+
+	size_t dataSize = static_cast<unsigned long long>(renderImage.imageExtent.width) * renderImage.imageExtent.height * pixelBytes * layerCount;
+
 	AllocatedBuffer uploadbuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 
 	memcpy(uploadbuffer.info.pMappedData, data, dataSize);
@@ -53,7 +70,7 @@ void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, 
 		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		copyRegion.imageSubresource.mipLevel = 0;
 		copyRegion.imageSubresource.baseArrayLayer = 0;
-		copyRegion.imageSubresource.layerCount = 1;
+		copyRegion.imageSubresource.layerCount = static_cast<uint32_t>(layerCount);
 		copyRegion.imageExtent = renderImage.imageExtent;
 
 		// copy the buffer into the image
@@ -65,7 +82,8 @@ void RendererUtils::createTextureImage(void* data, AllocatedImage& renderImage, 
 		}
 		else {
 			RendererUtils::transitionImage(cmd, renderImage.image, renderImage.imageFormat,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				renderImage.isCubeMap ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
 	},
 	AssetManager::getGraphicsCmdSubmit(),
@@ -82,7 +100,6 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 	imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imgInfo.imageType = VK_IMAGE_TYPE_2D;
 	imgInfo.extent = renderImage.imageExtent;
-	imgInfo.arrayLayers = 1;
 	imgInfo.format = renderImage.imageFormat;
 	imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imgInfo.usage = usage;
@@ -97,6 +114,14 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		imgInfo.mipLevels = 1;
 	}
 
+	if (renderImage.isCubeMap) {
+		imgInfo.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+		imgInfo.arrayLayers = 6;
+	}
+	else {
+		imgInfo.arrayLayers = 1;
+	}
+
 	VmaAllocationCreateInfo imgAllocInfo = {};
 	imgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	imgAllocInfo.requiredFlags = properties;
@@ -105,27 +130,53 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	viewInfo.image = renderImage.image;
 	viewInfo.format = renderImage.imageFormat;
-	viewInfo.subresourceRange.aspectMask = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	}
+	else {
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	}
 	viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
-	viewInfo.subresourceRange.layerCount = 1;
 	viewInfo.subresourceRange.baseMipLevel = 0;
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 
-	VK_CHECK(vkCreateImageView(Backend::getDevice(), &viewInfo, nullptr, &renderImage.imageView));
+	if (renderImage.isCubeMap) {
+		// Cube view for sampling (used by fragment shader)
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+		viewInfo.subresourceRange.layerCount = 6;
+		VK_CHECK(vkCreateImageView(Backend::getDevice(), &viewInfo, nullptr, &renderImage.imageView));
+
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		// Cube view for writing (used by compute shader)
+		VK_CHECK(vkCreateImageView(Backend::getDevice(), &viewInfo, nullptr, &renderImage.storageView));
+	}
+	else {
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.subresourceRange.layerCount = 1;
+		VK_CHECK(vkCreateImageView(Backend::getDevice(), &viewInfo, nullptr, &renderImage.imageView));
+	}
 
 	// Textures image creation is used with this function and it has seperate cleanup
 	if (deletionQueue) {
 		auto* imageView = &renderImage.imageView;
 		auto* image = &renderImage.image;
+		auto* storageView = &renderImage.storageView;
 
 		deletionQueue->push_function([=]() {
-			vkDestroyImageView(Backend::getDevice(), renderImage.imageView, nullptr);
-			*imageView = VK_NULL_HANDLE;
-			vmaDestroyImage(allocator, renderImage.image, renderImage.allocation);
-			*image = VK_NULL_HANDLE;
+			if (*imageView != VK_NULL_HANDLE) {
+				vkDestroyImageView(Backend::getDevice(), *imageView, nullptr);
+				*imageView = VK_NULL_HANDLE;
+			}
+			if (storageView && *storageView != VK_NULL_HANDLE) {
+				vkDestroyImageView(Backend::getDevice(), *storageView, nullptr);
+				*storageView = VK_NULL_HANDLE;
+			}
+			if (*image != VK_NULL_HANDLE) {
+				vmaDestroyImage(allocator, *image, renderImage.allocation);
+				*image = VK_NULL_HANDLE;
+			}
 		});
 	}
 }

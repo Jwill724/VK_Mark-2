@@ -14,9 +14,14 @@ namespace UserInput {
 		glm::vec2 position;
 		glm::vec2 delta;
 		float scrollOffset;
+
 		bool leftPressed;
+		bool leftHideCursor;
+		bool leftJustClicked;
+
 		bool rightPressed;
-		bool justClicked;
+		bool rightHideCursor;
+		bool rightJustClicked;
 
 		// Used for setting up a [1, -1] for virtual mouse position
 		// Mouse will spin out if window extent isn't 1:1
@@ -30,7 +35,9 @@ namespace UserInput {
 
 		MouseState() :
 			position(0.f), delta(0.f), scrollOffset(0.f),
-			leftPressed(false), rightPressed(false), justClicked(false),
+			leftPressed(false), rightPressed(false),
+			leftHideCursor(false), rightHideCursor(false),
+			leftJustClicked(false), rightJustClicked(false),
 			normalized{ 0.f, 0.f }, mousePos{ 0.0, 0.0 } {}
 
 		void update(GLFWwindow* window);
@@ -47,5 +54,13 @@ namespace UserInput {
 	extern KeyboardState keyboard;
 
 	// in current scope of defined instance
-	void updateLocalInput(GLFWwindow* window);
+	void updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable);
+
+	void handleMouseCapture(
+		GLFWwindow* window,
+		VkExtent2D* extent,
+		bool& justClicked,
+		glm::vec2& position,
+		glm::vec2& delta
+	);
 }

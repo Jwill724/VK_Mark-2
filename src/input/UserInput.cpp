@@ -10,7 +10,6 @@ namespace UserInput {
 
 	static glm::vec2 lastPos;
 	static bool firstMouse = false;
-	static bool hideCursor = false;
 
 	void SetCursorPos(GLFWwindow* window, VkExtent2D windowExtent);
 	void NormalizeMousePos(GLFWwindow* window, VkExtent2D windowExtent);
@@ -44,43 +43,37 @@ void UserInput::MouseState::update(GLFWwindow* window) {
 	lastPos = position;
 
 	leftPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-
-	// free cam setup
-	if (leftPressed) {
-		// imgui can be properly used with free cam
-		if (!ImGui::GetIO().WantCaptureMouse) {
-			if (!hideCursor) {
-				glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
-				SetCursorPos(window, *windowExtent);
-				hideCursor = true;
-				justClicked = true;
-			}
-
-			SetCursorPos(window, *windowExtent); // always reset to center
-
-			NormalizeMousePos(window, Engine::getWindowExtent());
-			position = glm::vec2(mouse.normalized.x, mouse.normalized.y);
-
-			if (justClicked) {
-				lastPos = position;
-				justClicked = false; // now we allow delta on next frame
-				delta = glm::vec2(0.f); // prevent one-frame spike
-			}
-			else {
-				delta = position - lastPos;
-				lastPos = position;
-			}
-		}
-	}
-	else {
-		if (hideCursor) {
-			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-			hideCursor = false;
-		}
-	}
-
-	// does nothing for now
 	rightPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+
+	// --- Left click: free cam ---
+	if (leftPressed && !ImGui::GetIO().WantCaptureMouse) {
+		if (!leftHideCursor) {
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+			SetCursorPos(window, *windowExtent);
+			leftHideCursor = true;
+			leftJustClicked = true;
+		}
+		handleMouseCapture(window, windowExtent, leftJustClicked, position, delta);
+	}
+	else if (leftHideCursor) {
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		leftHideCursor = false;
+	}
+
+	// --- Right click: light cube or other feature ---
+	if (rightPressed && !ImGui::GetIO().WantCaptureMouse) {
+		if (!rightHideCursor) {
+			glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+			SetCursorPos(window, *windowExtent);
+			rightHideCursor = true;
+			rightJustClicked = true;
+		}
+		handleMouseCapture(window, windowExtent, rightJustClicked, position, delta);
+	}
+	else if (rightHideCursor) {
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		rightHideCursor = false;
+	}
 }
 
 void UserInput::KeyboardState::update(GLFWwindow* window) {
@@ -105,7 +98,28 @@ bool UserInput::KeyboardState::isPressed(int key) const {
 	return it != keys.end() && it->second;
 }
 
-void UserInput::updateLocalInput(GLFWwindow* window) {
-	mouse.update(window);
-	keyboard.update(window);
+void UserInput::updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable) {
+	if (mouseEnable) {
+		mouse.update(window);
+	}
+	if (keyboardEnable) {
+		keyboard.update(window);
+	}
+}
+
+// shits scuffed but it works
+void UserInput::handleMouseCapture(GLFWwindow* window, VkExtent2D* extent, bool& justClicked, glm::vec2& position, glm::vec2& delta) {
+	SetCursorPos(window, *extent);  // always reset to center
+	NormalizeMousePos(window, Engine::getWindowExtent());
+	position = glm::vec2(mouse.normalized.x, mouse.normalized.y);
+
+	if (justClicked) {
+		lastPos = position;
+		justClicked = false;  // now we allow delta on next frame
+		delta = glm::vec2(0.f);  // prevent one-frame spike
+	}
+	else {
+		delta = position - lastPos;
+		lastPos = position;
+	}
 }

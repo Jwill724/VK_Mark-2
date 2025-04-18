@@ -4547,7 +4547,7 @@ export namespace VULKAN_HPP_NAMESPACE
   using VULKAN_HPP_NAMESPACE::ImageView;
   using VULKAN_HPP_NAMESPACE::Instance;
   using VULKAN_HPP_NAMESPACE::PhysicalDevice;
-  using VULKAN_HPP_NAMESPACE::Pipeline;
+  using VULKAN_HPP_NAMESPACE::Pipelines;
   using VULKAN_HPP_NAMESPACE::PipelineCache;
   using VULKAN_HPP_NAMESPACE::PipelineLayout;
   using VULKAN_HPP_NAMESPACE::QueryPool;
@@ -4947,7 +4947,7 @@ export namespace VULKAN_HPP_NAMESPACE
     using VULKAN_HPP_RAII_NAMESPACE::Instance;
     using VULKAN_HPP_RAII_NAMESPACE::PhysicalDevice;
     using VULKAN_HPP_RAII_NAMESPACE::PhysicalDevices;
-    using VULKAN_HPP_RAII_NAMESPACE::Pipeline;
+    using VULKAN_HPP_RAII_NAMESPACE::Pipelines;
     using VULKAN_HPP_RAII_NAMESPACE::PipelineCache;
     using VULKAN_HPP_RAII_NAMESPACE::PipelineLayout;
     using VULKAN_HPP_RAII_NAMESPACE::Pipelines;

@@ -13,9 +13,14 @@
 #include "renderer/Descriptor.h"
 #include "renderer/types/Texture.h"
 
+constexpr float ANISOTROPHY = 16.f;
+
 namespace AssetManager {
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 	std::vector<std::shared_ptr<MeshAsset>>& getTestMeshes() { return testMeshes; }
+
+	std::filesystem::path _basePath;
+	std::filesystem::path& getBasePath() { return _basePath; }
 
 	// Textures
 	AllocatedImage _whiteImage;
@@ -26,10 +31,12 @@ namespace AssetManager {
 	AllocatedImage _errorCheckerboardImage;
 	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
 
+	VkPhysicalDeviceProperties _deviceProps;
 	VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;
 	VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
 	VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+
 
 	void initTextures();
 	DeletionQueue _assetDeletionQueue;
@@ -43,6 +50,8 @@ namespace AssetManager {
 	ImmCmdSubmitDef& getGraphicsCmdSubmit() { return _immGraphicsCmdSubmit; }
 
 	ImmCmdSubmitDef _immTransferCmdSubmit{};
+
+	void convertHDR2Cubemap();
 }
 
 // all that is needed to call in engine
@@ -60,11 +69,18 @@ void AssetManager::loadAssets() {
 
 	initTextures();
 
-	std::string structurePath = { "res/models/structure_mat.glb" };
+	// Primary file loading
+	//std::string structurePath = { "res/models/sponza/base/NewSponza_Main_gLTF_003.gltf" };
+	std::string structurePath = { "res/models/structure.glb" };
+	std::string skyboxPath = { "res/models/cubeskybox.glb" };
+
+	auto skyboxFile = loadGltf(skyboxPath);
 	auto structureFile = loadGltf(structurePath);
 
 	assert(structureFile.has_value());
+	assert(skyboxFile.has_value());
 
+	RenderScene::loadedScenes["skybox"] = *skyboxFile;
 	RenderScene::loadedScenes["structure"] = *structureFile;
 }
 
@@ -98,7 +114,6 @@ static VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter) {
 		return VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	}
 }
-
 
 // TEXTURES
 void AssetManager::initTextures() {
@@ -150,17 +165,14 @@ void AssetManager::initTextures() {
 
 	RendererUtils::createTextureImage(pixels.data(), _errorCheckerboardImage, usage, memoryProp, samples, &_assetDeletionQueue, _assetAllocator);
 
-	VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	vkGetPhysicalDeviceProperties(Backend::getPhysicalDevice(), &_deviceProps);
+	_deviceProps.limits.maxSamplerAnisotropy;
 
-	sampl.magFilter = VK_FILTER_NEAREST;
-	sampl.minFilter = VK_FILTER_NEAREST;
+	_defaultSamplerLinear = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, _deviceProps.limits.maxSamplerAnisotropy);
 
-	vkCreateSampler(Backend::getDevice(), &sampl, nullptr, &_defaultSamplerNearest);
+	_defaultSamplerNearest = Textures::createSampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT, _deviceProps.limits.maxSamplerAnisotropy);
 
-	sampl.magFilter = VK_FILTER_LINEAR;
-	sampl.minFilter = VK_FILTER_LINEAR;
-
-	vkCreateSampler(Backend::getDevice(), &sampl, nullptr, &_defaultSamplerLinear);
+	convertHDR2Cubemap();
 
 	_assetDeletionQueue.push_function([&]() {
 		vkDestroySampler(Backend::getDevice(), _defaultSamplerNearest, nullptr);
@@ -168,12 +180,11 @@ void AssetManager::initTextures() {
 	});
 }
 
-
 GPUMeshBuffers AssetManager::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices) {
+	GPUMeshBuffers newSurface;
+
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-	GPUMeshBuffers newSurface;
 
 	//create vertex buffer
 	newSurface.vertexBuffer = BufferUtils::createBuffer(vertexBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -236,6 +247,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 	LoadedGLTF& file = *scene.get();
 
 	std::filesystem::path path = filePath;
+
+	_basePath = path.parent_path();
+	file.basePath = _basePath;
+
 	fastgltf::Parser parser;
 
 	// Load the glTF file into memory using the modern API
@@ -256,7 +271,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 	fastgltf::Asset gltf;
 
 	if (type == fastgltf::GltfType::glTF) {
-		auto result = parser.loadGltfBinary(data.get(), path.parent_path(), gltfOptions);
+		auto result = parser.loadGltf(data.get(), path.parent_path(), gltfOptions);
 		if (!result || result.error() != fastgltf::Error::None) {
 			fmt::print("Failed to parse .gltf: error code {}\n", static_cast<int>(result.error()));
 			return std::nullopt;
@@ -290,6 +305,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 		sampl.minFilter = extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
 		sampl.mipmapMode = extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+
+		sampl.anisotropyEnable = VK_TRUE;
+		sampl.maxAnisotropy = _deviceProps.limits.maxSamplerAnisotropy;
+		sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
 		VkSampler newSampler;
 		vkCreateSampler(Backend::getDevice(), &sampl, nullptr, &newSampler);
@@ -345,12 +366,17 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 		sceneMaterialConstants[data_index] = constants;
 
 		MaterialPass passType = MaterialPass::MainColor;
-		if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
+
+		if (mat.name.starts_with("SKY_")) {
+			fmt::print("Material name: {}\n", mat.name);
+			passType = MaterialPass::SkyBox;
+		}
+		else if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
+			fmt::print("Material name: {}\n", mat.name);
 			passType = MaterialPass::Transparent;
 		}
 
 		GLTFMetallic_Roughness::MaterialResources materialResources;
-		// default the material textures
 		materialResources.colorImage = _whiteImage;
 		materialResources.colorSampler = _defaultSamplerLinear;
 		materialResources.metalRoughImage = _whiteImage;
@@ -462,18 +488,22 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 				newSurface.material = materials[0];
 			}
 
-			// Frustum Cullin bounds positions
-			//loop the vertices of this surface, find min/max bounds
-			glm::vec3 minpos = vertices[initial_vtx].position;
-			glm::vec3 maxpos = vertices[initial_vtx].position;
+			glm::vec3 vmin = vertices[initial_vtx].position;
+			glm::vec3 vmax = vertices[initial_vtx].position;
+
 			for (int i = static_cast<int>(initial_vtx); i < vertices.size(); i++) {
-				minpos = glm::min(minpos, vertices[i].position);
-				maxpos = glm::max(maxpos, vertices[i].position);
+				vmin = glm::min(vmin, vertices[i].position);
+				vmax = glm::max(vmax, vertices[i].position);
 			}
+
+			assert(vmax.x >= vmin.x && vmax.y >= vmin.y && vmax.z >= vmin.z);
+
 			// calculate origin and extents from the min/max, use extent length for radius
-			newSurface.bounds.origin = (maxpos + minpos) / 2.f;
-			newSurface.bounds.extents = (maxpos - minpos) / 2.f;
-			newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
+			newSurface.aabb.vmin = vmin;
+			newSurface.aabb.vmax = vmax;
+			newSurface.aabb.origin = (vmax + vmin) * 0.5f;
+			newSurface.aabb.extent = (vmax - vmin) * 0.5f;
+			newSurface.aabb.sphereRadius = glm::length(newSurface.aabb.extent);
 
 			newmesh->surfaces.push_back(newSurface);
 		}
@@ -481,6 +511,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 		newmesh->meshBuffers = uploadMesh(indices, vertices);
 	}
 
+
+	//TODO: Possible SceneGraph cutoff here
 
 	// load all nodes and their meshes
 	for (fastgltf::Node& node : gltf.nodes) {
@@ -514,7 +546,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 
 				newNode->localTransform = tm * rm * sm;
 				}
-		}, node.transform);
+			}, node.transform);
 	}
 
 
@@ -533,6 +565,15 @@ std::optional<std::shared_ptr<LoadedGLTF>> AssetManager::loadGltf(std::string_vi
 	for (auto& node : nodes) {
 		if (node->parent.lock() == nullptr) {
 			file.topNodes.push_back(node);
+
+			// Skip transform propagation for skyboxes
+			auto meshNode = std::dynamic_pointer_cast<MeshNode>(node);
+			if (meshNode && meshNode->mesh && meshNode->mesh->surfaces.size() > 0) {
+				if (meshNode->mesh->surfaces[0].material->data.passType == MaterialPass::SkyBox) {
+					continue; // don't apply transforms now
+				}
+			}
+
 			node->refreshTransform(glm::mat4{ 1.f });
 		}
 	}
@@ -574,4 +615,98 @@ void LoadedGLTF::clearAll() {
 	for (auto& sampler : samplers) {
 		vkDestroySampler(device, sampler, nullptr);
 	}
+}
+
+void AssetManager::convertHDR2Cubemap() {
+	const char* hdrPath = "res/textures/cubemap/wasteland_clouds_puresky_4k.hdr";
+
+	int w, h, channels;
+	float* data = stbi_loadf(hdrPath, &w, &h, &channels, 4);
+	if (!data) {
+		throw std::runtime_error(std::string("Failed to load HDR: ") + stbi_failure_reason());
+	}
+
+	AllocatedImage equirect;
+	equirect.imageExtent = { uint32_t(w), uint32_t(h), 1 };
+	equirect.imageFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+
+	RendererUtils::createTextureImage(
+		data,
+		equirect,
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		VK_SAMPLE_COUNT_1_BIT,
+		nullptr,
+		_assetAllocator
+	);
+	stbi_image_free(data);
+
+
+	DescriptorWriter cubeMapWriter;
+	cubeMapWriter.writeImage(0, equirect.imageView, _defaultSamplerLinear,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+	cubeMapWriter.writeImage(1, Renderer::getSkyBoxImage().storageView, nullptr,
+		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+	cubeMapWriter.updateSet(Backend::getDevice(), DescriptorSetOverwatch::getCubeMappingDescriptors().descriptorSet);
+
+
+	auto& pipeline = Pipelines::hdr2cubemapPipeline;
+	auto& skyboxImg = Renderer::getSkyBoxImage();
+
+	CommandBuffer::immediateCmdSubmit([&](VkCommandBuffer cmd) {
+		RendererUtils::transitionImage(
+			cmd,
+			equirect.image, equirect.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		);
+
+		RendererUtils::transitionImage(
+			cmd,
+			skyboxImg.image, skyboxImg.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_GENERAL
+		);
+
+		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getComputeEffect().pipeline);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+			pipeline._computePipelineLayout,
+			0, 1, &DescriptorSetOverwatch::getCubeMappingDescriptors().descriptorSet,
+			0, nullptr);
+
+		// push only resolution
+		int resolution = int(skyboxImg.imageExtent.width);
+
+		auto& pc = PipelinePresents::hdr2cubemapPipelineSettings.pushConstantsInfo;
+
+		vkCmdPushConstants(cmd, pipeline._computePipelineLayout, pc.stageFlags, pc.offset, pc.size, &resolution);
+
+		// dispatch: local_size = 8x8x1, so groups = ceil(res/8)
+		uint32_t groups = (resolution + 7) / 8;
+		vkCmdDispatch(cmd, groups, groups, /*depth=*/6);
+
+		// barrier: make those writes visible to fragment skybox
+		VkImageMemoryBarrier mb{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER };
+		mb.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		mb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		mb.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+		mb.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		mb.image = skyboxImg.image;
+		mb.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, /*baseMip*/0,1, /*baseLayer*/0,6 };
+
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &mb
+		);
+	},
+	_immGraphicsCmdSubmit,
+	Backend::getGraphicsQueue());
+
+	vkDestroyImageView(Backend::getDevice(), equirect.imageView, nullptr);
+	vmaDestroyImage(_assetAllocator, equirect.image, equirect.allocation);
 }

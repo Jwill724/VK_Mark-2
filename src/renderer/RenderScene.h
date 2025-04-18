@@ -5,10 +5,9 @@
 #include "vulkan/PipelineManager.h"
 #include "input/Camera.h"
 
-struct GLTFMetallic_Roughness {
-	MaterialPipeline opaquePipeline;
-	MaterialPipeline transparentPipeline;
+constexpr glm::vec3 SPAWNPOINT(1, 1, -1);
 
+struct GLTFMetallic_Roughness {
 	VkDescriptorSetLayout materialLayout;
 
 	struct MaterialConstants {
@@ -28,7 +27,6 @@ struct GLTFMetallic_Roughness {
 
 	DescriptorWriter writer;
 
-	void buildPipelines(PipelineConfigPresent& pipelineInfo);
 	void clearResources(VkDevice device);
 
 	MaterialInstance writeMaterial(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorManager& descriptor);

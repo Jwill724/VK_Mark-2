@@ -177,40 +177,35 @@ void Backend::createLogicalDevice() {
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
 
-	VkPhysicalDeviceFeatures2 baseDeviceFeatures{};
-	baseDeviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	baseDeviceFeatures.features.samplerAnisotropy = VK_TRUE;
-
-	// vulkan 1.3 features
-	VkPhysicalDeviceVulkan13Features features13{};
-	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-	features13.dynamicRendering = true;
-	features13.synchronization2 = true;
+	VkPhysicalDeviceFeatures2 baseFeatures{};
+	baseFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	baseFeatures.features.fillModeNonSolid = VK_TRUE;
+	baseFeatures.features.samplerAnisotropy = VK_TRUE;
 
 	// vulkan 1.2 features
 	VkPhysicalDeviceVulkan12Features features12{};
 	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-	features12.bufferDeviceAddress = true;
-	features12.descriptorIndexing = true;
+	features12.bufferDeviceAddress = VK_TRUE;
+	features12.descriptorIndexing = VK_TRUE;
 
-	baseDeviceFeatures.pNext = &features12;
+	// vulkan 1.3 features
+	VkPhysicalDeviceVulkan13Features features13{};
+	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	features13.dynamicRendering = VK_TRUE;
+	features13.synchronization2 = VK_TRUE;
+
+	baseFeatures.pNext = &features12;
 	features12.pNext = &features13;
 
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pNext = &baseDeviceFeatures;
+	createInfo.pNext = &baseFeatures;
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 	createInfo.pQueueCreateInfos = queueCreateInfos.data();
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(BackendTools::deviceExtensions.size());
 	createInfo.ppEnabledExtensionNames = BackendTools::deviceExtensions.data();
-
-	if (BackendTools::enableValidationLayers) {
-		createInfo.enabledLayerCount = static_cast<uint32_t>(BackendTools::validationLayers.size());
-		createInfo.ppEnabledLayerNames = BackendTools::validationLayers.data();
-	}
-	else {
-		createInfo.enabledLayerCount = 0;
-	}
+	createInfo.enabledLayerCount = BackendTools::enableValidationLayers ? static_cast<uint32_t>(BackendTools::validationLayers.size()) : 0;
+	createInfo.ppEnabledLayerNames = BackendTools::enableValidationLayers ? BackendTools::validationLayers.data() : nullptr;
 
 	VK_CHECK(vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device));
 

@@ -1,4 +1,4 @@
-# VulkanRenderer
+# VulkanEngine
 
 A real-time Vulkan renderer written in C++20 using modern rendering techniques. Features a modular rendering architecture, compute-based post-processing, ImGui integration, MSAA, and full glTF support.
 
@@ -14,13 +14,18 @@ The engine truly came together after integrating ideas from [vkguide.dev](https:
 - Compute shader-based post-processing
 - ImGui debug UI
 - Color blending and multisampling
+- Mipmapping
+- AABB frustum culling
+- Transparent depth sorting
+- Dynamic pipeline swapping
+- HDR environmental mapping
 - Modular Vulkan backend, pipeline, and descriptor setup
 
 ## Screenshots
 
-![Main Render](res/screenshots/spacestation1.png)
-![Post-Processing Compute shader](res/screenshots/spacestation2.png)
-![City](res/screenshots/city.png)
+![Main Render](res/screenshots/spacestation.png)
+![HDR environments](res/screenshots/citysky.png)
+![Wireframe View](res/screenshots/wireframe.png)
 
 ## Controls
 - `W A S D` – Move forward, left, back, right  
@@ -30,7 +35,7 @@ The engine truly came together after integrating ideas from [vkguide.dev](https:
 - `R` – Reset camera to spawn/origin  
 - `Esc` – Exit application
 
-## Requirements for buil
+## Requirements for build
 
 - Windows 10+
 - Vulkan SDK (1.3+)
@@ -44,4 +49,3 @@ mkdir build
 cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release/Debug
-
