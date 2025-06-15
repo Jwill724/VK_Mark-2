@@ -3,21 +3,21 @@
 #include "UserInput.h"
 
 struct Camera {
-	glm::vec3 velocity;
-	glm::vec3 position;
+	glm::vec3 _velocity;
+	glm::vec3 _position;
 	// vertical rotation
-	float pitch{ 0.f };
+	float _pitch{ 0.f };
 	// horizontal rotation
-	float yaw{ 0.f };
+	float _yaw{ 0.f };
 
-	glm::vec3 currentView;
+	glm::vec3 _currentView;
 
-	glm::mat4 getViewMatrix();
+	glm::mat4 getViewMatrix() const;
 	glm::mat4 getRotationMatrix() const;
 
 	void processInput(GLFWwindow* window, float dt);
 
-	void update(GLFWwindow* window, float& lastTime);
+	void update(GLFWwindow* window, const float deltaTime);
 
 	void reset();
 };

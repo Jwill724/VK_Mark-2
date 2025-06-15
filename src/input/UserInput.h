@@ -2,8 +2,6 @@
 
 #include "common/Vk_Types.h"
 
-// User input provides functionality for
-// any kind of input controller setup
 namespace UserInput {
 	enum class InputType {
 		Keyboard,
@@ -55,12 +53,4 @@ namespace UserInput {
 
 	// in current scope of defined instance
 	void updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable);
-
-	void handleMouseCapture(
-		GLFWwindow* window,
-		VkExtent2D* extent,
-		bool& justClicked,
-		glm::vec2& position,
-		glm::vec2& delta
-	);
 }

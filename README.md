@@ -1,31 +1,30 @@
-# VulkanEngine
-
-A real-time Vulkan renderer written in C++20 using modern rendering techniques. Features a modular rendering architecture, compute-based post-processing, ImGui integration, MSAA, and full glTF support.
-
-Originally built off the Vulkan tutorial up to the triangle stage, I then modularized the entire setup into a `Backend` namespace. From there, I split Vulkan systems during a major refactor.
-
-The engine truly came together after integrating ideas from [vkguide.dev](https://vkguide.dev/), allowing me to build a scalable framework and explore more advanced rendering techniques.
+# Background
 
 ## Features
 
-- Vulkan 1.3 renderer
-- MSAA (up to 8x)
-- glTF / GLB model loading
-- Compute shader-based post-processing
-- ImGui debug UI
-- Color blending and multisampling
-- Mipmapping
+## Features
+
+- Vulkan 1.3 GPU-Driven renderer
+- Batched indirect instancing via `vkCmdDrawIndexedIndirect`
+- Multithreaded asset & command preparation (EnkiTS)
+- Descriptor indexing (bindless rendering)
+- Transfer and compute async enabled
+- PBR shading (Cook-Torrance BRDF, GGX, Schlick-GGX, Unreal Fresnel)
+- Full IBL support (irradiance map + specular prefilter + BRDF LUT)
+- GLTF loading (with AABB bounds generation)
 - AABB frustum culling
 - Transparent depth sorting
-- Dynamic pipeline swapping
-- HDR environmental mapping
-- Modular Vulkan backend, pipeline, and descriptor setup
+- ImGui debugging tools
+- MSAA (up to 8x), mipmapping, dynamic pipeline swapping
+
+## Future
+-GPU frustum culling
+-GPU batching and sorting
+-Cascade shadow mapping
+-Clustered shading
 
 ## Screenshots
 
-![Main Render](res/screenshots/spacestation.png)
-![HDR environments](res/screenshots/citysky.png)
-![Wireframe View](res/screenshots/wireframe.png)
 
 ## Controls
 - `W A S D` – Move forward, left, back, right  

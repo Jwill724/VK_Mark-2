@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <chrono>
+#include <thread>
 #include <string>
 #include <vector>
 #include <span>
@@ -35,3 +36,5 @@
 #include "file/File.h"
 
 #include "common/glm_common.hpp"
+
+#include "enkiTS/TaskScheduler.h"

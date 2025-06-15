@@ -1,53 +1,50 @@
 #include "pch.h"
 
 #include "Backend.h"
-#include "renderer/Renderer.h"
-#include "PipelineManager.h"
-#include "imgui/EditorImgui.h"
-#include "input/UserInput.h"
+#include "core/ResourceManager.h"
+#include "Window.h"
+#include "utils/RendererUtils.h"
 #include "Engine.h"
 
 namespace Backend {
 	VkInstance _instance = VK_NULL_HANDLE;
-	VkInstance& getInstance() { return _instance; }
+	VkInstance getInstance() { return _instance; }
+
+	static VkPhysicalDeviceProperties _deviceProps{};
+	static VkPhysicalDeviceLimits _deviceLimits{};
+
+	const VkPhysicalDeviceLimits getDeviceLimits() {
+		return _deviceLimits;
+	}
 
 	VkDebugUtilsMessengerEXT _debugMessenger = VK_NULL_HANDLE;
 
 	VkSurfaceKHR _surface = VK_NULL_HANDLE;
-	VkSurfaceKHR& getSurface() { return _surface; }
+	VkSurfaceKHR getSurface() { return _surface; }
 
 	VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
-	VkPhysicalDevice& getPhysicalDevice() { return _physicalDevice; }
+	VkPhysicalDevice getPhysicalDevice() { return _physicalDevice; }
 
 	VkDevice _device = VK_NULL_HANDLE;
-	VkDevice& getDevice() { return _device; }
+	VkDevice getDevice() { return _device; }
 
 	QueueFamilyIndices _queueFamilyIndices;
-	QueueFamilyIndices& getQueueFamilyIndices() { return _queueFamilyIndices; }
+	QueueFamilyIndices getQueueFamilyIndices() { return _queueFamilyIndices; }
 
-	VkQueue _graphicsQueue = VK_NULL_HANDLE;
-	VkQueue& getGraphicsQueue() { return _graphicsQueue; }
+	GPUQueue _graphicsQueue{};
+	GPUQueue& getGraphicsQueue() { return _graphicsQueue; }
 
-	VkQueue _presentQueue = VK_NULL_HANDLE;
-	VkQueue& getPresentQueue() { return _presentQueue; }
+	GPUQueue _presentQueue{};
+	GPUQueue& getPresentQueue() { return _presentQueue; }
 
-	// created but inactive for now
-	VkQueue _transferQueue = VK_NULL_HANDLE;
-	VkQueue& getTransferQueue() { return _transferQueue; }
+	GPUQueue _transferQueue{};
+	GPUQueue& getTransferQueue() { return _transferQueue; }
 
-	VkSwapchainKHR _swapchain = VK_NULL_HANDLE;
-	std::vector<VkImage> _swapchainImages;
-	// A view of image and describes how to access
-	std::vector<VkImageView> _swapchainImageViews;
-	VkFormat _swapchainImageFormat;
-	VkExtent2D _swapchainExtent;
+	GPUQueue _computeQueue{};
+	GPUQueue& getComputeQueue() { return _computeQueue; }
 
-	// TODO: swapchain state struct
-	VkSwapchainKHR& getSwapchain() { return _swapchain; }
-	VkExtent2D& getSwapchainExtent() { return _swapchainExtent; }
-	std::vector<VkImageView>& getSwapchainImageViews() { return _swapchainImageViews; }
-	std::vector<VkImage>& getSwapchainImages() { return _swapchainImages; }
-	VkFormat& getSwapchainImageFormat() { return _swapchainImageFormat; }
+	SwapchainDef _swapchainDef;
+	SwapchainDef& getSwapchainDef() { return _swapchainDef; }
 
 	void createInstance();
 	void createSurface();
@@ -59,42 +56,26 @@ namespace Backend {
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 }
 
-void Backend::initBackend() {
+void Backend::initVulkanCore() {
 	createInstance();
 	BackendTools::setupDebugMessenger(_instance, _debugMessenger);
 	createSurface();
 	pickPhysicalDevice();
 	createLogicalDevice();
-
-	// setup allocations for engine and renderer
-	Engine::getAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
-	// the engine deletion queue is flushed once at cleanup
-	Engine::getDeletionQueue().push_function([&]() {
-		vmaDestroyAllocator(Engine::getAllocator());
-	});
-
-	Renderer::getRenderImageAllocator() = VulkanUtils::createAllocator(_physicalDevice, _device, _instance);
-
-	Backend::createSwapchain();
-	Backend::createImageViews();
-	Renderer::setupRenderImages();
-
-	DescriptorSetOverwatch::initImageDescriptors();
-
-	PipelineManager::initPipelines();
-	EditorImgui::initImgui();
+	createSwapchain();
+	createImageViews();
 }
 
 void Backend::createInstance() {
 	if (BackendTools::enableValidationLayers) {
 		if (!BackendTools::checkValidationLayerSupport()) {
-			std::cout << "Validation layers requested, but not available!" << std::endl;
+			fmt::print("Validation layers requested, but not available!\n");
 		}
 	}
 
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = "Pen";
+	appInfo.pApplicationName = "Mk2";
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 3, 0);
 	appInfo.pEngineName = "Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -108,11 +89,11 @@ void Backend::createInstance() {
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(reqExtensions.size());
 	createInfo.ppEnabledExtensionNames = reqExtensions.data();
 
-	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 	if (BackendTools::enableValidationLayers) {
 		createInfo.enabledLayerCount = static_cast<uint32_t>(BackendTools::validationLayers.size());
 		createInfo.ppEnabledLayerNames = BackendTools::validationLayers.data();
 
+		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 		BackendTools::populateDebugMessengerCreateInfo(debugCreateInfo);
 		createInfo.pNext = &debugCreateInfo;
 	}
@@ -132,9 +113,7 @@ void Backend::pickPhysicalDevice() {
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
 
-	if (deviceCount == 0) {
-		throw std::runtime_error("Failed to find GPUs with Vulkan support!");
-	}
+	assert(deviceCount != 0);
 
 	std::vector<VkPhysicalDevice> devices(deviceCount);
 
@@ -144,15 +123,14 @@ void Backend::pickPhysicalDevice() {
 			_physicalDevice = device;
 			// can be used throughout code now
 			_queueFamilyIndices = VulkanUtils::FindQueueFamilies(_physicalDevice, _surface);
-
-			Renderer::getAvailableSampleCounts() = VulkanUtils::findSupportedSampleCounts(_physicalDevice);
 			break;
 		}
 	}
+	assert(_physicalDevice != VK_NULL_HANDLE);
 
-	if (_physicalDevice == VK_NULL_HANDLE) {
-		throw std::runtime_error("Failed to find a suitable GPU!");
-	}
+	vkGetPhysicalDeviceProperties(_physicalDevice, &_deviceProps);
+	_deviceLimits = _deviceProps.limits;
+	ResourceManager::getAvailableSampleCounts() = VulkanUtils::findSupportedSampleCounts(_deviceLimits);
 }
 
 void Backend::createLogicalDevice() {
@@ -160,12 +138,22 @@ void Backend::createLogicalDevice() {
 	std::set<uint32_t> uniqueQueueFamilies;
 
 	// Only add queue families that exist
-	if (_queueFamilyIndices.graphicsFamily.has_value())
+	if (_queueFamilyIndices.graphicsFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.graphicsFamily.value());
-	if (_queueFamilyIndices.presentFamily.has_value())
+		_graphicsQueue.familyIndex = _queueFamilyIndices.graphicsFamily.value();
+	}
+	if (_queueFamilyIndices.presentFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.presentFamily.value());
-	if (_queueFamilyIndices.transferFamily.has_value())
+		_presentQueue.familyIndex = _queueFamilyIndices.presentFamily.value();
+	}
+	if (_queueFamilyIndices.transferFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.transferFamily.value());
+		_transferQueue.familyIndex = _queueFamilyIndices.transferFamily.value();
+	}
+	if (_queueFamilyIndices.computeFamily.has_value()) {
+		uniqueQueueFamilies.insert(_queueFamilyIndices.computeFamily.value());
+		_computeQueue.familyIndex = _queueFamilyIndices.computeFamily.value();
+	}
 
 	float queuePriority = 1.0f;
 	for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -177,25 +165,38 @@ void Backend::createLogicalDevice() {
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
 
-	VkPhysicalDeviceFeatures2 baseFeatures{};
-	baseFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	VkPhysicalDeviceFeatures2 baseFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	baseFeatures.features.fillModeNonSolid = VK_TRUE;
 	baseFeatures.features.samplerAnisotropy = VK_TRUE;
+	baseFeatures.features.multiDrawIndirect = VK_TRUE;
+	baseFeatures.features.shaderInt64 = VK_TRUE;
 
-	// vulkan 1.2 features
-	VkPhysicalDeviceVulkan12Features features12{};
-	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	features11.shaderDrawParameters = VK_TRUE;
+
+	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	features12.bufferDeviceAddress = VK_TRUE;
 	features12.descriptorIndexing = VK_TRUE;
+	features12.timelineSemaphore = VK_TRUE;
+	features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+	features12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
+	features12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+	features12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+	features12.descriptorBindingPartiallyBound = VK_TRUE;
+	features12.descriptorBindingVariableDescriptorCount = VK_TRUE;
+	features12.runtimeDescriptorArray = VK_TRUE;
+	features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+	features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
 
-	// vulkan 1.3 features
-	VkPhysicalDeviceVulkan13Features features13{};
-	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	VkPhysicalDeviceVulkan13Features features13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	features13.dynamicRendering = VK_TRUE;
 	features13.synchronization2 = VK_TRUE;
 
-	baseFeatures.pNext = &features12;
+	features13.pNext = nullptr;
 	features12.pNext = &features13;
+	features11.pNext = &features12;
+	baseFeatures.pNext = &features11;
 
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -210,19 +211,36 @@ void Backend::createLogicalDevice() {
 	VK_CHECK(vkCreateDevice(_physicalDevice, &createInfo, nullptr, &_device));
 
 	// Retrieve queues only if they were created
-	if (_queueFamilyIndices.graphicsFamily.has_value())
-		vkGetDeviceQueue(_device, _queueFamilyIndices.graphicsFamily.value(), 0, &_graphicsQueue);
-	if (_queueFamilyIndices.presentFamily.has_value())
-		vkGetDeviceQueue(_device, _queueFamilyIndices.presentFamily.value(), 0, &_presentQueue);
-	if (_queueFamilyIndices.transferFamily.has_value())
-		vkGetDeviceQueue(_device, _queueFamilyIndices.transferFamily.value(), 0, &_transferQueue);
+	if (_queueFamilyIndices.graphicsFamily.has_value()) {
+		vkGetDeviceQueue(_device, _graphicsQueue.familyIndex, 0, &_graphicsQueue.queue);
+		_graphicsQueue.fencePool.device = _device;
+		_graphicsQueue.qType = QueueType::Graphics;
+	}
+
+	if (_queueFamilyIndices.presentFamily.has_value()) {
+		vkGetDeviceQueue(_device, _presentQueue.familyIndex, 0, &_presentQueue.queue);
+		_presentQueue.fencePool.device = _device;
+		_presentQueue.qType = QueueType::Present;
+	}
+
+	if (_queueFamilyIndices.transferFamily.has_value()) {
+		vkGetDeviceQueue(_device, _transferQueue.familyIndex, 0, &_transferQueue.queue);
+		_transferQueue.fencePool.device = _device;
+		_transferQueue.qType = QueueType::Transfer;
+	}
+
+	if (_queueFamilyIndices.computeFamily.has_value()) {
+		vkGetDeviceQueue(_device, _computeQueue.familyIndex, 0, &_computeQueue.queue);
+		_computeQueue.fencePool.device = _device;
+		_computeQueue.qType = QueueType::Compute;
+	}
 }
 
 void Backend::createSwapchain() {
 	BackendTools::SwapChainSupportDetails swapChainSupport = BackendTools::querySwapChainSupport(_physicalDevice, _surface);
 	VkSurfaceFormatKHR surfaceFormat = BackendTools::chooseSwapSurfaceFormat(swapChainSupport.formats);
-	// TODO: Can only run proper fps with v-sync
-//	VkPresentModeKHR presentMode = chooseSwapSurfacePresentMode(swapChainSupport.presentModes);
+	//VkPresentModeKHR presentMode = BackendTools::chooseSwapSurfacePresentMode(swapChainSupport.presentModes);
+	VkPresentModeKHR VSYNC = VK_PRESENT_MODE_FIFO_KHR;
 	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
 	// sticking to min delays, request one more than min
@@ -244,7 +262,7 @@ void Backend::createSwapchain() {
 	createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // V-SYNC manually set
+	createInfo.presentMode = VSYNC;
 	createInfo.clipped = VK_TRUE;
 
 	uint32_t qFamIndices[] = {
@@ -266,20 +284,20 @@ void Backend::createSwapchain() {
 		createInfo.pQueueFamilyIndices = nullptr;
 	}
 
-	createInfo.oldSwapchain = _swapchain;
+	createInfo.oldSwapchain = _swapchainDef.swapchain;
 
-	VK_CHECK(vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapchain));
+	VK_CHECK(vkCreateSwapchainKHR(_device, &createInfo, nullptr, &_swapchainDef.swapchain));
 
 	if (createInfo.oldSwapchain != VK_NULL_HANDLE) {
 		vkDestroySwapchainKHR(_device, createInfo.oldSwapchain, nullptr);
 	}
 
-	vkGetSwapchainImagesKHR(_device, _swapchain, &imageCount, nullptr);
-	_swapchainImages.resize(imageCount);
-	vkGetSwapchainImagesKHR(_device, _swapchain, &imageCount, _swapchainImages.data());
+	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, nullptr);
+	_swapchainDef.images.resize(imageCount);
+	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, _swapchainDef.images.data());
 
-	_swapchainImageFormat = surfaceFormat.format;
-	_swapchainExtent = extent;
+	_swapchainDef.imageFormat = surfaceFormat.format;
+	_swapchainDef.extent = extent;
 }
 
 void Backend::resizeSwapchain() {
@@ -295,13 +313,13 @@ void Backend::resizeSwapchain() {
 
 void Backend::cleanupSwapchain() {
 	// do not ever touch this in any way or it breaks
-	if (_swapchain != VK_NULL_HANDLE) {
-		vkDestroySwapchainKHR(_device, _swapchain, nullptr);
-		_swapchain = VK_NULL_HANDLE;
+	if (_swapchainDef.swapchain != VK_NULL_HANDLE) {
+		vkDestroySwapchainKHR(_device, _swapchainDef.swapchain, nullptr);
+		_swapchainDef.swapchain = VK_NULL_HANDLE;
 	}
 
-	for (size_t i = 0; i < _swapchainImageViews.size(); i++) {
-		vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
+	for (size_t i = 0; i < _swapchainDef.imageViews.size(); i++) {
+		vkDestroyImageView(_device, _swapchainDef.imageViews[i], nullptr);
 	}
 }
 
@@ -325,17 +343,19 @@ VkExtent2D Backend::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilitie
 }
 
 void Backend::createImageViews() {
-	_swapchainImageViews.resize(_swapchainImages.size());
+	_swapchainDef.imageViews.resize(_swapchainDef.images.size());
 
-	for (uint32_t i = 0; i < _swapchainImages.size(); i++) {
-		_swapchainImageViews[i] = BufferUtils::createImageView(_device, _swapchainImages[i], _swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, 1);
+	for (uint32_t i = 0; i < _swapchainDef.images.size(); i++) {
+		_swapchainDef.imageViews[i] = RendererUtils::createImageView(
+			_device,
+			_swapchainDef.images[i],
+			_swapchainDef.imageFormat,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			1);
 	}
 }
 
 void Backend::cleanupBackend() {
-
-	Renderer::cleanup();
-
 	cleanupSwapchain();
 
 	vkDestroySurfaceKHR(_instance, _surface, nullptr);

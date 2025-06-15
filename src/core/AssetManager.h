@@ -1,27 +1,28 @@
 #pragma once
 
-#include "common/Vk_Types.h"
-#include <unordered_map>
-#include <filesystem>
-#include "renderer/RenderGraph.h"
+#include <core/types/Texture.h>
+#include "common/ResourceTypes.h"
 
 struct LoadedGLTF : public IRenderable {
-	// storage for all the data on a given glTF file
-	std::unordered_map<std::string, std::shared_ptr<MeshAsset>> meshes;
-	std::unordered_map<std::string, std::shared_ptr<Node>> nodes;
-	std::unordered_map<std::string, AllocatedImage> images;
-	std::unordered_map<std::string, std::shared_ptr<GLTFMaterial>> materials;
+	// === GPU Runtime Assets ===
+	std::vector<std::shared_ptr<MeshHandle>> meshes;         // Indexed by GLTF mesh index
+	std::vector<std::shared_ptr<Node>> nodes;                // Indexed by GLTF node index
+	std::vector<std::shared_ptr<MaterialHandle>> materials;  // Indexed by GLTF material index
 
-	// nodes that dont have a parent, for iterating through the file in tree order
-	std::vector<std::shared_ptr<Node>> topNodes;
+	std::vector<AllocatedImage> images;      // Indexed by GLTF image index
+	std::vector<VkSampler> samplers;         // Indexed by GLTF sampler index
+	std::vector<fastgltf::Texture> textures; // If you need them later in material processing
 
-	std::filesystem::path basePath;
+	// === Scene Hierarchy ===
+	std::vector<std::shared_ptr<Node>> topNodes; // Root-level nodes (for tree traversal)
 
-	std::vector<VkSampler> samplers;
+	// === Scene Info ===
+	std::string sceneName;
+	bool enableCull = true;
+	std::filesystem::path basePath;       // File path (used for relative asset loading)
 
-	AllocatedBuffer materialDataBuffer;
-
-	~LoadedGLTF() { clearAll(); };
+	// === Interface ===
+	~LoadedGLTF() { clearAll(); }
 
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
 
@@ -29,26 +30,51 @@ private:
 	void clearAll();
 };
 
+struct GLTFJobContext {
+	std::shared_ptr<LoadedGLTF> scene;
+	fastgltf::Asset gltfAsset;
+	UploadMeshContext uploadMeshCtx;
+
+	// Set to true when scene is passed into loadedscenes
+	std::atomic<bool> hasRegisteredScene = false;
+
+	std::atomic<bool> jobComplete[sizeof(GLTFJobType)];
+
+	void markJobComplete(GLTFJobType type) {
+		jobComplete[static_cast<size_t>(type)] = true;
+	}
+
+	bool isJobComplete(GLTFJobType type) const {
+		return jobComplete[static_cast<size_t>(type)];
+	}
+
+	bool isComplete() const {
+		for (bool status : jobComplete)
+			if (!status) return false;
+		return true;
+	}
+};
+
+using GLTFAssetQueue = TypedWorkQueue<std::shared_ptr<GLTFJobContext>>;
+
+enum class SceneID {
+	Sponza,
+	MRSpheres,
+	Cube,
+	DamagedHelmet,
+};
+
+static const std::unordered_map<SceneID, std::string> SceneNames = {
+	{ SceneID::Sponza, "sponza" },
+	{ SceneID::MRSpheres, "mrspheres" },
+	{ SceneID::Cube, "cube" },
+	{ SceneID::DamagedHelmet, "damagedhelemt" },
+};
+
 namespace AssetManager {
-
-	AllocatedImage& getWhiteImage();
-	AllocatedImage& getCheckboardTex();
-
-	VkSampler getDefaultSamplerLinear();
-	VkSampler getDefaultSamplerNearest();
-
-	std::filesystem::path& getBasePath();
-
-	void loadAssets();
-	std::vector<std::shared_ptr<MeshAsset>>& getTestMeshes();
-
-	std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(std::string_view filePath);
-
-	ImmCmdSubmitDef& getGraphicsCmdSubmit();
-
-	DeletionQueue& getAssetDeletionQueue();
-	VmaAllocator& getAssetAllocation();
-
-	// MESHES
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
+	bool loadGltf(ThreadContext& threadCtx);
+	void decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue);
+	void buildSamplers(ThreadContext& threadCtx);
+	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator);
+	void processMeshes(ThreadContext& threadCtx);
 }

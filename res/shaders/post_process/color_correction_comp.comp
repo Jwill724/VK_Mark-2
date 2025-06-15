@@ -1,0 +1,40 @@
+#version 450
+
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 2, rgba16f) uniform writeonly image2D imagesOut[];
+layout(set = 0, binding = 3) uniform sampler2D imagesIn[];
+
+layout(push_constant) uniform PC {
+    float brightness;
+    float saturation;
+    float contrast;
+    float pad0;
+    uint cmbViewIdx;
+    uint sampledViewIdx;
+    uint pad1[2];
+} pc;
+
+void main() {
+    uvec2 texelCoord = gl_GlobalInvocationID.xy;
+
+    ivec2 size = imageSize(imagesOut[nonuniformEXT(pc.sampledViewIdx)]);
+    if (texelCoord.x >= uint(size.x) || texelCoord.y >= uint(size.y)) return;
+
+    vec2 uv = vec2(texelCoord) / vec2(size);
+
+    vec4 color = texture(imagesIn[nonuniformEXT(pc.cmbViewIdx)], uv);
+
+    color.rgb *= pc.brightness;
+    color.rgb = clamp(color.rgb, 0.0, 1.0);
+    color.rgb = pow(color.rgb, vec3(0.8)); // Adjust tone
+
+    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+    color.rgb = mix(vec3(gray), color.rgb, pc.saturation);
+
+    color.rgb = (color.rgb - 0.5) * pc.contrast + 0.5;
+
+    imageStore(imagesOut[nonuniformEXT(pc.sampledViewIdx)], ivec2(texelCoord), color);
+}

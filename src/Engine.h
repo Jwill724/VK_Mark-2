@@ -1,23 +1,25 @@
 #pragma once
 
-#include "common/Vk_Types.h"
 #include "vulkan/Window.h"
 #include "core/EngineState.h"
+#include "profiler/Profiler.h"
 
 namespace Engine {
+	EngineState& getState();
+
 	GLFWwindow* getWindow();
 	Window& windowModMode();
 
 	VkExtent2D& getWindowExtent();
-	DeletionQueue& getDeletionQueue();
-	VmaAllocator& getAllocator();
+	void initWindow();
+	void resetWindow();
 
-	EngineStats& getStats();
+	Profiler& getProfiler();
 
 	bool isInitialized();
 	bool hasRenderStopped();
 
-	float& getLastTimeCount();
+	float& getLastFrameTime();
 
 	// inits everything, controls runtime, and cleans up
 	void run();

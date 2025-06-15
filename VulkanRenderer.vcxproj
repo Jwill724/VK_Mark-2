@@ -39,7 +39,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -51,7 +51,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -68,25 +68,58 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <!-- Files that use the PCH -->
+    <ClCompile Include="src\Engine.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\file\File.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\vulkan\Window.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\core\types\Texture.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\core\EngineState.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\core\ResourceManager.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\core\JobSystem.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\core\AssetManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\input\UserInput.cpp">
+    <ClCompile Include="src\core\Environment.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\input\Camera.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\input\UserInput.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\Batching.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\RenderGraph.cpp">
+    <ClCompile Include="src\renderer\Visibility.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\CommandBuffer.cpp">
+    <ClCompile Include="src\renderer\SceneGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\Descriptor.cpp">
+    <ClCompile Include="src\renderer\gpu\Descriptor.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\gpu\PipelineManager.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\gpu\CommandBuffer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\RenderScene.cpp">
@@ -101,9 +134,6 @@
     <ClCompile Include="src\vulkan\Pipeline.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\vulkan\PipelineManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="src\utils\VulkanUtils.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -113,35 +143,14 @@
     <ClCompile Include="src\utils\RendererUtils.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\imgui\EditorImgui.cpp">
+    <ClCompile Include="src\profiler\EditorImgui.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\types\Texture.cpp">
+    <ClCompile Include="src\profiler\Profiler.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- No PCH for third-party or minimal logic files -->
     <ClCompile Include="src\Main.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\EngineState.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\Engine.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\file\File.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\vulkan\Window.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\types\Mesh.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\types\LightCube.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\types\Model.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <!-- 3rd-party code (no PCH) -->
@@ -149,6 +158,9 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="vendor\Vulkan\include\vma\vma.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\enkiTS\TaskScheduler.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="vendor\im_gui\imgui_impl_vulkan.cpp">
@@ -188,56 +200,58 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\common\pch.h" />
-    <ClInclude Include="src\core\EngineState.h" />
     <ClInclude Include="src\input\Camera.h" />
     <ClInclude Include="src\input\UserInput.h" />
     <ClInclude Include="src\Engine.h" />
     <ClInclude Include="src\ErrorChecking.h" />
     <ClInclude Include="src\common\Vk_Types.h" />
     <ClInclude Include="src\core\AssetManager.h" />
+    <ClInclude Include="src\core\ResourceManager.h" />
+    <ClInclude Include="src\core\JobSystem.h" />
+    <ClInclude Include="src\core\Environment.h" />
+    <ClInclude Include="src\core\EngineState.h" />
+    <ClInclude Include="src\common\EngineTypes.h" />
+    <ClInclude Include="src\core\types\Texture.h" />
+    <ClInclude Include="src\common\EngineConstants.h" />
+    <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\file\File.h" />
+    <ClInclude Include="src\renderer\Batching.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\RenderScene.h" />
-    <ClInclude Include="src\renderer\RenderGraph.h" />
-    <ClInclude Include="src\renderer\types\LightCube.h" />
-    <ClInclude Include="src\renderer\types\Mesh.h" />
-    <ClInclude Include="src\renderer\types\Model.h" />
-    <ClInclude Include="src\renderer\types\Texture.h" />
-    <ClInclude Include="src\renderer\Descriptor.h" />
-    <ClInclude Include="src\renderer\CommandBuffer.h" />
+    <ClInclude Include="src\renderer\Visibility.h" />
+    <ClInclude Include="src\renderer\SceneGraph.h" />
+    <ClInclude Include="src\renderer\gpu\Descriptor.h" />
+    <ClInclude Include="src\renderer\gpu\CommandBuffer.h" />
+    <ClInclude Include="src\renderer\gpu\PipelineManager.h" />
     <ClInclude Include="src\vulkan\Backend.h" />
     <ClInclude Include="src\vulkan\BackendTools.h" />
     <ClInclude Include="src\vulkan\Window.h" />
     <ClInclude Include="src\vulkan\Pipeline.h" />
-    <ClInclude Include="src\vulkan\PipelineManager.h" />
     <ClInclude Include="src\utils\VulkanUtils.h" />
     <ClInclude Include="src\utils\BufferUtils.h" />
     <ClInclude Include="src\utils\RendererUtils.h" />
-    <ClInclude Include="src\imgui\EditorImgui.h" />
+    <ClInclude Include="src\profiler\EditorImgui.h" />
+    <ClInclude Include="src\profiler\Profiler.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\shaders\aabb_frag.frag" />
-    <None Include="res\shaders\aabb_vert.vert" />
+    <None Include="res\shaders\bounding_boxes\aabb_frag.frag" />
+    <None Include="res\shaders\bounding_boxes\aabb_vert.vert" />
+    <None Include="res\shaders\environment\brdf_lut_comp.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
-    <None Include="res\shaders\color_correction_comp.comp" />
-    <None Include="res\shaders\input_structures.glsl" />
-    <None Include="res\shaders\mesh_frag.frag" />
-    <None Include="res\shaders\mesh_vert.vert" />
-    <None Include="res\shaders\skybox_frag.frag" />
-    <None Include="res\shaders\skybox_vert.vert" />
-    <None Include="res\shaders\hdr2cubemap_comp.comp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="res\models\monkey.glb" />
-    <None Include="res\models\basicmesh.glb" />
-    <None Include="res\models\structure_mat.glb" />
-    <None Include="res\models\structure.glb" />
-    <None Include="res\models\town4new.glb" />
-    <None Include="res\models\cubeskybox.glb" />
+    <None Include="res\shaders\post_process\color_correction_comp.comp" />
+    <None Include="res\shaders\environment\diffuse_irradiance_comp.comp" />
+    <None Include="res\shaders\meshes\mesh_frag.frag" />
+    <None Include="res\shaders\meshes\mesh_vert.vert" />
+    <None Include="res\shaders\include\input_structures.glsl" />
+    <None Include="res\shaders\include\pbr.glsl" />
+    <None Include="res\shaders\environment\specular_prefilter_comp.comp" />
+    <None Include="res\shaders\environment\skybox_frag.frag" />
+    <None Include="res\shaders\environment\skybox_vert.vert" />
+    <None Include="res\shaders\environment\hdr2cubemap_comp.comp" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->
-    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(IncludePath)</IncludePath>
     <!-- Library Directories for project-wide usage -->
     <LibraryPath>$(ProjectDir)vendor\GLFW\lib;$(ProjectDir)vendor\Vulkan\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>

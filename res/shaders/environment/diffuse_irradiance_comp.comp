@@ -1,0 +1,73 @@
+#version 450
+
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 1) uniform samplerCube envMaps[]; // skybox image view cube map
+layout(set = 0, binding = 2, rgba32f) writeonly uniform image2DArray storageImages[]; // diffuse irradiance storage view
+
+const float PI = 3.14159265359;
+
+layout(push_constant) uniform PC {
+	float sampleCount;
+	uint skyboxViewIdx;
+	uint diffuseStorageIdx;
+    uint pad0;
+} pc;
+
+
+void main()
+{
+	ivec3 storePos = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[nonuniformEXT(pc.diffuseStorageIdx)]).xy); // Normalized coordinates
+
+    uv = uv * 2.0 - 1.0; // Map to range [-1, 1]
+
+    vec3 direction;
+    switch (storePos.z) {
+        case 0: direction = normalize(vec3(1.0,   -uv.y, -uv.x)); break; // +X
+        case 1: direction = normalize(vec3(-1.0,  -uv.y,  uv.x)); break; // -X
+        case 2: direction = normalize(vec3(uv.x,   1.0,   uv.y)); break; // +Y
+        case 3: direction = normalize(vec3(uv.x,  -1.0,  -uv.y)); break; // -Y
+        case 4: direction = normalize(vec3(uv.x,  -uv.y,  1.0));  break; // +Z
+        case 5: direction = normalize(vec3(-uv.x, -uv.y, -1.0));  break; // -Z
+        default: direction = vec3(0.0); break; // Should not happen
+    }
+
+    vec3 irradiance = vec3(0.0);
+
+    // Convolution Code
+    vec3 up    = vec3(0.0, 1.0, 0.0);
+    if (abs(direction.y) > 0.999) { // Handle parallel case
+        up = vec3(0.0, 0.0, 1.0);
+    }
+    vec3 right = normalize(cross(up, direction));
+    up         = normalize(cross(direction, right));
+
+    float sampleDelta = pc.sampleCount;
+    float nrSamples = 0.0;
+    for(float phi = 0.0; phi < 2.0 * PI; phi += sampleDelta)
+    {
+        for(float theta = 0.0; theta < 0.5 * PI; theta += sampleDelta)
+        {
+            // spherical to cartesian (in tangent space)
+            vec3 tangentSample = vec3(sin(theta) * cos(phi),  sin(theta) * sin(phi), cos(theta));
+            // tangent space to world
+            vec3 sampleVec = tangentSample.x * right + tangentSample.y * up + tangentSample.z * direction;
+
+            irradiance += texture(envMaps[nonuniformEXT(pc.skyboxViewIdx)], sampleVec).rgb * cos(theta) * sin(theta);
+
+            nrSamples++;
+        }
+    }
+
+    irradiance = PI * irradiance * (1.0 / float(nrSamples));
+
+    vec4 out_irradiance = vec4(irradiance, 1.0);
+    imageStore(storageImages[nonuniformEXT(pc.diffuseStorageIdx)], storePos, out_irradiance);
+}

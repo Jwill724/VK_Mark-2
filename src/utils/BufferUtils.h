@@ -3,7 +3,8 @@
 #include "Engine.h"
 
 namespace BufferUtils {
-	VkImageView createImageView(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
-	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, VmaAllocator& allocator);
-	void destroyBuffer(const AllocatedBuffer& buffer, VmaAllocator& allocator);
+	AllocatedBuffer createGPUAddressBuffer(AddressBufferType addressBufferType,
+		GPUAddressTable& addressTable, size_t size, const VmaAllocator allocator);
+	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, const VmaAllocator allocator);
+	void destroyBuffer(AllocatedBuffer buffer, const VmaAllocator allocator);
 }
