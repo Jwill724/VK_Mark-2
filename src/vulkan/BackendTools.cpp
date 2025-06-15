@@ -13,7 +13,7 @@ namespace BackendTools {
 		(void)messageType;
 		(void)pUserData;
 
-		std::cerr << "[Vulkan Validation Layer]: " << pCallbackData->pMessage << std::endl;
+		fmt::print("[Vulkan Validation Layer]: {}\n", pCallbackData->pMessage);
 		return VK_FALSE;
 	}
 
@@ -42,12 +42,14 @@ namespace BackendTools {
 	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo) {
 		createInfo = {};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-		createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
-			| VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
-			| VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-		createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT
-			| VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT
-			| VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+		createInfo.messageSeverity =
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		createInfo.messageType =
+			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
 		createInfo.pfnUserCallback = debugCallback;
 	}
 
@@ -95,22 +97,20 @@ namespace BackendTools {
 	void setupDebugMessenger(VkInstance instance, VkDebugUtilsMessengerEXT &debugMessenger) {
 		if (!enableValidationLayers) return;
 
+		assert(debugMessenger == VK_NULL_HANDLE && "debugMessenger should not be initialized yet");
+
 		VkDebugUtilsMessengerCreateInfoEXT createInfo;
 		populateDebugMessengerCreateInfo(createInfo);
 
 		// Instance and debugMessenger are declared before this function is called
-		if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
-			throw std::runtime_error("Failed to set up debug messenger!");
-		}
+		CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger);
 	}
 
 	std::vector<const char*> getRequiredExtensions() {
 		uint32_t glfwExtensionsCount = 0;
 		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
 
-		if (!glfwExtensions || glfwExtensionsCount == 0) {
-			throw std::runtime_error("Failed to find required extensions!");
-		}
+		assert(glfwExtensions && glfwExtensionsCount > 0 && "GLFW failed to return instance extensions");
 
 		std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
 

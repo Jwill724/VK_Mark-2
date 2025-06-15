@@ -1,6 +1,13 @@
 #pragma once
 
 #include "common/Vk_Types.h"
+#include <iostream>
+
+#ifdef NDEBUG
+#define ASSERT(x) assert(x)
+#else
+#define ASSERT(x) ((void)0)
+#endif
 
 inline const char* vkResultToString(VkResult result) {
 	switch (result) {

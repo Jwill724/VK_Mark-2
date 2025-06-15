@@ -1,0 +1,60 @@
+#version 450
+
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 2, rgba32f) writeonly uniform image2DArray storageImages[]; // skybox storage view
+layout(set = 0, binding = 3) uniform sampler2D images[]; // equirect source image
+
+const float PI = 3.14159265359;
+
+layout(push_constant) uniform PC {
+	uint equirectViewIdx;
+	uint skyboxStorageIdx;
+    uint pad0[2];
+} pc;
+
+
+vec2 SampleSphericalMap(vec3 v) {
+    vec2 invAtan = vec2(0.1591, 0.3183); // 1 / (2 * pi), 1 / pi
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= invAtan;
+    uv += 0.5;
+    return uv;
+}
+
+void main() {
+    ivec3 storePos = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[nonuniformEXT(pc.skyboxStorageIdx)]).xy); // Normalized coordinates
+    uv = uv * 2.0 - 1.0; // Map to range [-1, 1]
+
+    vec3 direction;
+    switch (storePos.z) {
+        case 0: direction = normalize(vec3(1.0,   -uv.y, -uv.x)); break; // +X
+        case 1: direction = normalize(vec3(-1.0,  -uv.y,  uv.x)); break; // -X
+        case 2: direction = normalize(vec3(uv.x,   1.0,   uv.y)); break; // +Y
+        case 3: direction = normalize(vec3(uv.x,  -1.0,  -uv.y)); break; // -Y
+        case 4: direction = normalize(vec3(uv.x,  -uv.y,  1.0));  break; // +Z
+        case 5: direction = normalize(vec3(-uv.x, -uv.y, -1.0));  break; // -Z
+        default: direction = vec3(0.0); break; // Should not happen
+    }
+
+    vec2 sphericalUV = SampleSphericalMap(normalize(direction));
+    sphericalUV = clamp(sphericalUV, vec2(0.0), vec2(1.0));
+
+    vec4 color = texture(images[nonuniformEXT(pc.equirectViewIdx)], sphericalUV);
+
+    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, color);
+
+//    if (storePos.z == 0) {
+//	    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, vec4(1.0, 0.0, 0.0, 1.0)); // red debug
+//	    return;
+//    } else {
+//	    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, vec4(0.0, 1.0, 0.0, 1.0)); // green debug
+//    }
+}

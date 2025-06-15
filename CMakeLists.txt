@@ -25,6 +25,7 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/vendor/Vulkan/include
     ${PROJECT_SOURCE_DIR}/vendor/simdjson
     ${PROJECT_SOURCE_DIR}/vendor/im_gui
+    ${PROJECT_SOURCE_DIR}/vendor/enkiTS
 )
 
 # Link dirs
@@ -40,6 +41,7 @@ file(GLOB_RECURSE SRC_FILES
     vendor/simdjson/*.cpp
     vendor/im_gui/*.cpp
     vendor/Vulkan/include/vma/vma.cpp
+    vendor/enkiTS/TaskScheduler.cpp
 )
 
 # Executable target

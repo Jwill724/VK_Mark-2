@@ -1,0 +1,157 @@
+#version 450
+
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 1) uniform samplerCube envMaps[]; // skybox image view cube map
+layout(set = 0, binding = 2, rgba32f) writeonly uniform image2DArray storageImages[]; // specular storage view
+
+
+const float PI = 3.14159265359;
+
+const float RESOLUTION = 1024.0;
+
+layout(push_constant) uniform PC {
+	float roughness;
+    uint width;
+	uint height;
+    uint sampleCount;
+	uint skyboxViewIdx;
+	uint specularStorageIdx;
+	uint pad0[2];
+} pc;
+
+
+/* Non Bit Shift version
+float VanDerCorput(uint n, uint base)
+{
+    float invBase = 1.0 / float(base);
+    float denom   = 1.0;
+    float result  = 0.0;
+
+    for(uint i = 0u; i < 32u; ++i)
+    {
+        if(n > 0u)
+        {
+            denom   = mod(float(n), 2.0);
+            result += denom * invBase;
+            invBase = invBase / 2.0;
+            n       = uint(float(n) / 2.0);
+        }
+    }
+
+    return result;
+}
+*/
+float RadicalInverse_VdC(uint bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+
+vec2 Hammersley(uint i, uint N)
+{
+    return vec2(float(i)/float(N), RadicalInverse_VdC(i));
+}
+
+vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
+{
+    float a = roughness * roughness;
+
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+
+    // from spherical coordinates to cartesian coordinates
+    vec3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+
+    // from tangent-space vector to world-space sample vector
+    vec3 up        = abs(N.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 tangent   = normalize(cross(up, N));
+    vec3 bitangent = cross(N, tangent);
+
+    vec3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+    return normalize(sampleVec);
+}
+
+float DistributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH2 = NdotH * NdotH;
+
+    float nom   = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+
+    return nom / denom;
+}
+
+void main()
+{
+	ivec3 storePos = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    if (storePos.x >= pc.width || storePos.y >= pc.height) {
+		return;
+	}
+
+    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[pc.specularStorageIdx]).xy); // Normalized coordinates
+    uv = uv * 2.0 - 1.0; // Map to range [-1, 1]
+    vec3 direction;
+    switch (storePos.z) {
+        case 0: direction = normalize(vec3(1.0,   -uv.y, -uv.x)); break; // +X
+        case 1: direction = normalize(vec3(-1.0,  -uv.y,  uv.x)); break; // -X
+        case 2: direction = normalize(vec3(uv.x,   1.0,   uv.y)); break; // +Y
+        case 3: direction = normalize(vec3(uv.x,  -1.0,  -uv.y)); break; // -Y
+        case 4: direction = normalize(vec3(uv.x,  -uv.y,  1.0));  break; // +Z
+        case 5: direction = normalize(vec3(-uv.x, -uv.y, -1.0));  break; // -Z
+        default: direction = vec3(0.0); break; // Should not happen
+    }
+
+    vec3 N = direction;
+    vec3 R = N;
+    vec3 V = R;
+    float roughness = pc.roughness;
+
+    const uint SAMPLE_COUNT = pc.sampleCount;
+    float totalWeight = 0.0;
+    vec3 prefilteredColor = vec3(0.0);
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    {
+        vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+        vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
+        vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+
+        float NdotL = max(dot(N, L), 0.0);
+        if(NdotL > 0.0)
+        {
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0);
+            float D = DistributionGGX(NdotH, roughness);
+            float pdf = (D * NdotH / (4.0 * HdotV)) + 0.0001;
+
+            float saTexel = 4.0 * PI / (6.0 * RESOLUTION * RESOLUTION);
+            float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
+
+            float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
+
+            prefilteredColor += textureLod(envMaps[pc.skyboxViewIdx], L, mipLevel).rgb * NdotL;
+            totalWeight += NdotL;
+        }
+    }
+    prefilteredColor = prefilteredColor / totalWeight;
+
+    vec4 color = vec4(prefilteredColor, 1.0);
+
+    imageStore(storageImages[pc.specularStorageIdx], storePos, color);
+}

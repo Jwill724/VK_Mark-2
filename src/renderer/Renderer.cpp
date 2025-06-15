@@ -1,248 +1,333 @@
 #include "pch.h"
 
 #include "Renderer.h"
-#include "renderer/CommandBuffer.h"
-#include "vulkan/PipelineManager.h"
-#include "imgui/EditorImgui.h"
+#include "profiler/EditorImgui.h"
 #include "vulkan/Backend.h"
 #include "RenderScene.h"
-#include "RenderGraph.h"
+#include "SceneGraph.h"
 
-uint32_t MSAACOUNT = 8u;
+#include "utils/RendererUtils.h"
+#include "core/AssetManager.h"
+
+#include "gpu/PipelineManager.h"
+#include "gpu/CommandBuffer.h"
+
+#include "common/ResourceTypes.h"
+
 
 namespace Renderer {
-	unsigned int _frameNumber{ 0 };
+	std::array<VkImageView, 3> _renderImgViews;
 
-	FrameData _frames[MAX_FRAMES_IN_FLIGHT];
-	FrameData& getCurrentFrame() { return _frames[_frameNumber % MAX_FRAMES_IN_FLIGHT]; }
+	TimelineSync _transferSync;
 
-	VkExtent3D _drawExtent;
-	VkExtent3D& getDrawExtent() { return _drawExtent; }
-
-	float _renderScale = 1.f;
-	float& getRenderScale() { return _renderScale; }
-
-	// primary render image
-	AllocatedImage _drawImage;
-	AllocatedImage& getDrawImage() { return _drawImage; }
-	AllocatedImage _depthImage;
-	AllocatedImage& getDepthImage() { return _depthImage; }
-	AllocatedImage _msaaImage;
-	AllocatedImage& getMSAAImage() { return _msaaImage; }
-
-	AllocatedImage _postProcessImage;
-	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
-
-	AllocatedImage _skyboxImage;
-	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
-
-	VkDescriptorSetLayout _drawImageDescriptorLayout;
-
-	VkImageView& getDrawImageView() { return _drawImage.imageView; }
-	DeletionQueue _renderImageDeletionQueue;
-	DeletionQueue& getRenderImageDeletionQueue() { return _renderImageDeletionQueue; }
-
-	VmaAllocator _renderImageAllocator;
-	VmaAllocator& getRenderImageAllocator() { return _renderImageAllocator; }
-
-	void recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
-	void colorCorrectPass(VkCommandBuffer cmd);
-	void drawGeometry(VkCommandBuffer cmd);
-
-	// Grabbed during physical device selection
-	std::vector<VkSampleCountFlags> _availableSampleCounts;
-	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
+	void colorCorrectPass(FrameContext& frame);
+	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx);
 }
 
-void Renderer::setupRenderImages() {
-	// draw image should match window extent
-	_drawExtent = {
-		static_cast<uint32_t>(Engine::getWindowExtent().width * _renderScale),
-		static_cast<uint32_t>(Engine::getWindowExtent().height * _renderScale),
-		1
-	};
-
-	// hardcoding the draw format to 32 bit float
-	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_drawImage.imageExtent = _drawExtent;
-
-	VkImageUsageFlags drawImageUsages{};
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	drawImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-
-	// non sampled image
-	// primary draw image color target
-	RendererUtils::createRenderImage(_drawImage, drawImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
-
-	// post process image
-	_postProcessImage.imageFormat = _drawImage.imageFormat;
-	_postProcessImage.imageExtent = _drawExtent;
-
-	VkImageUsageFlags postUsages{};
-	postUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
-	postUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // to copy to swapchain
-	postUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
-
-	// compute draw image for post processing
-	RendererUtils::createRenderImage(_postProcessImage, postUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
-
-	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(MSAACOUNT);
-
-	_msaaImage.imageFormat = _drawImage.imageFormat;
-	_msaaImage.imageExtent = _drawExtent;
-
-	VkImageUsageFlags msaaImageUsages{};
-	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	msaaImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-
-	// msaa color attachment to the draw image
-	RendererUtils::createRenderImage(_msaaImage, msaaImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &_renderImageDeletionQueue, _renderImageAllocator);
-
-
-	// DEPTH
-	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_depthImage.imageExtent = _drawExtent;
-
-	VkImageUsageFlags depthImageUsages{};
-	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
-	RendererUtils::createRenderImage(_depthImage, depthImageUsages,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, sampleCount, &_renderImageDeletionQueue, _renderImageAllocator);
-
-
-	// SKYBOX
-	VkExtent3D skyboxCubeExtent = { 2048, 2048, 1 };
-	_skyboxImage.imageExtent = skyboxCubeExtent;
-	_skyboxImage.imageFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
-	_skyboxImage.isCubeMap = true;
-
-	RendererUtils::createRenderImage(_skyboxImage, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_1_BIT, &_renderImageDeletionQueue, _renderImageAllocator);
-}
-
-void Renderer::init() {
-	QueueFamilyIndices qFamIndices = Backend::getQueueFamilyIndices();
-
-	for (auto& frame : _frames) {
-		frame._graphicsCmdPool = CommandBuffer::createCommandPool(qFamIndices.graphicsFamily.value(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-		frame._graphicsCmdBuffer = CommandBuffer::createCommandBuffer(frame._graphicsCmdPool);
-
-		frame._swapchainSemaphore = RendererUtils::createSemaphore();
-		frame._renderSemaphore = RendererUtils::createSemaphore();
-		frame._renderFence = RendererUtils::createFence();
-
-
-		// create a descriptor pool
-		std::vector<PoolSizeRatio> frameSizes = {
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
-		};
-
-		frame._frameDescriptors = DescriptorManager{};
-		frame._frameDescriptors.init(1000, frameSizes);
-
-		Engine::getDeletionQueue().push_function([&]() {
-			frame._frameDescriptors.destroyPools();
-		});
+void Renderer::initFrameContexts(VkDevice device, uint32_t graphicsIndex, uint32_t transferIndex,
+	VkExtent2D drawExtent, VkDescriptorSetLayout layout, const VmaAllocator allocator) {
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		auto& frame = _frameContexts[i];
+		frame.syncObjs.swapchainSemaphore = RendererUtils::createSemaphore();
+		frame.syncObjs.semaphore = RendererUtils::createSemaphore();
+		frame.syncObjs.fence = RendererUtils::createFence();
+		frame.graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
+		frame.transferPool = CommandBuffer::createCommandPool(device, transferIndex);
+		frame.commandBuffer = CommandBuffer::createCommandBuffer(device, frame.graphicsPool);
+		frame.set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, layout);
+		frame.addressTableBuffer = BufferUtils::createBuffer(
+			sizeof(GPUAddressTable),
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY,
+			allocator);
+		frame.addressTableStaging = BufferUtils::createBuffer(
+			sizeof(GPUAddressTable),
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VMA_MEMORY_USAGE_CPU_ONLY,
+			allocator);
+		assert(frame.addressTableStaging.info.pMappedData);
+		frame.frameIndex = i;
+		frame.ready = true;
 	}
 
-	DescriptorWriter drawImageWriter;
-	drawImageWriter.writeImage(0, _postProcessImage.imageView, VK_NULL_HANDLE,
-		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-	drawImageWriter.writeImage(1, _drawImage.imageView, AssetManager::getDefaultSamplerLinear(),
-		VK_IMAGE_LAYOUT_GENERAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	drawImageWriter.updateSet(Backend::getDevice(), DescriptorSetOverwatch::getPostProcessDescriptors().descriptorSet);
+	_drawExtent = { drawExtent.width, drawExtent.height, 1 };
 
-	RenderScene::createSceneData();
-	RenderScene::setCamera();
+	RendererUtils::createTimelineSemaphore(_transferSync);
 }
 
-void Renderer::recordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
+void Renderer::prepareFrameContext(FrameContext& frameCtx) {
+	auto device = Backend::getDevice();
+	auto swapchain = Backend::getSwapchainDef().swapchain;
+
+	if (frameCtx.transferFence != VK_NULL_HANDLE) {
+		VK_CHECK(vkWaitForFences(device, 1, &frameCtx.transferFence, VK_TRUE, UINT64_MAX));
+		VK_CHECK(vkResetFences(device, 1, &frameCtx.transferFence));
+		frameCtx.transferFence = VK_NULL_HANDLE;
+	}
+
+	VK_CHECK(vkWaitForFences(device, 1, &frameCtx.syncObjs.fence, VK_TRUE, UINT64_MAX));
+	VK_CHECK(vkResetFences(device, 1, &frameCtx.syncObjs.fence));
+
+	if (!frameCtx.transferCmds.empty()) {
+		vkFreeCommandBuffers(device, frameCtx.transferPool, static_cast<uint32_t>(frameCtx.transferCmds.size()), frameCtx.transferCmds.data());
+		frameCtx.transferCmds.clear();
+	}
+
+	frameCtx.deletionQueue.flush();
+
+	uint32_t imageIndex;
+	VkResult swpResult = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frameCtx.syncObjs.swapchainSemaphore, VK_NULL_HANDLE, &imageIndex);
+	if (swpResult == VK_ERROR_OUT_OF_DATE_KHR || swpResult == VK_SUBOPTIMAL_KHR) {
+		Backend::getGraphicsQueue().waitIdle();
+		Backend::resizeSwapchain();
+		return;
+	}
+	assert(swpResult == VK_SUCCESS && "Failed to present swap chain image!");
+	frameCtx.swapchainImageIndex = imageIndex;
+	frameCtx.swapchainResult = swpResult;
+
+	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
+}
+
+void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
+	fmt::print("---- SUBMIT FRAME [{}] ----\n", _frameNumber);
+	fmt::print("CommandBuffer: {}\n", static_cast<void*>(frameCtx.commandBuffer));
+	fmt::print("Fence: {}\n", static_cast<void*>(frameCtx.syncObjs.fence));
+	fmt::print("WaitSemaphore: {} | SignalSemaphore: {}\n",
+		static_cast<void*>(frameCtx.syncObjs.swapchainSemaphore),
+		static_cast<void*>(frameCtx.syncObjs.semaphore));
+	fmt::print("Swapchain Image Index: {}\n", frameCtx.swapchainImageIndex);
+
+
+	VkCommandBufferSubmitInfo cmdInfo{};
+	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	cmdInfo.pNext = nullptr;
+	cmdInfo.commandBuffer = frameCtx.commandBuffer;
+	cmdInfo.deviceMask = 0;
+
+	// --- Wait: Swapchain Acquire ---
+	VkSemaphoreSubmitInfo waitSwapchain{};
+	waitSwapchain.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	waitSwapchain.semaphore = frameCtx.syncObjs.swapchainSemaphore;
+	waitSwapchain.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
+	waitSwapchain.deviceIndex = 0;
+	waitSwapchain.value = 1;
+
+	// --- Wait: Transfer Completion ---
+	VkSemaphoreSubmitInfo waitTransfer{};
+	if (!frameCtx.transferCmds.empty()) {
+		assert(_transferSync.semaphore != VK_NULL_HANDLE && "Timeline semaphore must be set before rendering");
+		waitTransfer.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+		waitTransfer.semaphore = _transferSync.semaphore;
+		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+		waitTransfer.deviceIndex = 0;
+		assert(frameCtx.transferWaitValue <= _transferSync.signalValue - 1);
+		waitTransfer.value = frameCtx.transferWaitValue;
+	}
+
+	// --- Signal: Rendering Done (for Present) ---
+	VkSemaphoreSubmitInfo signalRender{};
+	signalRender.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+	signalRender.semaphore = frameCtx.syncObjs.semaphore;
+	signalRender.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+	signalRender.deviceIndex = 0;
+	signalRender.value = 1;
+
+	std::vector<VkSemaphoreSubmitInfo> waitInfos;
+	if (waitSwapchain.semaphore != VK_NULL_HANDLE) waitInfos.push_back(waitSwapchain);
+	if (waitTransfer.semaphore != VK_NULL_HANDLE) waitInfos.push_back(waitTransfer);
+
+
+	VkSubmitInfo2 graphicsSubmitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+	graphicsSubmitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+	graphicsSubmitInfo.pWaitSemaphoreInfos = waitInfos.data();
+	graphicsSubmitInfo.signalSemaphoreInfoCount = 1;
+	graphicsSubmitInfo.pSignalSemaphoreInfos = &signalRender;
+	graphicsSubmitInfo.commandBufferInfoCount = 1;
+	graphicsSubmitInfo.pCommandBufferInfos = &cmdInfo;
+
+
+	auto& graphicsQueue = Backend::getGraphicsQueue();
+	auto& presentQueue = Backend::getPresentQueue();
+
+	//vkDeviceWaitIdle(Backend::getDevice());
+	//fmt::print("Submitting to Graphics Queue...\n");
+	VK_CHECK(vkQueueSubmit2(graphicsQueue.queue, 1, &graphicsSubmitInfo, frameCtx.syncObjs.fence));
+	//fmt::print("Submission complete.\n");
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = &frameCtx.syncObjs.semaphore;
+
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &Backend::getSwapchainDef().swapchain;
+	presentInfo.pImageIndices = &frameCtx.swapchainImageIndex;
+
+
+	//fmt::print("Presenting frame...\n");
+	frameCtx.swapchainResult = vkQueuePresentKHR(presentQueue.queue, &presentInfo);
+	//fmt::print("Present result: {}\n", static_cast<int32_t>(frameCtx.swapchainResult));
+
+	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR ||
+		frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR
+		|| Engine::windowModMode().windowResized)
+	{
+		if (graphicsQueue.queue != presentQueue.queue) {
+			presentQueue.waitIdle();
+		}
+		else {
+			graphicsQueue.waitIdle();
+		}
+
+		Backend::resizeSwapchain();
+	}
+	else {
+		assert(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swap chain image!");
+	}
+
+	auto instBuf = frameCtx.instanceBuffer;
+	auto indirectBuf = frameCtx.indirectCmdBuffer;
+	if (instBuf.buffer != VK_NULL_HANDLE && indirectBuf.buffer != VK_NULL_HANDLE) {
+		auto allocator = resources.getAllocator();
+		frameCtx.deletionQueue.push_function([instBuf, indirectBuf, allocator]() mutable {
+			BufferUtils::destroyBuffer(instBuf, allocator);
+			BufferUtils::destroyBuffer(indirectBuf, allocator);
+		});
+	}
+	// double buffering, frames indexed at 0 and 1
+	_frameNumber++;
+}
+
+void Renderer::recordRenderCommand(FrameContext& frameCtx) {
+
 	VkCommandBufferBeginInfo cmdBeginInfo{};
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	_drawExtent.height = static_cast<uint32_t>(std::min(Backend::getSwapchainExtent().height, _drawImage.imageExtent.height) * _renderScale);
-	_drawExtent.width = static_cast<uint32_t>(std::min(Backend::getSwapchainExtent().width, _drawImage.imageExtent.width) * _renderScale);
+	auto& swp = Backend::getSwapchainDef();
+	auto& draw = ResourceManager::getDrawImage();
+	auto& msaa = ResourceManager::getMSAAImage();
+	auto& depth = ResourceManager::getDepthImage();
+	auto& postProcess = ResourceManager::getPostProcessImage();
 
-	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
+	_drawExtent.height = static_cast<uint32_t>(std::min(swp.extent.height, draw.imageExtent.height));
+	_drawExtent.width = static_cast<uint32_t>(std::min(swp.extent.width, draw.imageExtent.width));
 
-	// Transition to color/depth attachment layouts
-	RendererUtils::transitionImage(cmd, _drawImage.image, _drawImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkDescriptorSet sets[] = {
+		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
+		frameCtx.set
+	};
 
+	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
+
+	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
+
+	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
+
+	// color, depth and msaa transitions
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	if (MSAACOUNT != 1u) {
-		RendererUtils::transitionImage(cmd, _msaaImage.image, _msaaImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		RendererUtils::transitionImage(frameCtx.commandBuffer,
+			msaa.image,
+			msaa.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
-	RendererUtils::transitionImage(cmd, _depthImage.image, _depthImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		depth.image,
+		depth.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	RendererUtils::transitionImage(cmd, _skyboxImage.image, _skyboxImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	_renderImgViews = { draw.imageView, msaa.imageView, depth.imageView };
 
-	// Render scene
-	drawGeometry(cmd);
+	geometryPass(_renderImgViews, frameCtx);
 
-	// Transition draw image to SRC so we can copy to post process
-	RendererUtils::transitionImage(cmd, _drawImage.image, _drawImage.imageFormat, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	RendererUtils::transitionImage(cmd, _postProcessImage.image, _postProcessImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	// Post process transition and copy
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		postProcess.image,
+		postProcess.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	RendererUtils::copyImageToImage(
-		cmd,
-		_drawImage.image,
-		_postProcessImage.image,
+	RendererUtils::copyImageToImage(frameCtx.commandBuffer,
+		draw.image,
+		postProcess.image,
 		{ _drawExtent.width, _drawExtent.height },
 		{ _drawExtent.width, _drawExtent.height }
 	);
 
-	// Transition both back to GENERAL for compute
-	RendererUtils::transitionImage(cmd, _drawImage.image, _drawImage.imageFormat, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
-	RendererUtils::transitionImage(cmd, _postProcessImage.image, _postProcessImage.imageFormat, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		VK_IMAGE_LAYOUT_GENERAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		postProcess.image,
+		postProcess.imageFormat,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_GENERAL);
 
-	// Run compute shader on post-process image
-	colorCorrectPass(cmd);
+	colorCorrectPass(frameCtx);
 
-	// Transition post-process image to SRC for copy to swapchain
-	RendererUtils::transitionImage(cmd, _postProcessImage.image, _postProcessImage.imageFormat, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		postProcess.image,
+		postProcess.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		swp.images[frameCtx.swapchainImageIndex],
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	// Transition swapchain image to DST for copy
-	RendererUtils::transitionImage(cmd, Backend::getSwapchainImages()[imageIndex], _drawImage.imageFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-	RendererUtils::copyImageToImage(
-		cmd,
-		_postProcessImage.image,
-		Backend::getSwapchainImages()[imageIndex],
+	RendererUtils::copyImageToImage(frameCtx.commandBuffer,
+		postProcess.image,
+		swp.images[frameCtx.swapchainImageIndex],
 		{ _drawExtent.width, _drawExtent.height },
-		Backend::getSwapchainExtent()
+		swp.extent
 	);
 
 	// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
-	RendererUtils::transitionImage(cmd, Backend::getSwapchainImages()[imageIndex], _drawImage.imageFormat, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		swp.images[frameCtx.swapchainImageIndex],
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-	// Draw ImGui
-	EditorImgui::drawImgui(cmd, Backend::getSwapchainImageViews()[imageIndex], false);
+	EditorImgui::drawImgui(frameCtx.commandBuffer, swp.imageViews[frameCtx.swapchainImageIndex], false);
 
-	// Transition swapchain to PRESENT
-	RendererUtils::transitionImage(cmd, Backend::getSwapchainImages()[imageIndex], _drawImage.imageFormat, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
+		swp.images[frameCtx.swapchainImageIndex],
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-	// END COMMAND BUFFER
-	VK_CHECK(vkEndCommandBuffer(cmd));
+	VK_CHECK(vkEndCommandBuffer(frameCtx.commandBuffer));
 }
 
-void Renderer::drawGeometry(VkCommandBuffer cmd) {
-	//begin a render pass  connected to our draw image
+void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx) {
 	VkRenderingAttachmentInfo colorAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
-		.imageView = (MSAACOUNT == 1u) ? _drawImage.imageView : _msaaImage.imageView,
+		.imageView = (MSAACOUNT == 1u) ? imageViews[0] : imageViews[1],
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.resolveMode = (MSAACOUNT == 1u) ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
-		.resolveImageView = (MSAACOUNT == 1u) ? VK_NULL_HANDLE : _drawImage.imageView,
+		.resolveImageView = (MSAACOUNT == 1u) ? VK_NULL_HANDLE : imageViews[0],
 		.resolveImageLayout = (MSAACOUNT == 1u) ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
@@ -251,7 +336,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 	VkRenderingAttachmentInfo depthAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
-		.imageView = _depthImage.imageView,
+		.imageView = imageViews[2],
 		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		.resolveMode = VK_RESOLVE_MODE_NONE,
 		.resolveImageView = VK_NULL_HANDLE,
@@ -265,7 +350,7 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 		.pNext = nullptr,
 		.flags = 0,
-		.renderArea = { {0, 0}, { _drawExtent.width, _drawExtent.height } },
+		.renderArea = { { 0, 0 }, { _drawExtent.width, _drawExtent.height } },
 		.layerCount = 1,
 		.viewMask = 0,
 		.colorAttachmentCount = 1,
@@ -274,143 +359,80 @@ void Renderer::drawGeometry(VkCommandBuffer cmd) {
 		.pStencilAttachment = nullptr
 	};
 
-	vkCmdBeginRendering(cmd, &renderInfo);
-
-	RenderScene::renderDrawScene(cmd, getCurrentFrame());
-
-	vkCmdEndRendering(cmd);
-}
-
-// requires push constants to render
-void Renderer::colorCorrectPass(VkCommandBuffer cmd) {
-	// The current shader
-	auto& effect = Pipelines::postProcessPipeline.getComputeEffect();
-
-	auto& layout = Pipelines::postProcessPipeline._computePipelineLayout;
-
-	auto& pcData = PipelinePresents::colorCorrectionPipelineSettings.pushConstantsInfo;
-
-	// bind the background compute pipeline
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
-
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout,
-		0, 1, &DescriptorSetOverwatch::getPostProcessDescriptors().descriptorSet, 0, nullptr);
-
-	vkCmdPushConstants(cmd, layout, pcData.stageFlags, pcData.offset, pcData.size, &effect.data);
-
-	// execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-	vkCmdDispatch(cmd, static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.f)), static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.f)), 1);
-}
-
-void Renderer::RenderFrame() {
-	VkDevice device = Backend::getDevice();
-	VkSwapchainKHR swapchain = Backend::getSwapchain();
-
-	auto& frame = getCurrentFrame();
-
-	RenderScene::updateScene();
-
-	VK_CHECK(vkWaitForFences(device, 1, &frame._renderFence, VK_TRUE, UINT64_MAX));
-
-	frame._deletionQueue.flush();
-	frame._frameDescriptors.clearPools();
-
-	uint32_t imageIndex;
-	VkResult result = vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, frame._swapchainSemaphore, VK_NULL_HANDLE, &imageIndex);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-		vkQueueWaitIdle(Backend::getGraphicsQueue());
-		Backend::resizeSwapchain();
-		return;
-	}
-	else if (result != VK_SUCCESS) {
-		throw std::runtime_error("Failed to present swap chain image!");
-	}
-
-	// Only reset the fence if work is submitted
-	VK_CHECK(vkResetFences(device, 1, &frame._renderFence));
-
-	VK_CHECK(vkResetCommandBuffer(frame._graphicsCmdBuffer, 0));
-	recordCommandBuffer(frame._graphicsCmdBuffer, imageIndex);
-
-	VkCommandBufferSubmitInfo cmdInfo{};
-	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-	cmdInfo.pNext = nullptr;
-	cmdInfo.commandBuffer = frame._graphicsCmdBuffer;
-	cmdInfo.deviceMask = 0;
-
-	VkSemaphoreSubmitInfo waitInfo{};
-	waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	waitInfo.pNext = nullptr;
-	waitInfo.semaphore = frame._swapchainSemaphore;
-	waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
-	waitInfo.deviceIndex = 0;
-	waitInfo.value = 1;
-
-	VkSemaphoreSubmitInfo signalInfo{};
-	signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	signalInfo.pNext = nullptr;
-	signalInfo.semaphore = frame._renderSemaphore;
-	signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-	signalInfo.deviceIndex = 0;
-	signalInfo.value = 1;
-
-	VkSubmitInfo2 graphicsSubmitInfo{};
-	graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-	graphicsSubmitInfo.pNext = nullptr;
-	graphicsSubmitInfo.waitSemaphoreInfoCount = (waitInfo.semaphore == VK_NULL_HANDLE) ? 0 : 1;
-	graphicsSubmitInfo.pWaitSemaphoreInfos = (waitInfo.semaphore == VK_NULL_HANDLE) ? nullptr : &waitInfo;
-
-	graphicsSubmitInfo.signalSemaphoreInfoCount = (signalInfo.semaphore == VK_NULL_HANDLE) ? 0 : 1;
-	graphicsSubmitInfo.pSignalSemaphoreInfos = (signalInfo.semaphore == VK_NULL_HANDLE) ? nullptr : &signalInfo;
-
-	graphicsSubmitInfo.commandBufferInfoCount = 1;
-	graphicsSubmitInfo.pCommandBufferInfos = &cmdInfo;
-
-	VK_CHECK(vkQueueSubmit2(Backend::getGraphicsQueue(), 1, &graphicsSubmitInfo, frame._renderFence));
-
-	VkPresentInfoKHR presentInfo{};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &frame._renderSemaphore;
-
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &swapchain;
-	presentInfo.pImageIndices = &imageIndex;
-
-	result = vkQueuePresentKHR(Backend::getPresentQueue(), &presentInfo);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || Engine::windowModMode().windowResized) {
-		if (Backend::getGraphicsQueue() != Backend::getPresentQueue()) {
-			vkQueueWaitIdle(Backend::getPresentQueue());
+	if (_transferSync.semaphore != VK_NULL_HANDLE) {
+		if (frameCtx.instanceBuffer.buffer != VK_NULL_HANDLE && frameCtx.indirectCmdBuffer.buffer != VK_NULL_HANDLE) {
+			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.instanceBuffer.buffer);
+			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.indirectCmdBuffer.buffer);
+			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
 		}
-		else {
-			vkQueueWaitIdle(Backend::getGraphicsQueue());
-		}
-
-		Backend::resizeSwapchain();
-	}
-	else if (result != VK_SUCCESS) {
-		throw std::runtime_error("Failed to present swap chain image!");
 	}
 
-	// double buffering, frames indexed at 0 and 1
-	_frameNumber++;
+	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
+	RenderScene::renderGeometry(frameCtx);
+	vkCmdEndRendering(frameCtx.commandBuffer);
 }
 
+void Renderer::colorCorrectPass(FrameContext& frame) {
+	auto& pipeline = Pipelines::postProcessPipeline;
+	auto& compEffect = pipeline.getComputeEffect();
+
+	vkCmdBindPipeline(frame.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, compEffect.pipeline);
+
+	vkCmdPushConstants(frame.commandBuffer,
+		Pipelines::_globalLayout.layout,
+		Pipelines::_globalLayout.pcRange.stageFlags,
+		Pipelines::_globalLayout.pcRange.offset,
+		Pipelines::_globalLayout.pcRange.size,
+		&compEffect.pushData);
+
+	const auto xDispatch = static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0f));
+	const auto yDispatch = static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0f));
+
+	vkCmdDispatch(frame.commandBuffer, xDispatch, yDispatch, 1);
+}
+
+// cleans up frame contexts
 void Renderer::cleanup() {
-	VkDevice device = Backend::getDevice();
+	auto device = Backend::getDevice();
+	auto allocator = Engine::getState().getGPUResources().getAllocator();
 
-	RenderScene::metalRoughMaterial.clearResources(device);
+	for (auto& frame : _frameContexts) {
+		frame.deletionQueue.flush();
 
-	for (auto& frame : _frames) {
-		vkDestroyCommandPool(device, frame._graphicsCmdPool, nullptr);
+		// Sync objects first
+		if (frame.syncObjs.fence) {
+			vkDestroyFence(device, frame.syncObjs.fence, nullptr);
+		}
+		if (frame.syncObjs.semaphore) {
+			vkDestroySemaphore(device, frame.syncObjs.semaphore, nullptr);
+		}
+		if (frame.syncObjs.swapchainSemaphore) {
+			vkDestroySemaphore(device, frame.syncObjs.swapchainSemaphore, nullptr);
+		}
+		if (frame.transferFence) {
+			vkDestroyFence(device, frame.transferFence, nullptr);
+		}
 
-		vkDestroyFence(device, frame._renderFence, nullptr);
-		vkDestroySemaphore(device, frame._renderSemaphore, nullptr);
-		vkDestroySemaphore(device, frame._swapchainSemaphore, nullptr);
+		// Pools 2nd
+		if (frame.graphicsPool) {
+			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);
+		}
+		if (frame.transferPool) {
+			vkDestroyCommandPool(device, frame.transferPool, nullptr);
+		}
 
-		frame._deletionQueue.flush();
+		// address buffers last
+		if (frame.addressTableBuffer.buffer) {
+			BufferUtils::destroyBuffer(frame.addressTableBuffer, allocator);
+		}
+		if (frame.addressTableStaging.buffer) {
+			BufferUtils::destroyBuffer(frame.addressTableStaging, allocator);
+		}
+
+		frame.ready = false;
 	}
 
-	_renderImageDeletionQueue.flush();
-	vmaDestroyAllocator(_renderImageAllocator);
+	if (_transferSync.semaphore) {
+		vkDestroySemaphore(device, _transferSync.semaphore, nullptr);
+	}
 }

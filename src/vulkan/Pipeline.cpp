@@ -1,8 +1,8 @@
 #include "pch.h"
 
 #include "Pipeline.h"
-#include "PipelineManager.h"
-#include "renderer/Descriptor.h"
+#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu/Descriptor.h"
 #include "Backend.h"
 
 
@@ -21,7 +21,7 @@ void PipelineBuilder::initializePipelineSTypes() {
 }
 
 VkPipeline PipelineBuilder::createPipeline(PipelinePresent pipelineSettings) {
-	VkDevice device = Backend::getDevice();
+	auto device = Backend::getDevice();
 
 	VkPipelineViewportStateCreateInfo viewportState = {};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -64,16 +64,14 @@ VkPipeline PipelineBuilder::createPipeline(PipelinePresent pipelineSettings) {
 	pipelineInfo.pDynamicState = &dynamicInfo;
 
 	VkPipeline pipeline;
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create pipeline!");
-	}
+	VK_CHECK(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline));
 
 	return pipeline;
 }
 
 // Shader stages will determine how many effects are made per pipeline
-std::vector<ComputeEffect> ComputePipelineBuilder::build(ComputePipeline& pipeline, PipelinePresent& settings) {
-	VkDevice device = Backend::getDevice();
+std::vector<ComputeEffect> ComputePipelineBuilder::build(PipelinePresent settings) {
+	auto device = Backend::getDevice();
 
 	std::vector<ComputeEffect> outEffects;
 	for (size_t i = 0; i < settings.shaderStagesInfo.size(); i++) {
@@ -81,13 +79,11 @@ std::vector<ComputeEffect> ComputePipelineBuilder::build(ComputePipeline& pipeli
 			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 			.pNext = nullptr,
 			.stage = settings.shaderStages[i],
-			.layout = pipeline._computePipelineLayout,
+			.layout = _pipelineLayout,
 		};
 
 		ComputeEffect effect{};
 		effect.name = settings.shaderStagesInfo[i].shaderName;
-		effect.data = settings.shaderStagesInfo[i].pushConstantData;
-		effect.pcInfo = settings.pushConstantsInfo;
 
 		VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &effect.pipeline));
 		outEffects.push_back(effect);

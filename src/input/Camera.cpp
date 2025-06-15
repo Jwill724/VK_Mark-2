@@ -1,35 +1,33 @@
 #include "pch.h"
 
 #include "Camera.h"
-#include "imgui/EditorImgui.h"
+#include "profiler/EditorImgui.h"
 #include "renderer/RenderScene.h"
 
-void Camera::update(GLFWwindow* window, float& lastTime) {
-	float currentTime = static_cast<float>(glfwGetTime());
-	float deltaTime = currentTime - lastTime;
-	lastTime = currentTime;
-
+void Camera::update(GLFWwindow* window, const float deltaTime) {
 	processInput(window, deltaTime);
 
-	position += velocity;
+	_position += _velocity;
 }
 
 void Camera::processInput(GLFWwindow* window, float dt) {
 	UserInput::updateLocalInput(window, true, true);
 
-	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 80.f : 20.f;
-	float speed = baseSpeed * dt;
+	// TODO: movement is slow asf in space station model, due to model units being too large so
+	// some scaling factor will need to be added for this particular model
+	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 15.f : 5.f;
+	float moveSpeed = baseSpeed * dt;
 
 	// Mouse rotation, imgui can be properly used with free cam
 	if (!ImGui::GetIO().WantCaptureMouse && UserInput::mouse.leftPressed) {
 		float sensitivity = 30.f;
-		yaw -= UserInput::mouse.delta.x* sensitivity;
-		pitch += UserInput::mouse.delta.y * sensitivity;
-		pitch = std::clamp(pitch, -89.f, 89.f);
+		_yaw -= UserInput::mouse.delta.x * sensitivity;
+		_pitch += UserInput::mouse.delta.y * sensitivity;
+		_pitch = std::clamp(_pitch, -89.f, 89.f);
 	}
 
-	float radPitch = glm::radians(pitch);
-	float radYaw = glm::radians(yaw);
+	float radPitch = glm::radians(_pitch);
+	float radYaw = glm::radians(_yaw);
 
 	glm::vec3 front = glm::normalize(glm::vec3(
 		cos(radPitch) * cos(radYaw),
@@ -37,57 +35,54 @@ void Camera::processInput(GLFWwindow* window, float dt) {
 		cos(radPitch) * sin(radYaw)
 	));
 
-	currentView = front;
+	_currentView = front;
 
 	glm::vec3 right = glm::normalize(glm::cross(front, glm::vec3(0.f, 1.f, 0.f)));
 	glm::vec3 up = glm::normalize(glm::cross(right, front));
 
 	// for world orientation relative to the camera movements
 	glm::vec3 upWorld(0.f, 1.f, 0.f);
-	glm::vec3 flatFoward = glm::normalize(glm::vec3(currentView.x, 0.f, currentView.z));
+	glm::vec3 flatFoward = glm::normalize(glm::vec3(_currentView.x, 0.f, _currentView.z));
 	glm::vec3 rightFoward = glm::normalize(glm::vec3(right.x, 0.f, right.z));
 
-	float extraVertSpeed = 1000.f;
 
-	glm::vec3 horiz = glm::vec3(0.f);
+	glm::vec3 horiz(0.f);
 	if (UserInput::keyboard.isPressed(GLFW_KEY_W)) horiz += flatFoward;
 	if (UserInput::keyboard.isPressed(GLFW_KEY_S)) horiz -= flatFoward;
 	if (UserInput::keyboard.isPressed(GLFW_KEY_A)) horiz -= rightFoward;
 	if (UserInput::keyboard.isPressed(GLFW_KEY_D)) horiz += rightFoward;
 
-	glm::vec3 vert = glm::vec3(0.f);
-	if (UserInput::keyboard.isPressed(GLFW_KEY_SPACE)) vert += up * upWorld * extraVertSpeed;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld * extraVertSpeed;
+	glm::vec3 vert(0.f);
+	if (UserInput::keyboard.isPressed(GLFW_KEY_SPACE)) vert += up * upWorld;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld;
+
 
 	if (glm::length(horiz) > 0.f) horiz = glm::normalize(horiz);
-	velocity = (horiz * extraVertSpeed) + vert;
+	if (glm::length(vert) > 0.f) vert = glm::normalize(vert);
 
-	if (glm::length(velocity) > 0.f) {
-		velocity = glm::normalize(velocity) * speed;
-	}
-	else {
-		velocity = glm::vec3(0.f);
-	}
+	// scale speed on whole axis while frame independent
+	float speedBoost = 125.f * dt;
+	_velocity = horiz * moveSpeed + vert * (moveSpeed * speedBoost);
 
 	if (UserInput::keyboard.isPressed(GLFW_KEY_R)) {
 		reset();
 	}
 }
 
-glm::mat4 Camera::getViewMatrix() {
-	return glm::lookAt(position, position + currentView, glm::vec3(0.f, 1.f, 0.f));
+glm::mat4 Camera::getViewMatrix() const {
+	return glm::lookAt(_position, _position + _currentView, glm::vec3(0.f, 1.f, 0.f));
 }
 
 glm::mat4 Camera::getRotationMatrix() const {
-	glm::quat pitchRotation = glm::angleAxis(glm::radians(pitch), glm::vec3{ 1.f, 0.f, 0.f });
-	glm::quat yawRotation = glm::angleAxis(glm::radians(yaw), glm::vec3{ 0.f, 1.f, 0.f });
+	glm::quat pitchRotation = glm::angleAxis(glm::radians(_pitch), glm::vec3{ 1.f, 0.f, 0.f });
+	glm::quat yawRotation = glm::angleAxis(glm::radians(_yaw), glm::vec3{ 0.f, 1.f, 0.f });
 
 	glm::quat orientation = yawRotation * pitchRotation;
 	return glm::toMat4(orientation);
 }
 
 void Camera::reset() {
-	position = SPAWNPOINT;
-	pitch = 0.f;
-	yaw = -90.f;
+	_position = SPAWNPOINT;
+	_pitch = 0.f;
+	_yaw = -90.f;
 }

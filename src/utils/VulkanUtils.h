@@ -1,33 +1,33 @@
 #pragma once
 
 #include "common/Vk_Types.h"
+#include "common/ResourceTypes.h"
 
 struct QueueFamilyIndices {
 	std::optional<uint32_t> graphicsFamily;
 	std::optional<uint32_t> presentFamily;
 	std::optional<uint32_t> transferFamily;
+	std::optional<uint32_t> computeFamily;
 
 	bool isComplete() const {
-		return graphicsFamily.has_value() && presentFamily.has_value() && transferFamily.has_value();
+		return graphicsFamily.has_value() && presentFamily.has_value() && transferFamily.has_value() && computeFamily.has_value();
 	}
 };
 
 namespace VulkanUtils {
-	uint32_t FindMemoryType(VkPhysicalDevice device, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-	QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
+	uint32_t FindMemoryType(VkPhysicalDevice pDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+	QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
 
-	VkFormat findDepthFormat(VkPhysicalDevice device);
-	VkFormat findSupportedFormat(VkPhysicalDevice device, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags feature);
+	VkFormat findDepthFormat(VkPhysicalDevice pDevice);
+	VkFormat findSupportedFormat(VkPhysicalDevice pDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags feature);
 	bool hasStencilComponent(VkFormat format);
 	bool loadShaderModule(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
-	VmaAllocator createAllocator(VkPhysicalDevice physicalDevice, VkDevice device, VkInstance instance);
+	VmaAllocator createAllocator(VkPhysicalDevice pDevice, VkDevice device, VkInstance instance);
 
-	std::vector<uint32_t> findSupportedSampleCounts(VkPhysicalDevice physicalDevice);
+	VkDeviceAddress getBufferAddress(VkBuffer buffer, VkDevice device);
 
-	// Push constants
-	uint32_t GetMaxPushConstantSize(VkPhysicalDevice device);
-	PushConstantPool CreatePushConstantPool(VkPhysicalDevice device);
-	bool AllocatePushConstant(PushConstantPool* pool, uint32_t size, uint32_t* offsetOut);
+	// Vulkan device limits
+	std::vector<uint32_t> findSupportedSampleCounts(VkPhysicalDeviceLimits deviceLimits);
 
-	VkImageSubresourceRange imageSubresourceRange(VkImageAspectFlags aspectMask);
+	void defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent);
 }

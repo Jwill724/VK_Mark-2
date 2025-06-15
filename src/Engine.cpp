@@ -1,73 +1,101 @@
+#include "pch.h"
+
 #include "Engine.h"
-#include "vulkan/Backend.h"
-#include "renderer/Renderer.h"
-#include "imgui/EditorImgui.h"
-#include "core/AssetManager.h"
-#include "renderer/RenderScene.h"
+#include "core/JobSystem.h"
+
+static std::unique_ptr<Window> _window;
+static std::unique_ptr<EngineState> engineState;
 
 namespace Engine {
-	Window _window;
-	GLFWwindow* getWindow() { return _window.window; }
+	GLFWwindow* getWindow() { return _window ? _window->window : nullptr; }
 	// just returns the whole window struct for its use
-	Window& windowModMode() { return _window; }
+	Window& windowModMode() { return *_window; }
 
-	DeletionQueue _mainDeletionQueue;
-	VmaAllocator _allocator;
-
-	EngineStats stats;
-	EngineStats& getStats() { return stats; }
-
-	DeletionQueue& getDeletionQueue() { return _mainDeletionQueue; }
-	VmaAllocator& getAllocator() { return _allocator; }
-
-	VkExtent2D _windowExtent = { 1920, 1080 };
+	VkExtent2D _windowExtent = { 800, 800 };
 	VkExtent2D& getWindowExtent() { return _windowExtent; }
+
+	Profiler _engineProfiler;
+	Profiler& getProfiler() { return _engineProfiler; }
 
 	bool _isInitialized{ false };
 	bool isInitialized() { return _isInitialized; }
-	bool stopRendering{ false };
-	bool hasRenderStopped() { return stopRendering; }
+	bool _stopRendering{ false };
+	bool hasRenderStopped() { return _stopRendering; }
 
-	float lastTime = 0;
-	float& getLastTimeCount() { return lastTime; }
+	float _lastFrameTime = 0.f;
+	float& getLastFrameTime() { return _lastFrameTime; }
 
-	void init();
+	void resetState();
+
 	void cleanup();
 }
 
-void Engine::init() {
-	_window.initWindow(_windowExtent.width, _windowExtent.height);
-
-	Backend::initBackend();
-
-	AssetManager::loadAssets();
-
-	_isInitialized = true;
+EngineState& Engine::getState() {
+	if (!engineState) engineState = std::make_unique<EngineState>();
+	return *engineState;
+}
+void Engine::resetState() {
+	engineState = std::make_unique<EngineState>();
+	engineState->init();
 }
 
+void Engine::initWindow() {
+	_window = std::make_unique<Window>();
+	_window->initWindow(_windowExtent.width, _windowExtent.height);
+}
+
+void Engine::resetWindow() {
+	if (_window) {
+		_window->cleanupWindow();
+	}
+	if (_isInitialized == false) return; // shutdown
+
+	_window = std::make_unique<Window>();
+	_window->initWindow(_windowExtent.width, _windowExtent.height);
+}
+
+
 void Engine::run() {
-	init();
-	Renderer::init();
+	initWindow();
+	Backend::initVulkanCore();
 
-	glfwSetWindowFocusCallback(_window.window, EditorImgui::MyWindowFocusCallback);
-	lastTime = static_cast<float>(glfwGetTime());
+	getState().init();
+	_isInitialized = true;
 
-	// main loop
-	while (WindowIsOpen(_window.window)) {
-		auto start = std::chrono::system_clock::now();
+	getState().loadAssets();
 
+	_lastFrameTime = static_cast<float>(glfwGetTime());
+
+	//_engineProfiler.getStats().capFramerate = true;
+	//_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_120;
+
+	// TODO: Fix visual frame data inconsistencies like fps,
+	// look into any other profiler stats
+	while (WindowIsOpen(_window->window)) {
+		//if (EngineStages::IsSet(ENGINE_STAGE_SHUTDOWN)) break;
+
+		_engineProfiler.beginFrame();
+		_engineProfiler.updateDeltaTime(_lastFrameTime);
 		glfwPollEvents();
 
-		EditorImgui::renderImgui();
+		//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
+		//EngineStages::Clear(static_cast<EngineStage>(EngineStages::renderFrameFlags));
 
-		Renderer::RenderFrame();
+		//EngineStages::SetGoal(ENGINE_STAGE_READY);
+		getState().renderFrame();
 
-		auto end = std::chrono::system_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-		stats.frametime = elapsed.count() / 1000.f;
+		_engineProfiler.endFrame();
+		//_lastFrameTime = static_cast<float>(glfwGetTime());
 	}
+	JobSystem::wait();
 
-	stopRendering = true;
+	_stopRendering = true;
+
+	//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
+
+	//if (!EngineStages::IsSet(ENGINE_STAGE_SHUTDOWN)) {
+	//	EngineStages::SetGoal(ENGINE_STAGE_SHUTDOWN);
+	//}
 
 	cleanup();
 }
@@ -77,13 +105,10 @@ void Engine::cleanup() {
 		_isInitialized = false;
 		vkDeviceWaitIdle(Backend::getDevice());
 
-		RenderScene::loadedScenes.clear();
-
-		AssetManager::getAssetDeletionQueue().flush();
-
-		_mainDeletionQueue.flush();
+		getState().shutdown();
 
 		Backend::cleanupBackend();
-		_window.cleanupWindow();
+
+		resetWindow();
 	}
 }

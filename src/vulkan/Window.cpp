@@ -1,6 +1,6 @@
+#include "pch.h"
+
 #include "Window.h"
-#include <stdexcept>
-#include <iostream>
 #include "Engine.h"
 #include "renderer/Renderer.h"
 
@@ -13,7 +13,7 @@ bool WindowIsOpen(GLFWwindow* window) {
 	return !(glfwWindowShouldClose(window));
 }
 
-void Window::updateWindowSize() {
+void Window::updateWindowSize() const {
 	int width = 0, height = 0;
 	glfwGetFramebufferSize(window, &width, &height);
 	while (width == 0 || height == 0) {
@@ -25,31 +25,41 @@ void Window::updateWindowSize() {
 	Engine::getWindowExtent().width = static_cast<uint32_t>(width);
 	Engine::getWindowExtent().height = static_cast<uint32_t>(height);
 
-	Renderer::getDrawExtent() = {
-		static_cast<uint32_t>(Engine::getWindowExtent().width * Renderer::getRenderScale()),
-		static_cast<uint32_t>(Engine::getWindowExtent().height * Renderer::getRenderScale()),
+	VkExtent3D newDrawExtent = {
+		Engine::getWindowExtent().width,
+		Engine::getWindowExtent().height,
 		1
 	};
+
+	Renderer::setDrawExtent(newDrawExtent);
 }
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {
-	if (!glfwInit()) {
-		throw std::runtime_error("Failed to initialize GLFW!");
-	}
+
+	assert(glfwInit() && "Failed to initialize GLFW!");
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 	window = glfwCreateWindow(width, height, "This is bullshit", nullptr, nullptr);
-	if (!window) {
-		throw std::runtime_error("Failed to create window!");
-	}
+
+	//GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+	//const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
+
+	//if (width == static_cast<uint32_t>(mode->width) && height == static_cast<uint32_t>(mode->height)) {
+	//	// fullscreen
+	//	window = glfwCreateWindow(width, height, "This is bullshit", primaryMonitor, nullptr);
+	//}
+	//else {
+	//	// window
+	//	window = glfwCreateWindow(width, height, "This is bullshit", nullptr, nullptr);
+	//}
 
 	glfwSetWindowUserPointer(window, this);
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
-void Window::cleanupWindow() {
+void Window::cleanupWindow() const {
 	glfwDestroyWindow(window);
 	glfwTerminate();
 }

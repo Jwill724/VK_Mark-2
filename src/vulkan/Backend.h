@@ -1,35 +1,28 @@
 #pragma once
 
-#include "Window.h"
-#include "BackendTools.h"
 #include "utils/VulkanUtils.h"
+#include "common/EngineTypes.h"
+#include "BackendTools.h"
 
 namespace Backend {
-	VkInstance& getInstance();
-	VkSurfaceKHR& getSurface();
-	VkPhysicalDevice& getPhysicalDevice();
-	VkDevice& getDevice();
+	const VkPhysicalDeviceLimits getDeviceLimits();
 
-	// TODO: swapchain state struct
-	VkSwapchainKHR& getSwapchain();
-	VkExtent2D& getSwapchainExtent();
-	std::vector<VkImageView>& getSwapchainImageViews();
-	std::vector<VkImage>& getSwapchainImages();
-	VkFormat& getSwapchainImageFormat();
+	VkInstance getInstance();
+	VkSurfaceKHR getSurface();
+	VkPhysicalDevice getPhysicalDevice();
+	VkDevice getDevice();
 
-	QueueFamilyIndices& getQueueFamilyIndices();
+	SwapchainDef& getSwapchainDef();
 
-	VkQueue& getGraphicsQueue();
-	VkQueue& getPresentQueue();
-	VkQueue& getTransferQueue();
+	QueueFamilyIndices getQueueFamilyIndices();
+	GPUQueue& getGraphicsQueue();
+	GPUQueue& getPresentQueue();
+	GPUQueue& getTransferQueue();
+	GPUQueue& getComputeQueue();
 
-	// api setup
-	// queues and devices
-	// allocates swapchains and any other resources
-	void initBackend();
+	void initVulkanCore();
 
 	void resizeSwapchain();
 
-	// deletes in proper order
 	void cleanupBackend();
 }
