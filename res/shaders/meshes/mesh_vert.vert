@@ -8,66 +8,66 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "../include/input_structures.glsl"
-
-#define gl_DrawID gl_DrawIDARB
+#include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) out vec3 outNormal;
-layout(location = 1) out vec3 outColor;
-layout(location = 2) out vec2 outUV;
-layout(location = 3) out vec3 outWorldPos;
-layout(location = 4) flat out uint vDrawID;
+layout(location = 1) out vec2 outUV;
+layout(location = 2) out vec3 outWorldPos;
+layout(location = 3) flat out uint vDrawID;
 
-layout(set = 0, binding = 0, std430) readonly buffer globalAddressTableBuffer {
+layout(set = 0, binding = 0, scalar) readonly buffer globalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
-layout(set = 1, binding = 0, std430) readonly buffer frameAddressTableBuffer {
+layout(set = 1, binding = 0, scalar) readonly buffer frameAddressTableBuffer {
     GPUAddressTable frameAddressTable;
 };
 
-layout(set = 1, binding = 1) uniform SceneUBO {
+layout(set = 1, binding = 1, scalar) uniform SceneUBO {
     SceneData scene;
 };
 
 layout(push_constant) uniform PushConstants {
-    DrawPushConstants pc;
-};
+	uint opaqueVisibleCount;
+	uint transparentVisibleCount;
+	uint pad[2];
+} pc;
 
-void main()
-{
-    // === Buffers ===
-    InstanceBuffer instanceBuf = InstanceBuffer(frameAddressTable.instanceBuffer);
-    IndirectBuffer drawCmdBuf = IndirectBuffer(frameAddressTable.indirectCmdBuffer);
-    MaterialBuffer materialBuf = MaterialBuffer(globalAddressTable.materialBuffer);
-    DrawRangeBuffer rangeBuf  = DrawRangeBuffer(globalAddressTable.drawRangeBuffer);
+void main() {
+	uint drawID = gl_DrawIDARB;
+	vDrawID = drawID;
 
-    VertexBuffer vertexBuf;
-    IndexBuffer  indexBuf;
+	IndirectDrawCmd drawCmd;
+	Instance inst;
+	Mesh mesh;
 
-    Instance inst;
-    Material mat;
+	if (drawID < pc.opaqueVisibleCount) {
+		// === Opaque path ===
+		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
+		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
-    // === DrawID check ===
-    uint drawID = gl_DrawID;
-    vDrawID = drawID;
-    if (drawID == 0) {
-        inst.modelMatrix = pc.modelMatrix;
-        inst.vertexAddress = pc.vertexAddress;
-        inst.indexAddress = pc.indexAddress;
-        inst.drawRangeIndex = pc.drawRangeIndex;
-        mat = materialBuf.materials[pc.materialIndex];
-    } else {
-        IndirectDrawCmd drawCmd = drawCmdBuf.cmds[drawID];
-        uint instanceIndex = drawCmd.instanceIndex;
-        inst = instanceBuf.instances[instanceIndex];
-        mat = materialBuf.materials[inst.materialIndex];
-    }
+		drawCmd = cmdBuf.opaqueIndirect[drawID];
+		inst = instBuf.opaqueInstances[drawCmd.instanceIndex];
+		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
+	} else {
+		// === Transparent path ===
+		uint tIndex = drawID - pc.opaqueVisibleCount;
+		if (tIndex >= pc.transparentVisibleCount) return;
 
-    vertexBuf = VertexBuffer(inst.vertexAddress);
-    indexBuf  = IndexBuffer(inst.indexAddress);
+		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TrasparentIndirectDraws]);
+		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
-    GPUDrawRange range = rangeBuf.ranges[inst.drawRangeIndex];
+		drawCmd = cmdBuf.transparentIndirect[tIndex];
+		inst = instBuf.transparentInstances[drawCmd.instanceIndex];
+		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
+	}
+
+    DrawRangeBuffer drawRangeBuf = DrawRangeBuffer(globalAddressTable.addrs[ABT_DrawRange]);
+    GPUDrawRange range = drawRangeBuf.ranges[mesh.drawRangeIndex];
+
+    VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
+    IndexBuffer indexBuf = IndexBuffer(globalAddressTable.addrs[ABT_Index]);
+
     uint vertexIndex = indexBuf.indices[range.firstIndex + gl_VertexIndex];
     Vertex vtx = vertexBuf.vertices[vertexIndex];
 
@@ -79,6 +79,5 @@ void main()
     mat3 normalMatrix = transpose(inverse(mat3(model)));
     outNormal = normalize(normalMatrix * vtx.normal);
 
-    outColor = vtx.color.rgb * mat.colorFactor.rgb;
     outUV = vtx.uv;
 }

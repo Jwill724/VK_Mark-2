@@ -19,10 +19,8 @@ namespace Engine {
 
 	bool _isInitialized{ false };
 	bool isInitialized() { return _isInitialized; }
-	bool _stopRendering{ false };
-	bool hasRenderStopped() { return _stopRendering; }
 
-	float _lastFrameTime = 0.f;
+	float _lastFrameTime = 0.0f;
 	float& getLastFrameTime() { return _lastFrameTime; }
 
 	void resetState();
@@ -64,32 +62,28 @@ void Engine::run() {
 
 	getState().loadAssets();
 
-	_lastFrameTime = static_cast<float>(glfwGetTime());
+	// frame capping is fucking busted
+	_engineProfiler.getStats().capFramerate = false;
 
-	//_engineProfiler.getStats().capFramerate = true;
-	//_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_120;
-
-	// TODO: Fix visual frame data inconsistencies like fps,
-	// look into any other profiler stats
 	while (WindowIsOpen(_window->window)) {
 		//if (EngineStages::IsSet(ENGINE_STAGE_SHUTDOWN)) break;
 
-		_engineProfiler.beginFrame();
 		_engineProfiler.updateDeltaTime(_lastFrameTime);
+
+		_engineProfiler.beginFrame();
+
 		glfwPollEvents();
 
 		//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
 		//EngineStages::Clear(static_cast<EngineStage>(EngineStages::renderFrameFlags));
 
 		//EngineStages::SetGoal(ENGINE_STAGE_READY);
+
 		getState().renderFrame();
 
 		_engineProfiler.endFrame();
-		//_lastFrameTime = static_cast<float>(glfwGetTime());
 	}
 	JobSystem::wait();
-
-	_stopRendering = true;
 
 	//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
 

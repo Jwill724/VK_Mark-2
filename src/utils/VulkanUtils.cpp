@@ -6,14 +6,15 @@ uint32_t VulkanUtils::FindMemoryType(VkPhysicalDevice pDevice, uint32_t typeFilt
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(pDevice, &memProperties);
 
-	ASSERT(!&memProperties);
-
 	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-		if (typeFilter & (1 << i) &&
+		if ((typeFilter & (1 << i)) &&
 			(memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
 			return i;
 		}
 	}
+
+	ASSERT(false && "Failed to find suitable memory type!");
+	return 0;
 }
 
 QueueFamilyIndices VulkanUtils::FindQueueFamilies(VkPhysicalDevice pDevice, VkSurfaceKHR surface) {
@@ -79,9 +80,6 @@ std::vector<uint32_t> VulkanUtils::findSupportedSampleCounts(VkPhysicalDeviceLim
 	VkSampleCountFlags counts = deviceLimits.framebufferColorSampleCounts &
 		deviceLimits.framebufferDepthSampleCounts;
 
-	if (counts & VK_SAMPLE_COUNT_64_BIT) { sampleCounts.push_back(64); }
-	if (counts & VK_SAMPLE_COUNT_32_BIT) { sampleCounts.push_back(32); }
-	if (counts & VK_SAMPLE_COUNT_16_BIT) { sampleCounts.push_back(16); }
 	if (counts & VK_SAMPLE_COUNT_8_BIT) { sampleCounts.push_back(8); }
 	if (counts & VK_SAMPLE_COUNT_4_BIT) { sampleCounts.push_back(4); }
 	if (counts & VK_SAMPLE_COUNT_2_BIT) { sampleCounts.push_back(2); }
@@ -112,6 +110,9 @@ VkFormat VulkanUtils::findSupportedFormat(VkPhysicalDevice pDevice, const std::v
 			return format;
 		}
 	}
+
+	ASSERT(false && "Failed to find supported format!");
+	return VK_FORMAT_UNDEFINED;
 }
 
 // TODO: more stencil options
@@ -152,7 +153,7 @@ bool VulkanUtils::loadShaderModule(const char* filePath, VkDevice device, VkShad
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.pNext = nullptr;
 
-	// codeSize has to be in bytes, so multply the ints in the buffer by size of
+	// codeSize has to be in bytes, so multiply the ints in the buffer by size of
 	// int to know the real size of the buffer
 	createInfo.codeSize = buffer.size() * sizeof(uint32_t);
 	createInfo.pCode = buffer.data();

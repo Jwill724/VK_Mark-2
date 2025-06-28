@@ -6,7 +6,6 @@ bool WindowIsOpen(GLFWwindow* window);
 
 struct Window {
 	GLFWwindow* window = nullptr;
-	bool windowResized = false;
 
 	void updateWindowSize() const;
 

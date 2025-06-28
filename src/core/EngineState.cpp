@@ -1,11 +1,10 @@
 #include "pch.h"
 
 #include "EngineState.h"
-#include "vulkan/Backend.h"
 #include "common/Vk_Types.h"
 #include "common/EngineConstants.h"
-#include "renderer/gpu/CommandBuffer.h"
-#include "renderer/gpu/Descriptor.h"
+#include "renderer/gpu_types/CommandBuffer.h"
+#include "renderer/gpu_types/Descriptor.h"
 #include "renderer/renderer.h"
 #include "utils/VulkanUtils.h"
 #include "AssetManager.h"
@@ -13,7 +12,7 @@
 #include "JobSystem.h"
 #include "renderer/RenderScene.h"
 #include "renderer/SceneGraph.h"
-#include "renderer/Batching.h"
+#include "renderer/DrawPreperation.h"
 #include "profiler/EditorImgui.h"
 #include "Engine.h"
 
@@ -26,6 +25,7 @@ void EngineState::init() {
 
 	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
 	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
+	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
 	JobSystem::getThreadPoolManager().init(device, static_cast<uint32_t>(allThreadContexts.size()), graphicsIndex, transferIndex);
 
 	_resources.init();
@@ -36,7 +36,7 @@ void EngineState::init() {
 	DescriptorSetOverwatch::initDescriptors(dQueue);
 
 	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
-	Renderer::initFrameContexts(device, graphicsIndex, transferIndex, Engine::getWindowExtent(), frameLayout, mainAllocator);
+	Renderer::initFrameContexts(device, graphicsIndex, transferIndex, computeIndex, Engine::getWindowExtent(), frameLayout, mainAllocator);
 	ResourceManager::initRenderImages(dQueue, mainAllocator);
 	ResourceManager::initTextures(_resources.getGraphicsPool(), dQueue, _resources.getTempDeletionQueue(), mainAllocator);
 
@@ -61,15 +61,12 @@ void EngineState::init() {
 	Environment::dispatchEnvironmentMaps(_resources, ResourceManager::_globalImageTable);
 	_resources.getTempDeletionQueue().flush();
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
-	_resources.getImageLUT().clear();
+	_resources.clearLUTEntries();
 	ResourceManager::_globalImageTable.clearTables();
 }
 
 void EngineState::loadAssets() {
 	auto assetQueue = std::make_shared<GLTFAssetQueue>();
-
-	auto& profiler = Engine::getProfiler();
-	profiler.startTimer();
 
 	auto mainAllocator = _resources.getAllocator();
 
@@ -85,8 +82,12 @@ void EngineState::loadAssets() {
 
 	JobSystem::wait();
 
+	auto& profiler = Engine::getProfiler();
+
 	if (availableAssets) {
 		fmt::print("Assets available for loading!\n");
+
+		profiler.startTimer();
 
 		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
@@ -135,198 +136,186 @@ void EngineState::loadAssets() {
 		// clear material staging buffers
 		_resources.getTempDeletionQueue().flush();
 
-		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
+		auto& drawRanges = _resources.getDrawRanges();
+		auto& meshes = _resources.getResgisteredMeshes();
+
+		JobSystem::submitJob([assetQueue, &drawRanges, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::processMeshes(threadCtx);
+			AssetManager::processMeshes(threadCtx, drawRanges, meshes);
 			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MESHES_READY);
 		});
 
 		JobSystem::wait();
 
 		// Mesh buffer prep
-		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, &drawRanges, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-			assert(queue);
+			ASSERT(queue);
 
 			auto gltfJobs = queue->collect();
-
-			auto& resources = Engine::getState().getGPUResources();
-			auto& drawRanges = resources.getDrawRanges();
 
 			for (auto& context : gltfJobs) {
 				if (!context->isJobComplete(GLTFJobType::ProcessMeshes)) continue;
 
-				size_t vertexOffset = 0;
-				size_t indexOffset = 0;
-
 				auto& uploadCtx = context->uploadMeshCtx;
-				uploadCtx.meshViews.reserve(uploadCtx.meshHandles.size());
+				uploadCtx.meshViews.reserve(meshes.meshData.size());
 
-				for (auto& mesh : uploadCtx.meshHandles) {
-					for (auto& matHandle : mesh->materialHandles) {
-						assert(matHandle->instance->drawRangeIndex < drawRanges.size());
-						const auto rangeIndex = matHandle->instance->drawRangeIndex;
-						const GPUDrawRange& range = drawRanges[rangeIndex];
-						const size_t rangeIndexCount = range.indexCount;
-						const size_t rangeVertexCount = range.vertexCount;
+				for (auto& mesh : meshes.meshData) {
+					ASSERT(mesh.drawRangeIndex < drawRanges.size());
+					const GPUDrawRange& range = drawRanges[mesh.drawRangeIndex];
 
-						fmt::print("[Prep] RangeIdx={} IndexCount={} VertexCount={} VertexOffset={} IndexOffset={}\n",
-							rangeIndex, rangeIndexCount, rangeVertexCount, vertexOffset, indexOffset);
+					UploadedMeshView newView{};
+					newView.vertexSizeBytes = range.vertexCount * sizeof(Vertex);
+					newView.indexSizeBytes = range.indexCount * sizeof(uint32_t);
 
-						assert(drawRanges[rangeIndex].firstIndex == indexOffset);
-						assert(drawRanges[rangeIndex].vertexOffset == vertexOffset);
-
-						std::span<Vertex> vertexSpan = {
-							uploadCtx.globalVertices.data() + vertexOffset, rangeVertexCount
-						};
-						std::span<uint32_t> indexSpan = {
-							uploadCtx.globalIndices.data() + indexOffset, rangeIndexCount
-						};
-
-						UploadedMeshView newMeshView;
-						newMeshView.drawRangeIndex = rangeIndex;
-						newMeshView.vertexData = vertexSpan;
-						newMeshView.indexData = indexSpan;
-
-						uploadCtx.meshViews.push_back(newMeshView);
-
-						vertexOffset += rangeVertexCount;
-						indexOffset += rangeIndexCount;
-					}
+					uploadCtx.meshViews.push_back(newView);
 				}
 
 				queue->push(context);
 				context->markJobComplete(GLTFJobType::MeshBufferReady);
 			}
+
 			EngineStages::SetGoal(ENGINE_STAGE_LOADING_UPLOAD_MESH_DATA);
 		});
 
 		JobSystem::wait();
 
 		// Mesh upload
-		JobSystem::submitJob([assetQueue, mainAllocator](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, mainAllocator, &drawRanges, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-			assert(queue);
+			ASSERT(queue);
 
 			auto gltfJobs = queue->collect();
 
-			size_t totalVertexCount = 0;
-			size_t totalIndexCount = 0;
-
-			auto& resources = Engine::getState().getGPUResources();
-
+			// Calculate buffer sizes and vertex/index counts
+			size_t vertexBufferSize = 0;
+			size_t indexBufferSize = 0;
 			for (auto& context : gltfJobs) {
 				for (auto& meshView : context->uploadMeshCtx.meshViews) {
-					totalVertexCount += meshView.vertexData.size();
-					totalIndexCount += meshView.indexData.size();
+					vertexBufferSize += meshView.vertexSizeBytes;
+					indexBufferSize += meshView.indexSizeBytes;
 				}
 			}
 
-			const size_t vertexBufferSize = totalVertexCount * sizeof(Vertex);
-			const size_t indexBufferSize = totalIndexCount * sizeof(uint32_t);
+			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
+			const size_t meshesSize = meshes.meshData.size() * sizeof(MeshData);
 
-			auto& vtxBuffer = resources.getVertexBuffer();
-			auto& idxBuffer = resources.getIndexBuffer();
+			auto& resources = Engine::getState().getGPUResources();
 
-			// Create the large GPU buffers
-			vtxBuffer = BufferUtils::createBuffer(
+			// Create large GPU buffers for vertex and index
+			AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::Vertex,
+				resources.getAddressTable(),
 				vertexBufferSize,
-				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-				VMA_MEMORY_USAGE_GPU_ONLY,
 				mainAllocator
 			);
-			idxBuffer = BufferUtils::createBuffer(
-				indexBufferSize,
-				VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-				VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-				VMA_MEMORY_USAGE_GPU_ONLY,
-				mainAllocator
-			);
+			resources.addGPUBuffer(AddressBufferType::Vertex, vtxBuffer);
 
-			threadCtx.stagingBuffer = BufferUtils::createBuffer(
-				vertexBufferSize + indexBufferSize,
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VMA_MEMORY_USAGE_CPU_ONLY,
+			AllocatedBuffer idxBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::Index,
+				resources.getAddressTable(),
+				indexBufferSize,
 				mainAllocator
 			);
-			assert(threadCtx.stagingBuffer.info.size >= vertexBufferSize + indexBufferSize);
+			resources.addGPUBuffer(AddressBufferType::Index, idxBuffer);
+
+			// Draw range gpu buffer creation
+			AllocatedBuffer drawRangeBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::DrawRange,
+				resources.getAddressTable(),
+				drawRangesSize,
+				mainAllocator);
+			resources.addGPUBuffer(AddressBufferType::DrawRange, drawRangeBuffer);
+
+			// Mesh buffer creation
+			AllocatedBuffer meshBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::Mesh,
+				resources.getAddressTable(),
+				meshesSize,
+				mainAllocator);
+			resources.addGPUBuffer(AddressBufferType::Mesh, meshBuffer);
+
+
+			// Setup single staging buffer for transfer
+			threadCtx.stagingBuffer = BufferUtils::createBuffer(
+				vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+				mainAllocator
+			);
+			ASSERT(threadCtx.stagingBuffer.info.size >= vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize);
 
 			auto buffer = threadCtx.stagingBuffer;
 			resources.getTempDeletionQueue().push_function([buffer, mainAllocator]() mutable {
 				BufferUtils::destroyBuffer(buffer, mainAllocator);
-				});
+			});
 			threadCtx.stagingMapped = threadCtx.stagingBuffer.info.pMappedData;
-			assert(threadCtx.stagingMapped != nullptr);
+			ASSERT(threadCtx.stagingMapped != nullptr);
 
-			// Fill staging buffer
 			uint8_t* stagingData = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
 
-			auto& drawRanges = resources.getDrawRanges();
-
 			VkDeviceSize vertexWriteOffset = 0;
-			VkDeviceSize indexWriteOffset = vertexBufferSize;
+			VkDeviceSize indexWriteOffset = vertexWriteOffset + vertexBufferSize;
+			VkDeviceSize drawRangesWriteOffset = indexWriteOffset + indexBufferSize;
+			VkDeviceSize meshesWriteOffset = drawRangesWriteOffset + drawRangesSize;
+
+			// Copy drawRanges to staging
+			memcpy(stagingData + drawRangesWriteOffset, drawRanges.data(), drawRangesSize);
+			// Copy mesh data to staging
+			memcpy(stagingData + meshesWriteOffset, meshes.meshData.data(), meshesSize);
 
 			CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 				for (auto& context : gltfJobs) {
 					if (!context->isComplete()) continue;
 
-					auto& uploadCtx = context->uploadMeshCtx;
+					auto& meshCtx = context->uploadMeshCtx;
 
-					for (const auto& meshView : uploadCtx.meshViews) {
-						assert(meshView.drawRangeIndex < drawRanges.size());
-
-						const GPUDrawRange& range = drawRanges[meshView.drawRangeIndex];
-						assert(range.vertexCount == meshView.vertexData.size());
-						assert(range.indexCount == meshView.indexData.size());
-
-						const VkDeviceSize vertexSize = range.vertexCount * sizeof(Vertex);
-						const VkDeviceSize indexSize = range.indexCount * sizeof(uint32_t);
-
-						// Copy vertex data into staging buffer
-						std::memcpy(stagingData + vertexWriteOffset, meshView.vertexData.data(), vertexSize);
-						VkBufferCopy vtxCopy{
-							.srcOffset = vertexWriteOffset,
-							.dstOffset = range.vertexOffset * sizeof(Vertex),
-							.size = vertexSize
-						};
-						vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
-						vertexWriteOffset += vertexSize;
-
-						// Copy index data into staging buffer
-						std::memcpy(stagingData + indexWriteOffset, meshView.indexData.data(), indexSize);
-						VkBufferCopy idxCopy{
-							.srcOffset = indexWriteOffset,
-							.dstOffset = range.firstIndex * sizeof(uint32_t),
-							.size = indexSize
-						};
-						vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
-						indexWriteOffset += indexSize;
-
-						fmt::print("[Upload] DrawRangeIdx={} -> IndexCount={} VertexOffset={} FirstIndex={}\n",
-							meshView.drawRangeIndex, range.indexCount, range.vertexOffset, range.firstIndex);
-					}
-
-					for (auto& mesh : uploadCtx.meshHandles) {
-						for (auto& mat : mesh->materialHandles) {
-							const auto& range = drawRanges[mat->instance->drawRangeIndex];
-
-							fmt::print("[Verify] Instance={} IndexCount={} FirstIndex={} VertexOffset={}\n",
-								mat->instance->drawRangeIndex, range.indexCount, range.firstIndex, range.vertexOffset);
-
-							assert(range.vertexOffset * sizeof(Vertex) < vertexBufferSize);
-							assert((range.firstIndex + range.indexCount) * sizeof(uint32_t) <= indexBufferSize);
-						}
-					}
+					// Copy all vertex data into staging
+					memcpy(stagingData + vertexWriteOffset,
+						meshCtx.globalVertices.data(),
+						meshCtx.globalVertices.size() * sizeof(Vertex));
+					// Copy all index data into staging
+					memcpy(stagingData + indexWriteOffset,
+						meshCtx.globalIndices.data(),
+						meshCtx.globalIndices.size() * sizeof(uint32_t));
 
 					queue->push(context);
 				}
-			}, threadCtx.cmdPool, true);
+
+				VkBufferCopy vtxCopy {
+					.srcOffset = vertexWriteOffset,
+					.dstOffset = 0,
+					.size = vertexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
+
+				VkBufferCopy idxCopy {
+					.srcOffset = indexWriteOffset,
+					.dstOffset = 0,
+					.size = indexBufferSize
+				};
+				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
+
+				VkBufferCopy drawRangeCopy {
+						.srcOffset = drawRangesWriteOffset,
+						.dstOffset = 0,
+						.size = drawRangesSize
+				};
+				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
+
+				VkBufferCopy meshCopy {
+					.srcOffset = meshesWriteOffset,
+					.dstOffset = 0,
+					.size = meshesSize
+				};
+				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, meshBuffer.buffer, 1, &meshCopy);
+
+			}, threadCtx.cmdPool, QueueType::Transfer);
+
+			resources.updateAddressTableMapped(threadCtx.cmdPool);
 
 			auto& tQueue = Backend::getTransferQueue();
 			auto device = Backend::getDevice();
@@ -346,7 +335,7 @@ void EngineState::loadAssets() {
 			SceneGraph::buildSceneGraph(threadCtx);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-			assert(queue);
+			ASSERT(queue && "queue broke.");
 
 			auto gltfJobs = queue->collect();
 
@@ -370,43 +359,7 @@ void EngineState::loadAssets() {
 
 		// Asset loading done
 		auto elapsed = profiler.endTimer();
-		fmt::print("Asset loading completed in {}.\n", elapsed);
-
-		auto device = Backend::getDevice();
-
-		// Draw range gpu buffer creation
-		auto& drawRanges = _resources.getDrawRanges();
-		if (!drawRanges.empty()) {
-			AllocatedBuffer drawRangeBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::DrawRange,
-				_resources.getAddressTable(),
-				drawRanges.size() * sizeof(GPUDrawRange),
-				mainAllocator);
-			_resources.addGPUBuffer(AddressBufferType::DrawRange, drawRangeBuffer);
-
-			AllocatedBuffer drawRangeStaging = BufferUtils::createBuffer(
-				drawRangeBuffer.info.size,
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VMA_MEMORY_USAGE_CPU_ONLY,
-				mainAllocator);
-			memcpy(drawRangeStaging.info.pMappedData, drawRanges.data(), drawRangeBuffer.info.size);
-
-			auto& transferPool = _resources.getTransferPool();
-			CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-				VkBufferCopy copyRegion{};
-				copyRegion.size = drawRangeBuffer.info.size;
-				vkCmdCopyBuffer(cmd, drawRangeStaging.buffer, drawRangeBuffer.buffer, 1, &copyRegion);
-			}, transferPool, true);
-
-			_resources.updateAddressTableMapped(transferPool);
-
-			auto& tQueue = Backend::getTransferQueue();
-			_resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(tQueue);
-			waitAndRecycleLastFence(_resources.getLastSubmittedFence(), tQueue, device);
-
-			VK_CHECK(vkResetCommandPool(device, transferPool, 0));
-			BufferUtils::destroyBuffer(drawRangeStaging, mainAllocator);
-		}
+		fmt::print("Asset loading completed in {:.3f} seconds.\n", elapsed);
 	}
 	else {
 		fmt::print("No assets for loading... skipping\n");
@@ -419,6 +372,12 @@ void EngineState::loadAssets() {
 	postProcessImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(drawImg.imageView,
 		ResourceManager::getDefaultSamplerLinear());
 	_resources.addImageLUTEntry(postProcessImg.lutEntry);
+
+	ResourceManager::toneMappingData.brightness = 1.0f;
+	ResourceManager::toneMappingData.saturation = 1.0f;
+	ResourceManager::toneMappingData.contrast = 1.0f;
+	ResourceManager::toneMappingData.cmbViewIdx = postProcessImg.lutEntry.combinedImageIndex;
+	ResourceManager::toneMappingData.storageViewIdx = postProcessImg.lutEntry.storageImageIndex;
 
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
@@ -433,42 +392,83 @@ void EngineState::loadAssets() {
 	auto& brdfImg = ResourceManager::getBRDFImage();
 	auto& brdfSmpl = ResourceManager::getBRDFSampler();
 
-	auto& sceneData = RenderScene::getCurrentSceneData();
-
+	// In current implementation the entries must be pushed in proper order
+	// Diffuse -> Specular -> BRDF -> Skybox
+	// Uniforms are strict and environment images work in sets of 4
+	std::vector<ImageLUTEntry> tempEnvMapIdx;
 	diffuseImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(diffuseImg.imageView, diffuseSmpl);
-	sceneData.envMapIndex.x = static_cast<float>(diffuseImg.lutEntry.samplerCubeIndex);
+	tempEnvMapIdx.push_back(diffuseImg.lutEntry);
 	_resources.addImageLUTEntry(diffuseImg.lutEntry);
 
 	specImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(specImg.imageView, specSmpl);
-	sceneData.envMapIndex.y = static_cast<float>(specImg.lutEntry.samplerCubeIndex);
+	tempEnvMapIdx.push_back(specImg.lutEntry);
 	_resources.addImageLUTEntry(specImg.lutEntry);
 
 	brdfImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(brdfImg.imageView, brdfSmpl);
-	sceneData.envMapIndex.z = static_cast<float>(brdfImg.lutEntry.combinedImageIndex);
+	tempEnvMapIdx.push_back(brdfImg.lutEntry);
 	_resources.addImageLUTEntry(brdfImg.lutEntry);
 
 	skyboxImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(skyboxImg.imageView, skyboxSmpl);
-	sceneData.envMapIndex.w = static_cast<float>(skyboxImg.lutEntry.samplerCubeIndex);
+	tempEnvMapIdx.push_back(skyboxImg.lutEntry);
 	_resources.addImageLUTEntry(skyboxImg.lutEntry);
+
+	ASSERT(tempEnvMapIdx.size() % 4 == 0 && "Environment LUT entries must be in sets of 4");
+
+	size_t setIndex = 0;
+	for (size_t i = 0; i < tempEnvMapIdx.size(); i += 4) {
+		const ImageLUTEntry& diffuse = tempEnvMapIdx[i];
+		const ImageLUTEntry& specular = tempEnvMapIdx[i + 1];
+		const ImageLUTEntry& brdf = tempEnvMapIdx[i + 2];
+		const ImageLUTEntry& skybox = tempEnvMapIdx[i + 3];
+
+		ASSERT(diffuse.samplerCubeIndex != UINT32_MAX);
+		ASSERT(specular.samplerCubeIndex != UINT32_MAX);
+		ASSERT(brdf.combinedImageIndex != UINT32_MAX);
+		ASSERT(skybox.samplerCubeIndex != UINT32_MAX);
+
+		glm::vec4 envEntry{};
+		envEntry.x = static_cast<float>(diffuse.samplerCubeIndex);
+		envEntry.y = static_cast<float>(specular.samplerCubeIndex);
+		envEntry.z = static_cast<float>(brdf.combinedImageIndex);
+		envEntry.w = static_cast<float>(skybox.samplerCubeIndex);
+
+		ASSERT(setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
+		ResourceManager::_envMapIndices.indices[setIndex++] = envEntry;
+	}
+
+	auto allocator = _resources.getAllocator();
+
+	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(EnvMapIndices),
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
+
+	EnvMapIndices* envMapIndices = reinterpret_cast<EnvMapIndices*>(_resources.envMapSetUBO.mapped);
+	*envMapIndices = ResourceManager::_envMapIndices;
 
 	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter mainWriter;
-	mainWriter.writeBuffer(0, _resources.getAddressTableBuffer().buffer,
-		sizeof(GPUAddressTable), 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, set);
+	mainWriter.writeBuffer(
+		0,
+		_resources.getAddressTableBuffer().buffer,
+		_resources.getAddressTableBuffer().info.size,
+		0,
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		set);
+	mainWriter.writeBuffer(
+		1,
+		_resources.envMapSetUBO.buffer,
+		sizeof(EnvMapIndices),
+		0,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		set);
+
+	//for (int i = 0; i < MAX_ENV_SETS; i++) {
+	//	const auto& e = ResourceManager::_envMapIndices.indices[i];
+	//	fmt::print("[EnvMap {}] Diffuse: {:.0f}, Specular: {:.0f}, BRDF: {:.0f}, Skybox: {:.0f}\n",
+	//		i, e.x, e.y, e.z, e.w);
+	//}
+
 	mainWriter.writeFromImageLUT(_resources.getImageLUT(), ResourceManager::_globalImageTable, set);
 	mainWriter.updateSet(Backend::getDevice(), set);
-
-	// Post process color correction data setup
-	auto idx0 = postProcessImg.lutEntry.combinedImageIndex;
-	auto idx1 = postProcessImg.lutEntry.storageImageIndex;
-	ColorData colorSettings {
-		.brightness = 1.0f,
-		.saturation = 1.0f,
-		.contrast = 1.0f,
-		.cmbViewIdx = idx0,
-		.storageViewIdx = idx1
-	};
-	Pipelines::postProcessPipeline.getComputeEffect().setPushData(colorSettings);
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();
@@ -484,25 +484,30 @@ void EngineState::renderFrame() {
 
 	EditorImgui::renderImgui();
 
-	// Stats reset and scene update start timer
-	auto& profiler = Engine::getProfiler();
-	profiler.resetDrawCalls();
-	profiler.resetTriangleCount();
-	profiler.startTimer();
 	Renderer::prepareFrameContext(frame);
+	if (frame.swapchainResult != VK_SUCCESS) return;
 
+	auto& profiler = Engine::getProfiler();
+	// Stats reset and scene update start timer
+	if (!profiler.getStats().forcedReset) {
+		profiler.resetDrawCalls();
+		profiler.resetTriangleCount();
+	}
+	else {
+		profiler.getStats().forcedReset = false;
+	}
+
+	profiler.startTimer();
 	RenderScene::updateScene(frame, _resources);
 	auto elapsed = profiler.endTimer();
 	profiler.getStats().sceneUpdateTime = elapsed;
-	profiler.startTimer();
 
-	frame.inUse = true;
+	profiler.startTimer();
 	Renderer::recordRenderCommand(frame);
-	frame.inUse = false;
 	elapsed = profiler.endTimer();
 	profiler.getStats().drawTime = elapsed;
 
-	Renderer::submitFrame(frame, _resources);
+	Renderer::submitFrame(frame);
 }
 
 void EngineState::shutdown() {
@@ -513,17 +518,18 @@ void EngineState::shutdown() {
 	Backend::getGraphicsQueue().fencePool.destroy();
 	Backend::getPresentQueue().fencePool.destroy();
 
-	RenderScene::_loadedScenes.clear();
+	if (!RenderScene::_loadedScenes.empty())
+		RenderScene::_loadedScenes.clear();
 
 	JobSystem::getThreadPoolManager().cleanup(device);
 
 	for (int i = 0; i < static_cast<int>(allThreadContexts.size()); ++i) {
 		ThreadContext& threadCtx = allThreadContexts[i];
 		threadCtx.deletionQueue.flush();
-		assert(threadCtx.cmdPool == VK_NULL_HANDLE);
-		assert(threadCtx.stagingBuffer.buffer == VK_NULL_HANDLE);
-		assert(threadCtx.lastSubmittedFence == VK_NULL_HANDLE);
-		assert(threadCtx.stagingMapped == nullptr);
+		ASSERT(threadCtx.cmdPool == VK_NULL_HANDLE);
+		ASSERT(threadCtx.stagingBuffer.buffer == VK_NULL_HANDLE);
+		ASSERT(threadCtx.lastSubmittedFence == VK_NULL_HANDLE);
+		ASSERT(threadCtx.stagingMapped == nullptr);
 	}
 
 	_resources.getTempDeletionQueue().flush();
@@ -535,8 +541,6 @@ void EngineState::shutdown() {
 }
 
 
-// Takes graphics or transfer queues
-// fence protected
 VkFence EngineState::submitCommandBuffers(GPUQueue& queue) {
 	std::vector<VkCommandBuffer> cmds{};
 
@@ -557,18 +561,29 @@ VkFence EngineState::submitCommandBuffers(GPUQueue& queue) {
 		}
 		break;
 
+	case QueueType::Compute:
+		cmds = DeferredCmdSubmitQueue::collectCompute();
+		if (cmds.empty()) {
+			fmt::print("No compute commands.\n");
+			return VK_NULL_HANDLE;
+		}
+		break;
+
 	default:
-		fmt::print("Unknown queue type.\n");
+		ASSERT(false && "Invalid queue type!");
 		return VK_NULL_HANDLE;
 	}
 
-	if (!cmds.empty()) {
-		VkSubmitInfo submitInfo = {};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = static_cast<uint32_t>(cmds.size());
-		submitInfo.pCommandBuffers = cmds.data();
-
-		VkFence lastSubmittedFence = queue.submit(submitInfo);
-		return lastSubmittedFence;
+	if (cmds.empty()) {
+		fmt::print("Command queue is empty for type {}.\n", static_cast<uint8_t>(queue.qType));
+		return VK_NULL_HANDLE;
 	}
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = static_cast<uint32_t>(cmds.size());
+	submitInfo.pCommandBuffers = cmds.data();
+
+	VkFence lastSubmittedFence = queue.submit(submitInfo);
+	return lastSubmittedFence;
 }

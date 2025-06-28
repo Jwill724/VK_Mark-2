@@ -6,7 +6,6 @@
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
 	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
-	win->windowResized = true;
 }
 
 bool WindowIsOpen(GLFWwindow* window) {
@@ -36,24 +35,18 @@ void Window::updateWindowSize() const {
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {
 
-	assert(glfwInit() && "Failed to initialize GLFW!");
+	int glfwResult = glfwInit();
+	if (!glfwResult) {
+		ASSERT(glfwResult && "Failed to initialize GLFW!");
+	}
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-	window = glfwCreateWindow(width, height, "This is bullshit", nullptr, nullptr);
-
-	//GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
-	//const GLFWvidmode* mode = glfwGetVideoMode(primaryMonitor);
-
-	//if (width == static_cast<uint32_t>(mode->width) && height == static_cast<uint32_t>(mode->height)) {
-	//	// fullscreen
-	//	window = glfwCreateWindow(width, height, "This is bullshit", primaryMonitor, nullptr);
-	//}
-	//else {
-	//	// window
-	//	window = glfwCreateWindow(width, height, "This is bullshit", nullptr, nullptr);
-	//}
+	window = glfwCreateWindow(width, height, "Mark 2", nullptr, nullptr);
+	if (!window) {
+		ASSERT(window && "Failed to initialize GLFW window!");
+	}
 
 	glfwSetWindowUserPointer(window, this);
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);

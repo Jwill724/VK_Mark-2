@@ -2,7 +2,7 @@
 
 #include "common/Vk_Types.h"
 #include "common/ResourceTypes.h"
-#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu_types/PipelineManager.h"
 #include "common/EngineConstants.h"
 
 struct FrameStats {
@@ -13,11 +13,24 @@ struct FrameStats {
 	std::atomic<float> fps = 0.0f;
 	std::atomic<float> sceneUpdateTime = 0.0f;
 	std::atomic<float> drawTime = 0.0f;
+
 	std::atomic<size_t> vramUsed = 0;
 
 	// V-sync is default present mode for now
 	bool capFramerate = false;
 	float targetFrameRate = 0.0f;
+
+	bool forcedReset = false;
+	inline void resetFrameData() {
+		drawCalls.store(0);
+		triangleCount.store(0);
+		deltaTime.store(0.0f);
+		frameTime.store(0.0f);
+		fps.store(0.0f);
+		sceneUpdateTime.store(0.0f);
+		drawTime.store(0.0f);
+		forcedReset = true;
+	}
 };
 struct PipelineOverride {
 	bool enabled = false;
@@ -39,11 +52,11 @@ public:
 	void beginFrame();
 	void endFrame();
 
-	void startTimer() { _startTimer = std::chrono::high_resolution_clock::now(); }
+	void startTimer() { _startTimer = std::chrono::system_clock::now(); }
 	float endTimer() const {
-		auto end = std::chrono::high_resolution_clock::now();
-		auto elapsed = std::chrono::duration<float>(end - _startTimer);
-		return elapsed.count();
+		auto end = std::chrono::system_clock::now();
+		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - _startTimer);
+		return static_cast<float>(elapsed.count()) / 1000000.0f;;
 	}
 
 	FrameStats& getStats() { return _stats; }
@@ -59,7 +72,7 @@ public:
 	std::mutex camMutex;
 
 	DebugToggles debugToggles;
-	GraphicsPipeline* getPipelineByType(PipelineType type) const;
+	VkPipeline getPipelineByType(PipelineType type) const;
 	PipelineOverride pipeOverride;
 
 	VkDeviceSize GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
@@ -67,9 +80,9 @@ public:
 	void updateDeltaTime(float& lastFrameTime);
 
 private:
-	FrameStats _stats{ .capFramerate = true, .targetFrameRate = TARGET_FRAME_RATE_120 };
+	FrameStats _stats{ .targetFrameRate = TARGET_FRAME_RATE_120 };
 
-	std::chrono::high_resolution_clock::time_point _frameStart{};
+	std::chrono::time_point<std::chrono::system_clock> _frameStart{};
 
-	std::chrono::high_resolution_clock::time_point _startTimer;
+	std::chrono::time_point<std::chrono::system_clock> _startTimer;
 };

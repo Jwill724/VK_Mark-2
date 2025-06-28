@@ -4,6 +4,10 @@
 #include "renderer/RenderScene.h"
 #include "Engine.h"
 
+// TODO:
+// Add alt-tab capabilities
+// Full screen sizing
+
 namespace UserInput {
 	MouseState mouse;
 	KeyboardState keyboard;
@@ -26,14 +30,14 @@ namespace UserInput {
 }
 
 void UserInput::SetCursorPos(GLFWwindow* window, VkExtent2D windowExtent) {
-	glfwSetCursorPos(window, static_cast<double>(windowExtent.width / 2.0), static_cast<double>(windowExtent.height / 2.0));
+	glfwSetCursorPos(window, static_cast<double>(windowExtent.width) / 2.0, static_cast<double>(windowExtent.height) / 2.0);
 }
 
 void UserInput::NormalizeMousePos(GLFWwindow* window, VkExtent2D windowExtent) {
 	glfwGetCursorPos(window, &mouse.mousePos.x, &mouse.mousePos.y);
 	float aspectRatio = static_cast<float>(windowExtent.width) / static_cast<float>(windowExtent.height);
-	mouse.normalized.x = (2.f * static_cast<float>(mouse.mousePos.x) / static_cast<float>(windowExtent.width) - 1.f) * aspectRatio;
-	mouse.normalized.y = 2.f * static_cast<float>(mouse.mousePos.y) / static_cast<float>(windowExtent.height) - 1.f;
+	mouse.normalized.x = (2.0f * static_cast<float>(mouse.mousePos.x) / static_cast<float>(windowExtent.width) - 1.0f) * aspectRatio;
+	mouse.normalized.y = 2.0f * static_cast<float>(mouse.mousePos.y) / static_cast<float>(windowExtent.height) - 1.0f;
 }
 
 void UserInput::MouseState::update(GLFWwindow* window) {
@@ -117,7 +121,7 @@ void UserInput::updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyb
 	}
 }
 
-// shits scuffed but it works
+// Mouse recentering for consistent deltas, even across frames/resizes
 void UserInput::handleMouseCapture(GLFWwindow* window, VkExtent2D* extent, bool& justClicked, glm::vec2& position, glm::vec2& delta) {
 	SetCursorPos(window, *extent);  // always reset to center
 	NormalizeMousePos(window, Engine::getWindowExtent());
@@ -126,7 +130,7 @@ void UserInput::handleMouseCapture(GLFWwindow* window, VkExtent2D* extent, bool&
 	if (justClicked) {
 		lastPos = position;
 		justClicked = false;  // allow delta on next frame
-		delta = glm::vec2(0.f);  // prevent one-frame spike
+		delta = glm::vec2(0.0f);  // prevent one-frame spike
 	}
 	else {
 		delta = position - lastPos;

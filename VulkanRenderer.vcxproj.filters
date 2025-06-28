@@ -7,13 +7,14 @@
     <Filter Include="src\core" />
     <Filter Include="src\profiler" />
     <Filter Include="src\renderer" />
-    <Filter Include="src\renderer\gpu" />
+    <Filter Include="src\renderer\gpu_types" />
     <Filter Include="src\vulkan" />
     <Filter Include="src\utils" />
     <Filter Include="res\shaders" />
     <Filter Include="res\shaders\environment" />
+    <Filter Include="res\shaders\visibility" />
     <Filter Include="res\shaders\meshes" />
-    <Filter Include="res\shaders\bouding_boxes" />
+    <Filter Include="res\shaders\debug" />
     <Filter Include="res\shaders\post_process" />
     <Filter Include="res\shaders\include" />
     <Filter Include="res" />
@@ -34,16 +35,19 @@
     <ClCompile Include="src\input\UserInput.cpp">
       <Filter>src\input</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\CommandBuffer.cpp">
-      <Filter>src\renderer\gpu</Filter>
+    <ClCompile Include="src\renderer\gpu_types\CommandBuffer.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\Descriptor.cpp">
-      <Filter>src\renderer\gpu</Filter>
+    <ClCompile Include="src\renderer\gpu_types\Descriptor.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\PipelineManager.cpp">
-      <Filter>src\renderer\gpu</Filter>
+    <ClCompile Include="src\renderer\gpu_types\PipelineManager.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\Renderer.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\RenderGraph.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\vulkan\Backend.cpp">
@@ -120,7 +124,7 @@
     <ClCompile Include="src\renderer\SceneGraph.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\Batching.cpp">
+    <ClCompile Include="src\renderer\DrawPreperation.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\core\types\Texture.cpp">
@@ -128,6 +132,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\common\pch.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
     <ClInclude Include="src\input\UserInput.h">
       <Filter>src\input</Filter>
     </ClInclude>
@@ -146,14 +153,14 @@
     <ClInclude Include="src\renderer\Renderer.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\gpu\CommandBuffer.h">
-      <Filter>src\renderer\gpu</Filter>
+    <ClInclude Include="src\renderer\gpu_types\CommandBuffer.h">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\gpu\Descriptor.h">
-      <Filter>src\renderer\gpu</Filter>
+    <ClInclude Include="src\renderer\gpu_types\Descriptor.h">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\gpu\PipelineManager.h">
-      <Filter>src\renderer\gpu</Filter>
+    <ClInclude Include="src\renderer\gpu_types\PipelineManager.h">
+      <Filter>src\renderer\gpu_types</Filter>
     </ClInclude>
     <ClInclude Include="src\vulkan\Backend.h">
       <Filter>src\vulkan</Filter>
@@ -194,9 +201,6 @@
     <ClInclude Include="src\profiler\Profiler.h">
       <Filter>src\profiler</Filter>
     </ClInclude>
-    <ClInclude Include="src\common\pch.h">
-      <Filter>src\common</Filter>
-    </ClInclude>
     <ClInclude Include="src\renderer\RenderScene.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
@@ -218,7 +222,10 @@
     <ClInclude Include="src\renderer\SceneGraph.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\Batching.h">
+    <ClInclude Include="src\renderer\DrawPreperation.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\RenderGraph.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\common\EngineTypes.h">
@@ -250,11 +257,11 @@
     <None Include="res\shaders\post_process\color_correction_comp.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\bounding_boxes\aabb_frag.frag">
-      <Filter>res\shaders\bouding_boxes</Filter>
+    <None Include="res\shaders\debug\aabb_frag.frag">
+      <Filter>res\shaders\debug</Filter>
     </None>
-    <None Include="res\shaders\bounding_boxes\aabb_vert.vert">
-      <Filter>res\shaders\bouding_boxes</Filter>
+    <None Include="res\shaders\debug\aabb_vert.vert">
+      <Filter>res\shaders\debug</Filter>
     </None>
     <None Include="res\shaders\environment\skybox_frag.frag">
       <Filter>res\shaders\environment</Filter>
@@ -274,8 +281,11 @@
     <None Include="res\shaders\include\pbr.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
-    <None Include="res\shaders\include\input_structures.glsl">
+    <None Include="res\shaders\include\gpu_scene_structures.glsl">
       <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\visibility\visibility_comp.comp">
+      <Filter>res\shaders\visibility</Filter>
     </None>
   </ItemGroup>
 </Project>

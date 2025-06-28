@@ -1,33 +1,34 @@
 #include "pch.h"
 
 #include "Profiler.h"
+#include "Engine.h"
 
 void Profiler::beginFrame() {
-	_frameStart = std::chrono::high_resolution_clock::now();
+	_frameStart = std::chrono::system_clock::now();
 }
 
 void Profiler::endFrame() {
-	auto end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<float> delta = end - _frameStart;
+	auto end = std::chrono::system_clock::now();
+	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - _frameStart);
 
-	_stats.deltaTime = delta.count();
-	_stats.frameTime = _stats.deltaTime * 1000.0f;
-	_stats.fps = 1.0f / _stats.deltaTime;
+	_stats.frameTime = static_cast<float>(elapsed.count()) / 1000.0f;
+	_stats.fps = 1000.0f / _stats.frameTime;
 
 	if (_stats.capFramerate) {
-		float targetFrame = 1.0f / _stats.targetFrameRate;
-		if (_stats.deltaTime < targetFrame) {
-			std::this_thread::sleep_for(std::chrono::duration<float>(targetFrame - _stats.deltaTime));
+		float targetFrame = 1.0f / _stats.targetFrameRate; // seconds
+		float deltaTimeSeconds = _stats.deltaTime / 1000.0f; // convert from ms to seconds
+
+		if (deltaTimeSeconds < targetFrame) {
+			std::this_thread::sleep_for(std::chrono::duration<float>(targetFrame - deltaTimeSeconds));
 		}
 	}
 }
 
-GraphicsPipeline* Profiler::getPipelineByType(PipelineType type) const {
+VkPipeline Profiler::getPipelineByType(PipelineType type) const {
 	switch (type) {
-		case PipelineType::Opaque: return &Pipelines::opaquePipeline;
-		case PipelineType::Transparent: return &Pipelines::transparentPipeline;
-		case PipelineType::Wireframe: return &Pipelines::wireframePipeline;
-		case PipelineType::BoundingBoxes: return &Pipelines::boundingBoxPipeline;
+		case PipelineType::Opaque: return Pipelines::opaquePipeline.pipeline;
+		case PipelineType::Transparent: return Pipelines::transparentPipeline.pipeline;
+		case PipelineType::Wireframe: return Pipelines::wireframePipeline.pipeline;
 		default: return nullptr;
 	}
 }
@@ -67,9 +68,10 @@ VkDeviceSize Profiler::GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator a
 	fmt::print("Total VRAM Usage (Device-local): {} MB\n", totalUsage / (1024ull * 1024ull));
 	return totalUsage;
 }
+
 void Profiler::updateDeltaTime(float& lastFrameTime) {
-	float currentTime = static_cast<float>(glfwGetTime());
-	float deltaTime = currentTime - lastFrameTime;
+	const float currentTime = static_cast<float>(glfwGetTime());
+	const float deltaTime = currentTime - lastFrameTime;
 	lastFrameTime = currentTime;
 
 	_stats.deltaTime = deltaTime;

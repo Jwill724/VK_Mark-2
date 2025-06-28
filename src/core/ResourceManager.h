@@ -4,8 +4,6 @@
 #include "common/EngineTypes.h"
 #include "common/ResourceTypes.h"
 
-#include "vulkan/Backend.h"
-
 struct GPUResources {
 public:
 	VmaAllocator& getAllocator() { return allocator; }
@@ -13,31 +11,28 @@ public:
 	DeletionQueue& getTempDeletionQueue() { return tempDeletionQueue; } // temp data and deferred deletion
 	VkCommandPool& getGraphicsPool() { return graphicsPool; }
 	VkCommandPool& getTransferPool() { return transferPool; }
+	VkCommandPool& getComputePool() { return computePool; }
 	VkFence& getLastSubmittedFence() { return lastSubmittedFence; }
 	void init();
 
 	GPUAddressTable& getAddressTable() { return gpuAddresses; }
 	AllocatedBuffer& getAddressTableBuffer() { return addressTableBuffer; }
 
-	AllocatedBuffer& getVertexBuffer() { return vertexBuffer; }
-	AllocatedBuffer& getIndexBuffer() { return indexBuffer; }
-
 	AllocatedBuffer& getBuffer(AddressBufferType type) { return gpuBuffers.at(type); }
 	void addGPUBuffer(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
 	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
 
-
-	void tryClearAddressBuffer(AddressBufferType type, VmaAllocator allocator);
-
+	void tryClearAddressBuffer(AddressBufferType type);
 
 	// Table is marked dirty if a gpu address is updated, returns to clean afterward
 	// Setting force to 'true' will update the table without having to directly update the individual addresses,
 	// like extending a current address
 	void updateAddressTableMapped(VkCommandPool transferCommandPool, bool force = false);
 
-	// all submesh access
+	// All submesh access
+	// Maps meshes to their vertex/index buffer regions for indirect drawing
 	std::vector<GPUDrawRange>& getDrawRanges() { return drawRanges; }
-	uint32_t materialCount; // global
+	MeshRegistry& getResgisteredMeshes() { return registeredMeshes; }
 
 	// the lut is used in descriptor writing
 	// combined image is the primary usage so
@@ -45,22 +40,32 @@ public:
 	void addImageLUTEntry(const ImageLUTEntry& entry) {
 		std::scoped_lock lock(lutMutex);
 
-		bool added = false;
+		bool alreadyAdded = false;
 
 		if (entry.combinedImageIndex != UINT32_MAX && pushedCombinedIndices.insert(entry.combinedImageIndex).second) {
-			imageLUTEntries.push_back(entry);
-			added = true;
+			alreadyAdded = true;
 		}
 		if (entry.samplerCubeIndex != UINT32_MAX && pushedSamplerCubeIndices.insert(entry.samplerCubeIndex).second) {
-			if (!added) imageLUTEntries.push_back(entry);
-			added = true;
+			alreadyAdded = true;
 		}
 		if (entry.storageImageIndex != UINT32_MAX && pushedStorageViewIndices.insert(entry.storageImageIndex).second) {
-			if (!added) imageLUTEntries.push_back(entry);
+			alreadyAdded = true;
 		}
+
+		if (alreadyAdded)
+			imageLUTEntries.push_back(entry);
 	}
 
+	AllocatedBuffer envMapSetUBO;
+
 	std::vector<ImageLUTEntry>& getImageLUT() { return imageLUTEntries; }
+
+	void clearLUTEntries() {
+		imageLUTEntries.clear();
+		pushedCombinedIndices.clear();
+		pushedSamplerCubeIndices.clear();
+		pushedStorageViewIndices.clear();
+	}
 
 	void cleanup(VkDevice device);
 
@@ -70,13 +75,12 @@ private:
 	AllocatedBuffer addressTableStagingBuffer;
 	mutable std::mutex addressTableMutex;
 
+	MeshRegistry registeredMeshes;
+
 	bool addressTableDirty = false;
 	void markAddressTableDirty() {
 		addressTableDirty = true;
 	}
-
-	AllocatedBuffer vertexBuffer;
-	AllocatedBuffer indexBuffer;
 
 	std::vector<GPUDrawRange> drawRanges;
 
@@ -95,16 +99,51 @@ private:
 	// Graphics work
 	VkCommandPool graphicsPool = VK_NULL_HANDLE;
 	VkCommandPool transferPool = VK_NULL_HANDLE;
+	VkCommandPool computePool = VK_NULL_HANDLE;
 	VkFence lastSubmittedFence = VK_NULL_HANDLE;
+};
+
+struct ImageTable {
+	std::mutex combinedMutex;
+	std::mutex storageMutex;
+	std::mutex samplerCubeMutex;
+	std::vector<VkDescriptorImageInfo> combinedViews;
+	std::vector<VkDescriptorImageInfo> storageViews;
+	std::vector<VkDescriptorImageInfo> samplerCubeViews;
+
+	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> combinedViewHashToID;
+	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> samplerCubeViewHashToID;
+	std::unordered_map<size_t, uint32_t> storageViewHashToID;
+
+	uint32_t pushCombined(VkImageView view, VkSampler sampler);
+	uint32_t pushStorage(VkImageView view);
+	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler);
+
+	void clearTables() {
+		combinedViews.clear();
+		storageViews.clear();
+		samplerCubeViews.clear();
+
+		combinedViewHashToID.clear();
+		storageViewHashToID.clear();
+		samplerCubeViewHashToID.clear();
+	}
+
+	static ImageViewSamplerKey makeKey(VkImageView view, VkSampler sampler) {
+		return { view, sampler };
+	}
 };
 
 namespace ResourceManager {
 	extern ImageTable _globalImageTable;
 
+	extern EnvMapIndices _envMapIndices;
+
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
 	AllocatedImage& getPostProcessImage();
+	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
 	void initRenderImages(DeletionQueue& queue, const VmaAllocator allocator);
 

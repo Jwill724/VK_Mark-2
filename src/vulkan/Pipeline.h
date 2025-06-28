@@ -22,11 +22,5 @@ struct PipelineBuilder {
 
 	void initializePipelineSTypes();
 
-	VkPipeline createPipeline(PipelinePresent pipelineSettings);
-};
-
-struct ComputePipelineBuilder {
-	std::vector<ComputeEffect> build(PipelinePresent settings);
-
-	VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;
+	void createPipeline(PipelineObj& pipelineObj, const PipelinePresent& pipelineSettings);
 };

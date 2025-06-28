@@ -1,6 +1,6 @@
 #pragma once
 
-#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu_types/PipelineManager.h"
 #include "common/EngineTypes.h"
 #include "common/ResourceTypes.h"
 #include "utils/RendererUtils.h"
@@ -8,6 +8,7 @@
 #include "AssetManager.h"
 #include <filesystem>
 #include "fmt/base.h"
+#include "vulkan/Backend.h"
 
 // Engine big brain
 // Has direct control of resources and job system
@@ -95,15 +96,19 @@ namespace DeferredCmdSubmitQueue {
 	inline std::mutex submitMutex;
 	inline std::vector<VkCommandBuffer> recordedGraphicsCmds;
 	inline std::vector<VkCommandBuffer> recordedTransferCmds;
+	inline std::vector<VkCommandBuffer> recordedComputeCmds;
 
 	inline void pushGraphics(VkCommandBuffer cmd) {
 		std::scoped_lock lock(submitMutex);
 		recordedGraphicsCmds.push_back(cmd);
 	}
-
 	inline void pushTransfer(VkCommandBuffer cmd) {
 		std::scoped_lock lock(submitMutex);
 		recordedTransferCmds.push_back(cmd);
+	}
+	inline void pushCompute(VkCommandBuffer cmd) {
+		std::scoped_lock lock(submitMutex);
+		recordedComputeCmds.push_back(cmd);
 	}
 
 	inline std::vector<VkCommandBuffer> collectGraphics() {
@@ -116,6 +121,12 @@ namespace DeferredCmdSubmitQueue {
 		std::scoped_lock lock(submitMutex);
 		std::vector<VkCommandBuffer> collected = std::move(recordedTransferCmds);
 		recordedTransferCmds.clear();
+		return collected;
+	}
+	inline std::vector<VkCommandBuffer> collectCompute() {
+		std::scoped_lock lock(submitMutex);
+		std::vector<VkCommandBuffer> collected = std::move(recordedComputeCmds);
+		recordedComputeCmds.clear();
 		return collected;
 	}
 }

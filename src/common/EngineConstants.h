@@ -3,18 +3,27 @@
 #include <functional>
 
 // General Engine Limits
+#define MAX_OPAQUE_DRAWS 65536
+#define MAX_TRANSPARENT_DRAWS 16384
+
+// Compute work sizes
+static constexpr uint32_t LOCAL_SIZE_X = 64;
+
 constexpr unsigned int MAX_FRAMES_IN_FLIGHT = 2;
 constexpr unsigned int MAX_THREADS = 12;
 constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256;
-constexpr float TARGET_FRAME_RATE_60 = 60.f;
-constexpr float TARGET_FRAME_RATE_120 = 120.f;
-constexpr float TARGET_FRAME_RATE_144 = 144.f;
-constexpr float TARGET_FRAME_RATE_240 = 240.f;
+constexpr float TARGET_FRAME_RATE_60 = 60.0f;
+constexpr float TARGET_FRAME_RATE_120 = 120.0f;
+constexpr float TARGET_FRAME_RATE_144 = 144.0f;
+constexpr float TARGET_FRAME_RATE_240 = 240.0f;
 
 // Image / Texture Limits
-constexpr float ANISOTROPY_LEVEL = 16.f;
-constexpr static uint32_t MSAACOUNT = 8;
+constexpr float ANISOTROPY_LEVEL = 16.0f;
+static constexpr uint32_t MSAACOUNT_8 = 8;
+static constexpr uint32_t MSAACOUNT_4 = 4;
+static constexpr uint32_t MSAACOUNT_2 = 2;
 constexpr uint32_t MAX_MIP_LEVELS = 12;
+constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * vec4(16 bytes)
 
 // Descriptor max sizing
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100;
@@ -26,3 +35,10 @@ constexpr uint32_t TOTAL_CMD_BUFFERS = MAX_THREADS * MAX_FRAMES_IN_FLIGHT;
 
 // Threading / Job System
 constexpr uint32_t JOB_WORKER_COUNT = MAX_THREADS;
+
+// TODO:
+// This will work, i just to fix the compute queue syncing,
+// add gpu sorting, fix the visible count and visiblemeshIds read and write buffer shit
+// draws will have to be fully built on gpu for this to properly work, including making MeshBuffer gpu only
+// gpu accel is fucking busted
+const static bool GPU_ACCELERATION_ENABLED = false;

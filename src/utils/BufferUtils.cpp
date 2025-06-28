@@ -55,11 +55,11 @@ AllocatedBuffer BufferUtils::createBuffer(size_t allocSize, VkBufferUsageFlags u
 		newBuffer.address = 0;
 	}
 
-	if ((vmaallocInfo.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) && newBuffer.info.pMappedData == nullptr) {
-		fmt::print("[BufferUtils] Warning: Mapped flag set but pMappedData is nullptr\n");
+	if (vmaallocInfo.flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) {
+		newBuffer.mapped = newBuffer.info.pMappedData;
+		ASSERT(newBuffer.mapped != nullptr);
 	}
 
-	newBuffer.mapped = newBuffer.info.pMappedData;
 	return newBuffer;
 }
 
@@ -73,31 +73,42 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
-	if (AddressBufferType::IndirectCmd == addressBufferType) {
+	if (AddressBufferType::OpaqueIndirectDraws == addressBufferType ||
+		AddressBufferType::TransparentIndirectDraws == addressBufferType) {
 		usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	}
+
+	if (AddressBufferType::Vertex == addressBufferType) {
+		usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	}
+
+	if (AddressBufferType::Index == addressBufferType) {
+		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	}
+
+	if (AddressBufferType::VisibleCount == addressBufferType ||
+		AddressBufferType::VisibleMeshIDs == addressBufferType)
+	{
+		usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+	}
+
+
+	// The worldAABB in the meshes is transformed in the shader
+	// The only mutable buffer currently
+	VmaMemoryUsage memoryUsage{};
+	if (addressBufferType == AddressBufferType::Mesh)
+		memoryUsage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+	else
+		memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
 
 	AllocatedBuffer buffer = createBuffer(
 		size,
 		usage,
-		VMA_MEMORY_USAGE_GPU_ONLY,
+		memoryUsage,
 		allocator
 	);
 
-	switch (addressBufferType) {
-	case AddressBufferType::Instance:
-		addressTable.instanceBuffer = buffer.address;
-		break;
-	case AddressBufferType::IndirectCmd:
-		addressTable.indirectCmdBuffer = buffer.address;
-		break;
-	case AddressBufferType::DrawRange:
-		addressTable.drawRangeBuffer = buffer.address;
-		break;
-	case AddressBufferType::Material:
-		addressTable.materialBuffer = buffer.address;
-		break;
-	}
+	addressTable.set(addressBufferType, buffer.address);
 
 	return buffer;
 }
@@ -107,7 +118,7 @@ void BufferUtils::destroyBuffer(AllocatedBuffer buffer, const VmaAllocator alloc
 	static std::mutex mutex;
 	std::scoped_lock lock(mutex);
 	vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
-	fmt::print("[Destroy] Buffer = {}, Memory = {}\n", (void*)buffer.buffer, (void*)buffer.allocation);
+	//fmt::print("[Destroy] Buffer = {}, Memory = {}\n", (void*)buffer.buffer, (void*)buffer.allocation);
 
 	buffer.buffer = VK_NULL_HANDLE;
 	buffer.allocation = nullptr;

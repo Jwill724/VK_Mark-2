@@ -1,4 +1,4 @@
-#version 460
+#version 450
 
 #extension GL_ARB_shader_draw_parameters : require
 #extension GL_EXT_buffer_reference : require
@@ -8,22 +8,21 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_EXT_nonuniform_qualifier : require
 
-#include "../include/input_structures.glsl"
+#include "../include/gpu_scene_structures.glsl"
 #include "../include/pbr.glsl"
 
 layout(location = 0) in vec3 inNormal;
-layout(location = 1) in vec3 inColor;
-layout(location = 2) in vec2 inUV;
-layout(location = 3) in vec3 inWorldPos;
-layout(location = 4) flat in uint vDrawID;
+layout(location = 1) in vec2 inUV;
+layout(location = 2) in vec3 inWorldPos;
+layout(location = 3) flat in uint vDrawID;
 
 layout(location = 0) out vec4 outFragColor;
 
-layout(set = 0, binding = 0, std430) readonly buffer globalAddressTableBuffer {
+layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
-layout(set = 1, binding = 0, std430) readonly buffer frameAddressTableBuffer {
+layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
     GPUAddressTable frameAddressTable;
 };
 
@@ -31,12 +30,18 @@ layout(set = 1, binding = 1) uniform SceneUBO {
     SceneData scene;
 };
 
-layout(set = 0, binding = 1) uniform samplerCube envMaps[];
-layout(set = 0, binding = 3) uniform sampler2D images[];
+layout(set = 0, binding = 1) uniform EnvMapData {
+    EnvMapBindingSet envMapSet;
+};
+
+layout(set = 0, binding = 2) uniform samplerCube envMaps[];
+layout(set = 0, binding = 4) uniform sampler2D images[];
 
 layout(push_constant) uniform PushConstants {
-	DrawPushConstants pc;
-};
+	uint opaqueVisibleCount;
+	uint transparentVisibleCount;
+	uint pad[2];
+} pc;
 
 const float PI = 3.14159265359;
 const float MAX_REFLECTION_LOD = 4.0;
@@ -44,49 +49,67 @@ const uint DIFF_IRRA_MIP_LEVEL = 2;
 const bool FLIP_ENVIRONMENT_MAP_Y = true;
 const float MAX_AO_SATURATION = 10.0;
 
-vec3 DiffuseIrradiance(vec3 N) {
+vec3 DiffuseIrradiance(vec3 N, uint diffuseIdx) {
 	vec3 ENV_N = N;
 	if (FLIP_ENVIRONMENT_MAP_Y) ENV_N.y = -ENV_N.y;
-	return textureLod(envMaps[nonuniformEXT(uint(scene.envMapIndex.x))], ENV_N, DIFF_IRRA_MIP_LEVEL).rgb;
+	return textureLod(envMaps[nonuniformEXT(diffuseIdx)], ENV_N, DIFF_IRRA_MIP_LEVEL).rgb;
 }
 
-vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F) {
+vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularIdx, uint brdfIdx) {
 	vec3 R = reflect(-V, N);
 	if (FLIP_ENVIRONMENT_MAP_Y) R.y = -R.y;
-	vec3 prefilteredColor = textureLod(envMaps[nonuniformEXT(uint(scene.envMapIndex.y))], R, roughness * MAX_REFLECTION_LOD).rgb;
-	vec2 envBRDF = texture(images[nonuniformEXT(uint(scene.envMapIndex.z))], vec2(max(dot(N, V), 0.0), roughness)).rg;
+	vec3 prefilteredColor = textureLod(envMaps[nonuniformEXT(specularIdx)], R, roughness * MAX_REFLECTION_LOD).rgb;
+	vec2 envBRDF = texture(images[nonuniformEXT(brdfIdx)], vec2(max(dot(N, V), 0.0), roughness)).rg;
 	return prefilteredColor * (F * envBRDF.x + envBRDF.y);
 }
 
 void main()
 {
-	Material mat;
-
 	uint drawID = vDrawID;
 
-	if (drawID == 0) {
-		mat = MaterialBuffer(globalAddressTable.materialBuffer).materials[pc.materialIndex];
+	IndirectDrawCmd drawCmd;
+	Instance inst;
+	Material mat;
+
+	if (drawID < pc.opaqueVisibleCount) {
+		// Opaque draw
+		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
+		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
+
+		drawCmd = cmdBuf.opaqueIndirect[drawID];
+		inst = instBuf.opaqueInstances[drawCmd.instanceIndex];
+		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
 	} else {
-		IndirectBuffer cmdBuf = IndirectBuffer(frameAddressTable.indirectCmdBuffer);
-		InstanceBuffer instBuf = InstanceBuffer(frameAddressTable.instanceBuffer);
-		IndirectDrawCmd cmd = cmdBuf.cmds[drawID];
-		Instance inst = instBuf.instances[cmd.instanceIndex];
-		mat = MaterialBuffer(globalAddressTable.materialBuffer).materials[inst.materialIndex];
+		// Transparent draw
+		uint tIndex = drawID - pc.opaqueVisibleCount;
+		if (tIndex >= pc.transparentVisibleCount) return;
+
+		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TrasparentIndirectDraws]);
+		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
+
+		drawCmd = cmdBuf.transparentIndirect[tIndex];
+		inst = instBuf.transparentInstances[drawCmd.instanceIndex];
+		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
 	}
 
-	vec4 color = texture(images[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
+	// Environment image indices for IBL
+	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);
+	uint specularIdx = uint(envMapSet.mapIndices[0].y);
+	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
+
+	vec4 albedoMap = texture(images[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
 	vec4 mrSample = texture(images[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
 	vec3 normalMap = texture(images[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
 	float ao = texture(images[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
 	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
 
-	if (color.a < mat.alphaCutoff) discard;
+	if (albedoMap.a < mat.alphaCutoff) discard;
 
 	vec3 sampledNormal = normalize(normalMap * 2.0 - 1.0);
 	vec3 normal = normalize(mix(inNormal, sampledNormal, mat.normalScale));
 
 	vec3 lightColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
-	vec3 albedo = inColor * color.rgb;
+	vec3 albedo = albedoMap.rgb;
 	vec3 viewDir = normalize(scene.cameraPos.xyz - inWorldPos);
 	vec3 lightDir = normalize(scene.sunlightDirection.xyz);
 	vec3 H = normalize(viewDir + lightDir);
@@ -110,9 +133,9 @@ void main()
 	float NdotL = max(dot(normal, lightDir), 0.0);
 	vec3 diffuse = Lambert(kD, albedo);
 
-	vec3 irradiance = DiffuseIrradiance(normal);
+	vec3 irradiance = DiffuseIrradiance(normal, diffuseIdx);
 	vec3 reflectionDiffuse = irradiance * albedo;
-	vec3 reflectionSpecular = SpecularReflection(viewDir, normal, roughness, F);
+	vec3 reflectionSpecular = SpecularReflection(viewDir, normal, roughness, F, specularIdx, brdfIdx);
 
 	vec3 ambient = kD * (reflectionDiffuse + reflectionSpecular);
 	float sat_factor = mix(MAX_AO_SATURATION, 1, ao);
@@ -124,10 +147,10 @@ void main()
 	finalColor += correctedAmbient + emissive;
 	finalColor += vec3(0.5) * ao;
 
-	outFragColor = vec4(finalColor, color.w);
+	outFragColor = vec4(finalColor, albedoMap.w);
 
-	//outFragColor = vec4(reflection_specular, _col.w);
-	//outFragColor = vec4(reflection_diffuse, _col.w);
+	//outFragColor = vec4(reflection_specular, albedoMap.w);
+	//outFragColor = vec4(reflection_diffuse, albedoMap.w);
 	//outFragColor = vec4(diffuse, 1.0);
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);

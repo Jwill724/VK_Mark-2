@@ -2,13 +2,13 @@
 
 #include "core/AssetManager.h"
 #include "Renderer.h"
-#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu_types/PipelineManager.h"
 #include "input/Camera.h"
 #include "common/ResourceTypes.h"
 #include "common/EngineTypes.h"
 
-//constexpr glm::vec3 SPAWNPOINT(1, 1, -1);
-constexpr glm::vec3 SPAWNPOINT(50, 1, -1);
+constexpr glm::vec3 SPAWNPOINT(1, 1, -1);
+//constexpr glm::vec3 SPAWNPOINT(50, 1, -1);
 
 // Holds and controls scene data
 namespace RenderScene {
@@ -18,21 +18,19 @@ namespace RenderScene {
 
 	extern Camera _mainCamera;
 
-	extern DrawContext _mainDrawContext;
+	extern std::vector<glm::mat4> _transformsList;
+	extern std::unordered_map<uint32_t, glm::mat4> _meshIDToTransforms;
 
 	void setScene();
 	void updateCamera();
-	void updateFrustum();
+	void uploadFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
-	void updateTransforms();
-	void updateSceneGraph();
+	void bakeTransformsFromSceneGraph(const uint32_t meshCount);
 
-	void drawBatches(const FrameContext& frameCtx,
-		const std::vector<SortedBatch>& opaqueBatches,
-		const std::vector<RenderObject>& transparentObjects,
-		GPUResources& resources);
+	void updateVisiblesObjects(FrameContext& frameCtx);
 
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);
 	void renderGeometry(FrameContext& frameCtx);
+	void drawBatches(const FrameContext& frameCtx, GPUResources& resources);
 }

@@ -5,6 +5,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
+#include "EngineConstants.h"
 
 #include <functional>
 #include <deque>
@@ -19,82 +20,63 @@
 #include <memory>
 #include <mutex>
 #include <atomic>
+#include <fmt/base.h>
 
-struct alignas(16) Frustum {
+struct Frustum {
 	glm::vec4 planes[6]; // Plane equation: ax + by + cz + d = 0
-	float pad0[4];
 	glm::vec4 points[8];
 };
 
-struct alignas(16) AABB {
+struct AABB {
 	glm::vec3 vmin; // origin: 0.5f * (vmin + vmax)
-	float pad0;
-
 	glm::vec3 vmax; // extent: 0.5f * (vmax - vmin)
-	float pad1;
-
 	glm::vec3 origin;
-	float pad2;
-
 	glm::vec3 extent;
 	float sphereRadius;
 };
 
-struct alignas(16) Vertex {
+struct Vertex {
 	glm::vec3 position;
-	float pad0;
-
 	glm::vec2 uv;
-	glm::vec2 pad1;
-
 	glm::vec3 normal;
-	float pad2;
-
 	glm::vec4 color;
-	uint32_t pad3[4];
 };
 
 struct alignas(16) DrawPushConstants {
-	uint32_t materialIndex;
-	uint64_t vertexAddress;
-	uint64_t indexAddress;
 	glm::mat4 modelMatrix;
-	uint32_t drawRangeIndex;
-	uint32_t pad[3];
+	uint32_t materialIndex;
+	uint32_t meshID;
+	uint32_t pad[2];
 };
 
-struct alignas(16) GPUDrawRange {
+struct GPUInstance {
+	glm::mat4 modelMatrix;
+	uint32_t materialIndex;
+	uint32_t meshID;
+};
+
+// Draw ranges, meshes, materials all gpu ready at render
+struct GPUDrawRange {
 	uint32_t firstIndex;
 	uint32_t indexCount;
 	uint32_t vertexOffset;
 	uint32_t vertexCount;
 };
 
-struct alignas(16) InstanceData {
-	glm::mat4 modelMatrix;
+struct MeshData {
 	AABB localAABB;
-
-	uint32_t materialIndex;
+	AABB worldAABB;
 	uint32_t drawRangeIndex;
-	uint32_t pad0[2];
-
-	uint64_t vertexBufferAddress;
-	uint64_t indexBufferAddress;
-
-	uint32_t pad[4];
 };
-static_assert(sizeof(InstanceData) == 176);
-static_assert(offsetof(InstanceData, vertexBufferAddress) % 8 == 0);
 
-struct alignas(16) PBRMaterial {
+struct PBRMaterial {
 	glm::vec4 colorFactor = glm::vec4(1.0f);
 	glm::vec2 metalRoughFactors = glm::vec2(1.0f, 1.0f);
-	float pad0[2] = { 0.f, 0.f };
 
-	uint32_t albedoLUTIndex;
-	uint32_t metalRoughLUTIndex;
-	uint32_t normalLUTIndex;
-	uint32_t aoLUTIndex;
+	uint32_t albedoLUTIndex = UINT32_MAX;
+	uint32_t metalRoughLUTIndex = UINT32_MAX;
+	uint32_t normalLUTIndex = UINT32_MAX;
+	uint32_t aoLUTIndex = UINT32_MAX;
 
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;
@@ -102,10 +84,11 @@ struct alignas(16) PBRMaterial {
 	float ambientOcclusion = 1.0f;
 	float normalScale = 1.0f;
 	float alphaCutoff = 1.0f;
-	float pad3 = 0.0f;
 };
-static_assert(sizeof(PBRMaterial) == 80);
 
+
+
+// Uniforms
 struct alignas(16) GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
@@ -114,21 +97,43 @@ struct alignas(16) GPUSceneData {
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
 	glm::vec4 cameraPosition;
-	glm::vec4 envMapIndex; // x = diffuse, y = specular, z = brdf, w = skybox
+};
+static_assert(sizeof(GPUSceneData) == 256);
+
+// x = diffuse, y = specular, z = brdf, w = skybox
+struct alignas(16) EnvMapIndices {
+	glm::vec4 indices[MAX_ENV_SETS];
+};
+static_assert(sizeof(EnvMapIndices) == 256);
+
+// GPU only buffers
+enum class AddressBufferType : uint32_t {
+	OpaqueIntances,
+	OpaqueIndirectDraws,
+	TransparentInstances,
+	TransparentIndirectDraws,
+	Material,
+	Mesh, // Only cpu-gpu buffer, cpu needs to write worldAABB transforms
+	DrawRange,
+	Vertex,
+	Index,
+	Transforms,
+	VisibleCount,
+	VisibleMeshIDs,
+	Count
 };
 
-struct alignas(16) GPUAddressTable {
-	VkDeviceAddress instanceBuffer;
-	VkDeviceAddress indirectCmdBuffer;
-	VkDeviceAddress drawRangeBuffer;
-	VkDeviceAddress materialBuffer;
+struct GPUAddressTable {
+	std::array<VkDeviceAddress, size_t(AddressBufferType::Count)> addrs;
+	void set(AddressBufferType t, VkDeviceAddress addr) {
+		addrs[size_t(t)] = addr;
+	}
 };
 
-struct alignas(16) IndirectDrawCmd {
+struct IndirectDrawCmd {
 	VkDrawIndexedIndirectCommand cmd;
 	uint32_t instanceIndex;
 	uint32_t drawOffset;
-	uint32_t pad0;
 };
 
 struct RenderSyncObjects {
@@ -142,19 +147,18 @@ struct TimelineSync {
 	uint64_t signalValue = UINT64_MAX;
 };
 
-enum class MaterialPass : uint8_t {
+enum class MaterialPass : uint32_t {
 	Opaque,
-	Transparent,
-	ColorPostProcess,
-	Specular,
-	Diffuse,
-	Brdf,
-	Shadow,
-	Wireframe,
-	Overlay,
+	Transparent
 };
 
-enum class BufferType : uint8_t {
+enum class PipelineType : uint32_t {
+	Opaque,
+	Transparent,
+	Wireframe
+};
+
+enum class BufferType : uint32_t {
 	Vertex,
 	Index,
 	Uniform,             // UBO
@@ -169,7 +173,7 @@ enum class BufferType : uint8_t {
 };
 
 
-enum class RenderImageType : uint8_t {
+enum class RenderImageType : uint32_t {
 	Albedo,              // G-Buffer base color
 	Normals,             // G-Buffer normals (world or view space)
 	MetalRoughAO,        // Packed metalness, roughness, AO
@@ -184,6 +188,7 @@ enum class RenderImageType : uint8_t {
 	EnvSpecular,         // Prefiltered specular cubemap
 };
 
+// Push constant use
 struct alignas(16) ColorData {
 	float brightness = 0.0f;
 	float saturation = 0.0f;
@@ -195,6 +200,6 @@ struct alignas(16) ColorData {
 };
 
 // Checking if the vector is out of range for aabb vertices
-inline auto isFiniteVec3 = [](const glm::vec3& v) {
-	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-};
+//inline auto isFiniteVec3 = [](const glm::vec3& v) {
+//	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+//};

@@ -20,8 +20,8 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 		[&](fastgltf::sources::URI& filePath) {
 			//fmt::print("[loadImage] URI source detected\n");
 
-			assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-			assert(filePath.uri.isLocalPath());   // We're only capable of loading local files.
+			ASSERT(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
+			ASSERT(filePath.uri.isLocalPath());   // We're only capable of loading local files.
 
 			std::filesystem::path relativePath(filePath.uri.path().begin(), filePath.uri.path().end());
 			std::filesystem::path fullPath = basePath / relativePath;
@@ -190,7 +190,7 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 				[&](fastgltf::sources::URI& uri) {
 					//fmt::print("[loadImage] BufferView->URI detected\n");
 
-					assert(uri.uri.isLocalPath());
+					ASSERT(uri.uri.isLocalPath());
 					std::filesystem::path bufferPath = basePath / std::string(uri.uri.path());
 					std::ifstream file(bufferPath, std::ios::binary);
 

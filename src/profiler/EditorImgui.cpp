@@ -3,13 +3,13 @@
 #include "EditorImgui.h"
 
 #include "vulkan/Backend.h"
-#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu_types/PipelineManager.h"
 #include "renderer/Renderer.h"
 #include "input/UserInput.h"
 #include "renderer/RenderScene.h"
 
 static void MyWindowFocusCallback(GLFWwindow* window, int focused) {
-	ImGui_ImplGlfw_WindowFocusCallback(window, focused);  // Forward to ImGui
+	ImGui_ImplGlfw_WindowFocusCallback(window, focused); // Forward to ImGui
 }
 
 void EditorImgui::initImgui(DeletionQueue& queue) {
@@ -135,13 +135,11 @@ void EditorImgui::renderImgui() {
 	// Doesnt do shit
 	// Background controls section (Compute shader/post process effects)
 	if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
-		auto& effect = Pipelines::postProcessPipeline.getComputeEffect();
-		auto& color = effect.getTypedPushData<ColorData>();
+		auto& color = ResourceManager::toneMappingData;
 		ImGui::Text("Post process color correction");
 		ImGui::SliderFloat("Brightness", &color.brightness, 0.0f, 2.0f);
 		ImGui::SliderFloat("Saturation", &color.saturation, 0.0f, 2.0f);
 		ImGui::SliderFloat("Contrast", &color.contrast, 0.0f, 2.0f);
-		effect.setPushData(color);
 	}
 
 	if (ImGui::CollapsingHeader("Scene Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -157,7 +155,7 @@ void EditorImgui::renderImgui() {
 			ImGui::TreePop();
 		}
 
-		ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.f, 10.f);
+		ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.0f, 10.0f);
 		ImGui::SliderFloat3("Light Direction", glm::value_ptr(lightDir), -1.0f, 1.0f);
 
 		// Update actual scene data

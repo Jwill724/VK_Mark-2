@@ -4,14 +4,14 @@
 #include "AssetManager.h"
 #include "renderer/Renderer.h"
 #include "vulkan/Backend.h"
-#include "renderer/gpu/PipelineManager.h"
+#include "renderer/gpu_types/PipelineManager.h"
 #include "core/types/Texture.h"
 #include "vulkan/Pipeline.h"
-#include "renderer/gpu/CommandBuffer.h"
+#include "renderer/gpu_types/CommandBuffer.h"
 #include "utils/RendererUtils.h"
 #include "renderer/RenderScene.h"
 #include "Engine.h"
-#include "renderer/gpu/Descriptor.h"
+#include "renderer/gpu_types/Descriptor.h"
 
 struct alignas(16) SpecularPC {
 	float roughness;
@@ -24,14 +24,20 @@ struct alignas(16) SpecularPC {
 };
 
 namespace Environment {
-	void dispatchPrefilterEnvmap(VkCommandBuffer cmd, std::vector<SpecularPC> pushConstants, ComputePipeline& pipeline,
-		PipelineLayoutConst layout, VkDescriptorSet set);
-	void dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-		PipelineLayoutConst layout, VkDescriptorSet set);
-	void dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-		PipelineLayoutConst layout, VkDescriptorSet set);
-	void dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-		PipelineLayoutConst layout, VkDescriptorSet set);
+	void dispatchPrefilterEnvmap(VkCommandBuffer cmd,
+		std::vector<SpecularPC> pushConstants,
+		PipelineObj& pipeline,
+		PipelineLayoutConst layout);
+	void dispatchDiffuseIrradiance(VkCommandBuffer cmd,
+		ImageLUTEntry entry, PipelineObj& pipeline,
+		PipelineLayoutConst layout);
+	void dispatchHDRToCubemap(VkCommandBuffer cmd,
+		ImageLUTEntry entry, PipelineObj& pipeline,
+		PipelineLayoutConst layout);
+	void dispatchBRDFLUT(VkCommandBuffer cmd,
+		ImageLUTEntry entry,
+		PipelineObj& pipeline,
+		PipelineLayoutConst layout);
 
 	AllocatedImage loadHDR(const char* hdrPath, VkCommandPool cmdPool, DeletionQueue& imageQueue, DeletionQueue& bufferQueue,
 		const VmaAllocator allocator);
@@ -45,7 +51,7 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 
 	if (!hdrData) {
 		fmt::print("Failed to load HDR: {}\n", stbi_failure_reason());
-		assert(false && "HDR loading failed");
+		ASSERT(true);
 	}
 
 	AllocatedImage equirect{};
@@ -87,7 +93,6 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 
 	auto& brdfImg = ResourceManager::getBRDFImage();
 
-	ImageLUTEntry tempEntrySkybox{};
 	ImageLUTEntry tempEntryEquirect{};
 	ImageLUTEntry tempEntryDiffuse{};
 	ImageLUTEntry tempEntryBRDF{};
@@ -107,7 +112,7 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	const uint32_t specMipLevels = specImg.mipLevelCount;
 	std::vector<SpecularPC> specularPushConstants;
 
-	for (uint32_t mip = 0; mip < specMipLevels; mip++) {
+	for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
 		float roughness = float(mip) / float(specMipLevels - 1);
 
 		ImageLUTEntry tempEntrySpecular{};
@@ -121,9 +126,9 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 
 		fmt::print("Prefiltering mip {} (roughness {:.3f})\n", mip, roughness);
 
-		pc.sampleCount = DIFFUSE_SAMPLE_DELTA;
+		pc.sampleCount = static_cast<uint32_t>(DIFFUSE_SAMPLE_DELTA);
 		pc.roughness = roughness;
-		pc.width = std::max(1u, specImg.imageExtent.width >> mip);;
+		pc.width = std::max(1u, specImg.imageExtent.width >> mip);
 		pc.height = std::max(1u, specImg.imageExtent.height >> mip);
 
 		specularPushConstants.push_back(pc);
@@ -156,12 +161,13 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-	}, graphicsPool);
+	}, graphicsPool, QueueType::Graphics);
 
 	auto device = Backend::getDevice();
 	auto& graphicsQ = Backend::getGraphicsQueue();
 
 	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
+
 	waitAndRecycleLastFence(resources.getLastSubmittedFence(), graphicsQ, device);
 
 	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
@@ -170,17 +176,22 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	writer.updateSet(device, set);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		dispatchHDRToCubemap(cmd, tempEntryEquirect, Pipelines::hdr2cubemapPipeline, Pipelines::_globalLayout, set);
+
+		// Bind once
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, 0, 1, &set, 0, nullptr);
+
+		dispatchHDRToCubemap(cmd, tempEntryEquirect, Pipelines::hdr2cubemapPipeline, Pipelines::_globalLayout);
 		RendererUtils::transitionImage(cmd,
 			skyboxImg.image,
 			skyboxImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
 		RendererUtils::generateCubemapMiplevels(cmd, skyboxImg);
 
 
 		// DIFFUSE IRRADIANCE
-		dispatchDiffuseIrradiance(cmd, tempEntryDiffuse, Pipelines::diffuseIrradiancePipeline, Pipelines::_globalLayout, set);
+		dispatchDiffuseIrradiance(cmd, tempEntryDiffuse, Pipelines::diffuseIrradiancePipeline, Pipelines::_globalLayout);
 		RendererUtils::transitionImage(cmd,
 			diffuseImg.image,
 			diffuseImg.imageFormat,
@@ -189,7 +200,7 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 
 
 		// SPECULAR PREFILTER
-		dispatchPrefilterEnvmap(cmd, specularPushConstants, Pipelines::specularPrefilterPipeline, Pipelines::_globalLayout, set);
+		dispatchPrefilterEnvmap(cmd, specularPushConstants, Pipelines::specularPrefilterPipeline, Pipelines::_globalLayout);
 		RendererUtils::transitionImage(cmd,
 			specImg.image,
 			specImg.imageFormat,
@@ -198,24 +209,22 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 
 
 		// BRDF
-		dispatchBRDFLUT(cmd, tempEntryBRDF, Pipelines::brdfLutPipeline, Pipelines::_globalLayout, set);
+		dispatchBRDFLUT(cmd, tempEntryBRDF, Pipelines::brdfLutPipeline, Pipelines::_globalLayout);
 		RendererUtils::transitionImage(cmd,
 			brdfImg.image,
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	}, graphicsPool);
+	}, graphicsPool, QueueType::Graphics);
 
 	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
 	waitAndRecycleLastFence(resources.getLastSubmittedFence(), graphicsQ, device);
 }
 
-void Environment::dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-	PipelineLayoutConst layout, VkDescriptorSet set) {
+void Environment::dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry, PipelineObj& pipeline, PipelineLayoutConst layout) {
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getComputeEffect().pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout.layout, 0, 1, &set, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
 
 	struct alignas(16) PC {
 		uint32_t equirectViewIdx;
@@ -234,11 +243,9 @@ void Environment::dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry,
 	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
 }
 
-void Environment::dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-	PipelineLayoutConst layout, VkDescriptorSet set) {
+void Environment::dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry entry, PipelineObj& pipeline, PipelineLayoutConst layout) {
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getComputeEffect().pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout.layout, 0, 1, &set, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
 
 	struct alignas(16) PC {
 		float sampleCount;
@@ -259,11 +266,10 @@ void Environment::dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry e
 	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
 }
 
-void Environment::dispatchPrefilterEnvmap(VkCommandBuffer cmd, std::vector<SpecularPC> pushConstants, ComputePipeline& pipeline,
-	PipelineLayoutConst layout, VkDescriptorSet set) {
+void Environment::dispatchPrefilterEnvmap(VkCommandBuffer cmd, std::vector<SpecularPC> pushConstants, PipelineObj& pipeline,
+	PipelineLayoutConst layout) {
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getComputeEffect().pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout.layout, 0, 1, &set, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
 
 	for (auto& pc : pushConstants) {
 		vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
@@ -275,11 +281,9 @@ void Environment::dispatchPrefilterEnvmap(VkCommandBuffer cmd, std::vector<Specu
 	}
 }
 
-void Environment::dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, ComputePipeline& pipeline,
-	PipelineLayoutConst layout, VkDescriptorSet set) {
+void Environment::dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, PipelineObj& pipeline, PipelineLayoutConst layout) {
 
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.getComputeEffect().pipeline);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout.layout, 0, 1, &set, 0, nullptr);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline.pipeline);
 
 	struct alignas(16) PC {
 		uint32_t sampleCount;

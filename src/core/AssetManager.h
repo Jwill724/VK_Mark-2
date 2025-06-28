@@ -4,27 +4,31 @@
 #include "common/ResourceTypes.h"
 
 struct LoadedGLTF : public IRenderable {
-	// === GPU Runtime Assets ===
-	std::vector<std::shared_ptr<MeshHandle>> meshes;         // Indexed by GLTF mesh index
-	std::vector<std::shared_ptr<Node>> nodes;                // Indexed by GLTF node index
-	std::vector<std::shared_ptr<MaterialHandle>> materials;  // Indexed by GLTF material index
+	struct GPUData {
+		std::vector<std::shared_ptr<SceneObject>> sceneObjs;
+		std::vector<AllocatedImage> images;
+		std::vector<VkSampler> samplers;
+		std::vector<PBRMaterial> materials;
+	} gpu;
 
-	std::vector<AllocatedImage> images;      // Indexed by GLTF image index
-	std::vector<VkSampler> samplers;         // Indexed by GLTF sampler index
-	std::vector<fastgltf::Texture> textures; // If you need them later in material processing
+	// CPU-side scene data
+	struct SceneGraph {
+		std::vector<std::shared_ptr<Node>> nodes;
+		std::vector<std::shared_ptr<Node>> topNodes;
+	} scene;
 
-	// === Scene Hierarchy ===
-	std::vector<std::shared_ptr<Node>> topNodes; // Root-level nodes (for tree traversal)
-
-	// === Scene Info ===
 	std::string sceneName;
-	bool enableCull = true;
-	std::filesystem::path basePath;       // File path (used for relative asset loading)
+	std::filesystem::path basePath;
 
 	// === Interface ===
 	~LoadedGLTF() { clearAll(); }
 
-	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx);
+	virtual void FlattenSceneToTransformList(const glm::mat4& topMatrix, std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap);
+	virtual void FindVisibleObjects(
+		std::vector<GPUInstance>& outOpaqueVisibles,
+		std::vector<GPUInstance>& outTransparentVisibles,
+		const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
+		const std::unordered_set<uint32_t>& visibleMeshIDSet);
 
 private:
 	void clearAll();
@@ -68,7 +72,7 @@ static const std::unordered_map<SceneID, std::string> SceneNames = {
 	{ SceneID::Sponza, "sponza" },
 	{ SceneID::MRSpheres, "mrspheres" },
 	{ SceneID::Cube, "cube" },
-	{ SceneID::DamagedHelmet, "damagedhelemt" },
+	{ SceneID::DamagedHelmet, "damagedhelmet" },
 };
 
 namespace AssetManager {
@@ -76,5 +80,5 @@ namespace AssetManager {
 	void decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue);
 	void buildSamplers(ThreadContext& threadCtx);
 	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator);
-	void processMeshes(ThreadContext& threadCtx);
+	void processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRange>& drawRanges, MeshRegistry& meshes);
 }

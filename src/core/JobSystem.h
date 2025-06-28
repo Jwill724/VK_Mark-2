@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/EngineTypes.h"
-#include "renderer/gpu/CommandBuffer.h"
+#include "renderer/gpu_types/CommandBuffer.h"
 
 struct ThreadContext;
 
