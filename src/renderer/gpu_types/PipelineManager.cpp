@@ -6,7 +6,7 @@
 #include "renderer/Renderer.h"
 #include "renderer/RenderScene.h"
 #include "core/ResourceManager.h"
-#include "renderer/gpu/Descriptor.h"
+#include "renderer/gpu_types/Descriptor.h"
 #include "common/EngineConstants.h"
 
 namespace PipelinePresents {
@@ -15,11 +15,12 @@ namespace PipelinePresents {
 	PipelinePresent wireframeSettings;
 	PipelinePresent boundingBoxSettings;
 	PipelinePresent skyboxPipelineSettings;
-	PipelinePresent shadowPipelineSettings;
+//	PipelinePresent shadowPipelineSettings;
 
+	PipelinePresent visibilitySettings;
+//	PipelinePresent buildDrawsSettings;
+//	PipelinePresent sortDrawsSettings;
 
-	// === Compute pipeline setings ===
-	// The primary use is for the push constant, descriptors, and shaderstages
 	PipelinePresent colorCorrectionPipelineSettings;
 
 	// Environment stuff
@@ -45,116 +46,128 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	meshShaderStages.push_back(vertexStage);
 	meshShaderStages.push_back(fragmentStage);
 
-	setupShaders(PipelinePresents::opaqueSettings.shaderStages, meshShaderStages, dq);
-	setupShaders(PipelinePresents::transparentSettings.shaderStages, meshShaderStages, dq);
-	setupShaders(PipelinePresents::wireframeSettings.shaderStages, meshShaderStages, dq);
+	PipelinePresents::opaqueSettings.shaderStagesInfo = meshShaderStages;
+	PipelinePresents::transparentSettings.shaderStagesInfo = meshShaderStages;
+	PipelinePresents::wireframeSettings.shaderStagesInfo = meshShaderStages;
+
+	setupShaders(PipelinePresents::opaqueSettings, dq);
+	setupShaders(PipelinePresents::transparentSettings, dq);
+	setupShaders(PipelinePresents::wireframeSettings, dq);
 
 
 	// separate shaders needed for bounding boxes
 	ShaderStageInfo bbVertStage = {
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/bounding_boxes/aabb_vert.spv"
+		.filePath = "res/shaders/debug/aabb_vert.spv"
 	};
 	ShaderStageInfo bbFragStage = {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/bounding_boxes/aabb_frag.spv"
+		.filePath = "res/shaders/debug/aabb_frag.spv"
 	};
 	PipelinePresents::boundingBoxSettings.shaderStagesInfo.push_back(bbVertStage);
 	PipelinePresents::boundingBoxSettings.shaderStagesInfo.push_back(bbFragStage);
-
-	setupShaders(PipelinePresents::boundingBoxSettings.shaderStages, PipelinePresents::boundingBoxSettings.shaderStagesInfo, dq);
+	setupShaders(PipelinePresents::boundingBoxSettings, dq);
 
 
 	ShaderStageInfo skyboxVertStage = {
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
 		.filePath = "res/shaders/environment/skybox_vert.spv"
 	};
-
 	ShaderStageInfo skyboxFragStage = {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/environment/skybox_frag.spv"
 	};
 	PipelinePresents::skyboxPipelineSettings.shaderStagesInfo.push_back(skyboxVertStage);
 	PipelinePresents::skyboxPipelineSettings.shaderStagesInfo.push_back(skyboxFragStage);
-
-	setupShaders(PipelinePresents::skyboxPipelineSettings.shaderStages, PipelinePresents::skyboxPipelineSettings.shaderStagesInfo, dq);
+	setupShaders(PipelinePresents::skyboxPipelineSettings, dq);
 
 	// === COMPUTE PIPELINES ===
 
+	// POST PROCESS
 	ShaderStageInfo colorCorrectShaderStage = {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.shaderName = "Color Correction",
 		.filePath = "res/shaders/post_process/color_correction_comp.spv"
 	};
 	PipelinePresents::colorCorrectionPipelineSettings.shaderStagesInfo.push_back(colorCorrectShaderStage);
-
-	setupShaders(PipelinePresents::colorCorrectionPipelineSettings.shaderStages,
-		PipelinePresents::colorCorrectionPipelineSettings.shaderStagesInfo, dq);
+	setupShaders(PipelinePresents::colorCorrectionPipelineSettings, dq);
 
 
+	// ENVIRONMENTAL AND IBL
 	ShaderStageInfo cubemapShaderStage = {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.shaderName = "cubemap",
 		.filePath = "res/shaders/environment/hdr2cubemap_comp.spv"
 	};
 	PipelinePresents::hdr2cubemapPipelineSettings.shaderStagesInfo.push_back(cubemapShaderStage);
-
-	setupShaders(PipelinePresents::hdr2cubemapPipelineSettings.shaderStages,
-		PipelinePresents::hdr2cubemapPipelineSettings.shaderStagesInfo, dq);
+	setupShaders(PipelinePresents::hdr2cubemapPipelineSettings, dq);
 
 	ShaderStageInfo prefilterShaderStage = {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.shaderName = "specular_prefilter",
 		.filePath = "res/shaders/environment/specular_prefilter_comp.spv"
 	};
 
 	PipelinePresents::specularPrefilterPipelineSettings.shaderStagesInfo.push_back(prefilterShaderStage);
-
-	setupShaders(PipelinePresents::specularPrefilterPipelineSettings.shaderStages,
-		PipelinePresents::specularPrefilterPipelineSettings.shaderStagesInfo, dq);
-
+	setupShaders(PipelinePresents::specularPrefilterPipelineSettings, dq);
 
 	ShaderStageInfo diffuseShaderStage = {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.shaderName = "diffuse_irradiance",
 		.filePath = "res/shaders/environment/diffuse_irradiance_comp.spv"
 	};
 	PipelinePresents::diffuseIrradiancePipelineSettings.shaderStagesInfo.push_back(diffuseShaderStage);
-
-	setupShaders(PipelinePresents::diffuseIrradiancePipelineSettings.shaderStages,
-		PipelinePresents::diffuseIrradiancePipelineSettings.shaderStagesInfo, dq);
-
+	setupShaders(PipelinePresents::diffuseIrradiancePipelineSettings, dq);
 
 	ShaderStageInfo brdfLutShaderStage = {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.shaderName = "brdf_lut",
 		.filePath = "res/shaders/environment/brdf_lut_comp.spv"
 	};
 	PipelinePresents::brdfLutPipelineSettings.shaderStagesInfo.push_back(brdfLutShaderStage);
+	setupShaders(PipelinePresents::brdfLutPipelineSettings, dq);
 
-	setupShaders(PipelinePresents::brdfLutPipelineSettings.shaderStages,
-		PipelinePresents::brdfLutPipelineSettings.shaderStagesInfo, dq);
+
+	// gpu frustum culling
+	ShaderStageInfo visibilityShaderStage = {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/visibility/visibility_comp.spv"
+	};
+	PipelinePresents::visibilitySettings.shaderStagesInfo.push_back(visibilityShaderStage);
+	setupShaders(PipelinePresents::visibilitySettings, dq);
+
+	//ShaderStageInfo buildDrawsShaderStage = {
+	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+	//	.filePath = "res/shaders/gpu_driven/build_draws_comp.spv"
+	//};
+	//PipelinePresents::buildDrawsSettings.shaderStagesInfo.push_back(buildDrawsShaderStage);
+	//setupShaders(PipelinePresents::buildDrawsSettings, dq);
+
+	//ShaderStageInfo sortDrawsShaderStage = {
+	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+	//	.filePath = "res/shaders/gpu_driven/sort_draws_comp.spv"
+	//};
+	//PipelinePresents::sortDrawsSettings.shaderStagesInfo.push_back(sortDrawsShaderStage);
+	//setupShaders(PipelinePresents::sortDrawsSettings, dq);
 }
 
 // defines push constants, descriptors, and pipeline layout
 void PipelineManager::definePipelineData() {
 
-	// === GRAPHICS PIPELINE DEFAULT ===
-	uint32_t maxPC = Backend::getDeviceLimits().maxPushConstantsSize;
-	assert(maxPC >= MAX_PUSH_CONSTANT_SIZE);
-	maxPC = MAX_PUSH_CONSTANT_SIZE;
+	// === PIPELINE DEFAULT ===
+	uint32_t maxPCsize = Backend::getDeviceLimits().maxPushConstantsSize;
+	if (maxPCsize >= MAX_PUSH_CONSTANT_SIZE) {
+		fmt::print("Device max push constant size: {}\nEngine limit is 256 bytes.\n", maxPCsize);
+		maxPCsize = MAX_PUSH_CONSTANT_SIZE;
+	}
+	else {
+		assert(false && "GPU doesn't support required 256 byte push constant size!");
+	}
 
 	PushConstantDef pcRange = {
 		.offset = 0,
-		.size = maxPC,
+		.size = maxPCsize,
 		.stageFlags = VK_SHADER_STAGE_ALL
 	};
 
-	fmt::print("Device max push constant size: {}\n", maxPC);
-
 	auto setLayouts = {
-		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorLayout,
-		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout
+		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorLayout, // set: 0
+		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout    // set: 1
 	};
 
 	Pipelines::_globalLayout.layout = PipelineManager::createPipelineLayout(setLayouts, pcRange);
@@ -186,7 +199,8 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::opaqueSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
 	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::opaqueSettings);
-	Pipelines::opaquePipeline.pipeline = pipeline_builder.createPipeline(PipelinePresents::opaqueSettings);
+	Pipelines::opaquePipeline.type = PipelineCategory::Raster;
+	pipeline_builder.createPipeline(Pipelines::opaquePipeline, PipelinePresents::opaqueSettings);
 
 	// === TRANSPARENT PIPELINE ===
 	pipeline_builder.initializePipelineSTypes();
@@ -202,7 +216,8 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::transparentSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
 	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::transparentSettings);
-	Pipelines::transparentPipeline.pipeline = pipeline_builder.createPipeline(PipelinePresents::transparentSettings);
+	Pipelines::transparentPipeline.type = PipelineCategory::Raster;
+	pipeline_builder.createPipeline(Pipelines::transparentPipeline, PipelinePresents::transparentSettings);
 
 
 	// === WIREFRAME PIPELINE ===
@@ -219,8 +234,8 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::wireframeSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
 	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::wireframeSettings);
-	Pipelines::wireframePipeline.pipeline = pipeline_builder.createPipeline(PipelinePresents::wireframeSettings);
-
+	Pipelines::wireframePipeline.type = PipelineCategory::Raster;
+	pipeline_builder.createPipeline(Pipelines::wireframePipeline, PipelinePresents::wireframeSettings);
 
 	// === BOUNDINGBOX PIPELINE ===
 	pipeline_builder.initializePipelineSTypes();
@@ -236,8 +251,8 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::boundingBoxSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
 	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::boundingBoxSettings);
-	Pipelines::boundingBoxPipeline.pipeline = pipeline_builder.createPipeline(PipelinePresents::boundingBoxSettings);
-
+	Pipelines::boundingBoxPipeline.type = PipelineCategory::Raster;
+	pipeline_builder.createPipeline(Pipelines::boundingBoxPipeline, PipelinePresents::boundingBoxSettings);
 
 	// === SKYBOX PIPELINE ===
 	pipeline_builder.initializePipelineSTypes();
@@ -253,43 +268,48 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::skyboxPipelineSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
 	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::skyboxPipelineSettings);
-	Pipelines::skyboxPipeline.pipeline = pipeline_builder.createPipeline(PipelinePresents::skyboxPipelineSettings);
+	Pipelines::skyboxPipeline.type = PipelineCategory::Raster;
+	pipeline_builder.createPipeline(Pipelines::skyboxPipeline, PipelinePresents::skyboxPipelineSettings);
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
+	// No need to reset sTypes for compute pipelines
 
-	ComputePipelineBuilder computeBuilder;
-	computeBuilder._pipelineLayout = Pipelines::_globalLayout.layout;
+	Pipelines::visibilityPipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::visibilityPipeline, PipelinePresents::visibilitySettings);
 
-	Pipelines::postProcessPipeline.computeEffects = computeBuilder.build(PipelinePresents::colorCorrectionPipelineSettings);
+	//Pipelines::buildDrawsPipeline.type = PipelineCategory::Compute;
+	//pipeline_builder.createPipeline(Pipelines::buildDrawsPipeline, PipelinePresents::buildDrawsSettings);
 
-	// Cube map pipeline/layout will be deleted during the mapping function in AssetManager
-	Pipelines::hdr2cubemapPipeline.computeEffects = computeBuilder.build(PipelinePresents::hdr2cubemapPipelineSettings);
+	//Pipelines::sortDrawsPipeline.type = PipelineCategory::Compute;
+	//pipeline_builder.createPipeline(Pipelines::sortDrawsPipeline, PipelinePresents::sortDrawsSettings);
 
-	Pipelines::specularPrefilterPipeline.computeEffects = computeBuilder.build(PipelinePresents::specularPrefilterPipelineSettings);
+	Pipelines::postProcessPipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::postProcessPipeline, PipelinePresents::colorCorrectionPipelineSettings);
 
-	Pipelines::diffuseIrradiancePipeline.computeEffects = computeBuilder.build( PipelinePresents::diffuseIrradiancePipelineSettings);
+	Pipelines::hdr2cubemapPipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::hdr2cubemapPipeline, PipelinePresents::hdr2cubemapPipelineSettings);
 
-	Pipelines::brdfLutPipeline.computeEffects = computeBuilder.build(PipelinePresents::brdfLutPipelineSettings);
+	Pipelines::specularPrefilterPipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::specularPrefilterPipeline, PipelinePresents::specularPrefilterPipelineSettings);
+
+	Pipelines::diffuseIrradiancePipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::diffuseIrradiancePipeline, PipelinePresents::diffuseIrradiancePipelineSettings);
+
+	Pipelines::brdfLutPipeline.type = PipelineCategory::Compute;
+	pipeline_builder.createPipeline(Pipelines::brdfLutPipeline, PipelinePresents::brdfLutPipelineSettings);
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 
 	auto device = Backend::getDevice();
 	queue.push_function([=] {
-		for (auto& effect : Pipelines::postProcessPipeline.computeEffects) {
-			vkDestroyPipeline(device, effect.pipeline, nullptr);
-		}
-		for (auto& effect : Pipelines::hdr2cubemapPipeline.computeEffects) {
-			vkDestroyPipeline(device, effect.pipeline, nullptr);
-		}
-		for (auto& effect : Pipelines::specularPrefilterPipeline.computeEffects) {
-			vkDestroyPipeline(device, effect.pipeline, nullptr);
-		}
-		for (auto& effect : Pipelines::diffuseIrradiancePipeline.computeEffects) {
-			vkDestroyPipeline(device, effect.pipeline, nullptr);
-		}
-		for (auto& effect : Pipelines::brdfLutPipeline.computeEffects) {
-			vkDestroyPipeline(device, effect.pipeline, nullptr);
-		}
+		vkDestroyPipeline(device, Pipelines::visibilityPipeline.pipeline, nullptr);
+		//vkDestroyPipeline(device, Pipelines::buildDrawsPipeline.pipeline, nullptr);
+		//vkDestroyPipeline(device, Pipelines::sortDrawsPipeline.pipeline, nullptr);
+		vkDestroyPipeline(device, Pipelines::postProcessPipeline.pipeline, nullptr);
+		vkDestroyPipeline(device, Pipelines::brdfLutPipeline.pipeline, nullptr);
+		vkDestroyPipeline(device, Pipelines::hdr2cubemapPipeline.pipeline, nullptr);
+		vkDestroyPipeline(device, Pipelines::specularPrefilterPipeline.pipeline, nullptr);
+		vkDestroyPipeline(device, Pipelines::diffuseIrradiancePipeline.pipeline, nullptr);
 
 		vkDestroyPipeline(device, Pipelines::skyboxPipeline.pipeline, nullptr);
 		vkDestroyPipeline(device, Pipelines::boundingBoxPipeline.pipeline, nullptr);
@@ -301,7 +321,6 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	});
 }
 
-// THE PIPELINE MANAGER
 VkPipelineLayout PipelineManager::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts, const PushConstantDef pushConstants) {
 	VkPipelineLayout pipelineLayout;
 
@@ -333,12 +352,12 @@ VkPipelineShaderStageCreateInfo PipelineManager::createPipelineShaderStage(VkSha
 	return shaderStageInfo;
 }
 
-void PipelineManager::setupShaders(std::vector<VkPipelineShaderStageCreateInfo>& shaderStages, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue) {
-	shaderStages.clear();
+void PipelineManager::setupShaders(PipelinePresent& pipelineSettings, DeletionQueue& shaderDeletionQueue) {
+	pipelineSettings.shaderStages.clear();
 
-	for (auto& shaders : shaderStageInfo) {
+	for (auto& shaders : pipelineSettings.shaderStagesInfo) {
 		VkPipelineShaderStageCreateInfo shader = setShader(shaders.filePath, shaders.stage, shaderDeletionQueue);
-		shaderStages.push_back(shader);
+		pipelineSettings.shaderStages.push_back(shader);
 	}
 }
 
@@ -354,13 +373,18 @@ VkPipelineShaderStageCreateInfo PipelineManager::setShader(const char* shaderFil
 	return shaderStage;
 }
 
-void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings) {
+void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn) {
 
 	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, settings.topology, VK_FALSE);
 
 	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.f, settings.cullMode, settings.frontFace);
 
-	PipelineConfigs::multisamplingConfig(pipeline._multisampling, ResourceManager::getAvailableSampleCounts(), MSAACOUNT, VK_FALSE);
+	if (msaaOn) {
+		PipelineConfigs::multisamplingConfig(pipeline._multisampling, ResourceManager::getAvailableSampleCounts(), CURRENT_MSAA_LVL, VK_FALSE);
+	}
+	else {
+		PipelineConfigs::multisamplingConfig(pipeline._multisampling, ResourceManager::getAvailableSampleCounts(), 1, VK_FALSE);
+	}
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT, settings.enableBlending, VK_BLEND_FACTOR_ONE);
@@ -392,14 +416,11 @@ void PipelineConfigs::rasterizerConfig(VkPipelineRasterizationStateCreateInfo& r
 	rasterizer.frontFace = frontFace;
 }
 
-// 1u, 2u, 4u, 8u, 16u, 32u, 64u for msaa counts
-// Even though max is 8 as of now
-// FIXME: assumes every image needs msaa
 void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling,
 	const std::vector<VkSampleCountFlags>& samples, uint32_t chosenMSAACount, bool sampleShadingEnabled) {
 
-	assert((chosenMSAACount != 0) && ((chosenMSAACount & (chosenMSAACount - 1)) == 0) && "Invalid MSAA count! Must be a power of two up to 64.");
-	assert(chosenMSAACount <= 64 && "Invalid MSAA count! Must be a power of two up to 64.");
+	ASSERT((chosenMSAACount != 0) && ((chosenMSAACount & (chosenMSAACount - 1)) == 0) && "Invalid MSAA count! Must be a power of two up to 8.");
+	ASSERT(chosenMSAACount <= 8 && "Invalid MSAA count! Must be a power of two up to 8.");
 
 	// Default to sample count 1
 	VkSampleCountFlagBits msaaSample = VK_SAMPLE_COUNT_1_BIT;
@@ -416,7 +437,7 @@ void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& 
 				break;
 			}
 		}
-		assert(found && "Failed to find valid MSAA sample count!");
+		ASSERT(found && "Failed to find valid MSAA sample count!");
 	}
 
 	multisampling.sampleShadingEnable = sampleShadingEnabled;
@@ -459,6 +480,6 @@ void PipelineConfigs::depthStencilConfig(VkPipelineDepthStencilStateCreateInfo& 
 	depthStencil.stencilTestEnable = stencilTestEnabled;
 	depthStencil.front = {};
 	depthStencil.back = {};
-	depthStencil.minDepthBounds = 0.f;
-	depthStencil.maxDepthBounds = 1.f;
+	depthStencil.minDepthBounds = 0.0f;
+	depthStencil.maxDepthBounds = 1.0f;
 }

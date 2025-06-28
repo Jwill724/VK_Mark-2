@@ -1,12 +1,11 @@
 #pragma once
 
 #include "common/Vk_Types.h"
-#include <iostream>
 
 #ifdef NDEBUG
-#define ASSERT(x) assert(x)
-#else
 #define ASSERT(x) ((void)0)
+#else
+#define ASSERT(x) assert(x)
 #endif
 
 inline const char* vkResultToString(VkResult result) {
@@ -35,13 +34,13 @@ inline const char* vkResultToString(VkResult result) {
 }
 
 // Vulkan error checker
-#define VK_CHECK(x) \
-    do { \
-        VkResult err = x; \
-        if (err != VK_SUCCESS) { \
-            std::cerr << "Vulkan Error: " << vkResultToString(err) \
-                      << " in file " << __FILE__ \
-                      << " at line " << __LINE__ << std::endl; \
-            abort(); \
-        } \
-    } while (0)
+#define VK_CHECK(x)                                                \
+	do {                                                           \
+		VkResult err = x;                                          \
+		if (err != VK_SUCCESS) {                                   \
+			fmt::print(stderr,                                     \
+				"[VK_CHECK] Vulkan Error: {} in file {} at line {}\n", \
+				vkResultToString(err), __FILE__, __LINE__);        \
+			abort();                                               \
+		}                                                          \
+	} while (0)

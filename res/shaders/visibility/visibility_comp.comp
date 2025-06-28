@@ -1,0 +1,134 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+#extension GL_EXT_scalar_block_layout : require
+
+#include "../include/gpu_scene_structures.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform CullingPushConstantsAddrs {
+    vec4 frusPlanes[6];
+    uint64_t meshIDBufferAddr;
+    uint64_t visibleMeshOutBufferAddr;
+    vec4 frusPoints[8];
+    uint64_t visibleCountBufferAddr;
+    uint meshCount;
+    uint rebuildTransforms;
+} pc;
+
+layout(buffer_reference, scalar) readonly buffer MeshIDBuffer {
+    uint meshIDs[];
+};
+
+
+layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
+    GPUAddressTable globalAddressTable;
+};
+
+layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
+    GPUAddressTable frameAddressTable;
+};
+
+
+bool boxInFrustum(AABB box);
+AABB transformAABB(AABB localBox, mat4 transform);
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= pc.meshCount)
+        return;
+
+    MeshIDBuffer meshIDBuffer = MeshIDBuffer(pc.meshIDBufferAddr);
+    uint meshIndex = meshIDBuffer.meshIDs[index];
+
+    MeshBuffer meshBuffer = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]);
+    Mesh mesh = meshBuffer.meshes[meshIndex];
+
+    // Set to 0 at first run if transforms aren't uploaded to gpu
+    if (pc.rebuildTransforms == 1) {
+        TransformsListBuffer transformsBuffer = TransformsListBuffer(globalAddressTable.addrs[ABT_Transforms]);
+        mat4 transform = transformsBuffer.transforms[meshIndex];
+        AABB worldAABB = transformAABB(mesh.localAABB, transform);
+        meshBuffer.meshes[meshIndex].worldAABB = worldAABB;
+    }
+
+    AABB aabbToTest = meshBuffer.meshes[meshIndex].worldAABB;
+
+    if (!boxInFrustum(aabbToTest))
+        return;
+
+    VisibleCountBuffer vcBuffer = VisibleCountBuffer(pc.visibleCountBufferAddr);
+    uint outputIndex = atomicAdd(vcBuffer.visibleCount, 1);
+
+    VisibleMeshIDBuffer visibleBuf = VisibleMeshIDBuffer(pc.visibleMeshOutBufferAddr);
+    visibleBuf.visibleMeshIDs[outputIndex] = meshIndex;
+}
+
+bool boxInFrustum(AABB box) {
+    vec3 center = (box.vmax + box.vmin) * 0.5;
+    vec3 extents = (box.vmax - box.vmin) * 0.5;
+
+    float minSafeRadius = box.sphereRadius * 0.01;
+    float safeRadius = max(box.sphereRadius, minSafeRadius);
+
+    for (int i = 0; i < 6; ++i) {
+        vec3 normal = vec3(pc.frusPlanes[i]);
+        float d = pc.frusPlanes[i].w;
+
+        float dist = dot(normal, center) + d;
+        if (dist < -safeRadius)
+            return false;
+
+        float r = extents.x * abs(normal.x)
+                + extents.y * abs(normal.y)
+                + extents.z * abs(normal.z);
+
+        if (dist + r < 0.0)
+            return false;
+    }
+
+    int outFrus;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].x > box.vmax.x); if (outFrus == 8) return false;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].x < box.vmin.x); if (outFrus == 8) return false;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].y > box.vmax.y); if (outFrus == 8) return false;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].y < box.vmin.y); if (outFrus == 8) return false;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].z > box.vmax.z); if (outFrus == 8) return false;
+    outFrus = 0; for (int i = 0; i < 8; ++i) outFrus += int(pc.frusPoints[i].z < box.vmin.z); if (outFrus == 8) return false;
+
+    return true;
+}
+
+AABB transformAABB(AABB localBox, mat4 transform) {
+    vec3 vmin = localBox.vmin;
+    vec3 vmax = localBox.vmax;
+
+    vec3 corners[8];
+    corners[0] = vec3(transform * vec4(vmin.x, vmin.y, vmin.z, 1.0));
+    corners[1] = vec3(transform * vec4(vmin.x, vmax.y, vmin.z, 1.0));
+    corners[2] = vec3(transform * vec4(vmin.x, vmin.y, vmax.z, 1.0));
+    corners[3] = vec3(transform * vec4(vmin.x, vmax.y, vmax.z, 1.0));
+    corners[4] = vec3(transform * vec4(vmax.x, vmin.y, vmin.z, 1.0));
+    corners[5] = vec3(transform * vec4(vmax.x, vmax.y, vmin.z, 1.0));
+    corners[6] = vec3(transform * vec4(vmax.x, vmin.y, vmax.z, 1.0));
+    corners[7] = vec3(transform * vec4(vmax.x, vmax.y, vmax.z, 1.0));
+
+    vec3 newVmin = corners[0];
+    vec3 newVmax = corners[0];
+
+    for (int i = 1; i < 8; ++i) {
+        newVmin = min(newVmin, corners[i]);
+        newVmax = max(newVmax, corners[i]);
+    }
+
+    AABB worldBox;
+    worldBox.vmin = newVmin;
+    worldBox.vmax = newVmax;
+    worldBox.origin = 0.5 * (newVmin + newVmax);
+    worldBox.extent = 0.5 * (newVmax - newVmin);
+    worldBox.sphereRadius = length(worldBox.extent);
+
+    return worldBox;
+}

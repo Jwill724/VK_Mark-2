@@ -4,14 +4,19 @@
 #include "common/EngineTypes.h"
 #include "common/EngineConstants.h"
 #include "core/ResourceManager.h"
-#include "gpu/Descriptor.h"
+#include "gpu_types/Descriptor.h"
+
+static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
+static bool MSAA_ENABLED = true;
+
+constexpr size_t OPAQUE_INDIRECT_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(IndirectDrawCmd);
+constexpr size_t OPAQUE_INSTANCE_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(GPUInstance);
+constexpr size_t TRANSPARENT_INSTANCE_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(GPUInstance);
+constexpr size_t TRANSPARENT_INDIRECT_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(IndirectDrawCmd);
 
 struct FrameContext {
 	RenderSyncObjects syncObjs;
 	uint32_t frameIndex = 0;
-
-	std::atomic<bool> ready = false;
-	std::atomic<bool> inUse = false;
 
 	VkResult swapchainResult;
 	uint32_t swapchainImageIndex = 0;
@@ -22,20 +27,63 @@ struct FrameContext {
 	VkCommandPool graphicsPool = VK_NULL_HANDLE;
 	std::vector<VkCommandBuffer> secondaryCmds;
 	std::vector<VkCommandBuffer> transferCmds;
-	uint64_t transferWaitValue = 0;
-	VkFence transferFence = VK_NULL_HANDLE;
+	uint64_t transferWaitValue = UINT64_MAX;
 
-	// Data containers
-	AllocatedBuffer instanceBuffer;
-	AllocatedBuffer indirectCmdBuffer;
-	std::vector<InstanceData> instanceData;
-	std::vector<VkDrawIndexedIndirectCommand> indirectDraws;
-	std::vector<RenderObject> opaqueRenderables;
-	std::vector<RenderObject> transparentRenderables;
+	// === async compute ===
+	std::vector<VkCommandBuffer> computeCmds;
+	VkCommandPool computePool = VK_NULL_HANDLE;
+	VkFence computeFence = VK_NULL_HANDLE;
+	uint64_t computeWaitValue = UINT64_MAX;
+
+	// Opaque draws
+	std::vector<GPUInstance> opaqueInstances;
+	AllocatedBuffer opaqueInstanceBuffer;
+	std::vector<IndirectDrawCmd> opaqueIndirectDraws;
+	AllocatedBuffer opaqueIndirectCmdBuffer;
+
+	// Transparent draws
+	std::vector<GPUInstance> transparentInstances;
+	AllocatedBuffer transparentInstanceBuffer;
+	std::vector<IndirectDrawCmd> transparentIndirectDraws;
+	AllocatedBuffer transparentIndirectCmdBuffer;
+
+	void clearInstanceBuffers() {
+		opaqueInstances.clear();
+		opaqueIndirectDraws.clear();
+		transparentInstances.clear();
+		transparentIndirectDraws.clear();
+		opaqueVisibleCount = 0;
+		transparentVisibleCount = 0;
+	}
+
+
+	AllocatedBuffer combinedGPUStaging;
+
+	// Culling data
+	std::vector<uint32_t> visibleMeshIDs;
+	// staging read back buffers
+	AllocatedBuffer stagingVisibleMeshIDsBuffer;
+	AllocatedBuffer stagingVisibleCountBuffer;
+	std::atomic<bool> visibleCountInitialized = false; // one time init
+	std::atomic<bool> meshDataSet = false;
+
+	// gpu write only buffers
+	AllocatedBuffer gpuVisibleCountBuffer;
+	AllocatedBuffer gpuVisibleMeshIDsBuffer;
+
+	CullingPushConstantsAddrs cullingPCData{};
+	uint32_t visibleCount = 0;
+	uint32_t opaqueVisibleCount = 0;
+	uint32_t transparentVisibleCount = 0;
+
+	AllocatedBuffer transformsListBuffer;
+	// Should only be set to true when new buffer created
+	std::atomic<bool> transformsUpdated = true; // Set to false to indicate static transforms
 
 	// Descriptor use
 	GPUAddressTable addressTable;
-	AllocatedBuffer addressTableBuffer; // instance/indirect
+	std::atomic<bool> addressTableDirty = false;
+	AllocatedBuffer addressTableBuffer;
 	AllocatedBuffer addressTableStaging;
 
 	AllocatedBuffer sceneDataBuffer;
@@ -43,7 +91,9 @@ struct FrameContext {
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	DescriptorWriter writer;
 
-	DeletionQueue deletionQueue;
+	DeletionQueue cpuDeletion;
+	TimelineDeletionQueue transferDeletion; // gpu buffer deletion
+	TimelineDeletionQueue computeDeletion;
 };
 
 namespace Renderer {
@@ -67,14 +117,22 @@ namespace Renderer {
 		return _frameContexts[_frameNumber % MAX_FRAMES_IN_FLIGHT];
 	}
 
+	// Timeline semaphore for tracking transfer and compute work
 	extern TimelineSync _transferSync;
+	extern TimelineSync _computeSync;
 
-	void initFrameContexts(VkDevice device, uint32_t graphicsIndex, uint32_t transferIndex,
-		VkExtent2D drawExtent, VkDescriptorSetLayout layout, const VmaAllocator allocator);
+	void initFrameContexts(
+		VkDevice device,
+		uint32_t graphicsIndex,
+		uint32_t transferIndex,
+		uint32_t computeIndex,
+		VkExtent2D drawExtent,
+		VkDescriptorSetLayout layout,
+		const VmaAllocator allocator);
 
 	void recordRenderCommand(FrameContext& frameCtx);
 	void prepareFrameContext(FrameContext& frameCtx);
-	void submitFrame(FrameContext& frameCtx, GPUResources& resources);
+	void submitFrame(FrameContext& frameCtx);
 
 	void cleanup();
 }

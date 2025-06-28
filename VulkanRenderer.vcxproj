@@ -101,7 +101,10 @@
     <ClCompile Include="src\input\UserInput.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\Batching.cpp">
+    <ClCompile Include="src\renderer\DrawPreperation.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\RenderGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\Renderer.cpp">
@@ -113,13 +116,13 @@
     <ClCompile Include="src\renderer\SceneGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\Descriptor.cpp">
+    <ClCompile Include="src\renderer\gpu_types\Descriptor.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\PipelineManager.cpp">
+    <ClCompile Include="src\renderer\gpu_types\PipelineManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\gpu\CommandBuffer.cpp">
+    <ClCompile Include="src\renderer\gpu_types\CommandBuffer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\RenderScene.cpp">
@@ -215,14 +218,15 @@
     <ClInclude Include="src\common\EngineConstants.h" />
     <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\file\File.h" />
-    <ClInclude Include="src\renderer\Batching.h" />
+    <ClInclude Include="src\renderer\DrawPreperation.h" />
+    <ClInclude Include="src\renderer\RenderGraph.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\RenderScene.h" />
     <ClInclude Include="src\renderer\Visibility.h" />
     <ClInclude Include="src\renderer\SceneGraph.h" />
-    <ClInclude Include="src\renderer\gpu\Descriptor.h" />
-    <ClInclude Include="src\renderer\gpu\CommandBuffer.h" />
-    <ClInclude Include="src\renderer\gpu\PipelineManager.h" />
+    <ClInclude Include="src\renderer\gpu_types\Descriptor.h" />
+    <ClInclude Include="src\renderer\gpu_types\CommandBuffer.h" />
+    <ClInclude Include="src\renderer\gpu_types\PipelineManager.h" />
     <ClInclude Include="src\vulkan\Backend.h" />
     <ClInclude Include="src\vulkan\BackendTools.h" />
     <ClInclude Include="src\vulkan\Window.h" />
@@ -234,15 +238,16 @@
     <ClInclude Include="src\profiler\Profiler.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\shaders\bounding_boxes\aabb_frag.frag" />
-    <None Include="res\shaders\bounding_boxes\aabb_vert.vert" />
+    <None Include="res\shaders\debug\aabb_frag.frag" />
+    <None Include="res\shaders\debug\aabb_vert.vert" />
     <None Include="res\shaders\environment\brdf_lut_comp.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\post_process\color_correction_comp.comp" />
     <None Include="res\shaders\environment\diffuse_irradiance_comp.comp" />
     <None Include="res\shaders\meshes\mesh_frag.frag" />
     <None Include="res\shaders\meshes\mesh_vert.vert" />
-    <None Include="res\shaders\include\input_structures.glsl" />
+    <None Include="res\shaders\visibility\visibility_comp.comp" />
+    <None Include="res\shaders\include\gpu_scene_structures.glsl" />
     <None Include="res\shaders\include\pbr.glsl" />
     <None Include="res\shaders\environment\specular_prefilter_comp.comp" />
     <None Include="res\shaders\environment\skybox_frag.frag" />

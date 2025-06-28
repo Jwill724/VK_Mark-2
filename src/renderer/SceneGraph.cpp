@@ -11,10 +11,10 @@
 #include "renderer/Visibility.h"
 
 void SceneGraph::buildSceneGraph(ThreadContext& threadCtx) {
-	assert(threadCtx.workQueueActive != nullptr);
+	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-	assert(queue);
+	ASSERT(queue && "[buildSceneGraph] queue broke.");
 
 	auto gltfJobs = queue->collect();
 	for (auto& context : gltfJobs) {
@@ -30,14 +30,14 @@ void SceneGraph::buildSceneGraph(ThreadContext& threadCtx) {
 			// find if the node has a mesh, and if it does hook it to the mesh pointer and allocate it with the MeshNode struct
 			if (node.meshIndex.has_value()) {
 				newNode = std::make_shared<MeshNode>();
-				static_cast<MeshNode*>(newNode.get())->mesh = file.meshes[*node.meshIndex];
+				static_cast<MeshNode*>(newNode.get())->objs = file.gpu.sceneObjs[*node.meshIndex];
 			}
 			else {
 				newNode = std::make_shared<Node>();
 			}
 
 			nodes.push_back(newNode);
-			file.nodes = nodes;
+			file.scene.nodes = nodes;
 
 			// load the GLTF transform data, and convert it into a gltf final transform matrix
 			std::visit(fastgltf::visitor{
@@ -72,7 +72,7 @@ void SceneGraph::buildSceneGraph(ThreadContext& threadCtx) {
 		// find the top nodes, with no parents
 		for (auto& node : nodes) {
 			if (node->parent.lock() == nullptr) {
-				file.topNodes.push_back(node);
+				file.scene.topNodes.push_back(node);
 				node->refreshTransform(glm::mat4{ 1.f });
 			}
 		}
@@ -81,22 +81,33 @@ void SceneGraph::buildSceneGraph(ThreadContext& threadCtx) {
 	}
 }
 
-void LoadedGLTF::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
-	// create renderables from the scenenodes
-	for (auto& n : topNodes) {
-		n->Draw(topMatrix, ctx);
+void LoadedGLTF::FlattenSceneToTransformList(
+	const glm::mat4& topMatrix,
+	std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap)
+{
+	for (auto& n : scene.topNodes) {
+		n->FlattenSceneToTransformList(topMatrix, meshIDToTransformMap);
+	}
+}
+
+void LoadedGLTF::FindVisibleObjects(
+	std::vector<GPUInstance>& outOpaqueVisibles,
+	std::vector<GPUInstance>& outTransparentVisibles,
+	const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
+	const std::unordered_set<uint32_t>& visibleMeshIDSet) {
+	for (auto& n : scene.topNodes) {
+		n->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
 	}
 }
 
 void LoadedGLTF::clearAll() {
 	auto device = Backend::getDevice();
-
 	auto allocator = Engine::getState().getGPUResources().getAllocator();
 
 	Backend::getGraphicsQueue().waitIdle();
 
 	// Don't free global images or samplers twice
-	for (auto& img : images) {
+	for (auto& img : gpu.images) {
 		if (img.image == VK_NULL_HANDLE ||
 			img.image == ResourceManager::getCheckboardTex().image ||
 			img.image == ResourceManager::getWhiteImage().image ||
@@ -110,7 +121,7 @@ void LoadedGLTF::clearAll() {
 		RendererUtils::destroyImage(device, img, allocator);
 	}
 
-	for (auto& sampler : samplers) {
+	for (auto& sampler : gpu.samplers) {
 		if (sampler == ResourceManager::getDefaultSamplerLinear() ||
 			sampler == ResourceManager::getDefaultSamplerNearest()) {
 			continue;
@@ -120,30 +131,51 @@ void LoadedGLTF::clearAll() {
 	}
 }
 
-void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx) {
-	glm::mat4 nodeMatrix;
-	for (auto& s : mesh->materialHandles) {
-		nodeMatrix = topMatrix * worldTransform;
+void MeshNode::FlattenSceneToTransformList(const glm::mat4& topMatrix,
+	std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap) {
 
-		RenderObject def{};
-		def.passType = s->passType;
-		def.drawRangeIndex = s->instance->drawRangeIndex;
-		def.materialIndex = s->instance->materialIndex;
-		def.modelMatrix = nodeMatrix;
-		def.aabb = Visibility::transformAABB(s->instance->localAABB, nodeMatrix);
+	if (!objs || !objs->instances) return;
 
-		if (s->passType == MaterialPass::Transparent) {
-			if (Visibility::isVisible(def.aabb, ctx.frustum)) {
-				ctx.TransparentSurfaces.push_back(def);
-			}
-		}
-		else {
-			if (Visibility::isVisible(def.aabb, ctx.frustum)) {
-				ctx.OpaqueSurfaces.push_back(def);
-			}
+	glm::mat4 nodeMatrix = topMatrix * worldTransform;
+	uint32_t meshID = objs->instances->meshID;
+
+	meshIDToTransformMap[meshID] = nodeMatrix;
+
+	for (auto& child : children) {
+		if (child) {
+			child->FlattenSceneToTransformList(topMatrix, meshIDToTransformMap);
 		}
 	}
+}
 
-	// recurse down
-	Node::Draw(topMatrix, ctx);
+void MeshNode::FindVisibleObjects(
+	std::vector<GPUInstance>& outOpaqueVisibles,
+	std::vector<GPUInstance>& outTransparentVisibles,
+	const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
+	const std::unordered_set<uint32_t>& visibleMeshIDSet)
+{
+	if (!objs || !objs->instances) return;
+
+	const uint32_t meshID = objs->instances->meshID;
+	// Only proceed if this node’s mesh is in the visible set
+	if (visibleMeshIDSet.contains(meshID)) {
+		auto it = meshIDToTransformMap.find(meshID);
+		ASSERT(it != meshIDToTransformMap.end());
+
+		GPUInstance inst{};
+		inst.meshID = meshID;
+		inst.materialIndex = objs->instances->materialIndex;
+		inst.modelMatrix = it->second;
+
+		if (objs->pass == MaterialPass::Transparent)
+			outTransparentVisibles.push_back(inst);
+		else
+			outOpaqueVisibles.push_back(inst);
+	}
+
+	for (auto& child : children) {
+		if (child) {
+			child->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
+		}
+	}
 }

@@ -9,20 +9,25 @@
 namespace Pipelines {
 	inline PipelineLayoutConst _globalLayout;
 
-	inline GraphicsPipeline opaquePipeline;
-	inline GraphicsPipeline transparentPipeline;
-	inline GraphicsPipeline wireframePipeline;
-	inline GraphicsPipeline boundingBoxPipeline;
-	inline GraphicsPipeline skyboxPipeline;
-	inline GraphicsPipeline shadowPipeline;
+	// === GRAPHICS PIPELINES ===
+	inline PipelineObj opaquePipeline;
+	inline PipelineObj transparentPipeline;
+	inline PipelineObj wireframePipeline;
+	inline PipelineObj boundingBoxPipeline;
+	inline PipelineObj skyboxPipeline;
+	//inline PipelineObj shadowPipeline;
 
-	inline ComputePipeline postProcessPipeline;
+	// === COMPUTE PIPELINES ===
+	inline PipelineObj visibilityPipeline;	// Culls GPURenderObjects
+	//inline PipelineObj buildDrawsPipeline;
+	//inline PipelineObj sortDrawsPipeline;
 
-	// Environment stuff
-	inline ComputePipeline hdr2cubemapPipeline;
-	inline ComputePipeline specularPrefilterPipeline;
-	inline ComputePipeline diffuseIrradiancePipeline;
-	inline ComputePipeline brdfLutPipeline;
+	inline PipelineObj postProcessPipeline;
+
+	inline PipelineObj hdr2cubemapPipeline;
+	inline PipelineObj specularPrefilterPipeline;
+	inline PipelineObj diffuseIrradiancePipeline;
+	inline PipelineObj brdfLutPipeline;
 }
 
 namespace PipelineManager {
@@ -32,8 +37,8 @@ namespace PipelineManager {
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts, const PushConstantDef pushConstants);
 
-	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings);
-	void setupShaders(std::vector<VkPipelineShaderStageCreateInfo>& shaderStages, std::vector<ShaderStageInfo>& shaderStageInfo, DeletionQueue& shaderDeletionQueue);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn = true);
+	void setupShaders(PipelinePresent& pipelineSettings, DeletionQueue& shaderDeletionQueue);
 
 	// configurations for pipelines altered here
 	void initPipelines(DeletionQueue& queue);

@@ -5,7 +5,7 @@
 #include "renderer/Renderer.h"
 #include "core/types/Texture.h"
 #include "common/EngineConstants.h"
-#include "renderer/gpu/CommandBuffer.h"
+#include "renderer/gpu_types/CommandBuffer.h"
 #include "utils/BufferUtils.h"
 #include "core/EngineState.h"
 
@@ -68,13 +68,14 @@ void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, Alloca
 		samples, imageQueue, allocator, skipQueueUsage);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		RendererUtils::transitionImage(cmd,
+		RendererUtils::transitionImage(
+			cmd,
 			renderImage.image,
 			renderImage.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-		VkBufferImageCopy copyRegion = {};
+		VkBufferImageCopy copyRegion{};
 		copyRegion.bufferOffset = 0;
 		copyRegion.bufferRowLength = 0;
 		copyRegion.bufferImageHeight = 0;
@@ -95,13 +96,14 @@ void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, Alloca
 			Textures::generateMipmaps(cmd, renderImage);
 		}
 		else {
-			RendererUtils::transitionImage(cmd,
+			RendererUtils::transitionImage(
+				cmd,
 				renderImage.image,
 				renderImage.imageFormat,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
-	}, cmdPool);
+	}, cmdPool, QueueType::Graphics);
 
 	auto buffer = uploadbuffer;
 	auto alloc = allocator;
@@ -487,7 +489,10 @@ VkImageView RendererUtils::createImageView(VkDevice device, VkImage image, VkFor
 
 // bytes-per-channel (float) * channels-per-pixel
 size_t RendererUtils::getPixelSize(VkFormat format) {
-	assert(format != 0);
+	if (format == 0) {
+		ASSERT(format != 0 && "Invalid VkFormat type!");
+		return 0;
+	}
 
 	switch (format) {
 		// 8-bit formats
@@ -568,7 +573,7 @@ size_t RendererUtils::getPixelSize(VkFormat format) {
 		return 16;
 
 	default:
-		assert(false && "Unhandled VkFormat in getPixelSize");
+		ASSERT(false && "Unhandled VkFormat in getPixelSize");
 		return 0;
 	}
 }

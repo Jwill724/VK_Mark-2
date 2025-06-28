@@ -3,7 +3,7 @@ cd /d "%~dp0"
 setlocal enabledelayedexpansion
 
 set VULKAN_BIN=%VULKAN_SDK%\Bin
-set INCLUDE_PATH=-Ires/shaders/ -Ires/shaders/include/ -Ires/shaders/bounding_boxes/ -Ires/shaders/environment/ -Ires/shaders/meshes/ -Ires/shaders/post_process/
+set INCLUDE_PATH=-Ires/shaders/ -Ires/shaders/include/ -Ires/shaders/debug/ -Ires/shaders/environment/ -Ires/shaders/meshes/ -Ires/shaders/post_process/ -Ires/shaders/visibility/
 
 if not exist "%VULKAN_BIN%\glslangValidator.exe" (
     echo Error: glslangValidator.exe not found in %VULKAN_BIN%!

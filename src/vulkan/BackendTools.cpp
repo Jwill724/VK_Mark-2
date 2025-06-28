@@ -97,7 +97,7 @@ namespace BackendTools {
 	void setupDebugMessenger(VkInstance instance, VkDebugUtilsMessengerEXT &debugMessenger) {
 		if (!enableValidationLayers) return;
 
-		assert(debugMessenger == VK_NULL_HANDLE && "debugMessenger should not be initialized yet");
+		ASSERT(debugMessenger == VK_NULL_HANDLE && "debugMessenger should not be initialized yet");
 
 		VkDebugUtilsMessengerCreateInfoEXT createInfo;
 		populateDebugMessengerCreateInfo(createInfo);
@@ -110,7 +110,7 @@ namespace BackendTools {
 		uint32_t glfwExtensionsCount = 0;
 		const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionsCount);
 
-		assert(glfwExtensions && glfwExtensionsCount > 0 && "GLFW failed to return instance extensions");
+		ASSERT(glfwExtensions && glfwExtensionsCount > 0 && "GLFW failed to return instance extensions");
 
 		std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
 

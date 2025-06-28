@@ -18,8 +18,8 @@
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-#include <stb_image/stb_image.h>
 #include <GLFW/glfw3.h>
+#include <stb_image/stb_image.h>
 
 #define FASTGLTF_ENABLE_GLMC
 #include <fastgltf/glm_element_traits.hpp>

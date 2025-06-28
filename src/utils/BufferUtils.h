@@ -3,6 +3,7 @@
 #include "Engine.h"
 
 namespace BufferUtils {
+	// Designed for storage buffer address creation
 	AllocatedBuffer createGPUAddressBuffer(AddressBufferType addressBufferType,
 		GPUAddressTable& addressTable, size_t size, const VmaAllocator allocator);
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, const VmaAllocator allocator);

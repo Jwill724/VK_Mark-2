@@ -1,30 +1,28 @@
 #version 450
 
-#extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_ARB_gpu_shader_int64 : enable
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_GOOGLE_include_directive : require
 
-#include "../include/input_structures.glsl"
+#include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) in vec3 fragPos;
 layout(location = 0) out vec4 outColor;
 
-layout(set = 1, binding = 1) uniform SceneUBO {
-    SceneData scene;
+layout(set = 0, binding = 1) uniform EnvMapData {
+    EnvMapBindingSet envMapSet;
 };
 
-layout(set = 0, binding = 1) uniform samplerCube envMaps[];
+layout(set = 0, binding = 2) uniform samplerCube envMaps[];
 
-void main()
-{
+void main() {
     vec3 dir = normalize(fragPos);
-    dir.y =  -dir.y;
+    dir.y = -dir.y;
+
+    uint skyboxIdx = uint(envMapSet.mapIndices[0].w);
 
     // fetch the HDR/RGB color
-    vec3 skyColor = texture(envMaps[nonuniformEXT(uint(scene.envMapIndex.w))], dir).rgb;
+    vec3 skyColor = texture(envMaps[nonuniformEXT(skyboxIdx)], dir).rgb;
 
     skyColor *= 0.25; // darken image a bit
 

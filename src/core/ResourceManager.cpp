@@ -8,13 +8,14 @@
 #include "core/types/Texture.h"
 #include "Environment.h"
 #include "common/EngineConstants.h"
-#include "renderer/gpu/CommandBuffer.h"
+#include "renderer/gpu_types/CommandBuffer.h"
 
 void GPUResources::init() {
 	auto device = Backend::getDevice();
 	allocator = VulkanUtils::createAllocator(Backend::getPhysicalDevice(), device, Backend::getInstance());
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
 	transferPool = CommandBuffer::createCommandPool(device, Backend::getTransferQueue().familyIndex);
+	computePool = CommandBuffer::createCommandPool(device, Backend::getComputeQueue().familyIndex);
 }
 
 void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, bool force) {
@@ -31,54 +32,55 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 			VMA_MEMORY_USAGE_CPU_ONLY,
 			allocator
 		);
-		assert(addressTableStagingBuffer.info.pMappedData);
+		ASSERT(addressTableStagingBuffer.info.pMappedData);
 	}
 	//else {
 	//	fmt::print("[GPUResources] Reusing address table staging buffer\n");
 	//}
 
 	// Copy latest address data into mapped buffer
-	std::memcpy(addressTableStagingBuffer.info.pMappedData, &gpuAddresses, sizeof(GPUAddressTable));
+	memcpy(addressTableStagingBuffer.info.pMappedData, &gpuAddresses, sizeof(GPUAddressTable));
 
-	assert(addressTableBuffer.buffer != VK_NULL_HANDLE);
+	ASSERT(addressTableBuffer.buffer != VK_NULL_HANDLE);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
 		copyRegion.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.buffer, addressTableBuffer.buffer, 1, &copyRegion);
-	}, transferCommandPool, true);
+	}, transferCommandPool, QueueType::Transfer);
 
 	addressTableDirty = false;
 }
 
 void GPUResources::cleanup(VkDevice device) {
 	for (auto& [name, buf] : gpuBuffers) {
-		if (buf.buffer != VK_NULL_HANDLE) {
+		if (buf.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(buf, allocator);
-		}
 	}
 
-	if (addressTableStagingBuffer.buffer != VK_NULL_HANDLE) {
+	if (registeredMeshes.meshIDBuffer.buffer != VK_NULL_HANDLE)
+		BufferUtils::destroyBuffer(registeredMeshes.meshIDBuffer, allocator);
+
+	if (envMapSetUBO.buffer != VK_NULL_HANDLE)
+		BufferUtils::destroyBuffer(envMapSetUBO, allocator);
+
+	if (addressTableStagingBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyBuffer(addressTableStagingBuffer, allocator);
-	}
 
-	if (addressTableBuffer.buffer != VK_NULL_HANDLE) {
+	if (addressTableBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyBuffer(addressTableBuffer, allocator);
-	}
 
-	if (graphicsPool != VK_NULL_HANDLE) {
+	if (graphicsPool != VK_NULL_HANDLE)
 		vkDestroyCommandPool(device, graphicsPool, nullptr);
-	}
 
-	if (transferPool != VK_NULL_HANDLE) {
+	if (transferPool != VK_NULL_HANDLE)
 		vkDestroyCommandPool(device, transferPool, nullptr);
-	}
 
+	if (computePool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(device, computePool, nullptr);
 
-	if (allocator != nullptr) {
+	if (allocator != nullptr)
 		vmaDestroyAllocator(allocator);
-	}
-
 }
 
 void GPUResources::addGPUBuffer(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
@@ -86,7 +88,7 @@ void GPUResources::addGPUBuffer(AddressBufferType addressBufferType, AllocatedBu
 	markAddressTableDirty();
 }
 
-void GPUResources::tryClearAddressBuffer(AddressBufferType type, VmaAllocator allocator) {
+void GPUResources::tryClearAddressBuffer(AddressBufferType type) {
 	auto it = gpuBuffers.find(type);
 	if (it == gpuBuffers.end()) return;
 
@@ -94,9 +96,96 @@ void GPUResources::tryClearAddressBuffer(AddressBufferType type, VmaAllocator al
 	gpuBuffers.erase(it);
 }
 
+uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
+	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushCombined");
+
+	ImageViewSamplerKey key = makeKey(view, sampler);
+
+	std::scoped_lock lock(combinedMutex);
+
+	auto it = combinedViewHashToID.find(key);
+	if (it != combinedViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info{};
+	info.imageView = view;
+	info.sampler = sampler;
+	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	fmt::print("[ImageTable::pushCombined] New entry: view={}, sampler={}, layout=0x{:08X}\n",
+		(void*)view, (void*)sampler, static_cast<uint32_t>(info.imageLayout));
+
+	uint32_t index = static_cast<uint32_t>(combinedViews.size());
+	combinedViews.push_back(info);
+	combinedViewHashToID[key] = index;
+	fmt::print("Index: {}\n", index);
+
+	return index;
+}
+
+uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
+	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushSamplerCube");
+
+	ImageViewSamplerKey key = makeKey(view, sampler);
+
+	std::scoped_lock lock(samplerCubeMutex);
+
+	auto it = samplerCubeViewHashToID.find(key);
+	if (it != samplerCubeViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info{};
+	info.imageView = view;
+	info.sampler = sampler;
+	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	fmt::print("[ImageTable::pushSamplerCube] New entry: view={}, sampler={}, layout=0x{:08X}\n",
+		(void*)view, (void*)sampler, static_cast<uint32_t>(info.imageLayout));
+
+	uint32_t index = static_cast<uint32_t>(samplerCubeViews.size());
+	samplerCubeViews.push_back(info);
+	samplerCubeViewHashToID[key] = index;
+	fmt::print("Index: {}\n", index);
+
+	return index;
+}
+
+uint32_t ImageTable::pushStorage(VkImageView view) {
+	if (view == VK_NULL_HANDLE) {
+		fmt::print("[ImageTable::pushStorage] ERROR: Invalid handle - view={}\n",
+			(void*)view);
+		ASSERT(true && "Null VkImageView in pushStorage");
+	}
+
+	std::scoped_lock lock(storageMutex);
+
+	size_t hash = std::hash<std::uintptr_t>{}(reinterpret_cast<std::uintptr_t>(view));
+
+	auto it = storageViewHashToID.find(hash);
+	if (it != storageViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info{};
+	info.imageView = view;
+	info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	info.sampler = VK_NULL_HANDLE;
+
+	fmt::print("[ImageTable::pushStorage] New entry: view={}, layout=0x{:08X}\n",
+		(void*)view, static_cast<uint32_t>(info.imageLayout));
+
+	uint32_t index = static_cast<uint32_t>(storageViews.size());
+	storageViews.push_back(info);
+	storageViewHashToID[hash] = index;
+	fmt::print("Index: {}\n", index);
+
+	return index;
+}
+
 
 namespace ResourceManager {
 	ImageTable _globalImageTable;
+
+	EnvMapIndices _envMapIndices;
 
 	// primary render image
 	AllocatedImage _drawImage;
@@ -107,6 +196,7 @@ namespace ResourceManager {
 	AllocatedImage& getMSAAImage() { return _msaaImage; }
 	AllocatedImage _postProcessImage;
 	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
+	ColorData toneMappingData;
 
 	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
@@ -199,7 +289,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 		queue,
 		allocator);
 
-	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(MSAACOUNT);
+	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
 	_msaaImage.imageExtent = extent;
@@ -253,7 +343,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 		allocator);
 
 	_skyBoxSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		0.f, maxAnisotropy, VK_TRUE);
+		0.0f, maxAnisotropy, VK_TRUE);
 
 	_specularPrefilterImage.imageExtent = Environment::CUBEMAP_EXTENTS;
 	_specularPrefilterImage.imageFormat = environmentFormat;
@@ -283,7 +373,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 		allocator);
 
 	_irradianceSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_LOD_CLAMP_NONE, 0.f, VK_FALSE);
+		VK_LOD_CLAMP_NONE, 0.0f, VK_FALSE);
 
 
 	_brdfLutImage.imageExtent = Environment::LUT_IMAGE_EXTENT;
@@ -298,7 +388,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 		allocator);
 
 	_brdfSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_LOD_CLAMP_NONE, 0.f, VK_FALSE);
+		VK_LOD_CLAMP_NONE, 0.0f, VK_FALSE);
 
 	auto device = Backend::getDevice();
 	queue.push_function([&, device] {
@@ -381,7 +471,7 @@ void ResourceManager::initTextures(VkCommandPool cmdPool, DeletionQueue& imageQu
 		FLT_MAX, Backend::getDeviceLimits().maxSamplerAnisotropy, VK_TRUE);
 
 	_defaultSamplerNearest = Textures::createSampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX, 1.f, VK_FALSE);
+		FLT_MAX, 1.0f, VK_FALSE);
 
 	auto device = Backend::getDevice();
 	imageQueue.push_function([&, device]() {

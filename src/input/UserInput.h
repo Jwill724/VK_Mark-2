@@ -36,7 +36,8 @@ namespace UserInput {
 			leftPressed(false), rightPressed(false),
 			leftHideCursor(false), rightHideCursor(false),
 			leftJustClicked(false), rightJustClicked(false),
-			normalized{ 0.f, 0.f }, mousePos{ 0.0, 0.0 } {}
+			normalized{ 0.f, 0.f }, mousePos{ 0.0, 0.0 } {
+		}
 
 		void update(GLFWwindow* window);
 	};

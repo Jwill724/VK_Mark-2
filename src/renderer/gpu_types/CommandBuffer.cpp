@@ -4,7 +4,7 @@
 #include "core/EngineState.h"
 
 VkCommandPool CommandBuffer::createCommandPool(VkDevice device, uint32_t queueFamilyIndex) {
-	assert(queueFamilyIndex != UINT32_MAX);
+	ASSERT(queueFamilyIndex != UINT32_MAX);
 
 	VkCommandPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -30,7 +30,29 @@ VkCommandBuffer CommandBuffer::createCommandBuffer(VkDevice device, VkCommandPoo
 	return commandBuffer;
 }
 
-void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& function, VkCommandPool cmdPool, bool transferUse) {
+VkCommandBuffer CommandBuffer::createSecondaryCmd(VkDevice device, VkCommandPool pool, VkCommandBufferInheritanceInfo& inheritance) {
+	VkCommandBufferAllocateInfo allocInfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
+		.commandBufferCount = 1
+	};
+
+	VkCommandBuffer secondaryCmd;
+	vkAllocateCommandBuffers(device, &allocInfo, &secondaryCmd);
+
+	VkCommandBufferBeginInfo beginInfo = {
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
+		.pInheritanceInfo = &inheritance
+	};
+
+	vkBeginCommandBuffer(secondaryCmd, &beginInfo);
+
+	return secondaryCmd;
+}
+
+void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& function, VkCommandPool cmdPool, QueueType type) {
 	VkCommandBuffer cmd = createCommandBuffer(Backend::getDevice(), cmdPool);
 	fmt::print("Allocated cmd: 0x{:X} from pool: 0x{:X}\n", (uint64_t)cmd, (uint64_t)cmdPool);
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
@@ -44,10 +66,21 @@ void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& fun
 	function(cmd);
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
-	if (!transferUse) {
+	bool validQueueType = false;
+	switch (type) {
+	case(QueueType::Graphics):
 		DeferredCmdSubmitQueue::pushGraphics(cmd);
-	}
-	else {
+		validQueueType = true;
+		break;
+	case(QueueType::Transfer):
 		DeferredCmdSubmitQueue::pushTransfer(cmd);
+		validQueueType = true;
+		break;
+	case(QueueType::Compute):
+		DeferredCmdSubmitQueue::pushCompute(cmd);
+		validQueueType = true;
+		break;
+	default:
+		ASSERT(validQueueType && "[recordDeferredCmd] Invalid queue type.\n");
 	}
 }

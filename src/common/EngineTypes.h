@@ -1,11 +1,11 @@
 #pragma once
 
 #include "ResourceTypes.h"
-#include "EngineConstants.h"
 #include "ErrorChecking.h"
-#include "Vk_Types.h"
 
+// General use cpu side
 // Device getters are required for this to work, call into an auto
+// thanks vkguide
 struct DeletionQueue {
 	std::deque<std::function<void()>> deletors;
 
@@ -20,6 +20,36 @@ struct DeletionQueue {
 		}
 
 		deletors.clear();
+	}
+};
+
+struct TimelineDeletionQueue {
+	struct Entry {
+		uint64_t timelineValue;
+		std::function<void()> destroy;
+	};
+
+	VkSemaphore semaphore;
+	std::vector<Entry> queue;
+
+	inline void enqueue(uint64_t timelineValue, std::function<void()> fn) {
+		queue.push_back({ timelineValue, std::move(fn) });
+	}
+
+	inline void process(VkDevice device) {
+		uint64_t current = 0;
+		VK_CHECK(vkGetSemaphoreCounterValue(device, semaphore, &current));
+
+		auto it = queue.begin();
+		while (it != queue.end()) {
+			if (current >= it->timelineValue) {
+				it->destroy();
+				it = queue.erase(it);
+			}
+			else {
+				++it;
+			}
+		}
 	}
 };
 
@@ -60,14 +90,7 @@ enum class GLTFJobType {
 	MeshBufferReady
 };
 
-enum class AddressBufferType {
-	Instance,
-	IndirectCmd,
-	DrawRange,
-	Material
-};
-
-enum class QueueType {
+enum class QueueType : uint8_t {
 	Graphics,
 	Transfer,
 	Present,
@@ -207,6 +230,10 @@ struct GPUQueue {
 
 	uint32_t familyIndex = 0;
 
+	// when a timelinesubmit is done, set to true
+	// on upcoming queue uses check bool to see if a wait is needed or not
+	std::atomic<bool> wasUsed = false;
+
 	QueueType qType;
 
 	inline VkFence submit(const VkSubmitInfo& info) {
@@ -228,15 +255,25 @@ struct GPUQueue {
 		VK_CHECK(vkQueueWaitIdle(queue));
 	}
 
-	inline VkFence submitWithSyncTimeline(
+	inline void submitWithTimelineSync(
 		const std::vector<VkCommandBuffer>& cmdBuffers,
 		VkSemaphore timelineSemaphore,
 		uint64_t signalValue,
-		VkFence externalFence = VK_NULL_HANDLE
+		VkSemaphore waitSemaphore = VK_NULL_HANDLE,
+		uint64_t waitValue = 0,
+		bool waitUpAhead = false
 	) {
 		std::scoped_lock lock(submitMutex);
 
-		VkFence fence = externalFence ? externalFence : fencePool.get();
+		std::vector<VkSemaphoreSubmitInfo> waitInfos;
+		if (waitSemaphore != VK_NULL_HANDLE) {
+			VkSemaphoreSubmitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+			waitInfo.semaphore = waitSemaphore;
+			waitInfo.value = waitValue;
+			waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			waitInfo.deviceIndex = 0;
+			waitInfos.push_back(waitInfo);
+		}
 
 		std::vector<VkCommandBufferSubmitInfo> cmdInfos;
 		cmdInfos.reserve(cmdBuffers.size());
@@ -248,23 +285,38 @@ struct GPUQueue {
 			cmdInfos.push_back(cmdInfo);
 		}
 
-		// === Timeline Semaphore Signal ===
-		VkSemaphoreSubmitInfo signal{};
-		signal.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		signal.semaphore = timelineSemaphore;
-		signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; // conservative
-		signal.deviceIndex = 0;
-		signal.value = signalValue;
+		VkSemaphoreSubmitInfo signalInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+		signalInfo.semaphore = timelineSemaphore;
+		signalInfo.value = signalValue;
+		signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		signalInfo.deviceIndex = 0;
 
 		VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
 		submitInfo.commandBufferInfoCount = static_cast<uint32_t>(cmdInfos.size());
 		submitInfo.pCommandBufferInfos = cmdInfos.data();
 		submitInfo.signalSemaphoreInfoCount = 1;
-		submitInfo.pSignalSemaphoreInfos = &signal;
+		submitInfo.pSignalSemaphoreInfos = &signalInfo;
+		if (!waitInfos.empty()) {
+			submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+			submitInfo.pWaitSemaphoreInfos = waitInfos.data();
+		}
 
-		VK_CHECK(vkQueueSubmit2(queue, 1, &submitInfo, fence));
+		VK_CHECK(vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE));
 
-		return externalFence ? VK_NULL_HANDLE : fence;
+		if (waitUpAhead)
+			wasUsed = true;
+	}
+
+	inline void waitTimelineValue(VkDevice device, VkSemaphore timelineSemaphore, uint64_t waitValue) {
+		std::scoped_lock lock(submitMutex);
+
+		VkSemaphoreWaitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
+		waitInfo.flags = 0;
+		waitInfo.semaphoreCount = 1;
+		waitInfo.pSemaphores = &timelineSemaphore;
+		waitInfo.pValues = &waitValue;
+
+		VK_CHECK(vkWaitSemaphores(device, &waitInfo, UINT64_MAX));
 	}
 };
 
@@ -282,25 +334,7 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 	}
 }
 
-// Rendering structs
-struct RenderObject {
-	uint32_t instanceIndex;
-	uint32_t drawRangeIndex;
-	uint32_t materialIndex;
-	MaterialPass passType;
-
-	AABB aabb;
-	glm::mat4 modelMatrix;
-};
-
 struct SortedBatch {
-	GraphicsPipeline* pipeline;
-	std::vector<IndirectDrawCmd> cmds;
+	VkDrawIndexedIndirectCommand cmd;
 	uint32_t drawOffset;
-};
-
-struct DrawContext {
-	std::vector<RenderObject> OpaqueSurfaces;
-	std::vector<RenderObject> TransparentSurfaces;
-	Frustum frustum;
 };

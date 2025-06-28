@@ -17,7 +17,6 @@ namespace Engine {
 	Profiler& getProfiler();
 
 	bool isInitialized();
-	bool hasRenderStopped();
 
 	float& getLastFrameTime();
 

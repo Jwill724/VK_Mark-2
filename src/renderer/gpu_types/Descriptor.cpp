@@ -10,8 +10,8 @@ namespace DescriptorSetOverwatch {
 	DescriptorsCentral unifiedDescriptor;
 	DescriptorsCentral& getUnifiedDescriptors() { return unifiedDescriptor; }
 
-	DescriptorsCentral frameDescriptors;
-	DescriptorsCentral& getFrameDescriptors() { return frameDescriptors; }
+	DescriptorsCentral frameDescriptor;
+	DescriptorsCentral& getFrameDescriptors() { return frameDescriptor; }
 
 	void initUnifiedDescriptors(DeletionQueue& dQueue);
 	void initFrameDescriptors(DeletionQueue& dQueue);
@@ -44,9 +44,10 @@ void DescriptorSetOverwatch::initDescriptors(DeletionQueue& queue) {
 // Unified descriptor bindings:
 // Global access constant descriptors
 // [0] = GPU address table (draw ranges/material buffers)
-// [1] = Samplercube images (environment images)
-// [2] = Storage image array (All writable images)
-// [3] = Combined sampler (All sampled images. materials, and texture images etc)
+// [1] = UBO (Environment image set indexes)
+// [2] = Samplercube images (environment images)
+// [3] = Storage image array (All writable images)
+// [4] = Combined sampler (All sampled images. materials, and texture images etc)
 
 // All image resources — textures, render targets, compute inputs/outputs —
 // are stored in these arrays. Access and interpretation are handled via the
@@ -57,11 +58,12 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
 	mainDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
+	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1); // Global image indexes
 
 	VkShaderStageFlags imageStageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES);
-	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, imageStageFlags, MAX_STORAGE_IMAGES);
-	mainDescriptorManager.addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_COMBINED_SAMPLERS_IMAGES);
+	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES);
+	mainDescriptorManager.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, imageStageFlags, MAX_STORAGE_IMAGES);
+	mainDescriptorManager.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_COMBINED_SAMPLERS_IMAGES);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout();
 
@@ -79,7 +81,7 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 // Per frame descriptors for dynamic data
 // Only defines layout
 // [0] = Storage buffer holding addresses (instance and indirect buffers)
-// [1] = Scene data UBO (camera, lighting, frame constants, env lut indices) the only independent binding
+// [1] = Scene data UBO (camera, lighting, frame constants, etc)
 void DescriptorSetOverwatch::initFrameDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
@@ -87,7 +89,7 @@ void DescriptorSetOverwatch::initFrameDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout();
-	frameDescriptors.descriptorLayout = layout;
+	frameDescriptor.descriptorLayout = layout;
 
 	queue.push_function([layout]() {
 		auto device = Backend::getDevice();
@@ -284,6 +286,7 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(VkDevice device, VkDescrip
 	return ds;
 }
 
+// TODO: Create a way to turn on debugging text easier
 // DESCRIPTOR WRITING
 void DescriptorWriter::writeBuffer(int binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type, VkDescriptorSet set) {
 	size_t bufferIndex = bufferInfos.size();
@@ -308,7 +311,7 @@ void DescriptorWriter::writeBuffer(int binding, VkBuffer buffer, size_t size, si
 		.descriptorCount = 1,
 		.descriptorType = type,
 		.pBufferInfo = nullptr,
-		});
+	});
 
 	writeBufferIndices.push_back(bufferIndex);
 }
@@ -357,9 +360,9 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 		//}
 	}
 
-	writeImages(1, samplerCubeDescriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorSet);
-	writeImages(2, storageDescriptors, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, descriptorSet);
-	writeImages(3, combinedDescriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorSet);
+	writeImages(2, samplerCubeDescriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorSet);
+	writeImages(3, storageDescriptors, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, descriptorSet);
+	writeImages(4, combinedDescriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorSet);
 }
 
 void DescriptorWriter::writeImages(int binding, const std::vector<VkDescriptorImageInfo>& images, VkDescriptorType type, VkDescriptorSet set) {
@@ -388,7 +391,7 @@ void DescriptorWriter::writeImages(int binding, const std::vector<VkDescriptorIm
 			//fmt::print("imageView = {}, sampler = {}, layout = 0x{:08X}\n",
 			//	(void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
 
-			assert(info.imageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
+			ASSERT(info.imageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
 				info.imageLayout == VK_IMAGE_LAYOUT_GENERAL ||
 				info.imageLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL ||
 				info.imageLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL ||
@@ -425,7 +428,7 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 		//fmt::print("Size of total image writes: {}\n", pendingImageWrites.size());
 		std::vector<VkWriteDescriptorSet> imageWrites;
 		for (const auto& pw : pendingImageWrites) {
-			assert(pw.startIndex + pw.count <= imageInfos.size());
+			ASSERT(pw.startIndex + pw.count <= imageInfos.size());
 			imageWrites.push_back({
 				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 				.dstSet = pw.dstSet,
