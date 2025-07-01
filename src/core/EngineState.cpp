@@ -133,7 +133,7 @@ void EngineState::loadAssets() {
 		});
 
 		JobSystem::wait();
-		// clear material staging buffers
+		// clear material staging buffer
 		_resources.getTempDeletionQueue().flush();
 
 		auto& drawRanges = _resources.getDrawRanges();
@@ -201,7 +201,7 @@ void EngineState::loadAssets() {
 			}
 
 			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
-			const size_t meshesSize = meshes.meshData.size() * sizeof(MeshData);
+			const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
 
 			auto& resources = Engine::getState().getGPUResources();
 
@@ -237,7 +237,6 @@ void EngineState::loadAssets() {
 				meshesSize,
 				mainAllocator);
 			resources.addGPUBuffer(AddressBufferType::Mesh, meshBuffer);
-
 
 			// Setup single staging buffer for transfer
 			threadCtx.stagingBuffer = BufferUtils::createBuffer(
@@ -300,9 +299,9 @@ void EngineState::loadAssets() {
 				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
 
 				VkBufferCopy drawRangeCopy {
-						.srcOffset = drawRangesWriteOffset,
-						.dstOffset = 0,
-						.size = drawRangesSize
+					.srcOffset = drawRangesWriteOffset,
+					.dstOffset = 0,
+					.size = drawRangesSize
 				};
 				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
 
@@ -330,9 +329,9 @@ void EngineState::loadAssets() {
 		JobSystem::wait();
 		_resources.getTempDeletionQueue().flush();
 
-		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(threadCtx);
+			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");
@@ -368,7 +367,7 @@ void EngineState::loadAssets() {
 	// Perma imagelut work starts here
 	auto& postProcessImg = ResourceManager::getPostProcessImage();
 	auto& drawImg = ResourceManager::getDrawImage();
-	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.imageView);
+	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.storageView);
 	postProcessImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(drawImg.imageView,
 		ResourceManager::getDefaultSamplerLinear());
 	_resources.addImageLUTEntry(postProcessImg.lutEntry);
@@ -438,10 +437,10 @@ void EngineState::loadAssets() {
 
 	auto allocator = _resources.getAllocator();
 
-	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(EnvMapIndices),
+	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(GPUEnvMapIndices),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 
-	EnvMapIndices* envMapIndices = reinterpret_cast<EnvMapIndices*>(_resources.envMapSetUBO.mapped);
+	GPUEnvMapIndices* envMapIndices = reinterpret_cast<GPUEnvMapIndices*>(_resources.envMapSetUBO.mapped);
 	*envMapIndices = ResourceManager::_envMapIndices;
 
 	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
@@ -456,7 +455,7 @@ void EngineState::loadAssets() {
 	mainWriter.writeBuffer(
 		1,
 		_resources.envMapSetUBO.buffer,
-		sizeof(EnvMapIndices),
+		sizeof(GPUEnvMapIndices),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		set);
@@ -514,9 +513,6 @@ void EngineState::shutdown() {
 	auto device = Backend::getDevice();
 
 	JobSystem::shutdownScheduler();
-
-	Backend::getGraphicsQueue().fencePool.destroy();
-	Backend::getPresentQueue().fencePool.destroy();
 
 	if (!RenderScene::_loadedScenes.empty())
 		RenderScene::_loadedScenes.clear();

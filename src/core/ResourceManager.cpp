@@ -185,7 +185,7 @@ uint32_t ImageTable::pushStorage(VkImageView view) {
 namespace ResourceManager {
 	ImageTable _globalImageTable;
 
-	EnvMapIndices _envMapIndices;
+	GPUEnvMapIndices _envMapIndices;
 
 	// primary render image
 	AllocatedImage _drawImage;
@@ -349,6 +349,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 	_specularPrefilterImage.imageFormat = environmentFormat;
 	_specularPrefilterImage.isCubeMap = true;
 	_specularPrefilterImage.mipmapped = true;
+	_specularPrefilterImage.perMipStorageViews = true;
 	_specularPrefilterImage.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
 
 	RendererUtils::createRenderImage(_specularPrefilterImage,

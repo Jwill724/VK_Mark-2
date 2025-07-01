@@ -212,7 +212,7 @@ struct FencePool {
 		inFlightFences.clear();
 	}
 
-	inline void destroy() {
+	inline void destroyFences() {
 		std::scoped_lock lock(mutex);
 		for (auto& fence : availableFences)
 			vkDestroyFence(device, fence, nullptr);
@@ -234,7 +234,7 @@ struct GPUQueue {
 	// on upcoming queue uses check bool to see if a wait is needed or not
 	std::atomic<bool> wasUsed = false;
 
-	QueueType qType;
+	QueueType qType = QueueType::Generic;
 
 	inline VkFence submit(const VkSubmitInfo& info) {
 		std::scoped_lock lock(submitMutex);
@@ -333,8 +333,3 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 		fmt::print("No fence... skipping.\n");
 	}
 }
-
-struct SortedBatch {
-	VkDrawIndexedIndirectCommand cmd;
-	uint32_t drawOffset;
-};

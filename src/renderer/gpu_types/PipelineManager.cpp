@@ -151,6 +151,7 @@ void PipelineManager::definePipelineData() {
 
 	// === PIPELINE DEFAULT ===
 	uint32_t maxPCsize = Backend::getDeviceLimits().maxPushConstantsSize;
+
 	if (maxPCsize >= MAX_PUSH_CONSTANT_SIZE) {
 		fmt::print("Device max push constant size: {}\nEngine limit is 256 bytes.\n", maxPCsize);
 		maxPCsize = MAX_PUSH_CONSTANT_SIZE;

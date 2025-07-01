@@ -37,5 +37,5 @@ namespace DrawPreperation {
 	void buildAndSortIndirectDraws(
 		FrameContext& frameCtx,
 		const std::vector<GPUDrawRange>& drawRanges,
-		const std::vector<MeshData>& meshes);
+		const std::vector<GPUMeshData>& meshes);
 }

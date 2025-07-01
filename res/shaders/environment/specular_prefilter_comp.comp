@@ -14,14 +14,15 @@ const float PI = 3.14159265359;
 const float RESOLUTION = 1024.0;
 
 layout(push_constant) uniform PC {
-	float roughness;
+    float roughness;
     uint width;
-	uint height;
+    uint height;
     uint sampleCount;
-	uint skyboxViewIdx;
-	uint specularStorageIdx;
-	uint pad0[2];
+    uint skyboxViewIdx;
+    uint specularStorageIdx;
+    uint pad[2];
 } pc;
+
 
 
 /* Non Bit Shift version

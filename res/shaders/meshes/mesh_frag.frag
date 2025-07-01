@@ -12,9 +12,11 @@
 #include "../include/pbr.glsl"
 
 layout(location = 0) in vec3 inNormal;
-layout(location = 1) in vec2 inUV;
-layout(location = 2) in vec3 inWorldPos;
-layout(location = 3) flat in uint vDrawID;
+layout(location = 1) in vec3 inColor;
+layout(location = 2) in vec2 inUV;
+layout(location = 3) in vec3 inWorldPos;
+layout(location = 4) flat in uint vDrawID;
+layout(location = 5) flat in uint vInstanceID;
 
 layout(location = 0) out vec4 outFragColor;
 
@@ -35,7 +37,7 @@ layout(set = 0, binding = 1) uniform EnvMapData {
 };
 
 layout(set = 0, binding = 2) uniform samplerCube envMaps[];
-layout(set = 0, binding = 4) uniform sampler2D images[];
+layout(set = 0, binding = 4) uniform sampler2D combindedSamplers[];
 
 layout(push_constant) uniform PushConstants {
 	uint opaqueVisibleCount;
@@ -59,13 +61,14 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 	vec3 R = reflect(-V, N);
 	if (FLIP_ENVIRONMENT_MAP_Y) R.y = -R.y;
 	vec3 prefilteredColor = textureLod(envMaps[nonuniformEXT(specularIdx)], R, roughness * MAX_REFLECTION_LOD).rgb;
-	vec2 envBRDF = texture(images[nonuniformEXT(brdfIdx)], vec2(max(dot(N, V), 0.0), roughness)).rg;
+	vec2 envBRDF = texture(combindedSamplers[nonuniformEXT(brdfIdx)], vec2(max(dot(N, V), 0.0), roughness)).rg;
 	return prefilteredColor * (F * envBRDF.x + envBRDF.y);
 }
 
 void main()
 {
 	uint drawID = vDrawID;
+	uint instanceID = vInstanceID;
 
 	IndirectDrawCmd drawCmd;
 	Instance inst;
@@ -77,7 +80,7 @@ void main()
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		inst = instBuf.opaqueInstances[drawCmd.instanceIndex];
+		inst = instBuf.opaqueInstances[instanceID];
 		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
 	} else {
 		// Transparent draw
@@ -88,7 +91,7 @@ void main()
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		inst = instBuf.transparentInstances[drawCmd.instanceIndex];
+		inst = instBuf.transparentInstances[instanceID];
 		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
 	}
 
@@ -97,19 +100,19 @@ void main()
 	uint specularIdx = uint(envMapSet.mapIndices[0].y);
 	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
 
-	vec4 albedoMap = texture(images[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
-	vec4 mrSample = texture(images[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
-	vec3 normalMap = texture(images[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
-	float ao = texture(images[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
+	vec4 albedoMap = texture(combindedSamplers[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
+	vec4 mrSample = texture(combindedSamplers[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
+	vec3 normalMap = texture(combindedSamplers[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
+	float ao = texture(combindedSamplers[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
 	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
 
-	if (albedoMap.a < mat.alphaCutoff) discard;
+	if (albedoMap.w < mat.alphaCutoff) discard;
 
 	vec3 sampledNormal = normalize(normalMap * 2.0 - 1.0);
 	vec3 normal = normalize(mix(inNormal, sampledNormal, mat.normalScale));
 
 	vec3 lightColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
-	vec3 albedo = albedoMap.rgb;
+	vec3 albedo = inColor * albedoMap.rgb;
 	vec3 viewDir = normalize(scene.cameraPos.xyz - inWorldPos);
 	vec3 lightDir = normalize(scene.sunlightDirection.xyz);
 	vec3 H = normalize(viewDir + lightDir);
@@ -147,16 +150,15 @@ void main()
 	finalColor += correctedAmbient + emissive;
 	finalColor += vec3(0.5) * ao;
 
-	outFragColor = vec4(finalColor, albedoMap.w);
+	//outFragColor = vec4(finalColor, albedoMap.w);
 
-	//outFragColor = vec4(reflection_specular, albedoMap.w);
-	//outFragColor = vec4(reflection_diffuse, albedoMap.w);
+	//outFragColor = vec4(reflectionSpecular, albedoMap.w);
+	//outFragColor = vec4(reflectionDiffuse, albedoMap.w);
 	//outFragColor = vec4(diffuse, 1.0);
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);
-	//outFragColor = vec4(texSample.rgb, 1.0);
+	//outFragColor = vec4(albedoMap.rgb, 1.0);
 	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
-	//outFragColor = vec4(texSample.r, texSample.g, texSample.b, 1.0);
-	//outFragColor = vec4(sampledNormal, 1.0);
+	outFragColor = vec4(sampledNormal, 1.0);
 	//outFragColor = vec4(emissive, 1.0);
 }

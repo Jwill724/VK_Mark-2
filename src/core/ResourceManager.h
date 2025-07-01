@@ -137,7 +137,7 @@ struct ImageTable {
 namespace ResourceManager {
 	extern ImageTable _globalImageTable;
 
-	extern EnvMapIndices _envMapIndices;
+	extern GPUEnvMapIndices _envMapIndices;
 
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();

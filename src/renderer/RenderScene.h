@@ -7,19 +7,19 @@
 #include "common/ResourceTypes.h"
 #include "common/EngineTypes.h"
 
-constexpr glm::vec3 SPAWNPOINT(1, 1, -1);
+constexpr glm::vec3 SPAWNPOINT(-1, 1, -1);
 //constexpr glm::vec3 SPAWNPOINT(50, 1, -1);
 
 // Holds and controls scene data
 namespace RenderScene {
 	GPUSceneData& getCurrentSceneData();
 
-	inline std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loadedScenes;
+	inline std::unordered_map<std::string, std::shared_ptr<ModelAsset>> _loadedScenes;
 
 	extern Camera _mainCamera;
 
 	extern std::vector<glm::mat4> _transformsList;
-	extern std::unordered_map<uint32_t, glm::mat4> _meshIDToTransforms;
+	extern std::unordered_map<uint32_t, std::vector<glm::mat4>> _meshIDToInstanceTransforms;
 
 	void setScene();
 	void updateCamera();
@@ -32,5 +32,5 @@ namespace RenderScene {
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);
 	void renderGeometry(FrameContext& frameCtx);
-	void drawBatches(const FrameContext& frameCtx, GPUResources& resources);
+	void drawIndirectCommands(const FrameContext& frameCtx, GPUResources& resources);
 }

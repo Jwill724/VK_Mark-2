@@ -54,6 +54,8 @@ VkFence RendererUtils::createFence() {
 	return fence;
 }
 
+// TODO: When I get a better image loading library I'll rework this to be able to create large staging buffers for many textures into a single cmd
+
 void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
 	VkSampleCountFlagBits samples, DeletionQueue& imageQueue, DeletionQueue& bufferQueue, const VmaAllocator allocator, bool skipQueueUsage) {
 
@@ -112,6 +114,9 @@ void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, Alloca
 	});
 }
 
+// TODO: Rework image system to handle new additions to AllocatedImage struct,
+// this should scale toward a render pass and graph system.
+
 void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
 	VkSampleCountFlagBits samples, DeletionQueue& queue, const VmaAllocator allocator, bool skipQueueUsage) {
 	static std::mutex imageMutex;
@@ -140,15 +145,17 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 	}
 	else {
 		imgInfo.mipLevels = 1;
-		renderImage.mipLevelCount = imgInfo.mipLevels;
+		renderImage.mipLevelCount = 1;
 	}
 
 	if (renderImage.isCubeMap) {
 		imgInfo.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		imgInfo.arrayLayers = 6;
+		renderImage.arrayLayers = 6;
 	}
 	else {
 		imgInfo.arrayLayers = 1;
+		renderImage.arrayLayers = 1;
 	}
 
 	VmaAllocationCreateInfo imgAllocInfo = {};
@@ -159,46 +166,36 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		std::scoped_lock lock(imageMutex);
 		VK_CHECK(vmaCreateImage(allocator, &imgInfo, &imgAllocInfo, &renderImage.image, &renderImage.allocation, nullptr));
 
+		// full mip chain sampled view
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = renderImage.image;
 		viewInfo.format = renderImage.imageFormat;
-		if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-		}
-		else {
-			viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		}
-		viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
+		viewInfo.subresourceRange.aspectMask = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+			? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = renderImage.arrayLayers;
+		viewInfo.viewType = renderImage.isCubeMap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
 
-		if (renderImage.isCubeMap) {
-			// Cube view for sampling (used by fragment shader)
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-			viewInfo.subresourceRange.layerCount = 6;
+		VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 
-			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
+		if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.storageView));
 
+			if (imgInfo.mipLevels > 1 && renderImage.isCubeMap && renderImage.perMipStorageViews) {
+				renderImage.storageViews.resize(imgInfo.mipLevels);
 
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
-			// Cube view for writing (used by compute shader)
+				for (uint32_t mip = 0; mip < imgInfo.mipLevels; ++mip) {
+					VkImageViewCreateInfo mipViewInfo = viewInfo;
+					mipViewInfo.subresourceRange.baseMipLevel = mip;
+					mipViewInfo.subresourceRange.layerCount = 6;
+					mipViewInfo.subresourceRange.levelCount = 1;
 
-			// Resize to hold all mip level views
-			renderImage.storageViews.resize(renderImage.mipLevelCount);
-
-			for (uint32_t mip = 0; mip < renderImage.mipLevelCount; mip++) {
-				viewInfo.subresourceRange.baseMipLevel = mip;
-				viewInfo.subresourceRange.levelCount = 1;
-
-				VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.storageViews[mip]));
+					VK_CHECK(vkCreateImageView(device, &mipViewInfo, nullptr, &renderImage.storageViews[mip]));
+				}
 			}
-		}
-		else {
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			viewInfo.subresourceRange.layerCount = 1;
-
-			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 		}
 	}
 
@@ -209,20 +206,22 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		auto alloc = renderImage.allocation;
 		auto imgView = renderImage.imageView;
 		auto& v_storageViews = renderImage.storageViews;
-		queue.push_function([device, image, alloc, imgView, v_storageViews, allocator] {
-			if (imgView != VK_NULL_HANDLE) {
+		auto storageView = renderImage.storageView;
+
+		// the deletion queue needs copies don't try to add destroyImage since it takes it by reference
+		queue.push_function([device, image, alloc, imgView, storageView, v_storageViews, allocator] {
+			if (imgView != VK_NULL_HANDLE)
 				vkDestroyImageView(device, imgView, nullptr);
-			}
+			if (storageView != VK_NULL_HANDLE)
+				vkDestroyImageView(device, storageView, nullptr);
 
 			for (auto& view : v_storageViews) {
-				if (view != VK_NULL_HANDLE) {
+				if (view != VK_NULL_HANDLE)
 					vkDestroyImageView(device, view, nullptr);
-				}
 			}
 
-			if (image != VK_NULL_HANDLE) {
+			if (image != VK_NULL_HANDLE)
 				vmaDestroyImage(allocator, image, alloc);
-			}
 		});
 	}
 }
@@ -230,18 +229,21 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 void RendererUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAllocator allocator) {
 	static std::mutex imageMutex;
 	std::scoped_lock lock(imageMutex);
-	if (img.imageView != VK_NULL_HANDLE) {
+	if (img.imageView != VK_NULL_HANDLE)
 		vkDestroyImageView(device, img.imageView, nullptr);
-	}
+
+	if (img.storageView != VK_NULL_HANDLE)
+		vkDestroyImageView(device, img.storageView, nullptr);
+
 	for (auto& view : img.storageViews) {
-		if (view != VK_NULL_HANDLE) {
+		if (view != VK_NULL_HANDLE)
 			vkDestroyImageView(device, view, nullptr);
-		}
 	}
-	if (img.image != VK_NULL_HANDLE && img.allocation != nullptr) {
+
+	if (img.image != VK_NULL_HANDLE && img.allocation != nullptr)
 		vmaDestroyImage(allocator, img.image, img.allocation);
-	}
 }
+
 
 void RendererUtils::transitionImage(VkCommandBuffer cmd, VkImage image, VkFormat format, VkImageLayout currentLayout, VkImageLayout newLayout) {
 	VkImageMemoryBarrier2 imageBarrier{};

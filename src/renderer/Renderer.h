@@ -9,10 +9,10 @@
 static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
 static bool MSAA_ENABLED = true;
 
-constexpr size_t OPAQUE_INDIRECT_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(IndirectDrawCmd);
+constexpr size_t OPAQUE_INDIRECT_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(VkDrawIndexedIndirectCommand);
 constexpr size_t OPAQUE_INSTANCE_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(GPUInstance);
 constexpr size_t TRANSPARENT_INSTANCE_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(GPUInstance);
-constexpr size_t TRANSPARENT_INDIRECT_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(IndirectDrawCmd);
+constexpr size_t TRANSPARENT_INDIRECT_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(VkDrawIndexedIndirectCommand);
 
 struct FrameContext {
 	RenderSyncObjects syncObjs;
@@ -32,19 +32,18 @@ struct FrameContext {
 	// === async compute ===
 	std::vector<VkCommandBuffer> computeCmds;
 	VkCommandPool computePool = VK_NULL_HANDLE;
-	VkFence computeFence = VK_NULL_HANDLE;
 	uint64_t computeWaitValue = UINT64_MAX;
 
 	// Opaque draws
 	std::vector<GPUInstance> opaqueInstances;
 	AllocatedBuffer opaqueInstanceBuffer;
-	std::vector<IndirectDrawCmd> opaqueIndirectDraws;
+	std::vector<VkDrawIndexedIndirectCommand> opaqueIndirectDraws;
 	AllocatedBuffer opaqueIndirectCmdBuffer;
 
 	// Transparent draws
 	std::vector<GPUInstance> transparentInstances;
 	AllocatedBuffer transparentInstanceBuffer;
-	std::vector<IndirectDrawCmd> transparentIndirectDraws;
+	std::vector<VkDrawIndexedIndirectCommand> transparentIndirectDraws;
 	AllocatedBuffer transparentIndirectCmdBuffer;
 
 	void clearInstanceBuffers() {
@@ -55,7 +54,6 @@ struct FrameContext {
 		opaqueVisibleCount = 0;
 		transparentVisibleCount = 0;
 	}
-
 
 	AllocatedBuffer combinedGPUStaging;
 
