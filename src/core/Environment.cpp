@@ -20,7 +20,7 @@ struct alignas(16) SpecularPC {
 	uint32_t sampleCount;
 	uint32_t skyboxViewIdx;
 	uint32_t specularStorageIdx;
-	uint32_t pad0[2];
+	uint32_t pad[2];
 };
 
 namespace Environment {
@@ -75,10 +75,10 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& imageTable) {
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
-	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
-	AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
+	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
 		resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
+	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/rogland_clear_night_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
 
@@ -98,20 +98,22 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	ImageLUTEntry tempEntryBRDF{};
 
 	tempEntryEquirect.combinedImageIndex = imageTable.pushCombined(equirect.imageView, skyboxSmpl);
-	tempEntryEquirect.storageImageIndex = imageTable.pushStorage(skyboxImg.storageViews[0]);
+	tempEntryEquirect.storageImageIndex = imageTable.pushStorage(skyboxImg.storageView);
 	resources.addImageLUTEntry(tempEntryEquirect);
 
 	tempEntryBRDF.storageImageIndex = imageTable.pushStorage(brdfImg.imageView);
 	resources.addImageLUTEntry(tempEntryBRDF);
 
 	tempEntryDiffuse.samplerCubeIndex = imageTable.pushSamplerCube(skyboxImg.imageView, diffuseSmpl);
-	tempEntryDiffuse.storageImageIndex = imageTable.pushStorage(diffuseImg.storageViews[0]);
+	tempEntryDiffuse.storageImageIndex = imageTable.pushStorage(diffuseImg.storageView);
 	resources.addImageLUTEntry(tempEntryDiffuse);
+
+	// TODO: Fix the specular array output
+	// Storage view miplevels not working, like its not even sampling
 
 	// Storage view defined per mip level
 	const uint32_t specMipLevels = specImg.mipLevelCount;
 	std::vector<SpecularPC> specularPushConstants;
-
 	for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
 		float roughness = float(mip) / float(specMipLevels - 1);
 

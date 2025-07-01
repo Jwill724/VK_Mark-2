@@ -5,14 +5,6 @@
 #ifndef GPU_SCENE_STRUCTURES_GLSL
 #define GPU_SCENE_STRUCTURES_GLSL
 
-struct AABB {
-	vec3 vmin; // origin: 0.5f * (vmin + vmax)
-	vec3 vmax; // extent: 0.5f * (vmax - vmin)
-	vec3 origin;
-	vec3 extent;
-	float sphereRadius;
-};
-
 struct SceneData {
     mat4 view;
     mat4 proj;
@@ -32,6 +24,14 @@ struct EnvMapBindingSet {
     // y = specularMapIndex
     // z = brdfLUTIndex
     // w = skyboxMapIndex
+};
+
+struct AABB {
+	vec3 vmin; // origin: 0.5f * (vmin + vmax)
+	vec3 vmax; // extent: 0.5f * (vmax - vmin)
+	vec3 origin;
+	vec3 extent;
+	float sphereRadius;
 };
 
 struct Vertex {
@@ -57,6 +57,7 @@ struct Material {
     float ambientOcclusion;
     float normalScale;
     float alphaCutoff;
+    uint passType;
 };
 
 struct Mesh {
@@ -104,10 +105,12 @@ struct IndirectDrawCmd {
     uint firstIndex;
     int  vertexOffset;
     uint firstInstance;
-
-    uint instanceIndex;
-    uint drawOffset;
 };
+
+// GPU-only buffers
+
+// Opaque and transparent data is a render time upload
+// Only visible data makes it through
 
 // Opaque
 layout(buffer_reference, scalar) readonly buffer OpaqueInstances {
@@ -121,11 +124,11 @@ layout(buffer_reference, scalar) readonly buffer OpaqueIndirectDraws {
 layout(buffer_reference, scalar) readonly buffer TransparentInstances {
     Instance transparentInstances[];
 };
-
 layout(buffer_reference, scalar) readonly buffer TransparentIndirectDraws {
     IndirectDrawCmd transparentIndirect[];
 };
 
+// ranges, materials, vertices, indices, all ready at render time and uploaded at end of asset loading
 layout(buffer_reference, scalar) readonly buffer DrawRangeBuffer {
     GPUDrawRange ranges[];
 };
@@ -142,20 +145,24 @@ layout(buffer_reference, scalar) readonly buffer IndexBuffer {
     uint indices[];
 };
 
-layout(buffer_reference, scalar) readonly buffer TransformsListBuffer {
-    mat4 transforms[];
-};
-
+// In current cpu based setup, worldAABBs are done on cpu after main upload,
+// all thats present here currently is localAABB and drawRangeIndex
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {
     Mesh meshes[];
 };
 
+
+// Inactives
 layout(buffer_reference, scalar) writeonly buffer VisibleCountBuffer {
     uint visibleCount;
 };
 
 layout(buffer_reference, scalar) writeonly buffer VisibleMeshIDBuffer {
     uint visibleMeshIDs[];
+};
+
+layout(buffer_reference, scalar) readonly buffer TransformsListBuffer {
+    mat4 transforms[];
 };
 
 #endif

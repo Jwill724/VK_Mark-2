@@ -42,13 +42,6 @@ struct Vertex {
 	glm::vec4 color;
 };
 
-struct alignas(16) DrawPushConstants {
-	glm::mat4 modelMatrix;
-	uint32_t materialIndex;
-	uint32_t meshID;
-	uint32_t pad[2];
-};
-
 struct GPUInstance {
 	glm::mat4 modelMatrix;
 	uint32_t materialIndex;
@@ -63,13 +56,13 @@ struct GPUDrawRange {
 	uint32_t vertexCount;
 };
 
-struct MeshData {
+struct GPUMeshData {
 	AABB localAABB;
 	AABB worldAABB;
 	uint32_t drawRangeIndex;
 };
 
-struct PBRMaterial {
+struct GPUMaterial {
 	glm::vec4 colorFactor = glm::vec4(1.0f);
 	glm::vec2 metalRoughFactors = glm::vec2(1.0f, 1.0f);
 
@@ -84,8 +77,8 @@ struct PBRMaterial {
 	float ambientOcclusion = 1.0f;
 	float normalScale = 1.0f;
 	float alphaCutoff = 1.0f;
+	uint32_t passType;
 };
-
 
 
 // Uniforms
@@ -101,10 +94,10 @@ struct alignas(16) GPUSceneData {
 static_assert(sizeof(GPUSceneData) == 256);
 
 // x = diffuse, y = specular, z = brdf, w = skybox
-struct alignas(16) EnvMapIndices {
+struct alignas(16) GPUEnvMapIndices {
 	glm::vec4 indices[MAX_ENV_SETS];
 };
-static_assert(sizeof(EnvMapIndices) == 256);
+static_assert(sizeof(GPUEnvMapIndices) == 256);
 
 // GPU only buffers
 enum class AddressBufferType : uint32_t {
@@ -130,11 +123,6 @@ struct GPUAddressTable {
 	}
 };
 
-struct IndirectDrawCmd {
-	VkDrawIndexedIndirectCommand cmd;
-	uint32_t instanceIndex;
-	uint32_t drawOffset;
-};
 
 struct RenderSyncObjects {
 	VkSemaphore swapchainSemaphore = VK_NULL_HANDLE;
@@ -158,35 +146,35 @@ enum class PipelineType : uint32_t {
 	Wireframe
 };
 
-enum class BufferType : uint32_t {
-	Vertex,
-	Index,
-	Uniform,             // UBO
-	Storage,             // SSBO
-	MaterialData,
-	InstanceData,
-	IndirectDraw,
-	Staging,
-	SceneConstants,
-	ImageLUT,
-	LightData,
-};
-
-
-enum class RenderImageType : uint32_t {
-	Albedo,              // G-Buffer base color
-	Normals,             // G-Buffer normals (world or view space)
-	MetalRoughAO,        // Packed metalness, roughness, AO
-	Emissive,            // Optional emissive G-buffer
-	Depth,               // Shared depth buffer
-	LightingAccum,       // Deferred lighting accumulation buffer
-	FinalOutput,         // Swapchain-ready image
-	PostProcess,         // Temporary post-processing buffer
-	ShadowMap,           // Depth-only shadow map
-	BRDFLUT,             // BRDF lookup texture
-	EnvDiffuse,          // Diffuse irradiance cubemap
-	EnvSpecular,         // Prefiltered specular cubemap
-};
+//enum class BufferType : uint32_t {
+//	Vertex,
+//	Index,
+//	Uniform,             // UBO
+//	Storage,             // SSBO
+//	MaterialData,
+//	InstanceData,
+//	IndirectDraw,
+//	Staging,
+//	SceneConstants,
+//	ImageLUT,
+//	LightData,
+//};
+//
+//
+//enum class RenderImageType : uint32_t {
+//	Albedo,              // G-Buffer base color
+//	Normals,             // G-Buffer normals (world or view space)
+//	MetalRoughAO,        // Packed metalness, roughness, AO
+//	Emissive,            // Optional emissive G-buffer
+//	Depth,               // Shared depth buffer
+//	LightingAccum,       // Deferred lighting accumulation buffer
+//	FinalOutput,         // Swapchain-ready image
+//	PostProcess,         // Temporary post-processing buffer
+//	ShadowMap,           // Depth-only shadow map
+//	BRDFLUT,             // BRDF lookup texture
+//	EnvDiffuse,          // Diffuse irradiance cubemap
+//	EnvSpecular,         // Prefiltered specular cubemap
+//};
 
 // Push constant use
 struct alignas(16) ColorData {
@@ -199,7 +187,14 @@ struct alignas(16) ColorData {
 	uint32_t pad1[2];
 };
 
-// Checking if the vector is out of range for aabb vertices
-//inline auto isFiniteVec3 = [](const glm::vec3& v) {
-//	return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-//};
+template<typename T>
+inline void printVec3(const glm::vec<3, T>& v) {
+	fmt::print("[{}, {}, {}]", v.x, v.y, v.z);
+}
+
+template<typename T>
+inline void printMat4(const glm::mat<4, 4, T>& m) {
+	for (int i = 0; i < 4; ++i) {
+		fmt::print("[{}, {}, {}, {}]\n", m[i].x, m[i].y, m[i].z, m[i].w);
+	}
+}

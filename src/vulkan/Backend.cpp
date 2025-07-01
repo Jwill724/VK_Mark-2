@@ -113,7 +113,7 @@ void Backend::pickPhysicalDevice() {
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
 
-	ASSERT(deviceCount != 0);
+	ASSERT(deviceCount != 0 && "[Backend] No physical device found.\n");
 
 	std::vector<VkPhysicalDevice> devices(deviceCount);
 
@@ -171,6 +171,10 @@ void Backend::createLogicalDevice() {
 	baseFeatures.features.multiDrawIndirect = VK_TRUE;				// indirect draws enabled
 	baseFeatures.features.shaderInt64 = VK_TRUE;					// 64-bit addressing
 	baseFeatures.features.tessellationShader = VK_TRUE;
+	baseFeatures.features.depthBiasClamp = VK_TRUE;
+	baseFeatures.features.drawIndirectFirstInstance = VK_TRUE;
+	baseFeatures.features.imageCubeArray = VK_TRUE;
+	baseFeatures.features.occlusionQueryPrecise = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	features11.shaderDrawParameters = VK_TRUE;						// InstanceIndex
@@ -350,11 +354,17 @@ void Backend::createImageViews() {
 			_swapchainDef.images[i],
 			_swapchainDef.imageFormat,
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			1);
+			1
+		);
 	}
 }
 
 void Backend::cleanupBackend() {
+	_graphicsQueue.fencePool.destroyFences();
+	_presentQueue.fencePool.destroyFences();
+	_transferQueue.fencePool.destroyFences();
+	_computeQueue.fencePool.destroyFences();
+
 	cleanupSwapchain();
 
 	vkDestroySurfaceKHR(_instance, _surface, nullptr);

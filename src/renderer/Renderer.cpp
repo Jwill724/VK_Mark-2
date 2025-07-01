@@ -33,9 +33,10 @@ void Renderer::initFrameContexts(
 	VkDescriptorSetLayout layout,
 	const VmaAllocator allocator)
 {
-
 	RendererUtils::createTimelineSemaphore(_transferSync);
-	RendererUtils::createTimelineSemaphore(_computeSync);
+
+	if (GPU_ACCELERATION_ENABLED)
+		RendererUtils::createTimelineSemaphore(_computeSync);
 
 	const size_t totalGPUStagingSize =
 		OPAQUE_INSTANCE_SIZE_BYTES +
@@ -50,12 +51,14 @@ void Renderer::initFrameContexts(
 		frame.syncObjs.fence = RendererUtils::createFence();
 		frame.graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
 		frame.transferPool = CommandBuffer::createCommandPool(device, transferIndex);
-		frame.computePool = CommandBuffer::createCommandPool(device, computeIndex);
-		frame.computeFence = RendererUtils::createFence();
 		frame.commandBuffer = CommandBuffer::createCommandBuffer(device, frame.graphicsPool);
 		frame.set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, layout);
 		frame.transferDeletion.semaphore = _transferSync.semaphore;
-		frame.computeDeletion.semaphore = _computeSync.semaphore;
+
+		if (GPU_ACCELERATION_ENABLED) {
+			frame.computePool = CommandBuffer::createCommandPool(device, computeIndex);
+			frame.computeDeletion.semaphore = _computeSync.semaphore;
+		}
 
 		frame.addressTableBuffer = BufferUtils::createBuffer(
 			sizeof(GPUAddressTable),
@@ -119,9 +122,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		frameCtx.syncObjs.swapchainSemaphore,
 		VK_NULL_HANDLE,
 		&frameCtx.swapchainImageIndex);
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR ||
-		frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR)
-	{
+	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
 		Backend::getGraphicsQueue().waitIdle();
 		Backend::resizeSwapchain();
 		return;
@@ -171,13 +172,15 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 
 	// WAIT: Compute completion
 	VkSemaphoreSubmitInfo waitCompute{};
-	if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
-		ASSERT(_computeSync.semaphore != VK_NULL_HANDLE && "[Compute] Timeline semaphore must be set before rendering");
-		waitCompute.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		waitCompute.semaphore = _computeSync.semaphore;
-		waitCompute.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-		waitCompute.deviceIndex = 0;
-		waitCompute.value = frameCtx.computeWaitValue;
+	if (GPU_ACCELERATION_ENABLED) {
+		if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
+			ASSERT(_computeSync.semaphore != VK_NULL_HANDLE && "[Compute] Timeline semaphore must be set before rendering");
+			waitCompute.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+			waitCompute.semaphore = _computeSync.semaphore;
+			waitCompute.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+			waitCompute.deviceIndex = 0;
+			waitCompute.value = frameCtx.computeWaitValue;
+		}
 	}
 
 
@@ -198,8 +201,8 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	VkSubmitInfo2 graphicsSubmitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
 	graphicsSubmitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
 	graphicsSubmitInfo.pWaitSemaphoreInfos = waitInfos.empty() ? nullptr : waitInfos.data();
-	graphicsSubmitInfo.signalSemaphoreInfoCount = (signalRender.semaphore != VK_NULL_HANDLE) ? 1 : 0;
-	graphicsSubmitInfo.pSignalSemaphoreInfos = (signalRender.semaphore != VK_NULL_HANDLE) ? &signalRender : nullptr;
+	graphicsSubmitInfo.signalSemaphoreInfoCount = signalRender.semaphore ? 1 : 0;
+	graphicsSubmitInfo.pSignalSemaphoreInfos = signalRender.semaphore ? &signalRender : nullptr;
 	graphicsSubmitInfo.commandBufferInfoCount = 1;
 	graphicsSubmitInfo.pCommandBufferInfos = &cmdInfo;
 
@@ -456,66 +459,63 @@ void Renderer::cleanup() {
 	for (auto& frame : _frameContexts) {
 		frame.cpuDeletion.flush();
 
-		if (frame.transferDeletion.semaphore)
+		if (frame.transferDeletion.semaphore != VK_NULL_HANDLE)
 			frame.transferDeletion.process(device);
 
 		if (!frame.transferCmds.empty())
 			frame.transferCmds.clear();
 
-		if (frame.computeDeletion.semaphore)
+		if (frame.computeDeletion.semaphore != VK_NULL_HANDLE)
 			frame.computeDeletion.process(device);
 
 		if (!frame.computeCmds.empty())
 			frame.computeCmds.clear();
 
-		// Sync objects first
-		if (frame.syncObjs.fence)
+		if (frame.syncObjs.fence != VK_NULL_HANDLE)
 			vkDestroyFence(device, frame.syncObjs.fence, nullptr);
-		if (frame.syncObjs.semaphore)
+		if (frame.syncObjs.semaphore != VK_NULL_HANDLE)
 			vkDestroySemaphore(device, frame.syncObjs.semaphore, nullptr);
-
-		if (frame.syncObjs.swapchainSemaphore)
+		if (frame.syncObjs.swapchainSemaphore != VK_NULL_HANDLE)
 			vkDestroySemaphore(device, frame.syncObjs.swapchainSemaphore, nullptr);
 
-		// Pools 2nd
-		if (frame.graphicsPool)
+		if (frame.graphicsPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);
 
-		if (frame.transferPool)
+		if (frame.transferPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.transferPool, nullptr);
 
-		if (frame.computePool)
+		if (frame.computePool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.computePool, nullptr);
 
-		if (frame.transformsListBuffer.buffer)
+		if (frame.transformsListBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.transformsListBuffer, allocator);
 
-		if (frame.stagingVisibleMeshIDsBuffer.buffer)
+		if (frame.stagingVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.stagingVisibleMeshIDsBuffer, allocator);
 
-		if (frame.stagingVisibleCountBuffer.buffer)
+		if (frame.stagingVisibleCountBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.stagingVisibleCountBuffer, allocator);
 
-		if (frame.gpuVisibleCountBuffer.buffer)
+		if (frame.gpuVisibleCountBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.gpuVisibleCountBuffer, allocator);
 
-		if (frame.gpuVisibleMeshIDsBuffer.buffer)
+		if (frame.gpuVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.gpuVisibleMeshIDsBuffer, allocator);
 
 		// address buffers last
-		if (frame.combinedGPUStaging.buffer)
+		if (frame.combinedGPUStaging.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.combinedGPUStaging, allocator);
 
-		if (frame.addressTableStaging.buffer)
+		if (frame.addressTableStaging.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.addressTableStaging, allocator);
 
-		if (frame.addressTableBuffer.buffer)
+		if (frame.addressTableBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyBuffer(frame.addressTableBuffer, allocator);
 	}
 
-	if (_transferSync.semaphore)
+	if (_transferSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _transferSync.semaphore, nullptr);
 
-	if (_computeSync.semaphore)
+	if (_computeSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _computeSync.semaphore, nullptr);
 }

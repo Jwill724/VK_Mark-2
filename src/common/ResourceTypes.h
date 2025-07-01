@@ -27,12 +27,24 @@ struct ImageLUTEntry {
 struct AllocatedImage {
 	VkImage image = VK_NULL_HANDLE;
 	VkImageView imageView = VK_NULL_HANDLE;
+	VkImageView storageView = VK_NULL_HANDLE;
+	std::vector<VkImageView> storageViews{};
+	bool perMipStorageViews = false;
 	VkFormat imageFormat = VK_FORMAT_UNDEFINED;
-	VmaAllocation allocation = nullptr;
-	VkExtent3D imageExtent;
-	ImageLUTEntry lutEntry{};
-	std::vector<VkImageView> storageViews; // Used for sampling on different image views
+	VkExtent3D imageExtent{};
 	uint32_t mipLevelCount = 0;
+	uint32_t arrayLayers = 1;
+
+	VkImageType imageType = VK_IMAGE_TYPE_2D;
+	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
+	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+
+	VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	VmaAllocation allocation = nullptr;
+	ImageLUTEntry lutEntry{};
+
 	bool mipmapped = false;
 	bool isCubeMap = false;
 };
@@ -114,9 +126,11 @@ struct alignas(16) CullingPushConstantsAddrs {
 };
 static_assert(sizeof(CullingPushConstantsAddrs) == 256);
 
-struct SceneObject {
+struct RenderInstance {
 	std::shared_ptr<GPUInstance> instances;
-	MaterialPass pass;
+	uint32_t gltfMeshIndex;
+	uint32_t gltfPrimitiveIndex;
+	MaterialPass passType;
 };
 
 struct UploadedMeshView {
@@ -133,40 +147,27 @@ struct UploadMeshContext {
 
 using MeshID = uint32_t;
 struct MeshRegistry {
-	std::unordered_map<std::string, MeshID> nameToID;
-	std::vector<MeshData> meshData;
+	std::vector<GPUMeshData> meshData;
 
 	AllocatedBuffer meshIDBuffer{};
 
-	inline std::vector<MeshID> extractAllMeshIDs() {
+	inline std::vector<MeshID> extractAllMeshIDs() const {
 		std::vector<MeshID> ids;
-		ids.reserve(nameToID.size());
+		ids.reserve(meshData.size());
 
-		for (const auto& [name, id] : nameToID) {
-			ASSERT(id < meshData.size() && "MeshRegistry: MeshID out of bounds!");
+		for (MeshID id = 0; id < meshData.size(); ++id) {
 			ids.push_back(id);
 		}
 
 		return ids;
 	}
 
-	inline MeshID registerMesh(const std::string& name, const MeshData& data) {
-		ASSERT(!name.empty() && "MeshRegistry: Mesh name must not be empty.");
 
-		if (nameToID.contains(name)) {
-			MeshID existingID = nameToID[name];
-			ASSERT(existingID < meshData.size() && "MeshRegistry: Existing mesh ID is invalid!");
-			return existingID;
-		}
-
+	inline MeshID registerMesh(const GPUMeshData& data) {
 		MeshID id = static_cast<MeshID>(meshData.size());
 		ASSERT(id != std::numeric_limits<MeshID>::max() && "MeshRegistry: MeshID overflow!");
 
 		meshData.push_back(data);
-		nameToID[name] = id;
-
-		ASSERT(meshData.size() == nameToID.size() && "MeshRegistry: nameToID and meshData out of sync!");
-
 		return id;
 	}
 };
@@ -193,80 +194,59 @@ struct DescriptorsCentral {
 	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
 };
 
-// base class for a renderable dynamic object
-class IRenderable {
 
-	virtual void FlattenSceneToTransformList(const glm::mat4& topMatrix, std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap) = 0;
+struct RenderInstance;
+struct GPUInstance;
+
+// ====== Interface ======
+class IRenderable {
+public:
 	virtual void FindVisibleObjects(
 		std::vector<GPUInstance>& outOpaqueVisibles,
 		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
+		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
 		const std::unordered_set<uint32_t>& visibleMeshIDSet) = 0;
+
+	virtual ~IRenderable() = default;
 };
 
-// implementation of a drawable scene node.
-// the scene node can hold children and will also keep a transform to propagate
-// to them
+// ====== Scene Graph Node Base ======
 struct Node : public IRenderable {
-
-	// parent pointer must be a weak pointer to avoid circular dependencies
 	std::weak_ptr<Node> parent;
 	std::vector<std::shared_ptr<Node>> children;
 
-	glm::mat4 localTransform;
-	glm::mat4 worldTransform;
-	bool transformDirty = true;
+	glm::mat4 localTransform{};
+	glm::mat4 worldTransform{};
 
-	void markDirty()
-	{
-		transformDirty = true;
-		for (auto& c : children)
-			c->markDirty();
-	}
+	uint32_t nodeIndex = UINT32_MAX;
 
-	void refreshTransform(const glm::mat4& parentMatrix)
-	{
-		if (!transformDirty && parent.lock() && worldTransform == parent.lock()->worldTransform * localTransform)
-			return;
-
+	void refreshTransform(const glm::mat4& parentMatrix) {
 		worldTransform = parentMatrix * localTransform;
-		transformDirty = false;
-
 		for (auto& c : children) {
-			c->transformDirty = true;
-			c->refreshTransform(worldTransform);
-		}
-	}
-
-	virtual void FlattenSceneToTransformList(const glm::mat4& topMatrix, std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap)
-	{
-		// draw children
-		for (auto& c : children) {
-			c->FlattenSceneToTransformList(topMatrix, meshIDToTransformMap);
+			if (c) c->refreshTransform(worldTransform);
 		}
 	}
 
 	virtual void FindVisibleObjects(
 		std::vector<GPUInstance>& outOpaqueVisibles,
 		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet)
+		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
+		const std::unordered_set<uint32_t>& visibleMeshIDSet) override
 	{
 		for (auto& c : children) {
-			c->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
+			if (c) c->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
 		}
 	}
 
 };
 
+// ====== Mesh Node ======
 struct MeshNode : public Node {
+	std::vector<std::shared_ptr<RenderInstance>> instances;
 
-	std::shared_ptr<SceneObject> objs;
-
-	void FlattenSceneToTransformList(const glm::mat4& topMatrix, std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap) override;
-	void FindVisibleObjects(
+	virtual void FindVisibleObjects(
 		std::vector<GPUInstance>& outOpaqueVisibles,
 		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, glm::mat4>& meshIDToTransformMap,
+		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
 		const std::unordered_set<uint32_t>& visibleMeshIDSet) override;
 };

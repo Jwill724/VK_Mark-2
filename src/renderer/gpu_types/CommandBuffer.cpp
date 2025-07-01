@@ -54,7 +54,7 @@ VkCommandBuffer CommandBuffer::createSecondaryCmd(VkDevice device, VkCommandPool
 
 void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& function, VkCommandPool cmdPool, QueueType type) {
 	VkCommandBuffer cmd = createCommandBuffer(Backend::getDevice(), cmdPool);
-	fmt::print("Allocated cmd: 0x{:X} from pool: 0x{:X}\n", (uint64_t)cmd, (uint64_t)cmdPool);
+	//fmt::print("Allocated cmd: 0x{:X} from pool: 0x{:X}\n", (uint64_t)cmd, (uint64_t)cmdPool);
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
 	VkCommandBufferBeginInfo cmdBeginInfo = {

@@ -92,19 +92,10 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	}
 
-
-	// The worldAABB in the meshes is transformed in the shader
-	// The only mutable buffer currently
-	VmaMemoryUsage memoryUsage{};
-	if (addressBufferType == AddressBufferType::Mesh)
-		memoryUsage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-	else
-		memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY;
-
 	AllocatedBuffer buffer = createBuffer(
 		size,
 		usage,
-		memoryUsage,
+		VMA_MEMORY_USAGE_GPU_ONLY,
 		allocator
 	);
 

@@ -11,19 +11,21 @@
 #include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) out vec3 outNormal;
-layout(location = 1) out vec2 outUV;
-layout(location = 2) out vec3 outWorldPos;
-layout(location = 3) flat out uint vDrawID;
+layout(location = 1) out vec3 outColor;
+layout(location = 2) out vec2 outUV;
+layout(location = 3) out vec3 outWorldPos;
+layout(location = 4) flat out uint vDrawID;
+layout(location = 5) flat out uint vInstanceID;
 
-layout(set = 0, binding = 0, scalar) readonly buffer globalAddressTableBuffer {
+layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
-layout(set = 1, binding = 0, scalar) readonly buffer frameAddressTableBuffer {
+layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
     GPUAddressTable frameAddressTable;
 };
 
-layout(set = 1, binding = 1, scalar) uniform SceneUBO {
+layout(set = 1, binding = 1) uniform SceneUBO {
     SceneData scene;
 };
 
@@ -40,6 +42,7 @@ void main() {
 	IndirectDrawCmd drawCmd;
 	Instance inst;
 	Mesh mesh;
+	uint instanceIdx;
 
 	if (drawID < pc.opaqueVisibleCount) {
 		// === Opaque path ===
@@ -47,7 +50,10 @@ void main() {
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		inst = instBuf.opaqueInstances[drawCmd.instanceIndex];
+		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+		vInstanceID = instanceIdx;
+
+		inst = instBuf.opaqueInstances[instanceIdx];
 		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
 	} else {
 		// === Transparent path ===
@@ -58,7 +64,10 @@ void main() {
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		inst = instBuf.transparentInstances[drawCmd.instanceIndex];
+		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+		vInstanceID = instanceIdx;
+
+		inst = instBuf.transparentInstances[instanceIdx];
 		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
 	}
 
@@ -78,6 +87,6 @@ void main() {
 
     mat3 normalMatrix = transpose(inverse(mat3(model)));
     outNormal = normalize(normalMatrix * vtx.normal);
-
+    outColor = vtx.color.xyz;
     outUV = vtx.uv;
 }

@@ -9,106 +9,70 @@
 void DrawPreperation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
 	const std::vector<GPUDrawRange>& drawRanges,
-	const std::vector<MeshData>& meshes)
+	const std::vector<GPUMeshData>& meshes)
 {
-	std::unordered_map<OpaqueBatchKey, std::vector<IndirectDrawCmd>, OpaqueBatchKeyHash> opaqueBatches;
+	// === BATCH OPAQUE INSTANCES ===
+	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
 
-	// Build list of IndirectDrawCmds, grouped by (meshID, materialIndex)
 	for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
 		const GPUInstance& inst = frameCtx.opaqueInstances[i];
-		const MeshData& mesh = meshes[inst.meshID];
+		const OpaqueBatchKey key { inst.meshID, inst.materialIndex };
+		opaqueBatches[key].push_back(i);
+	}
+
+	frameCtx.opaqueIndirectDraws.clear();
+	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
+	frameCtx.opaqueVisibleCount = 0;
+
+	for (const auto& [key, instanceIndices] : opaqueBatches) {
+		const GPUMeshData& mesh = meshes[key.meshID];
 
 		if (mesh.drawRangeIndex >= drawRanges.size()) {
-			fmt::print("WARNING: Skipping RenderObject[{}] — drawRangeIndex={} out of bounds (max={})\n",
-				i, mesh.drawRangeIndex, drawRanges.size() - 1);
+			fmt::print("WARNING: Opaque batch skipped — drawRangeIndex={} out of bounds\n", mesh.drawRangeIndex);
 			continue;
 		}
 
 		const auto& range = drawRanges[mesh.drawRangeIndex];
 
-		OpaqueBatchKey key{ inst.meshID, inst.materialIndex };
-		auto& cmdList = opaqueBatches[key];
-
-		VkDrawIndexedIndirectCommand vkCmd = {
+		VkDrawIndexedIndirectCommand cmd = {
 			.indexCount = range.indexCount,
-			.instanceCount = 1,
+			.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
 			.firstIndex = range.firstIndex,
 			.vertexOffset = static_cast<int32_t>(range.vertexOffset),
-			.firstInstance = i
+			.firstInstance = frameCtx.opaqueVisibleCount
 		};
 
-		fmt::print("[Opaque {:>2}] MaterialIdx: {}, RangeIdx: {}, Cmd: [indexCount={}, firstIndex={}, vertexOffset={}, firstInstance={}]\n",
-			i, inst.materialIndex, mesh.drawRangeIndex,
-			vkCmd.indexCount, vkCmd.firstIndex, vkCmd.vertexOffset, vkCmd.firstInstance);
-
-		cmdList.emplace_back(IndirectDrawCmd{
-			.cmd = vkCmd,
-			.instanceIndex = i,
-			.drawOffset = 0
-		});
+		frameCtx.opaqueIndirectDraws.emplace_back(cmd);
+		frameCtx.opaqueVisibleCount += cmd.instanceCount;
 	}
 
-	// === Create final batched IndirectDrawCmds ===
-	frameCtx.opaqueIndirectDraws.clear();
-	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
+	// === SORT & DRAW TRANSPARENT ===
+	frameCtx.transparentIndirectDraws.clear();
+	frameCtx.transparentIndirectDraws.reserve(frameCtx.transparentInstances.size());
+	frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
 
-	uint32_t batchOffset = 0;
-	for (auto& [key, cmdList] : opaqueBatches) {
-		if (cmdList.empty()) continue;
-
-		const auto& firstCmd = cmdList.front().cmd;
-
-		VkDrawIndexedIndirectCommand drawCmd = {
-			.indexCount = firstCmd.indexCount,
-			.instanceCount = static_cast<uint32_t>(cmdList.size()),
-			.firstIndex = firstCmd.firstIndex,
-			.vertexOffset = firstCmd.vertexOffset,
-			.firstInstance = batchOffset
-		};
-
-		IndirectDrawCmd batch{
-			.cmd = drawCmd,
-			.instanceIndex = drawCmd.firstInstance,
-			.drawOffset = batchOffset
-		};
-
-		frameCtx.opaqueIndirectDraws.emplace_back(batch);
-		batchOffset += drawCmd.instanceCount;
-	}
-
-	if (frameCtx.transparentVisibleCount != 0) {
+	if (!frameCtx.transparentInstances.empty()) {
 		glm::vec3 camPos = glm::vec3(RenderScene::getCurrentSceneData().cameraPosition);
 
-		// === Sort transparent objects back-to-front for correct blending ===
 		std::sort(frameCtx.transparentInstances.begin(), frameCtx.transparentInstances.end(),
 			[&](const GPUInstance& A, const GPUInstance& B) {
 				const auto& aabbA = meshes[A.meshID].worldAABB;
 				const auto& aabbB = meshes[B.meshID].worldAABB;
-
-				glm::vec3 centerA = (aabbA.vmin + aabbA.vmax) * 0.5f;
-				glm::vec3 centerB = (aabbB.vmin + aabbB.vmax) * 0.5f;
-
-				float distA = glm::length(centerA - camPos);
-				float distB = glm::length(centerB - camPos);
-
-				return distA > distB; // furthest first
+				return glm::length(aabbA.origin - camPos) > glm::length(aabbB.origin - camPos);
 			});
-
-		frameCtx.transparentIndirectDraws.clear();
-		frameCtx.transparentIndirectDraws.reserve(frameCtx.transparentInstances.size());
 
 		for (uint32_t i = 0; i < frameCtx.transparentInstances.size(); ++i) {
 			const GPUInstance& inst = frameCtx.transparentInstances[i];
-			const MeshData& mesh = meshes[inst.meshID];
+			const GPUMeshData& mesh = meshes[inst.meshID];
 
 			if (mesh.drawRangeIndex >= drawRanges.size()) {
-				fmt::print("WARNING: Transparent mesh drawRangeIndex out of bounds: {}\n", mesh.drawRangeIndex);
+				fmt::print("WARNING: Transparent drawRangeIndex={} out of bounds\n", mesh.drawRangeIndex);
 				continue;
 			}
 
 			const auto& range = drawRanges[mesh.drawRangeIndex];
 
-			VkDrawIndexedIndirectCommand vkCmd = {
+			VkDrawIndexedIndirectCommand cmd = {
 				.indexCount = range.indexCount,
 				.instanceCount = 1,
 				.firstIndex = range.firstIndex,
@@ -116,14 +80,216 @@ void DrawPreperation::buildAndSortIndirectDraws(
 				.firstInstance = i
 			};
 
-			frameCtx.transparentIndirectDraws.emplace_back(IndirectDrawCmd{
-				.cmd = vkCmd,
-				.instanceIndex = i,
-				.drawOffset = i
-			});
+			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}
 	}
+
+	fmt::print("Opaque batches: {}, total instances: {}\n",
+		frameCtx.opaqueIndirectDraws.size(), frameCtx.opaqueVisibleCount);
+	fmt::print("Transparent instances: {}\n", frameCtx.transparentVisibleCount);
 }
+
+
+
+void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
+	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE && "[DrawPreperation] combinedGPUstaging buffer is invalid.");
+
+	bool isOpaqueVisible = false;
+	bool isTransparentVisible = false;
+
+	if (frameCtx.opaqueVisibleCount > 0)
+		isOpaqueVisible = true;
+	if (frameCtx.transparentVisibleCount > 0)
+		isTransparentVisible = true;
+
+	// Create GPU buffers
+	if (isOpaqueVisible) {
+		frameCtx.opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+			AddressBufferType::OpaqueIntances, frameCtx.addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
+
+		frameCtx.opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+			AddressBufferType::OpaqueIndirectDraws, frameCtx.addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
+	}
+
+	if (isTransparentVisible) {
+		frameCtx.transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+			AddressBufferType::TransparentInstances, frameCtx.addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
+
+		frameCtx.transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+			AddressBufferType::TransparentIndirectDraws, frameCtx.addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
+	}
+
+	const size_t opaqueInstanceBytes = frameCtx.opaqueInstances.size() * sizeof(GPUInstance);
+	const size_t opaqueIndirectBytes = frameCtx.opaqueIndirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
+	const size_t transparentInstanceBytes = frameCtx.transparentInstances.size() * sizeof(GPUInstance);
+	const size_t transparentIndirectBytes = frameCtx.transparentIndirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
+
+	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
+	size_t offset = 0;
+	// Must be in this exact order Opaque->Transparent in memory offsetting
+	if (isOpaqueVisible) {
+		memcpy(mappedStagingPtr, frameCtx.opaqueInstances.data(), opaqueInstanceBytes);
+		offset += opaqueInstanceBytes;
+
+		memcpy(mappedStagingPtr + offset, frameCtx.opaqueIndirectDraws.data(), opaqueIndirectBytes);
+
+		// Only advance offset if transparent section won't follow.
+		// If transparents are not visible, opaque is the last upload,
+		// so the offset needs a manual offset advance
+		if (!isTransparentVisible)
+			offset += opaqueIndirectBytes;
+	}
+	if (isTransparentVisible) {
+		memcpy(mappedStagingPtr + offset, frameCtx.transparentInstances.data(), transparentInstanceBytes);
+		offset += transparentInstanceBytes;
+
+		memcpy(mappedStagingPtr + offset, frameCtx.transparentIndirectDraws.data(), transparentIndirectBytes);
+	}
+
+
+	ASSERT(frameCtx.addressTableStaging.buffer != VK_NULL_HANDLE);
+	memcpy(frameCtx.addressTableStaging.info.pMappedData, &frameCtx.addressTable, sizeof(GPUAddressTable));
+
+	// Record big transfer copies for indirect, instance, and main frame address table buffers
+	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
+		size_t offset = 0;
+
+		if (isOpaqueVisible) {
+			// Opaque instance data
+			VkBufferCopy opaqueInstCpy{};
+			opaqueInstCpy.srcOffset = offset;
+			opaqueInstCpy.dstOffset = 0;
+			opaqueInstCpy.size = opaqueInstanceBytes;
+			vkCmdCopyBuffer(cmd,
+				frameCtx.combinedGPUStaging.buffer,
+				frameCtx.opaqueInstanceBuffer.buffer,
+				1,
+				&opaqueInstCpy);
+			offset += opaqueInstanceBytes;
+
+			// Opaque indirect draw commands
+			VkBufferCopy opaqueIndirectCpy{};
+			opaqueIndirectCpy.srcOffset = offset;
+			opaqueIndirectCpy.dstOffset = 0;
+			opaqueIndirectCpy.size = opaqueIndirectBytes;
+			vkCmdCopyBuffer(cmd,
+				frameCtx.combinedGPUStaging.buffer,
+				frameCtx.opaqueIndirectCmdBuffer.buffer,
+				1,
+				&opaqueIndirectCpy);
+
+			if (!isTransparentVisible)
+				offset += opaqueIndirectBytes;
+		}
+
+		if (isTransparentVisible) {
+			// Transparent instances
+			VkBufferCopy transparentInstCpy{};
+			transparentInstCpy.srcOffset = offset;
+			transparentInstCpy.dstOffset = 0;
+			transparentInstCpy.size = transparentInstanceBytes;
+			vkCmdCopyBuffer(cmd,
+				frameCtx.combinedGPUStaging.buffer,
+				frameCtx.transparentInstanceBuffer.buffer,
+				1,
+				&transparentInstCpy);
+			offset += transparentInstanceBytes;
+
+			// Transparent indirect draw commands
+			VkBufferCopy transparentIndirectCpy{};
+			transparentIndirectCpy.srcOffset = offset;
+			transparentIndirectCpy.dstOffset = 0;
+			transparentIndirectCpy.size = transparentIndirectBytes;
+			vkCmdCopyBuffer(cmd,
+				frameCtx.combinedGPUStaging.buffer,
+				frameCtx.transparentIndirectCmdBuffer.buffer,
+				1,
+				&transparentIndirectCpy);
+		}
+
+		// GPU address table copy
+		VkBufferCopy addressCpy{};
+		addressCpy.srcOffset = 0;
+		addressCpy.dstOffset = 0;
+		addressCpy.size = sizeof(GPUAddressTable);
+		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
+		frameCtx.addressTableDirty = true;
+
+		if (GPU_ACCELERATION_ENABLED) {
+			// GPU draw building next
+			// compute must wait for transfer to complete
+			VkMemoryBarrier2 memoryBarrier{
+				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+				.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+				.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+				.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+			};
+			VkDependencyInfo dependencyInfo{
+				.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+				.memoryBarrierCount = 1,
+				.pMemoryBarriers = &memoryBarrier,
+			};
+			vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+		}
+
+	}, frameCtx.transferPool, QueueType::Transfer);
+
+	frameCtx.transferCmds = DeferredCmdSubmitQueue::collectTransfer();
+
+	auto& transferSync = Renderer::_transferSync;
+	if (transferQueue.wasUsed) {
+		transferQueue.submitWithTimelineSync(
+			frameCtx.transferCmds,
+			transferSync.semaphore,
+			transferSync.signalValue,
+			transferSync.semaphore,
+			frameCtx.transferWaitValue
+		);
+		transferQueue.wasUsed = false;
+	}
+	else {
+		if (GPU_ACCELERATION_ENABLED) {
+			transferQueue.submitWithTimelineSync(
+				frameCtx.transferCmds,
+				transferSync.semaphore,
+				transferSync.signalValue,
+				Renderer::_computeSync.semaphore,
+				frameCtx.computeWaitValue
+			);
+		}
+		else {
+			transferQueue.submitWithTimelineSync(
+				frameCtx.transferCmds,
+				transferSync.semaphore,
+				transferSync.signalValue
+			);
+		}
+	}
+	frameCtx.transferWaitValue = transferSync.signalValue++;
+
+	std::vector<AllocatedBuffer> usedGPUBuffers;
+	if (isOpaqueVisible) {
+		auto opaqueInstBufCpy = frameCtx.opaqueInstanceBuffer;
+		auto opaqueIndirectBufCpy = frameCtx.opaqueIndirectCmdBuffer;
+		usedGPUBuffers.emplace_back(std::move(opaqueInstBufCpy));
+		usedGPUBuffers.emplace_back(std::move(opaqueIndirectBufCpy));
+	}
+	if (isTransparentVisible) {
+		auto transparentInstBufCpy = frameCtx.transparentInstanceBuffer;
+		auto transparentIndirecBufCpy = frameCtx.transparentIndirectCmdBuffer;
+		usedGPUBuffers.emplace_back(std::move(transparentInstBufCpy));
+		usedGPUBuffers.emplace_back(std::move(transparentIndirecBufCpy));
+	}
+
+	frameCtx.transferDeletion.enqueue(frameCtx.transferWaitValue, [usedGPUBuffers, allocator]() mutable {
+		for (auto& buffer : usedGPUBuffers) {
+			BufferUtils::destroyBuffer(buffer, allocator);
+		}
+	});
+}
+
+
 
 void DrawPreperation::meshDataAndTransformsListUpload(
 	FrameContext& frameCtx,
@@ -308,7 +474,7 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 		addressCpy.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
 
-	}, frameCtx.transferPool, QueueType::Transfer);
+		}, frameCtx.transferPool, QueueType::Transfer);
 
 	frameCtx.transferCmds = DeferredCmdSubmitQueue::collectTransfer();
 
@@ -324,205 +490,5 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 
 	frameCtx.cpuDeletion.push_function([gpuStaging, allocator]() mutable {
 		BufferUtils::destroyBuffer(gpuStaging, allocator);
-	});
-}
-
-void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
-	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE && "[DrawPreperation] combinedGPUstaging buffer is invalid.");
-
-	bool isOpaqueVisible = false;
-	bool isTransparentVisible = false;
-
-	if (frameCtx.opaqueVisibleCount > 0)
-		isOpaqueVisible = true;
-	if (frameCtx.transparentVisibleCount > 0)
-		isTransparentVisible = true;
-
-
-	// Create GPU buffers
-	if (isOpaqueVisible) {
-		frameCtx.opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::OpaqueIntances, frameCtx.addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
-
-		frameCtx.opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::OpaqueIndirectDraws, frameCtx.addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
-	}
-
-	if (isTransparentVisible) {
-		frameCtx.transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::TransparentInstances, frameCtx.addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
-
-		frameCtx.transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::TransparentIndirectDraws, frameCtx.addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
-	}
-
-	const size_t opaqueInstanceBytes = frameCtx.opaqueInstances.size() * sizeof(GPUInstance);
-	const size_t opaqueIndirectBytes = frameCtx.opaqueIndirectDraws.size() * sizeof(IndirectDrawCmd);
-	const size_t transparentInstanceBytes = frameCtx.transparentInstances.size() * sizeof(GPUInstance);
-	const size_t transparentIndirectBytes = frameCtx.transparentIndirectDraws.size() * sizeof(IndirectDrawCmd);
-
-
-	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
-	size_t offset = 0;
-	// Must be in this exact order Opaque->Transparent in memory offsetting
-	if (isOpaqueVisible) {
-		memcpy(mappedStagingPtr, frameCtx.opaqueInstances.data(), opaqueInstanceBytes);
-		offset += opaqueInstanceBytes;
-
-		memcpy(mappedStagingPtr + offset, frameCtx.opaqueIndirectDraws.data(), opaqueIndirectBytes);
-
-		// Only advance offset if transparent section won't follow.
-		// If transparents are not visible, opaque is the last upload,
-		// so the offset needs a manual offset advance
-		if (!isTransparentVisible)
-			offset += opaqueIndirectBytes;
-	}
-	if (isTransparentVisible) {
-		memcpy(mappedStagingPtr + offset, frameCtx.transparentInstances.data(), transparentInstanceBytes);
-		offset += transparentInstanceBytes;
-
-		memcpy(mappedStagingPtr + offset, frameCtx.transparentIndirectDraws.data(), transparentIndirectBytes);
-	}
-
-
-	ASSERT(frameCtx.addressTableStaging.buffer != VK_NULL_HANDLE);
-	memcpy(frameCtx.addressTableStaging.info.pMappedData, &frameCtx.addressTable, sizeof(GPUAddressTable));
-
-	// Record big transfer copies for both indirect, instance, and main frame address table buffers
-	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		size_t offset = 0;
-
-		if (isOpaqueVisible) {
-			// Opaque instance data
-			VkBufferCopy opaqueInstCpy{};
-			opaqueInstCpy.srcOffset = offset;
-			opaqueInstCpy.dstOffset = 0;
-			opaqueInstCpy.size = opaqueInstanceBytes;
-			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.opaqueInstanceBuffer.buffer,
-				1,
-				&opaqueInstCpy);
-			offset += opaqueInstanceBytes;
-
-			// Opaque indirect draw commands
-			VkBufferCopy opaqueIndirectCpy{};
-			opaqueIndirectCpy.srcOffset = offset;
-			opaqueIndirectCpy.dstOffset = 0;
-			opaqueIndirectCpy.size = opaqueIndirectBytes;
-			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.opaqueIndirectCmdBuffer.buffer,
-				1,
-				&opaqueIndirectCpy);
-
-			if (!isTransparentVisible)
-				offset += opaqueIndirectBytes;
-		}
-
-		if (isTransparentVisible) {
-			// Transparent instances
-			VkBufferCopy transparentInstCpy{};
-			transparentInstCpy.srcOffset = offset;
-			transparentInstCpy.dstOffset = 0;
-			transparentInstCpy.size = transparentInstanceBytes;
-			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.transparentInstanceBuffer.buffer,
-				1,
-				&transparentInstCpy);
-			offset += transparentInstanceBytes;
-
-			// Transparent indirect draw commands
-			VkBufferCopy transparentIndirectCpy{};
-			transparentIndirectCpy.srcOffset = offset;
-			transparentIndirectCpy.dstOffset = 0;
-			transparentIndirectCpy.size = transparentIndirectBytes;
-			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.transparentIndirectCmdBuffer.buffer,
-				1,
-				&transparentIndirectCpy);
-		}
-
-		// GPU address table copy
-		VkBufferCopy addressCpy{};
-		addressCpy.srcOffset = 0;
-		addressCpy.dstOffset = 0;
-		addressCpy.size = sizeof(GPUAddressTable);
-		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
-		frameCtx.addressTableDirty = true;
-
-		if (GPU_ACCELERATION_ENABLED) {
-			// GPU draw building next
-			// compute must wait for transfer to complete
-			VkMemoryBarrier2 memoryBarrier{
-				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-				.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-				.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-				.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
-			};
-			VkDependencyInfo dependencyInfo{
-				.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-				.memoryBarrierCount = 1,
-				.pMemoryBarriers = &memoryBarrier,
-			};
-			vkCmdPipelineBarrier2(cmd, &dependencyInfo);
-		}
-
-	}, frameCtx.transferPool, QueueType::Transfer);
-
-	frameCtx.transferCmds = DeferredCmdSubmitQueue::collectTransfer();
-
-	auto& transferSync = Renderer::_transferSync;
-	if (transferQueue.wasUsed) {
-		transferQueue.submitWithTimelineSync(
-			frameCtx.transferCmds,
-			transferSync.semaphore,
-			transferSync.signalValue,
-			transferSync.semaphore,
-			frameCtx.transferWaitValue
-		);
-		transferQueue.wasUsed = false;
-	}
-	else {
-		if (GPU_ACCELERATION_ENABLED) {
-			transferQueue.submitWithTimelineSync(
-				frameCtx.transferCmds,
-				transferSync.semaphore,
-				transferSync.signalValue,
-				Renderer::_computeSync.semaphore,
-				frameCtx.computeWaitValue
-			);
-		}
-		else {
-			transferQueue.submitWithTimelineSync(
-				frameCtx.transferCmds,
-				transferSync.semaphore,
-				transferSync.signalValue
-			);
-		}
-	}
-	frameCtx.transferWaitValue = transferSync.signalValue++;
-
-	std::vector<AllocatedBuffer> usedGPUBuffers;
-	if (isOpaqueVisible) {
-		auto opaqueInstBufCpy = frameCtx.opaqueInstanceBuffer;
-		auto opaqueIndirectBufCpy = frameCtx.opaqueIndirectCmdBuffer;
-		usedGPUBuffers.emplace_back(std::move(opaqueInstBufCpy));
-		usedGPUBuffers.emplace_back(std::move(opaqueIndirectBufCpy));
-	}
-	if (isTransparentVisible) {
-		auto transparentInstBufCpy = frameCtx.transparentInstanceBuffer;
-		auto transparentIndirecBufCpy = frameCtx.transparentIndirectCmdBuffer;
-		usedGPUBuffers.emplace_back(std::move(transparentInstBufCpy));
-		usedGPUBuffers.emplace_back(std::move(transparentIndirecBufCpy));
-	}
-
-	frameCtx.transferDeletion.enqueue(frameCtx.transferWaitValue, [usedGPUBuffers, allocator]() mutable {
-		for (auto& buffer : usedGPUBuffers) {
-			BufferUtils::destroyBuffer(buffer, allocator);
-		}
 	});
 }
