@@ -13,8 +13,16 @@ namespace RendererUtils {
 	// Texture creation just defers the cmd work and buffer deletion
 	// Create texture just holds createrenderimage inside it and skipping the use of a deletion queue is designed only for asset loading
 	// since a loadedscene structure should own its resources
-	void createTextureImage(VkCommandPool cmdPool, void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
-		VkSampleCountFlagBits samples, DeletionQueue& imageQueue, DeletionQueue& bufferQueue, const VmaAllocator allocator, bool skipQueueUsage = false);
+	void createTextureImage(
+		VkCommandPool cmdPool,
+		void* data,
+		AllocatedImage& renderImage,
+		VkImageUsageFlags usage,
+		VkSampleCountFlagBits samples,
+		DeletionQueue& imageQueue,
+		DeletionQueue& bufferQueue,
+		const VmaAllocator allocator,
+		bool skipQueueUsage = false);
 	void createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
 		VkSampleCountFlagBits samples, DeletionQueue& queue, const VmaAllocator allocator, bool skipQueueUsage = false);
 

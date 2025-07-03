@@ -5,18 +5,14 @@
 #include "vulkan/Backend.h"
 #include "RenderScene.h"
 #include "SceneGraph.h"
-
 #include "utils/RendererUtils.h"
 #include "core/AssetManager.h"
-
 #include "gpu_types/PipelineManager.h"
 #include "gpu_types/CommandBuffer.h"
 
 #include "common/ResourceTypes.h"
 
 namespace Renderer {
-	std::array<VkImageView, 3> _renderImgViews;
-
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
 
@@ -26,23 +22,28 @@ namespace Renderer {
 
 void Renderer::initFrameContexts(
 	VkDevice device,
-	uint32_t graphicsIndex,
-	uint32_t transferIndex,
-	uint32_t computeIndex,
-	VkExtent2D drawExtent,
 	VkDescriptorSetLayout layout,
-	const VmaAllocator allocator)
+	const VmaAllocator allocator,
+	bool isAssetsLoaded)
 {
+	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
+	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
+	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
+
 	RendererUtils::createTimelineSemaphore(_transferSync);
 
-	if (GPU_ACCELERATION_ENABLED)
+	if (GPU_ACCELERATION_ENABLED) {
 		RendererUtils::createTimelineSemaphore(_computeSync);
+	}
 
-	const size_t totalGPUStagingSize =
-		OPAQUE_INSTANCE_SIZE_BYTES +
-		OPAQUE_INDIRECT_SIZE_BYTES +
-		TRANSPARENT_INSTANCE_SIZE_BYTES +
-		TRANSPARENT_INDIRECT_SIZE_BYTES;
+	size_t totalGPUStagingSize = 0;
+	if (isAssetsLoaded) {
+		totalGPUStagingSize =
+			OPAQUE_INSTANCE_SIZE_BYTES +
+			OPAQUE_INDIRECT_SIZE_BYTES +
+			TRANSPARENT_INSTANCE_SIZE_BYTES +
+			TRANSPARENT_INDIRECT_SIZE_BYTES;
+	}
 
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
 		auto& frame = _frameContexts[i];
@@ -68,24 +69,24 @@ void Renderer::initFrameContexts(
 			VMA_MEMORY_USAGE_GPU_ONLY,
 			allocator);
 
-		frame.addressTableStaging = BufferUtils::createBuffer(
-			sizeof(GPUAddressTable),
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-			allocator);
-		ASSERT(frame.addressTableStaging.info.pMappedData);
+		if (totalGPUStagingSize > 0) {
+			frame.addressTableStaging = BufferUtils::createBuffer(
+				sizeof(GPUAddressTable),
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+				allocator);
+			ASSERT(frame.addressTableStaging.info.pMappedData);
 
-		frame.combinedGPUStaging = BufferUtils::createBuffer(
-			totalGPUStagingSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-			allocator);
-		ASSERT(frame.combinedGPUStaging.info.pMappedData);
+			frame.combinedGPUStaging = BufferUtils::createBuffer(
+				totalGPUStagingSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+				allocator);
+			ASSERT(frame.combinedGPUStaging.info.pMappedData);
+		}
 
 		frame.frameIndex = i;
 	}
-
-	_drawExtent = { drawExtent.width, drawExtent.height, 1 };
 }
 
 void Renderer::prepareFrameContext(FrameContext& frameCtx) {
@@ -201,8 +202,8 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	VkSubmitInfo2 graphicsSubmitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
 	graphicsSubmitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
 	graphicsSubmitInfo.pWaitSemaphoreInfos = waitInfos.empty() ? nullptr : waitInfos.data();
-	graphicsSubmitInfo.signalSemaphoreInfoCount = signalRender.semaphore ? 1 : 0;
-	graphicsSubmitInfo.pSignalSemaphoreInfos = signalRender.semaphore ? &signalRender : nullptr;
+	graphicsSubmitInfo.signalSemaphoreInfoCount = signalRender.semaphore != VK_NULL_HANDLE ? 1 : 0;
+	graphicsSubmitInfo.pSignalSemaphoreInfos = signalRender.semaphore != VK_NULL_HANDLE ? &signalRender : nullptr;
 	graphicsSubmitInfo.commandBufferInfoCount = 1;
 	graphicsSubmitInfo.pCommandBufferInfos = &cmdInfo;
 
@@ -261,7 +262,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 	_drawExtent.width = static_cast<uint32_t>(std::min(swp.extent.width, draw.imageExtent.width));
 	_drawExtent.height = static_cast<uint32_t>(std::min(swp.extent.height, draw.imageExtent.height));
 
-	VkDescriptorSet sets[] = {
+	const VkDescriptorSet sets[2] = {
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
 		frameCtx.set
 	};
@@ -296,9 +297,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	_renderImgViews = { draw.imageView, msaa.imageView, depth.imageView };
-
-	geometryPass(_renderImgViews, frameCtx);
+	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx);
 
 	// Post process transition and copy
 	RendererUtils::transitionImage(frameCtx.commandBuffer,
@@ -377,11 +376,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 	VK_CHECK(vkEndCommandBuffer(frameCtx.commandBuffer));
 }
 
+// draw[0], msaa[1], depth[2]
 void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx) {
 	VkRenderingAttachmentInfo colorAttachment = {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
-		.imageView = !MSAA_ENABLED ? imageViews[0] : imageViews[1], // draw[0], msaa[1], depth[2]
+		.imageView = !MSAA_ENABLED ? imageViews[0] : imageViews[1],
 		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.resolveMode = !MSAA_ENABLED ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
 		.resolveImageView = !MSAA_ENABLED ? VK_NULL_HANDLE : imageViews[0],
@@ -488,29 +488,29 @@ void Renderer::cleanup() {
 			vkDestroyCommandPool(device, frame.computePool, nullptr);
 
 		if (frame.transformsListBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.transformsListBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.transformsListBuffer, allocator);
 
 		if (frame.stagingVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.stagingVisibleMeshIDsBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.stagingVisibleMeshIDsBuffer, allocator);
 
 		if (frame.stagingVisibleCountBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.stagingVisibleCountBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.stagingVisibleCountBuffer, allocator);
 
 		if (frame.gpuVisibleCountBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.gpuVisibleCountBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.gpuVisibleCountBuffer, allocator);
 
 		if (frame.gpuVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.gpuVisibleMeshIDsBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.gpuVisibleMeshIDsBuffer, allocator);
 
 		// address buffers last
 		if (frame.combinedGPUStaging.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.combinedGPUStaging, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.combinedGPUStaging, allocator);
 
 		if (frame.addressTableStaging.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.addressTableStaging, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.addressTableStaging, allocator);
 
 		if (frame.addressTableBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(frame.addressTableBuffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(frame.addressTableBuffer, allocator);
 	}
 
 	if (_transferSync.semaphore != VK_NULL_HANDLE)

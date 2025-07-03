@@ -17,20 +17,9 @@ struct FrameStats {
 	std::atomic<size_t> vramUsed = 0;
 
 	// V-sync is default present mode for now
+	// frame capping is fucking busted
 	bool capFramerate = false;
 	float targetFrameRate = 0.0f;
-
-	bool forcedReset = false;
-	inline void resetFrameData() {
-		drawCalls.store(0);
-		triangleCount.store(0);
-		deltaTime.store(0.0f);
-		frameTime.store(0.0f);
-		fps.store(0.0f);
-		sceneUpdateTime.store(0.0f);
-		drawTime.store(0.0f);
-		forcedReset = true;
-	}
 };
 struct PipelineOverride {
 	bool enabled = false;
@@ -59,13 +48,32 @@ public:
 		return static_cast<float>(elapsed.count()) / 1000000.0f;;
 	}
 
+	bool assetsLoaded = false;
+
 	FrameStats& getStats() { return _stats; }
 
-	void resetDrawCalls() { _stats.drawCalls = 0; }
-	void resetTriangleCount() { _stats.triangleCount = 0; }
+	void resetDrawCalls() {
+		_stats.drawCalls.store(0);
+		_stats.triangleCount.store(0);
+	}
+
 	void addDrawCall(uint32_t tris) {
 		_stats.drawCalls++;
 		_stats.triangleCount += tris;
+	}
+
+	// For long stalls
+	// grabbing window stops rendering which will need this to reset
+	//void resetFrameTimer() {
+	//	_frameStart = std::chrono::system_clock::now();
+	//	_stats.deltaTime.store(0);
+	//}
+
+	void resetRenderTimers() {
+		_stats.drawTime.store(0);
+		_stats.sceneUpdateTime.store(0);
+		_stats.frameTime.store(0);
+		_stats.fps.store(0);
 	}
 
 	glm::vec3 cameraPos{};
@@ -82,7 +90,7 @@ public:
 private:
 	FrameStats _stats{ .targetFrameRate = TARGET_FRAME_RATE_120 };
 
-	std::chrono::time_point<std::chrono::system_clock> _frameStart{};
+	std::chrono::time_point<std::chrono::system_clock> _frameStart;
 
 	std::chrono::time_point<std::chrono::system_clock> _startTimer;
 };

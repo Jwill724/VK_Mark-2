@@ -16,23 +16,27 @@ void DrawPreperation::buildAndSortIndirectDraws(
 
 	for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
 		const GPUInstance& inst = frameCtx.opaqueInstances[i];
-		const OpaqueBatchKey key { inst.meshID, inst.materialIndex };
+		const OpaqueBatchKey key{ inst.meshID, inst.materialIndex };
 		opaqueBatches[key].push_back(i);
 	}
 
-	frameCtx.opaqueIndirectDraws.clear();
 	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
-	frameCtx.opaqueVisibleCount = 0;
 
+	uint32_t batchIndex = 0;
 	for (const auto& [key, instanceIndices] : opaqueBatches) {
 		const GPUMeshData& mesh = meshes[key.meshID];
 
 		if (mesh.drawRangeIndex >= drawRanges.size()) {
-			fmt::print("WARNING: Opaque batch skipped — drawRangeIndex={} out of bounds\n", mesh.drawRangeIndex);
+			fmt::print("WARNING: [Opaque] Skipped batch {} - meshID={} drawRangeIndex={} (out of bounds)\n",
+				batchIndex, key.meshID, mesh.drawRangeIndex);
 			continue;
 		}
 
 		const auto& range = drawRanges[mesh.drawRangeIndex];
+
+		//fmt::print("[Opaque Batch {}] meshID={} materialIndex={} drawRangeIndex={} -> indexCount={}, vertexOffset={}, firstIndex={}, instanceCount={}\n",
+		//	batchIndex, key.meshID, key.materialIndex, mesh.drawRangeIndex,
+		//	range.indexCount, range.vertexOffset, range.firstIndex, instanceIndices.size());
 
 		VkDrawIndexedIndirectCommand cmd = {
 			.indexCount = range.indexCount,
@@ -42,16 +46,19 @@ void DrawPreperation::buildAndSortIndirectDraws(
 			.firstInstance = frameCtx.opaqueVisibleCount
 		};
 
+		//fmt::print("  -> Cmd: idxCount={}, instCount={}, firstIdx={}, vertOff={}, firstInst={}\n",
+		//	cmd.indexCount, cmd.instanceCount, cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance);
+
 		frameCtx.opaqueIndirectDraws.emplace_back(cmd);
 		frameCtx.opaqueVisibleCount += cmd.instanceCount;
+		++batchIndex;
 	}
 
 	// === SORT & DRAW TRANSPARENT ===
-	frameCtx.transparentIndirectDraws.clear();
-	frameCtx.transparentIndirectDraws.reserve(frameCtx.transparentInstances.size());
-	frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
-
 	if (!frameCtx.transparentInstances.empty()) {
+		frameCtx.transparentIndirectDraws.reserve(frameCtx.transparentInstances.size());
+		frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
+
 		glm::vec3 camPos = glm::vec3(RenderScene::getCurrentSceneData().cameraPosition);
 
 		std::sort(frameCtx.transparentInstances.begin(), frameCtx.transparentInstances.end(),
@@ -66,11 +73,15 @@ void DrawPreperation::buildAndSortIndirectDraws(
 			const GPUMeshData& mesh = meshes[inst.meshID];
 
 			if (mesh.drawRangeIndex >= drawRanges.size()) {
-				fmt::print("WARNING: Transparent drawRangeIndex={} out of bounds\n", mesh.drawRangeIndex);
+				fmt::print("WARNING: [Transparent] Skipped instance {} - meshID={} drawRangeIndex={} (out of bounds)\n",
+					i, inst.meshID, mesh.drawRangeIndex);
 				continue;
 			}
 
 			const auto& range = drawRanges[mesh.drawRangeIndex];
+
+			fmt::print("[Transparent Instance {}] meshID={} -> drawRangeIndex={} -> indexCount={}, vertexOffset={}, firstIndex={}\n",
+				i, inst.meshID, mesh.drawRangeIndex, range.indexCount, range.vertexOffset, range.firstIndex);
 
 			VkDrawIndexedIndirectCommand cmd = {
 				.indexCount = range.indexCount,
@@ -80,13 +91,16 @@ void DrawPreperation::buildAndSortIndirectDraws(
 				.firstInstance = i
 			};
 
+			fmt::print("  -> Cmd: idxCount={}, instCount={}, firstIdx={}, vertOff={}, firstInst={}\n",
+				cmd.indexCount, cmd.instanceCount, cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance);
+
 			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}
 	}
 
-	fmt::print("Opaque batches: {}, total instances: {}\n",
-		frameCtx.opaqueIndirectDraws.size(), frameCtx.opaqueVisibleCount);
-	fmt::print("Transparent instances: {}\n", frameCtx.transparentVisibleCount);
+	//fmt::print("[DrawPrep] Opaque batches: {}, total instances: {}\n",
+	//	frameCtx.opaqueIndirectDraws.size(), frameCtx.opaqueVisibleCount);
+	//fmt::print("[DrawPrep] Transparent instances: {}\n", frameCtx.transparentVisibleCount);
 }
 
 
@@ -102,7 +116,6 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	if (frameCtx.transparentVisibleCount > 0)
 		isTransparentVisible = true;
 
-	// Create GPU buffers
 	if (isOpaqueVisible) {
 		frameCtx.opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
 			AddressBufferType::OpaqueIntances, frameCtx.addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
@@ -132,14 +145,15 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 		offset += opaqueInstanceBytes;
 
 		memcpy(mappedStagingPtr + offset, frameCtx.opaqueIndirectDraws.data(), opaqueIndirectBytes);
-
-		// Only advance offset if transparent section won't follow.
-		// If transparents are not visible, opaque is the last upload,
-		// so the offset needs a manual offset advance
-		if (!isTransparentVisible)
-			offset += opaqueIndirectBytes;
 	}
+	// Only advance offset if transparent section won't follow.
+	// If transparents are not visible, opaque is the last upload,
+	// so the offset needs a manual offset advance
 	if (isTransparentVisible) {
+		if (isOpaqueVisible) {
+			offset += opaqueIndirectBytes;
+		}
+
 		memcpy(mappedStagingPtr + offset, frameCtx.transparentInstances.data(), transparentInstanceBytes);
 		offset += transparentInstanceBytes;
 
@@ -177,12 +191,13 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 				frameCtx.opaqueIndirectCmdBuffer.buffer,
 				1,
 				&opaqueIndirectCpy);
-
-			if (!isTransparentVisible)
-				offset += opaqueIndirectBytes;
 		}
 
 		if (isTransparentVisible) {
+			if (isOpaqueVisible) {
+				offset += opaqueIndirectBytes;
+			}
+
 			// Transparent instances
 			VkBufferCopy transparentInstCpy{};
 			transparentInstCpy.srcOffset = offset;
@@ -209,8 +224,6 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 
 		// GPU address table copy
 		VkBufferCopy addressCpy{};
-		addressCpy.srcOffset = 0;
-		addressCpy.dstOffset = 0;
 		addressCpy.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
 		frameCtx.addressTableDirty = true;
@@ -284,7 +297,7 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 
 	frameCtx.transferDeletion.enqueue(frameCtx.transferWaitValue, [usedGPUBuffers, allocator]() mutable {
 		for (auto& buffer : usedGPUBuffers) {
-			BufferUtils::destroyBuffer(buffer, allocator);
+			BufferUtils::destroyAllocatedBuffer(buffer, allocator);
 		}
 	});
 }
@@ -469,10 +482,9 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 		}
 
 		VkBufferCopy addressCpy{};
-		addressCpy.srcOffset = 0;
-		addressCpy.dstOffset = 0;
 		addressCpy.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
+		frameCtx.addressTableDirty = true;
 
 		}, frameCtx.transferPool, QueueType::Transfer);
 
@@ -488,7 +500,7 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 		true);
 	frameCtx.transferWaitValue = sync.signalValue++;
 
-	frameCtx.cpuDeletion.push_function([gpuStaging, allocator]() mutable {
-		BufferUtils::destroyBuffer(gpuStaging, allocator);
+	frameCtx.cpuDeletion.push_function([&gpuStaging, allocator]() mutable {
+		BufferUtils::destroyAllocatedBuffer(gpuStaging, allocator);
 	});
 }

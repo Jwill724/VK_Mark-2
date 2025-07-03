@@ -162,7 +162,6 @@ struct MeshRegistry {
 		return ids;
 	}
 
-
 	inline MeshID registerMesh(const GPUMeshData& data) {
 		MeshID id = static_cast<MeshID>(meshData.size());
 		ASSERT(id != std::numeric_limits<MeshID>::max() && "MeshRegistry: MeshID overflow!");
@@ -195,7 +194,6 @@ struct DescriptorsCentral {
 };
 
 
-struct RenderInstance;
 struct GPUInstance;
 
 // ====== Interface ======

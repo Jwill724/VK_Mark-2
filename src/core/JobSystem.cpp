@@ -35,7 +35,7 @@ private:
 
 void JobSystem::initScheduler() {
 	enki::TaskSchedulerConfig config;
-	config.numTaskThreadsToCreate = std::thread::hardware_concurrency() - 1;
+	config.numTaskThreadsToCreate = std::thread::hardware_concurrency() - 1; // Need one thread for main
 	scheduler.Initialize(config);
 
 	const uint32_t numEnkiThreads = scheduler.GetNumTaskThreads();

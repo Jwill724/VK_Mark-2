@@ -51,8 +51,8 @@ void Camera::processInput(GLFWwindow* window, const float deltaTime) {
 	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld;
 
 
-	if (glm::length(horiz) > 0.f) horiz = glm::normalize(horiz);
-	if (glm::length(vert) > 0.f) vert = glm::normalize(vert);
+	if (glm::length(horiz) > 0.0f) horiz = glm::normalize(horiz);
+	if (glm::length(vert) > 0.0f) vert = glm::normalize(vert);
 
 	// scale speed on whole axis while frame independent
 	float speedBoost = 125.0f * deltaTime;

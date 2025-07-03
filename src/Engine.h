@@ -2,7 +2,6 @@
 
 #include "vulkan/Window.h"
 #include "core/EngineState.h"
-#include "profiler/Profiler.h"
 
 namespace Engine {
 	EngineState& getState();

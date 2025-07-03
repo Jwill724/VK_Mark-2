@@ -9,14 +9,18 @@
 #include <filesystem>
 #include "fmt/base.h"
 #include "vulkan/Backend.h"
+#include "profiler/Profiler.h"
+
+class Profiler;
 
 // Engine big brain
 // Has direct control of resources and job system
 struct EngineState {
 public:
 	void init();
-	void loadAssets();
-	void renderFrame();
+	void loadAssets(Profiler& engineProfiler);
+	void initRenderer(Profiler& engineProfiler);
+	void renderFrame(Profiler& engineProfiler);
 	void shutdown();
 
 	std::filesystem::path getBasePath() const { return _basePath; }

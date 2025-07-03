@@ -56,15 +56,23 @@ VkFence RendererUtils::createFence() {
 
 // TODO: When I get a better image loading library I'll rework this to be able to create large staging buffers for many textures into a single cmd
 
-void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, AllocatedImage& renderImage, VkImageUsageFlags usage,
-	VkSampleCountFlagBits samples, DeletionQueue& imageQueue, DeletionQueue& bufferQueue, const VmaAllocator allocator, bool skipQueueUsage) {
-
+void RendererUtils::createTextureImage(
+	VkCommandPool cmdPool,
+	void* data,
+	AllocatedImage& renderImage,
+	VkImageUsageFlags usage,
+	VkSampleCountFlagBits samples,
+	DeletionQueue& imageQueue,
+	DeletionQueue& bufferQueue,
+	const VmaAllocator allocator,
+	bool skipQueueUsage)
+{
 	size_t pixelBytes = getPixelSize(renderImage.imageFormat);
 
 	size_t dataSize = static_cast<size_t>(renderImage.imageExtent.width) * renderImage.imageExtent.height * pixelBytes;
 
-	AllocatedBuffer uploadbuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
-	memcpy(uploadbuffer.info.pMappedData, data, dataSize);
+	AllocatedBuffer uploadBuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
+	memcpy(uploadBuffer.info.pMappedData, data, dataSize);
 
 	createRenderImage(renderImage, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
 		samples, imageQueue, allocator, skipQueueUsage);
@@ -88,7 +96,7 @@ void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, Alloca
 		copyRegion.imageExtent = renderImage.imageExtent;
 
 		vkCmdCopyBufferToImage(cmd,
-			uploadbuffer.buffer,
+			uploadBuffer.buffer,
 			renderImage.image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1,
@@ -107,10 +115,11 @@ void RendererUtils::createTextureImage(VkCommandPool cmdPool, void* data, Alloca
 		}
 	}, cmdPool, QueueType::Graphics);
 
-	auto buffer = uploadbuffer;
+	auto buffer = uploadBuffer.buffer;
+	auto bufAlloc = uploadBuffer.allocation;
 	auto alloc = allocator;
-	bufferQueue.push_function([buffer, alloc] {
-		BufferUtils::destroyBuffer(buffer, alloc);
+	bufferQueue.push_function([buffer, bufAlloc, alloc] {
+		BufferUtils::destroyBuffer(buffer, bufAlloc, alloc);
 	});
 }
 

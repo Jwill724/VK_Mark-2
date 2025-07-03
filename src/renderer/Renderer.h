@@ -46,7 +46,7 @@ struct FrameContext {
 	std::vector<VkDrawIndexedIndirectCommand> transparentIndirectDraws;
 	AllocatedBuffer transparentIndirectCmdBuffer;
 
-	void clearInstanceBuffers() {
+	void clearInstanceAndIndirectData() {
 		opaqueInstances.clear();
 		opaqueIndirectDraws.clear();
 		transparentInstances.clear();
@@ -80,7 +80,7 @@ struct FrameContext {
 
 	// Descriptor use
 	GPUAddressTable addressTable;
-	std::atomic<bool> addressTableDirty = false;
+	std::atomic<bool> addressTableDirty = false; // Always set to true when frame address table is updated
 	AllocatedBuffer addressTableBuffer;
 	AllocatedBuffer addressTableStaging;
 
@@ -121,12 +121,9 @@ namespace Renderer {
 
 	void initFrameContexts(
 		VkDevice device,
-		uint32_t graphicsIndex,
-		uint32_t transferIndex,
-		uint32_t computeIndex,
-		VkExtent2D drawExtent,
 		VkDescriptorSetLayout layout,
-		const VmaAllocator allocator);
+		const VmaAllocator allocator,
+		bool isAssetsLoaded = false);
 
 	void recordRenderCommand(FrameContext& frameCtx);
 	void prepareFrameContext(FrameContext& frameCtx);

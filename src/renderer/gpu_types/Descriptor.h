@@ -5,7 +5,7 @@
 
 struct PoolSizeRatio {
 	VkDescriptorType type;
-	float ratio = 0.f;
+	float ratio = 0.0f;
 };
 
 struct PendingWrite {
@@ -18,10 +18,12 @@ struct PendingWrite {
 
 struct DescriptorWriter {
 	std::vector<VkDescriptorImageInfo> imageInfos;
+	std::vector<VkWriteDescriptorSet> imageWrites;
+	std::vector<PendingWrite> pendingImageWrites;
+
 	std::vector<VkDescriptorBufferInfo> bufferInfos;
 	std::vector<VkWriteDescriptorSet> bufferWrites;
 	std::vector<size_t> writeBufferIndices;
-	std::vector<PendingWrite> pendingImageWrites;
 
 	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table, VkDescriptorSet descriptorSet);
 
