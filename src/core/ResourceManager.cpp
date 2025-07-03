@@ -10,8 +10,7 @@
 #include "common/EngineConstants.h"
 #include "renderer/gpu_types/CommandBuffer.h"
 
-void GPUResources::init() {
-	auto device = Backend::getDevice();
+void GPUResources::init(VkDevice device) {
 	allocator = VulkanUtils::createAllocator(Backend::getPhysicalDevice(), device, Backend::getInstance());
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
 	transferPool = CommandBuffer::createCommandPool(device, Backend::getTransferQueue().familyIndex);
@@ -22,21 +21,17 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 	std::scoped_lock lock(addressTableMutex);
 
 	// Early out if not forced and no changes detected
-	if (!force && !addressTableDirty)
-		return;
+	if (!force && !addressTableDirty) return;
 
 	if (addressTableStagingBuffer.buffer == VK_NULL_HANDLE) {
 		addressTableStagingBuffer = BufferUtils::createBuffer(
 			sizeof(GPUAddressTable),
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_CPU_ONLY,
+			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 			allocator
 		);
 		ASSERT(addressTableStagingBuffer.info.pMappedData);
 	}
-	//else {
-	//	fmt::print("[GPUResources] Reusing address table staging buffer\n");
-	//}
 
 	// Copy latest address data into mapped buffer
 	memcpy(addressTableStagingBuffer.info.pMappedData, &gpuAddresses, sizeof(GPUAddressTable));
@@ -55,20 +50,20 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 void GPUResources::cleanup(VkDevice device) {
 	for (auto& [name, buf] : gpuBuffers) {
 		if (buf.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyBuffer(buf, allocator);
+			BufferUtils::destroyAllocatedBuffer(buf, allocator);
 	}
 
 	if (registeredMeshes.meshIDBuffer.buffer != VK_NULL_HANDLE)
-		BufferUtils::destroyBuffer(registeredMeshes.meshIDBuffer, allocator);
+		BufferUtils::destroyAllocatedBuffer(registeredMeshes.meshIDBuffer, allocator);
 
 	if (envMapSetUBO.buffer != VK_NULL_HANDLE)
-		BufferUtils::destroyBuffer(envMapSetUBO, allocator);
+		BufferUtils::destroyAllocatedBuffer(envMapSetUBO, allocator);
 
 	if (addressTableStagingBuffer.buffer != VK_NULL_HANDLE)
-		BufferUtils::destroyBuffer(addressTableStagingBuffer, allocator);
+		BufferUtils::destroyAllocatedBuffer(addressTableStagingBuffer, allocator);
 
 	if (addressTableBuffer.buffer != VK_NULL_HANDLE)
-		BufferUtils::destroyBuffer(addressTableBuffer, allocator);
+		BufferUtils::destroyAllocatedBuffer(addressTableBuffer, allocator);
 
 	if (graphicsPool != VK_NULL_HANDLE)
 		vkDestroyCommandPool(device, graphicsPool, nullptr);
@@ -92,16 +87,16 @@ void GPUResources::tryClearAddressBuffer(AddressBufferType type) {
 	auto it = gpuBuffers.find(type);
 	if (it == gpuBuffers.end()) return;
 
-	BufferUtils::destroyBuffer(it->second, allocator);
+	BufferUtils::destroyAllocatedBuffer(it->second, allocator);
 	gpuBuffers.erase(it);
 }
 
 uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
+	std::scoped_lock lock(combinedMutex);
+
 	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushCombined");
 
 	ImageViewSamplerKey key = makeKey(view, sampler);
-
-	std::scoped_lock lock(combinedMutex);
 
 	auto it = combinedViewHashToID.find(key);
 	if (it != combinedViewHashToID.end())
@@ -124,11 +119,11 @@ uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
 }
 
 uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
+	std::scoped_lock lock(samplerCubeMutex);
+
 	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushSamplerCube");
 
 	ImageViewSamplerKey key = makeKey(view, sampler);
-
-	std::scoped_lock lock(samplerCubeMutex);
 
 	auto it = samplerCubeViewHashToID.find(key);
 	if (it != samplerCubeViewHashToID.end())
@@ -151,13 +146,9 @@ uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
 }
 
 uint32_t ImageTable::pushStorage(VkImageView view) {
-	if (view == VK_NULL_HANDLE) {
-		fmt::print("[ImageTable::pushStorage] ERROR: Invalid handle - view={}\n",
-			(void*)view);
-		ASSERT(true && "Null VkImageView in pushStorage");
-	}
-
 	std::scoped_lock lock(storageMutex);
+
+	ASSERT(view != VK_NULL_HANDLE && "Null handle in pushStorage");
 
 	size_t hash = std::hash<std::uintptr_t>{}(reinterpret_cast<std::uintptr_t>(view));
 
@@ -252,7 +243,6 @@ namespace ResourceManager {
 }
 
 void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator) {
-
 	auto extent = Renderer::getDrawExtent();
 
 	_drawImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
@@ -401,7 +391,12 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 }
 
 // TEXTURES
-void ResourceManager::initTextures(VkCommandPool cmdPool, DeletionQueue& imageQueue, DeletionQueue& bufferQueue, const VmaAllocator allocator) {
+void ResourceManager::initTextures(
+	VkCommandPool cmdPool,
+	DeletionQueue& imageQueue,
+	DeletionQueue& bufferQueue,
+	const VmaAllocator allocator)
+{
 	// reuse for now
 	VkExtent3D texExtent = { 1, 1, 1 };
 

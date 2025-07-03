@@ -60,36 +60,22 @@ void Engine::run() {
 	getState().init();
 	_isInitialized = true;
 
-	getState().loadAssets();
-
-	// frame capping is fucking busted
-	_engineProfiler.getStats().capFramerate = false;
+	getState().loadAssets(_engineProfiler);
+	getState().initRenderer(_engineProfiler);
 
 	while (WindowIsOpen(_window->window)) {
-		//if (EngineStages::IsSet(ENGINE_STAGE_SHUTDOWN)) break;
-
-		_engineProfiler.updateDeltaTime(_lastFrameTime);
-
-		_engineProfiler.beginFrame();
-
 		glfwPollEvents();
 
-		//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
-		//EngineStages::Clear(static_cast<EngineStage>(EngineStages::renderFrameFlags));
+		if (_window->throttleIfWindowUnfocused(33)) continue;
 
-		//EngineStages::SetGoal(ENGINE_STAGE_READY);
+		_engineProfiler.updateDeltaTime(_lastFrameTime);
+		_engineProfiler.beginFrame();
 
-		getState().renderFrame();
+		getState().renderFrame(_engineProfiler);
 
 		_engineProfiler.endFrame();
 	}
 	JobSystem::wait();
-
-	//EngineStages::WaitUntil(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
-
-	//if (!EngineStages::IsSet(ENGINE_STAGE_SHUTDOWN)) {
-	//	EngineStages::SetGoal(ENGINE_STAGE_SHUTDOWN);
-	//}
 
 	cleanup();
 }

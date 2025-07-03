@@ -417,6 +417,7 @@ void DescriptorWriter::writeImages(int binding, const std::vector<VkDescriptorIm
 
 void DescriptorWriter::clear() {
 	imageInfos.clear();
+	imageWrites.clear();
 	pendingImageWrites.clear();
 	bufferWrites.clear();
 	writeBufferIndices.clear();
@@ -426,7 +427,6 @@ void DescriptorWriter::clear() {
 void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	if (!pendingImageWrites.empty()) {
 		//fmt::print("Size of total image writes: {}\n", pendingImageWrites.size());
-		std::vector<VkWriteDescriptorSet> imageWrites;
 		for (const auto& pw : pendingImageWrites) {
 			ASSERT(pw.startIndex + pw.count <= imageInfos.size());
 			imageWrites.push_back({

@@ -13,7 +13,7 @@ public:
 	VkCommandPool& getTransferPool() { return transferPool; }
 	VkCommandPool& getComputePool() { return computePool; }
 	VkFence& getLastSubmittedFence() { return lastSubmittedFence; }
-	void init();
+	void init(VkDevice device);
 
 	GPUAddressTable& getAddressTable() { return gpuAddresses; }
 	AllocatedBuffer& getAddressTableBuffer() { return addressTableBuffer; }

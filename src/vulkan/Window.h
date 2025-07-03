@@ -9,6 +9,8 @@ struct Window {
 
 	void updateWindowSize() const;
 
+	bool throttleIfWindowUnfocused(int sleepMs) const;
+
 	void initWindow(const uint32_t width, const uint32_t height);
 	void cleanupWindow() const;
 };

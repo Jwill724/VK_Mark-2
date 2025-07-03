@@ -30,7 +30,7 @@ namespace RenderScene {
 
 	// Only wanna extract a new frustum if viewproj changes
 	glm::mat4 _lastViewProj;
-	bool _isFirstViewProj = false;
+	bool _isFirstViewProj = true;
 
 	Frustum _currentFrustum;
 }
@@ -75,11 +75,11 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	updateCamera();
 
 	// first frustum extracted to start chain of reuse
-	if (!_isFirstViewProj) {
+	if (_isFirstViewProj) {
 		_lastViewProj = _sceneData.viewproj;
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
 		uploadFrustumToFrame(frameCtx.cullingPCData);
-		_isFirstViewProj = true;
+		_isFirstViewProj = false;
 	}
 
 	if (_sceneData.viewproj != _lastViewProj) {
@@ -167,7 +167,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		}
 		else {
 			_currentSceneMeshIDs = meshes.extractAllMeshIDs();
-			fmt::print("mesh id sizes: {}", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
+			fmt::print("mesh id sizes: {}\n", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
 
 			frameCtx.meshDataSet = true;
 		}
@@ -237,31 +237,20 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		}
 	}
 
-	frameCtx.clearInstanceBuffers();
+	frameCtx.clearInstanceAndIndirectData();
 
-	if (frameCtx.visibleMeshIDs.empty()) return;
+	if (frameCtx.visibleCount > 0) {
+		// Using the visible meshIds in culling, find all instances and define obj data
+		updateVisiblesObjects(frameCtx);
+		ASSERT(
+			frameCtx.opaqueInstances.size() + frameCtx.transparentInstances.size() <= frameCtx.visibleCount &&
+			"Instance list size exceeds visible mesh count!"
+		);
 
-	// Using the visible meshIds in culling, find all instances and define obj data
-	updateVisiblesObjects(frameCtx);
-	ASSERT(
-		frameCtx.opaqueInstances.size() + frameCtx.transparentInstances.size() <= frameCtx.visibleCount &&
-		"Instance list size exceeds visible mesh count!"
-	);
+		DrawPreperation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
 
-	// Apply instance indices in draws with visiblecounts for each pass type
-	if (!frameCtx.opaqueInstances.empty()) {
-		frameCtx.opaqueIndirectDraws.resize(frameCtx.opaqueInstances.size());
-		frameCtx.opaqueVisibleCount = static_cast<uint32_t>(frameCtx.opaqueInstances.size());
+		DrawPreperation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
 	}
-
-	if (!frameCtx.transparentInstances.empty()) {
-		frameCtx.transparentIndirectDraws.resize(frameCtx.transparentInstances.size());
-		frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
-	}
-
-	DrawPreperation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
-
-	DrawPreperation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
 	// This ssbo write is for building the draws, the next will occur for actual drawing
@@ -368,9 +357,8 @@ void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator
 	ASSERT(frameCtx.sceneDataBuffer.buffer != VK_NULL_HANDLE);
 	ASSERT(frameCtx.sceneDataBuffer.mapped != nullptr);
 
-	auto sceneBuf = frameCtx.sceneDataBuffer;
-	frameCtx.cpuDeletion.push_function([sceneBuf, allocator]() mutable {
-		BufferUtils::destroyBuffer(sceneBuf, allocator);
+	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
+		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneDataBuffer, allocator);
 	});
 
 	GPUSceneData* sceneDataPtr = reinterpret_cast<GPUSceneData*>(frameCtx.sceneDataBuffer.mapped);
@@ -408,9 +396,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 		profiler.addDrawCall(1);
 	}
 
-	if (frameCtx.visibleCount == 0) {
-		return;
-	}
+	if (frameCtx.visibleCount == 0) return;
 
 	auto& resources = Engine::getState().getGPUResources();
 
@@ -446,8 +432,10 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 			ASSERT(aabbVBO.info.pMappedData != nullptr);
 			memcpy(aabbVBO.mapped, allVerts.data(), totalSize);
 
-			frameCtx.cpuDeletion.push_function([aabbVBO, allocator]() mutable {
-				BufferUtils::destroyBuffer(aabbVBO, allocator);
+			auto aabbBuf = aabbVBO.buffer;
+			auto aabbAlloc = aabbVBO.allocation;
+			frameCtx.cpuDeletion.push_function([aabbBuf, aabbAlloc, allocator]() mutable {
+				BufferUtils::destroyBuffer(aabbBuf, aabbAlloc, allocator);
 			});
 
 			VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { extent.width, extent.height });
@@ -519,6 +507,11 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 		pLayout.pcRange.offset,
 		pLayout.pcRange.size,
 		&pc);
+
+	//for (const auto& draw : frameCtx.opaqueIndirectDraws) {
+	//	fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}\n",
+	//		draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount);
+	//}
 
 	if (frameCtx.opaqueVisibleCount > 0) {
 		for (uint32_t i = 0; i < frameCtx.opaqueIndirectDraws.size(); ++i) {

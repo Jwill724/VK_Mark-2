@@ -47,7 +47,7 @@ private:
 	void clearAll();
 
 	void bakeMeshNodeTransforms(
-		const std::shared_ptr<MeshNode>& node,
+		const std::shared_ptr<MeshNode>& meshNode,
 		const glm::mat4& parentMatrix,
 		std::unordered_map<uint32_t, std::vector<glm::mat4>>& outMeshTransforms);
 };

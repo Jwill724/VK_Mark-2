@@ -199,7 +199,7 @@ bool Visibility::boxInFrustum(const AABB box, const Frustum fru) {
 	return true;
 }
 
-Frustum Visibility::extractFrustum(const glm::mat4& viewproj) {
+Frustum Visibility::extractFrustum(const glm::mat4 viewproj) {
 	const glm::mat4 vpt = glm::transpose(viewproj);
 
 	Frustum frustum{};
@@ -266,7 +266,7 @@ AABB Visibility::transformAABB(const AABB& localBox, const glm::mat4& transform)
 	return worldBox;
 }
 
-std::vector<glm::vec3> Visibility::GetAABBVertices(const AABB& box) {
+std::vector<glm::vec3> Visibility::GetAABBVertices(const AABB box) {
 	const glm::vec3 vmin = box.vmin;
 	const glm::vec3 vmax = box.vmax;
 

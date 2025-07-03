@@ -106,7 +106,7 @@ enum class AddressBufferType : uint32_t {
 	TransparentInstances,
 	TransparentIndirectDraws,
 	Material,
-	Mesh, // Only cpu-gpu buffer, cpu needs to write worldAABB transforms
+	Mesh,
 	DrawRange,
 	Vertex,
 	Index,

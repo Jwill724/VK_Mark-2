@@ -160,13 +160,13 @@ void PipelineManager::definePipelineData() {
 		assert(false && "GPU doesn't support required 256 byte push constant size!");
 	}
 
-	PushConstantDef pcRange = {
+	const PushConstantDef pcRange = {
 		.offset = 0,
 		.size = maxPCsize,
 		.stageFlags = VK_SHADER_STAGE_ALL
 	};
 
-	auto setLayouts = {
+	const std::vector<VkDescriptorSetLayout> setLayouts = {
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorLayout, // set: 0
 		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout    // set: 1
 	};
@@ -378,7 +378,7 @@ void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePre
 
 	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, settings.topology, VK_FALSE);
 
-	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.f, settings.cullMode, settings.frontFace);
+	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.0f, settings.cullMode, settings.frontFace);
 
 	if (msaaOn) {
 		PipelineConfigs::multisamplingConfig(pipeline._multisampling, ResourceManager::getAvailableSampleCounts(), CURRENT_MSAA_LVL, VK_FALSE);

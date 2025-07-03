@@ -148,7 +148,6 @@ struct ThreadContext {
 	QueueType queueType = QueueType::Generic;
 	VkCommandPool cmdPool = VK_NULL_HANDLE;
 	DeletionQueue deletionQueue{};
-	AllocatedBuffer stagingBuffer{}; // Always free this right after use of it
 	void* stagingMapped = nullptr;
 	BaseWorkQueue* workQueueActive = nullptr; // Functions handle this variables scope
 	VkFence lastSubmittedFence = VK_NULL_HANDLE;

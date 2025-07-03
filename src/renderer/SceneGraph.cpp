@@ -47,20 +47,17 @@ void SceneGraph::buildSceneGraph(ThreadContext& threadCtx, std::vector<GPUMeshDa
 
 			if (srcNode.meshIndex.has_value()) {
 				auto meshIndex = *srcNode.meshIndex;
-				newNode = std::make_shared<MeshNode>();
-				auto& instances = meshToInstances[meshIndex];
-				if (instances.empty()) {
-					fmt::print("  Warning: MeshIndex {} has no matching instances.\n", meshIndex);
-				}
+				ASSERT(meshIndex < meshes.size() && "[buildSceneGraph]: meshIndex out of range of meshes.");
 
-				auto* meshNode = static_cast<MeshNode*>(newNode.get());
+				newNode = std::make_shared<MeshNode>();
+				auto& instances = meshToInstances[static_cast<uint32_t>(meshIndex)];
+				auto meshNode = std::static_pointer_cast<MeshNode>(newNode);
 				for (auto& inst : instances) {
 					meshNode->instances.push_back(inst);
 				}
 
 				fmt::print("  Node {} -> MeshIndex {}\n", nodeIdx, meshIndex);
 			}
-
 			else {
 				newNode = std::make_shared<Node>();
 				fmt::print("  Node {} -> Empty (No mesh)\n", nodeIdx);
@@ -114,13 +111,14 @@ void SceneGraph::buildSceneGraph(ThreadContext& threadCtx, std::vector<GPUMeshDa
 		// Build final meshID -> modelMatrix map
 		for (auto& node : file.scene.nodes) {
 			auto meshNode = std::dynamic_pointer_cast<MeshNode>(node);
+			if (!meshNode || meshNode->instances.empty())
+				continue;
+
 			for (auto& inst : meshNode->instances) {
 				if (!inst) continue;
-				uint32_t meshID = inst->instances->meshID;
-				inst->instances->modelMatrix = meshNode->worldTransform;
 
-				fmt::print("  MeshNode meshID {} -> worldMatrix:\n", meshID);
-				printMat4(meshNode->worldTransform);
+				const uint32_t meshID = inst->instances->meshID;
+				inst->instances->modelMatrix = meshNode->worldTransform;
 
 				const auto& local = meshes[meshID].localAABB;
 				meshes[meshID].worldAABB = Visibility::transformAABB(local, meshNode->worldTransform);
@@ -140,30 +138,30 @@ void ModelAsset::FindVisibleObjects(
 	const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
 	const std::unordered_set<uint32_t>& visibleMeshIDSet)
 {
-	for (auto& node : scene.topNodes) {
-		if (node) {
-			node->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
+	for (auto& root : scene.topNodes) {
+		if (root) {
+			root->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
 		}
 	}
 }
 
 void ModelAsset::bakeMeshNodeTransforms(
-	const std::shared_ptr<MeshNode>& node,
+	const std::shared_ptr<MeshNode>& meshNode,
 	const glm::mat4& parentMatrix,
 	std::unordered_map<uint32_t, std::vector<glm::mat4>>& outMeshTransforms)
 {
-	if (!node) return;
+	if (!meshNode) return;
 
-	glm::mat4 model = parentMatrix * node->localTransform;
+	glm::mat4 model = parentMatrix * meshNode->localTransform;
 
-	for (const auto& inst : node->instances) {
+	for (const auto& inst : meshNode->instances) {
 		if (!inst || !inst->instances) continue;
 
 		uint32_t meshID = inst->instances->meshID;
 		outMeshTransforms[meshID].push_back(model);
 	}
 
-	for (const auto& child : node->children) {
+	for (const auto& child : meshNode->children) {
 		auto meshChild = std::dynamic_pointer_cast<MeshNode>(child);
 		if (meshChild) {
 			bakeMeshNodeTransforms(meshChild, model, outMeshTransforms);
@@ -193,9 +191,9 @@ void MeshNode::FindVisibleObjects(
 				gpuInst.materialIndex = materialIndex;
 				gpuInst.modelMatrix = modelMatrix;
 
-				fmt::print("Visible Object -> meshID: {}, materialIndex: {}, pass: {}\n",
-					meshID, materialIndex,
-					(inst->passType == MaterialPass::Transparent ? "Transparent" : "Opaque"));
+				//fmt::print("Visible Object -> meshID: {}, materialIndex: {}, pass: {}\n",
+				//	meshID, materialIndex,
+				//	(inst->passType == MaterialPass::Transparent ? "Transparent" : "Opaque"));
 
 				if (inst->passType == MaterialPass::Transparent)
 					outTransparentVisibles.push_back(gpuInst);

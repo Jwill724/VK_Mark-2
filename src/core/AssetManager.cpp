@@ -46,7 +46,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	// FIX: nodes are busted with an empty mesh as parentNode
+	// TODO: Figure out why its not rendering.
 	//std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
 	//auto spheresFile = loadGltfFiles(spheresPath);
 	//ASSERT(spheresFile.has_value());
@@ -342,8 +342,10 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 	resources.updateAddressTableMapped(threadCtx.cmdPool);
 
-	resources.getTempDeletionQueue().push_function([materialStaging, allocator]() mutable {
-		BufferUtils::destroyBuffer(materialStaging, allocator);
+	auto matBuf = materialStaging.buffer;
+	auto matAlloc = materialStaging.allocation;
+	resources.getTempDeletionQueue().push_function([matBuf, matAlloc, allocator]() mutable {
+		BufferUtils::destroyBuffer(matBuf, matAlloc, allocator);
 	});
 }
 
@@ -368,7 +370,6 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 		for (const auto& mesh : gltf.meshes) {
 			totalPrimitiveCount += mesh.primitives.size();
 		}
-		// Resize to fit all SceneObjects, one per primitive
 		scene.gpu.instances.resize(totalPrimitiveCount);
 
 		uint32_t curMeshIdx = 0;
@@ -383,10 +384,8 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				inst->gltfMeshIndex = meshIdx;
 				inst->gltfPrimitiveIndex = primIdx; // Does nothing currently, one day...
 
-				GPUMeshData newMesh{};
-
-				uint32_t globalVertexOffset = static_cast<uint32_t>(uploadCtx.globalVertices.size());
-				uint32_t globalIndexOffset = static_cast<uint32_t>(uploadCtx.globalIndices.size());
+				const uint32_t globalVertexOffset = static_cast<uint32_t>(uploadCtx.globalVertices.size());
+				const uint32_t globalIndexOffset = static_cast<uint32_t>(uploadCtx.globalIndices.size());
 
 				const auto& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
 				uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
@@ -459,6 +458,7 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				drawRanges.push_back(range);
 				size_t rangeIdx = drawRanges.size() - 1;
 
+				GPUMeshData newMesh{};
 				newMesh.drawRangeIndex = static_cast<uint32_t>(rangeIdx);
 
 				// Attach material indexes to instances and define pass type

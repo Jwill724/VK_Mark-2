@@ -15,6 +15,6 @@ namespace Visibility {
 	bool isVisible(const AABB aabb, const Frustum frus);
 	bool boxInFrustum(const AABB aabb, const Frustum frus);
 	AABB transformAABB(const AABB& localBox, const glm::mat4& transform);
-	Frustum extractFrustum(const glm::mat4& viewproj);
-	std::vector<glm::vec3> GetAABBVertices(const AABB& box);
+	Frustum extractFrustum(const glm::mat4 viewproj);
+	std::vector<glm::vec3> GetAABBVertices(const AABB box);
 }

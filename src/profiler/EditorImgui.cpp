@@ -10,6 +10,7 @@
 
 static void MyWindowFocusCallback(GLFWwindow* window, int focused) {
 	ImGui_ImplGlfw_WindowFocusCallback(window, focused); // Forward to ImGui
+	Engine::getProfiler().resetRenderTimers();
 }
 
 void EditorImgui::initImgui(DeletionQueue& queue) {
@@ -94,7 +95,7 @@ void EditorImgui::renderImgui() {
 	auto& profiler = Engine::getProfiler();
 	auto& stats = profiler.getStats();
 
-	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.f, 0.f));
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
 //	ImGui::SetNextWindowBgAlpha(1.f);
 	ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
 	ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::_mainCamera._position.x, RenderScene::_mainCamera._position.y, RenderScene::_mainCamera._position.z);

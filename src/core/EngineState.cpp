@@ -25,18 +25,18 @@ void EngineState::init() {
 
 	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
 	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
-	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
+
 	JobSystem::getThreadPoolManager().init(device, static_cast<uint32_t>(allThreadContexts.size()), graphicsIndex, transferIndex);
 
-	_resources.init();
+	_resources.init(device);
 	auto& dQueue = _resources.getMainDeletionQueue();
 	auto mainAllocator = _resources.getAllocator();
 
 	EditorImgui::initImgui(dQueue);
 	DescriptorSetOverwatch::initDescriptors(dQueue);
 
-	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
-	Renderer::initFrameContexts(device, graphicsIndex, transferIndex, computeIndex, Engine::getWindowExtent(), frameLayout, mainAllocator);
+	auto& winExtent = Engine::getWindowExtent();
+	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1 });
 	ResourceManager::initRenderImages(dQueue, mainAllocator);
 	ResourceManager::initTextures(_resources.getGraphicsPool(), dQueue, _resources.getTempDeletionQueue(), mainAllocator);
 
@@ -59,13 +59,15 @@ void EngineState::init() {
 	// early environment compute work
 	// all work is cleared afterward
 	Environment::dispatchEnvironmentMaps(_resources, ResourceManager::_globalImageTable);
+
 	_resources.getTempDeletionQueue().flush();
+
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
 	_resources.clearLUTEntries();
 	ResourceManager::_globalImageTable.clearTables();
 }
 
-void EngineState::loadAssets() {
+void EngineState::loadAssets(Profiler& engineProfiler) {
 	auto assetQueue = std::make_shared<GLTFAssetQueue>();
 
 	auto mainAllocator = _resources.getAllocator();
@@ -82,12 +84,10 @@ void EngineState::loadAssets() {
 
 	JobSystem::wait();
 
-	auto& profiler = Engine::getProfiler();
-
 	if (availableAssets) {
 		fmt::print("Assets available for loading!\n");
 
-		profiler.startTimer();
+		engineProfiler.startTimer();
 
 		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
@@ -165,9 +165,10 @@ void EngineState::loadAssets() {
 					ASSERT(mesh.drawRangeIndex < drawRanges.size());
 					const GPUDrawRange& range = drawRanges[mesh.drawRangeIndex];
 
-					UploadedMeshView newView{};
-					newView.vertexSizeBytes = range.vertexCount * sizeof(Vertex);
-					newView.indexSizeBytes = range.indexCount * sizeof(uint32_t);
+					UploadedMeshView newView {
+						.vertexSizeBytes = range.vertexCount * sizeof(Vertex),
+						.indexSizeBytes = range.indexCount * sizeof(uint32_t)
+					};
 
 					uploadCtx.meshViews.push_back(newView);
 				}
@@ -239,19 +240,20 @@ void EngineState::loadAssets() {
 			resources.addGPUBuffer(AddressBufferType::Mesh, meshBuffer);
 
 			// Setup single staging buffer for transfer
-			threadCtx.stagingBuffer = BufferUtils::createBuffer(
+			AllocatedBuffer stagingBuffer = BufferUtils::createBuffer(
 				vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize,
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 				mainAllocator
 			);
-			ASSERT(threadCtx.stagingBuffer.info.size >= vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize);
+			ASSERT(stagingBuffer.info.size >= vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize);
 
-			auto buffer = threadCtx.stagingBuffer;
-			resources.getTempDeletionQueue().push_function([buffer, mainAllocator]() mutable {
-				BufferUtils::destroyBuffer(buffer, mainAllocator);
+			auto stgBuf = stagingBuffer.buffer;
+			auto stgAlloc = stagingBuffer.allocation;
+			resources.getTempDeletionQueue().push_function([stgBuf, stgAlloc, mainAllocator]() mutable {
+				BufferUtils::destroyBuffer(stgBuf, stgAlloc, mainAllocator);
 			});
-			threadCtx.stagingMapped = threadCtx.stagingBuffer.info.pMappedData;
+			threadCtx.stagingMapped = stagingBuffer.info.pMappedData;
 			ASSERT(threadCtx.stagingMapped != nullptr);
 
 			uint8_t* stagingData = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
@@ -289,28 +291,28 @@ void EngineState::loadAssets() {
 					.dstOffset = 0,
 					.size = vertexBufferSize
 				};
-				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
+				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
 
 				VkBufferCopy idxCopy {
 					.srcOffset = indexWriteOffset,
 					.dstOffset = 0,
 					.size = indexBufferSize
 				};
-				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
+				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
 
 				VkBufferCopy drawRangeCopy {
 					.srcOffset = drawRangesWriteOffset,
 					.dstOffset = 0,
 					.size = drawRangesSize
 				};
-				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
+				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
 
 				VkBufferCopy meshCopy {
 					.srcOffset = meshesWriteOffset,
 					.dstOffset = 0,
 					.size = meshesSize
 				};
-				vkCmdCopyBuffer(cmd, threadCtx.stagingBuffer.buffer, meshBuffer.buffer, 1, &meshCopy);
+				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, meshBuffer.buffer, 1, &meshCopy);
 
 			}, threadCtx.cmdPool, QueueType::Transfer);
 
@@ -323,7 +325,6 @@ void EngineState::loadAssets() {
 			vkResetCommandPool(device, threadCtx.cmdPool, 0);
 			threadCtx.cmdPool = VK_NULL_HANDLE;
 			threadCtx.stagingMapped = nullptr;
-			threadCtx.stagingBuffer.buffer = VK_NULL_HANDLE;
 		});
 
 		JobSystem::wait();
@@ -357,12 +358,14 @@ void EngineState::loadAssets() {
 		EngineStages::Clear(static_cast<EngineStage>(EngineStages::loadingStageFlags));
 
 		// Asset loading done
-		auto elapsed = profiler.endTimer();
+		auto elapsed = engineProfiler.endTimer();
 		fmt::print("Asset loading completed in {:.3f} seconds.\n", elapsed);
 	}
 	else {
 		fmt::print("No assets for loading... skipping\n");
 	}
+
+	engineProfiler.assetsLoaded = availableAssets;
 
 	// Perma imagelut work starts here
 	auto& postProcessImg = ResourceManager::getPostProcessImage();
@@ -443,7 +446,7 @@ void EngineState::loadAssets() {
 	GPUEnvMapIndices* envMapIndices = reinterpret_cast<GPUEnvMapIndices*>(_resources.envMapSetUBO.mapped);
 	*envMapIndices = ResourceManager::_envMapIndices;
 
-	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
+	auto globalSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter mainWriter;
 	mainWriter.writeBuffer(
 		0,
@@ -451,14 +454,14 @@ void EngineState::loadAssets() {
 		_resources.getAddressTableBuffer().info.size,
 		0,
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		set);
+		globalSet);
 	mainWriter.writeBuffer(
 		1,
 		_resources.envMapSetUBO.buffer,
 		sizeof(GPUEnvMapIndices),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		set);
+		globalSet);
 
 	//for (int i = 0; i < MAX_ENV_SETS; i++) {
 	//	const auto& e = ResourceManager::_envMapIndices.indices[i];
@@ -466,45 +469,48 @@ void EngineState::loadAssets() {
 	//		i, e.x, e.y, e.z, e.w);
 	//}
 
-	mainWriter.writeFromImageLUT(_resources.getImageLUT(), ResourceManager::_globalImageTable, set);
-	mainWriter.updateSet(Backend::getDevice(), set);
+	mainWriter.writeFromImageLUT(_resources.getImageLUT(), ResourceManager::_globalImageTable, globalSet);
+	mainWriter.updateSet(Backend::getDevice(), globalSet);
+
+	EngineStages::SetGoal(ENGINE_STAGE_READY);
+}
+
+void EngineState::initRenderer(Profiler& engineProfiler) {
+	auto device = Backend::getDevice();
+	auto allocator = _resources.getAllocator();
+
+	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
+	Renderer::initFrameContexts(device, frameLayout, allocator, engineProfiler.assetsLoaded);
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();
 	VkDeviceSize totalUsedVRAM = 0;
 
-	totalUsedVRAM += profiler.GetTotalVRAMUsage(physicalDevice, mainAllocator);
-	profiler.getStats().vramUsed = totalUsedVRAM;
-	EngineStages::SetGoal(ENGINE_STAGE_READY);
+	totalUsedVRAM += engineProfiler.GetTotalVRAMUsage(physicalDevice, allocator);
+	engineProfiler.getStats().vramUsed = totalUsedVRAM;
 }
 
-void EngineState::renderFrame() {
+
+void EngineState::renderFrame(Profiler& engineProfiler) {
 	auto& frame = Renderer::getCurrentFrame();
 
 	EditorImgui::renderImgui();
 
+	engineProfiler.resetRenderTimers();
+	engineProfiler.resetDrawCalls();
+
 	Renderer::prepareFrameContext(frame);
 	if (frame.swapchainResult != VK_SUCCESS) return;
 
-	auto& profiler = Engine::getProfiler();
-	// Stats reset and scene update start timer
-	if (!profiler.getStats().forcedReset) {
-		profiler.resetDrawCalls();
-		profiler.resetTriangleCount();
-	}
-	else {
-		profiler.getStats().forcedReset = false;
-	}
-
-	profiler.startTimer();
+	engineProfiler.startTimer();
 	RenderScene::updateScene(frame, _resources);
-	auto elapsed = profiler.endTimer();
-	profiler.getStats().sceneUpdateTime = elapsed;
+	auto elapsed = engineProfiler.endTimer();
+	engineProfiler.getStats().sceneUpdateTime = elapsed;
 
-	profiler.startTimer();
+	engineProfiler.startTimer();
 	Renderer::recordRenderCommand(frame);
-	elapsed = profiler.endTimer();
-	profiler.getStats().drawTime = elapsed;
+	elapsed = engineProfiler.endTimer();
+	engineProfiler.getStats().drawTime = elapsed;
 
 	Renderer::submitFrame(frame);
 }
@@ -523,7 +529,6 @@ void EngineState::shutdown() {
 		ThreadContext& threadCtx = allThreadContexts[i];
 		threadCtx.deletionQueue.flush();
 		ASSERT(threadCtx.cmdPool == VK_NULL_HANDLE);
-		ASSERT(threadCtx.stagingBuffer.buffer == VK_NULL_HANDLE);
 		ASSERT(threadCtx.lastSubmittedFence == VK_NULL_HANDLE);
 		ASSERT(threadCtx.stagingMapped == nullptr);
 	}

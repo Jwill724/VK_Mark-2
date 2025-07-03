@@ -104,12 +104,18 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 	return buffer;
 }
 
+void BufferUtils::destroyBuffer(VkBuffer buffer, VmaAllocation allocation, const VmaAllocator allocator) {
+	static std::mutex mutex;
+	std::scoped_lock lock(mutex);
+	vmaDestroyBuffer(allocator, buffer, allocation);
+	//fmt::print("[DestroyBuffer] Buffer = {}, Memory = {}\n", (void*)buffer, (void*)allocation);
+}
 
-void BufferUtils::destroyBuffer(AllocatedBuffer buffer, const VmaAllocator allocator) {
+void BufferUtils::destroyAllocatedBuffer(AllocatedBuffer& buffer, const VmaAllocator allocator) {
 	static std::mutex mutex;
 	std::scoped_lock lock(mutex);
 	vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
-	//fmt::print("[Destroy] Buffer = {}, Memory = {}\n", (void*)buffer.buffer, (void*)buffer.allocation);
+	//fmt::print("[DestroyAllocatedBuffer] Buffer = {}, Memory = {}\n", (void*)buffer.buffer, (void*)buffer.allocation);
 
 	buffer.buffer = VK_NULL_HANDLE;
 	buffer.allocation = nullptr;
