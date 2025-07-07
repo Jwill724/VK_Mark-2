@@ -45,7 +45,7 @@ public:
 	float endTimer() const {
 		auto end = std::chrono::system_clock::now();
 		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - _startTimer);
-		return static_cast<float>(elapsed.count()) / 1000000.0f;;
+		return static_cast<float>(elapsed.count()) / 1000000.0f;
 	}
 
 	bool assetsLoaded = false;
@@ -64,10 +64,10 @@ public:
 
 	// For long stalls
 	// grabbing window stops rendering which will need this to reset
-	//void resetFrameTimer() {
-	//	_frameStart = std::chrono::system_clock::now();
-	//	_stats.deltaTime.store(0);
-	//}
+	void resetFrameTimer() {
+		_stats.deltaTime.store(0);
+		_frameStart = std::chrono::system_clock::now();
+	}
 
 	void resetRenderTimers() {
 		_stats.drawTime.store(0);
@@ -88,7 +88,7 @@ public:
 	void updateDeltaTime(float& lastFrameTime);
 
 private:
-	FrameStats _stats{ .targetFrameRate = TARGET_FRAME_RATE_120 };
+	FrameStats _stats{ .targetFrameRate = TARGET_FRAME_RATE_240 };
 
 	std::chrono::time_point<std::chrono::system_clock> _frameStart;
 

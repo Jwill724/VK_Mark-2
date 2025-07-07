@@ -2,20 +2,22 @@
 
 #include <core/types/Texture.h>
 #include "common/ResourceTypes.h"
+#include "renderer/SceneGraph.h"
 
 struct ModelAsset : public IRenderable {
 	struct GPUData {
-		std::vector<std::shared_ptr<RenderInstance>> instances;
+		std::unordered_map<uint32_t, std::vector<std::shared_ptr<BakedInstance>>> nodeIndexToBakedInstances;
 		std::vector<AllocatedImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
-	} gpu;
+	} runtime;
 
 	struct SceneGraph {
 		std::vector<std::shared_ptr<Node>> nodes;
-
-		// nodes that dont have a parent, for iterating through the file in tree order
+		// nodes that don't have a parent, for iterating through the file in tree order
 		std::vector<std::shared_ptr<Node>> topNodes;
+
+		std::vector<uint32_t> nodeIDToTransformID;
 	} scene;
 
 	std::string sceneName;
@@ -23,33 +25,15 @@ struct ModelAsset : public IRenderable {
 
 	~ModelAsset() { clearAll(); }
 
-
-	// Definitions for member functions in SceneGraph.cpp because why not
-	virtual void FindVisibleObjects(
-		std::vector<GPUInstance>& outOpaqueVisibles,
-		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
+	virtual void FindVisibleInstances(
+		std::vector<GPUInstance>& outVisibleOpaqueInstances,
+		std::vector<GPUInstance>& outVisibleTransparentInstances,
+		std::vector<glm::mat4>& outFrameTransformsList,
+		const std::vector<glm::mat4>& bakedTransformsList,
 		const std::unordered_set<uint32_t>& visibleMeshIDSet) override;
-
-	void bakeTransformsPerMesh(std::unordered_map<uint32_t, std::vector<glm::mat4>>& outMeshTransforms)
-	{
-		for (const auto& node : scene.topNodes) {
-			if (node) {
-				if (auto meshNode = std::dynamic_pointer_cast<MeshNode>(node)) {
-					bakeMeshNodeTransforms(meshNode, glm::mat4(1.0f), outMeshTransforms);
-				}
-			}
-		}
-
-	}
 
 private:
 	void clearAll();
-
-	void bakeMeshNodeTransforms(
-		const std::shared_ptr<MeshNode>& meshNode,
-		const glm::mat4& parentMatrix,
-		std::unordered_map<uint32_t, std::vector<glm::mat4>>& outMeshTransforms);
 };
 
 

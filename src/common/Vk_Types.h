@@ -37,29 +37,30 @@ struct AABB {
 
 struct Vertex {
 	glm::vec3 position;
-	glm::vec2 uv;
 	glm::vec3 normal;
+	glm::vec2 uv;
 	glm::vec4 color;
 };
 
 struct GPUInstance {
-	glm::mat4 modelMatrix;
-	uint32_t materialIndex;
-	uint32_t meshID;
+	uint32_t instanceID = UINT32_MAX;
+	uint32_t materialID = UINT32_MAX;
+	uint32_t meshID = UINT32_MAX;
+	uint32_t transformID = UINT32_MAX;
 };
 
 // Draw ranges, meshes, materials all gpu ready at render
 struct GPUDrawRange {
-	uint32_t firstIndex;
-	uint32_t indexCount;
-	uint32_t vertexOffset;
-	uint32_t vertexCount;
+	uint32_t firstIndex = UINT32_MAX;
+	uint32_t indexCount = UINT32_MAX;
+	uint32_t vertexOffset = UINT32_MAX;
+	uint32_t vertexCount = UINT32_MAX;
 };
 
 struct GPUMeshData {
 	AABB localAABB;
 	AABB worldAABB;
-	uint32_t drawRangeIndex;
+	uint32_t drawRangeID = UINT32_MAX;
 };
 
 struct GPUMaterial {
@@ -137,7 +138,8 @@ struct TimelineSync {
 
 enum class MaterialPass : uint32_t {
 	Opaque,
-	Transparent
+	Transparent,
+	None
 };
 
 enum class PipelineType : uint32_t {

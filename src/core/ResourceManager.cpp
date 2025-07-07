@@ -78,7 +78,7 @@ void GPUResources::cleanup(VkDevice device) {
 		vmaDestroyAllocator(allocator);
 }
 
-void GPUResources::addGPUBuffer(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
+void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
 	gpuBuffers[addressBufferType] = gpuBuffer;
 	markAddressTableDirty();
 }

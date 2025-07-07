@@ -51,6 +51,7 @@ struct FrameContext {
 		opaqueIndirectDraws.clear();
 		transparentInstances.clear();
 		transparentIndirectDraws.clear();
+		transformsList.clear();
 		opaqueVisibleCount = 0;
 		transparentVisibleCount = 0;
 	}
@@ -74,9 +75,12 @@ struct FrameContext {
 	uint32_t opaqueVisibleCount = 0;
 	uint32_t transparentVisibleCount = 0;
 
+	// Transformations
+	std::vector<glm::mat4> transformsList;
 	AllocatedBuffer transformsListBuffer;
-	// Should only be set to true when new buffer created
-	std::atomic<bool> transformsUpdated = true; // Set to false to indicate static transforms
+
+	//
+	std::atomic<bool> refreshGlobalTransformList = true; // Set to false to indicate static transforms
 
 	// Descriptor use
 	GPUAddressTable addressTable;

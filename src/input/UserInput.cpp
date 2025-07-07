@@ -41,7 +41,6 @@ void UserInput::NormalizeMousePos(GLFWwindow* window, VkExtent2D windowExtent) {
 }
 
 void UserInput::MouseState::update(GLFWwindow* window) {
-
 	VkExtent2D* windowExtent = &Engine::getWindowExtent();
 
 	NormalizeMousePos(window, *windowExtent);

@@ -3,6 +3,9 @@
 #include "Profiler.h"
 #include "Engine.h"
 
+// TODO: Rework this whole fucking thing,
+// renderer is so fast it destroys the visual timers
+
 void Profiler::beginFrame() {
 	_frameStart = std::chrono::system_clock::now();
 }
@@ -14,14 +17,14 @@ void Profiler::endFrame() {
 	_stats.frameTime = static_cast<float>(elapsed.count()) / 1000.0f;
 	_stats.fps = 1000.0f / _stats.frameTime;
 
-	if (_stats.capFramerate) {
-		float targetFrame = 1.0f / _stats.targetFrameRate; // seconds
-		float deltaTimeSeconds = _stats.deltaTime / 1000.0f; // convert from ms to seconds
+	//if (_stats.capFramerate) {
+	//	float targetFrame = 1.0f / _stats.targetFrameRate; // seconds
+	//	float deltaTimeSeconds = _stats.deltaTime / 1000.0f; // convert from ms to seconds
 
-		if (deltaTimeSeconds < targetFrame) {
-			std::this_thread::sleep_for(std::chrono::duration<float>(targetFrame - deltaTimeSeconds));
-		}
-	}
+	//	if (deltaTimeSeconds < targetFrame) {
+	//		std::this_thread::sleep_for(std::chrono::duration<float>(targetFrame - deltaTimeSeconds));
+	//	}
+	//}
 }
 
 VkPipeline Profiler::getPipelineByType(PipelineType type) const {

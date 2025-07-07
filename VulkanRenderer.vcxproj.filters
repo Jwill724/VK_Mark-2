@@ -74,9 +74,6 @@
     <ClCompile Include="src\file\File.cpp">
       <Filter>src\file</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\AssetManager.cpp">
-      <Filter>src\core</Filter>
-    </ClCompile>
     <ClCompile Include="src\core\Environment.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
@@ -129,6 +126,9 @@
     </ClCompile>
     <ClCompile Include="src\core\types\Texture.cpp">
       <Filter>src\core\types</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\AssetManager.cpp">
+      <Filter>src\core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

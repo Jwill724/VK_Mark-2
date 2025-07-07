@@ -15,7 +15,6 @@ namespace AssetManager {
 	std::optional<std::shared_ptr<GLTFJobContext>> loadGltfFiles(std::string_view filePath);
 }
 
-
 bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
@@ -46,7 +45,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	// TODO: Figure out why its not rendering.
 	//std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
 	//auto spheresFile = loadGltfFiles(spheresPath);
 	//ASSERT(spheresFile.has_value());
@@ -146,11 +144,11 @@ void AssetManager::decodeImages(ThreadContext& threadCtx, const VmaAllocator all
 			std::optional<AllocatedImage> img = Textures::loadImage(gltf, image, format, threadCtx, scene.basePath, allocator, bufferQueue);
 
 			if (img.has_value()) {
-				scene.gpu.images.push_back(*img);
+				scene.runtime.images.push_back(*img);
 			}
 			else {
 				// magenta and black for missing textures
-				scene.gpu.images.push_back(ResourceManager::getCheckboardTex());
+				scene.runtime.images.push_back(ResourceManager::getCheckboardTex());
 				fmt::print("gltf failed to load texture {}\n", image.name);
 			}
 		}
@@ -192,7 +190,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 			VkSampler newSampler;
 			VK_CHECK(vkCreateSampler(device, &sampl, nullptr, &newSampler));
 
-			scene.gpu.samplers.push_back(newSampler);
+			scene.runtime.samplers.push_back(newSampler);
 		}
 
 		queue->push(context);
@@ -229,8 +227,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
-		scene.gpu.materials.clear();
-		scene.gpu.materials.reserve(gltf.materials.size());
+		scene.runtime.materials.clear();
+		scene.runtime.materials.reserve(gltf.materials.size());
 
 		for (fastgltf::Material& mat : gltf.materials) {
 			if (!isValidMaterial(mat, gltf)) {
@@ -254,8 +252,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			auto getImageAndSampler = [&](auto& texRef, AllocatedImage& outImg, VkSampler& outSamp) {
 				if (!texRef.has_value()) return;
 				const auto& texture = gltf.textures[texRef->textureIndex];
-				if (texture.imageIndex.has_value()) outImg = scene.gpu.images[texture.imageIndex.value()];
-				if (texture.samplerIndex.has_value()) outSamp = scene.gpu.samplers[texture.samplerIndex.value()];
+				if (texture.imageIndex.has_value()) outImg = scene.runtime.images[texture.imageIndex.value()];
+				if (texture.samplerIndex.has_value()) outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
 			};
 
 			GPUMaterial newMaterial{};
@@ -305,11 +303,11 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			resources.addImageLUTEntry({ aoViewIdx });
 
 			// Store in scene-local and global staging
-			scene.gpu.materials.push_back(newMaterial);
+			scene.runtime.materials.push_back(newMaterial);
 			materialUploadList.push_back(newMaterial);
 		}
 
-		fmt::print("Scene Materials Processed: {}.\n", scene.gpu.materials.size());
+		fmt::print("Scene Materials Processed: {}.\n", scene.runtime.materials.size());
 
 		queue->push(context);
 		context->markJobComplete(GLTFJobType::ProcessMaterials);
@@ -332,7 +330,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		totalSize,
 		allocator
 	);
-	resources.addGPUBuffer(AddressBufferType::Material, materialBuffer);
+	resources.addGPUBufferToGlobalAddress(AddressBufferType::Material, materialBuffer);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
@@ -349,7 +347,9 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	});
 }
 
-
+// Define Instances for models, meshIDs and materialIDs are setup here.
+// A global meshes registry holds the mesh vector that'll be uploaded.
+// DrawRangeID is the key to index and vertex buffers, meshbuffer owns this ID.
 void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRange>& drawRanges, MeshRegistry& meshes) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
@@ -365,22 +365,18 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 		auto& scene = *context->scene;
 		auto& uploadCtx = context->uploadMeshCtx;
 
-		// Count total number of primitives across all meshes
-		size_t totalPrimitiveCount = 0;
-		for (const auto& mesh : gltf.meshes) {
-			totalPrimitiveCount += mesh.primitives.size();
-		}
-		scene.gpu.instances.resize(totalPrimitiveCount);
+		// Iterate over nodes that reference a mesh
+		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
+			const auto& node = gltf.nodes[nodeIdx];
+			if (!node.meshIndex.has_value()) continue;
 
-		uint32_t curMeshIdx = 0;
+			uint32_t meshIdx = *node.meshIndex;
+			const auto& mesh = gltf.meshes[meshIdx];
 
-		for (uint32_t meshIdx = 0; meshIdx < gltf.meshes.size(); ++meshIdx) {
-			auto& mesh = gltf.meshes[meshIdx];
 			for (uint32_t primIdx = 0; primIdx < mesh.primitives.size(); ++primIdx) {
-				auto& p = mesh.primitives[primIdx];
+				const auto& p = mesh.primitives[primIdx];
 
-				auto inst = std::make_shared<RenderInstance>();
-				inst->instances = std::make_shared<GPUInstance>();
+				auto inst = std::make_shared<BakedInstance>();
 				inst->gltfMeshIndex = meshIdx;
 				inst->gltfPrimitiveIndex = primIdx; // Does nothing currently, one day...
 
@@ -429,7 +425,6 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				const auto& indexAccessor = gltf.accessors[p.indicesAccessor.value()];
 				uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
 
-
 				uint32_t maxIndex = 0;
 				uploadCtx.globalIndices.reserve(static_cast<size_t>(globalIndexOffset + indexCount));
 
@@ -455,24 +450,26 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				ASSERT(uploadCtx.globalIndices.size() >= range.firstIndex + range.indexCount &&
 					"Index buffer too small for range!");
 
+				uploadCtx.totalVertexSizeBytes += range.vertexCount * sizeof(Vertex);
+				uploadCtx.totalIndexSizeBytes += range.indexCount * sizeof(uint32_t);
+
 				drawRanges.push_back(range);
-				size_t rangeIdx = drawRanges.size() - 1;
+				uint32_t rangeIdx = static_cast<uint32_t>(drawRanges.size() - 1);
 
 				GPUMeshData newMesh{};
-				newMesh.drawRangeIndex = static_cast<uint32_t>(rangeIdx);
+				newMesh.drawRangeID = static_cast<uint32_t>(rangeIdx);
 
 				// Attach material indexes to instances and define pass type
 				if (p.materialIndex.has_value()) {
 					auto matIdx = p.materialIndex.value();
-					inst->instances->materialIndex = static_cast<uint32_t>(matIdx);
-
-					inst->passType = static_cast<MaterialPass>(scene.gpu.materials[static_cast<uint32_t>(matIdx)].passType);
+					inst->instance.materialID = static_cast<uint32_t>(matIdx);
+					inst->passType = static_cast<MaterialPass>(scene.runtime.materials[static_cast<uint32_t>(matIdx)].passType);
 				}
+				// Default to whatever, I may just leave be as default values
 				else {
-					inst->instances->materialIndex = 0;
+					inst->instance.materialID = 0;
 					inst->passType = MaterialPass::Opaque;
 				}
-
 
 				// === AABB Calculation ===
 				glm::vec3 vmin = uploadCtx.globalVertices[globalVertexOffset].position;
@@ -489,9 +486,9 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				newMesh.localAABB.extent = (vmax - vmin) * 0.5f;
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
-				inst->instances->meshID = meshes.registerMesh(newMesh);
+				inst->instance.meshID = meshes.registerMesh(newMesh);
 
-				scene.gpu.instances[curMeshIdx++] = inst;
+				scene.runtime.nodeIndexToBakedInstances[nodeIdx].push_back(inst);
 
 				//fmt::print("=== Registered Mesh {} ===\n", meshes.meshData.size());
 				//fmt::print("vmin: "); printVec3(vmin); fmt::print("\n");
@@ -529,4 +526,58 @@ bool AssetManager::isValidMaterial(const fastgltf::Material& mat, const fastgltf
 			return false;
 	}
 	return true;
+}
+
+
+// Model functions
+
+void ModelAsset::FindVisibleInstances(
+	std::vector<GPUInstance>& outVisibleOpaqueInstances,
+	std::vector<GPUInstance>& outVisibleTransparentInstances,
+	std::vector<glm::mat4>& outFrameTransformsList,
+	const std::vector<glm::mat4>& bakedTransformsList,
+	const std::unordered_set<uint32_t>& visibleMeshIDSet)
+{
+	for (auto& root : scene.topNodes) {
+		if (root) {
+			root->FindVisibleInstances(
+				outVisibleOpaqueInstances,
+				outVisibleTransparentInstances,
+				outFrameTransformsList,
+				bakedTransformsList,
+				visibleMeshIDSet);
+		}
+	}
+}
+
+void ModelAsset::clearAll() {
+	auto device = Backend::getDevice();
+	auto allocator = Engine::getState().getGPUResources().getAllocator();
+
+	Backend::getGraphicsQueue().waitIdle();
+
+	// Don't free global images or samplers twice
+	for (auto& img : runtime.images) {
+		if (img.image == VK_NULL_HANDLE ||
+			img.image == ResourceManager::getCheckboardTex().image ||
+			img.image == ResourceManager::getWhiteImage().image ||
+			img.image == ResourceManager::getMetalRoughImage().image ||
+			img.image == ResourceManager::getAOImage().image ||
+			img.image == ResourceManager::getNormalImage().image ||
+			img.image == ResourceManager::getEmissiveImage().image) {
+			continue;
+		}
+
+		RendererUtils::destroyImage(device, img, allocator);
+	}
+
+	for (auto& sampler : runtime.samplers) {
+		if (sampler == VK_NULL_HANDLE ||
+			sampler == ResourceManager::getDefaultSamplerLinear() ||
+			sampler == ResourceManager::getDefaultSamplerNearest()) {
+			continue;
+		}
+
+		vkDestroySampler(device, sampler, nullptr);
+	}
 }
