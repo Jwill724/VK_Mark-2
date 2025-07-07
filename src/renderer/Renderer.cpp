@@ -42,7 +42,8 @@ void Renderer::initFrameContexts(
 			OPAQUE_INSTANCE_SIZE_BYTES +
 			OPAQUE_INDIRECT_SIZE_BYTES +
 			TRANSPARENT_INSTANCE_SIZE_BYTES +
-			TRANSPARENT_INDIRECT_SIZE_BYTES;
+			TRANSPARENT_INDIRECT_SIZE_BYTES +
+			MAX_VISIBLE_TRANSFORMS;
 	}
 
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -136,7 +137,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 }
 
 void Renderer::submitFrame(FrameContext& frameCtx) {
-	//fmt::print("=== SUBMIT FRAME [{}] ===\n", _frameNumber);
+	fmt::print("=== SUBMIT FRAME [{}] ===\n", _frameNumber);
 	//fmt::print("FrameIndex: {}\n", frameCtx.frameIndex);
 	//fmt::print("CommandBuffer: {}\n", static_cast<void*>(frameCtx.commandBuffer));
 	//fmt::print("Fence: {}\n", static_cast<void*>(frameCtx.syncObjs.fence));
@@ -211,10 +212,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	auto& graphicsQueue = Backend::getGraphicsQueue();
 	auto& presentQueue = Backend::getPresentQueue();
 
-	//vkDeviceWaitIdle(Backend::getDevice());
-	//fmt::print("Submitting to Graphics Queue...\n");
 	VK_CHECK(vkQueueSubmit2(graphicsQueue.queue, 1, &graphicsSubmitInfo, frameCtx.syncObjs.fence));
-	//fmt::print("Submission complete.\n");
 
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -225,10 +223,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	presentInfo.pSwapchains = &Backend::getSwapchainDef().swapchain;
 	presentInfo.pImageIndices = &frameCtx.swapchainImageIndex;
 
-
-	//fmt::print("Presenting frame...\n");
 	frameCtx.swapchainResult = vkQueuePresentKHR(presentQueue.queue, &presentInfo);
-	//fmt::print("Present result: {}\n", static_cast<int32_t>(frameCtx.swapchainResult));
 
 	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
 		if (graphicsQueue.queue != presentQueue.queue) {
@@ -417,19 +412,22 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 	};
 
 	if (!frameCtx.transferCmds.empty()) {
-		if (frameCtx.opaqueVisibleCount > 0 && frameCtx.opaqueInstanceBuffer.buffer != VK_NULL_HANDLE) {
+		if (frameCtx.opaqueVisibleCount > 0) {
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer.buffer);
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
 		}
-		if (frameCtx.transparentVisibleCount > 0 && frameCtx.transparentInstanceBuffer.buffer != VK_NULL_HANDLE) {
+		if (frameCtx.transparentVisibleCount > 0) {
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer.buffer);
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
 		}
+
+		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transformsListBuffer.buffer);
 
 		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
 	}
 
 	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
+	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { _drawExtent.width, _drawExtent.height });
 	RenderScene::renderGeometry(frameCtx);
 	vkCmdEndRendering(frameCtx.commandBuffer);
 }
@@ -486,9 +484,6 @@ void Renderer::cleanup() {
 
 		if (frame.computePool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.computePool, nullptr);
-
-		if (frame.transformsListBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.transformsListBuffer, allocator);
 
 		if (frame.stagingVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyAllocatedBuffer(frame.stagingVisibleMeshIDsBuffer, allocator);

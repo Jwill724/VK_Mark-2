@@ -81,18 +81,18 @@ void main()
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
 		inst = instBuf.opaqueInstances[instanceID];
-		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
+		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 	} else {
 		// Transparent draw
 		uint tIndex = drawID - pc.opaqueVisibleCount;
 		if (tIndex >= pc.transparentVisibleCount) return;
 
-		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TrasparentIndirectDraws]);
+		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
 		inst = instBuf.transparentInstances[instanceID];
-		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialIndex];
+		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 	}
 
 	// Environment image indices for IBL
@@ -160,5 +160,7 @@ void main()
 	//outFragColor = vec4(albedoMap.rgb, 1.0);
 	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
 	outFragColor = vec4(sampledNormal, 1.0);
+	//outFragColor = vec4(inUV, 0.0, 1.0);
+	//outFragColor = vec4(inColor, 1.0);
 	//outFragColor = vec4(emissive, 1.0);
 }

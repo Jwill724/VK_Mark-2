@@ -15,6 +15,7 @@ bool WindowIsOpen(GLFWwindow* window) {
 bool Window::throttleIfWindowUnfocused(int sleepMs) const {
 	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+		Engine::getProfiler().resetFrameTimer();
 		return true;
 	}
 	return false;

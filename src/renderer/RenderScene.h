@@ -19,15 +19,14 @@ namespace RenderScene {
 	extern Camera _mainCamera;
 
 	extern std::vector<glm::mat4> _transformsList;
-	extern std::unordered_map<uint32_t, std::vector<glm::mat4>> _meshIDToInstanceTransforms;
 
 	void setScene();
 	void updateCamera();
 	void uploadFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
-	void bakeTransformsFromSceneGraph(const uint32_t meshCount);
+	void transformSceneNodes();
 
-	void updateVisiblesObjects(FrameContext& frameCtx);
+	void updateVisiblesInstances(FrameContext& frameCtx);
 
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);

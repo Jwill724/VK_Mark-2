@@ -22,7 +22,6 @@ namespace RenderScene {
 	std::vector<MeshID> _currentSceneMeshIDs;
 
 	std::vector<glm::mat4> _transformsList;
-	std::unordered_map<uint32_t, std::vector<glm::mat4>> _meshIDToInstanceTransforms;
 
 	Camera _mainCamera;
 	glm::mat4 _curCamView;
@@ -131,16 +130,15 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	auto& meshes = resources.getResgisteredMeshes();
 
 
-	if (frameCtx.transformsUpdated) {
-		const uint32_t meshCount = static_cast<uint32_t>(meshes.meshData.size());
-		frameCtx.cullingPCData.meshCount = meshCount;
-		bakeTransformsFromSceneGraph(meshCount);
-		frameCtx.transformsUpdated = false; // baked until new transforms applied
+	if (frameCtx.refreshGlobalTransformList) {
+		frameCtx.cullingPCData.meshCount = static_cast<uint32_t>(meshes.meshData.size());
+		//transformSceneNodes();
+		frameCtx.refreshGlobalTransformList = false; // baked until new transforms applied
 	}
 
 	// Frame 0 will define all buffers needed until either new meshes or transforms
 	// After data is defined it'll only need to update frustum each frame
-	if (!frameCtx.meshDataSet && !frameCtx.transformsUpdated) {
+	if (!frameCtx.meshDataSet && !frameCtx.refreshGlobalTransformList) {
 		if (GPU_ACCELERATION_ENABLED) {
 			// Prepare buffers where visibles will go, meshIDs
 			DrawPreperation::meshDataAndTransformsListUpload(
@@ -218,7 +216,6 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	}
 	// CPU CULLING
 	else {
-		frameCtx.visibleCount = 0;
 		frameCtx.visibleMeshIDs.clear();
 		for (const auto id : _currentSceneMeshIDs) {
 			const GPUMeshData& mesh = meshes.meshData[id];
@@ -228,24 +225,19 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 			bool visible = Visibility::isVisible(mesh.worldAABB, _currentFrustum);
 			if (visible) {
 				frameCtx.visibleMeshIDs.push_back(id);
-
-				auto it = _meshIDToInstanceTransforms.find(id);
-				if (it != _meshIDToInstanceTransforms.end()) {
-					frameCtx.visibleCount += static_cast<uint32_t>(it->second.size());
-				}
 			}
 		}
 	}
 
 	frameCtx.clearInstanceAndIndirectData();
 
-	if (frameCtx.visibleCount > 0) {
+	if (!frameCtx.visibleMeshIDs.empty()) {
+		fmt::print("Visible meshIDs this frame:\n");
+		for (auto id : frameCtx.visibleMeshIDs)
+			fmt::print("  meshID {}\n", id);
+
 		// Using the visible meshIds in culling, find all instances and define obj data
-		updateVisiblesObjects(frameCtx);
-		ASSERT(
-			frameCtx.opaqueInstances.size() + frameCtx.transparentInstances.size() <= frameCtx.visibleCount &&
-			"Instance list size exceeds visible mesh count!"
-		);
+		updateVisiblesInstances(frameCtx);
 
 		DrawPreperation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
 
@@ -273,8 +265,9 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		frameCtx.addressTableDirty = false;
 	}
 
-	if (!descriptorWriteNeeded)
+	if (!descriptorWriteNeeded) {
 		frameCtx.writer.clear(); // Only clear if it wasn't already cleared
+	}
 
 	frameCtx.writer.writeBuffer(
 		1,
@@ -288,53 +281,21 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 }
 
 
-void RenderScene::bakeTransformsFromSceneGraph(const uint32_t meshCount) {
-	_meshIDToInstanceTransforms.clear();
-	_transformsList.clear();
-
-	// Update all transforms
+void RenderScene::transformSceneNodes() {
 	for (auto& [name, scene] : _loadedScenes) {
 		if (!scene) continue;
 
 		for (auto& node : scene->scene.topNodes) {
 			if (node) {
-				node->refreshTransform(glm::mat4(1.0f)); // recalculate worldTransform recursively
+				node->refreshTransform(glm::mat4(1.0f));
 			}
-		}
-	}
-
-	// Flatten all baked world transforms per meshID
-	for (auto& [name, scene] : _loadedScenes) {
-		if (!scene) continue;
-
-		scene->bakeTransformsPerMesh(_meshIDToInstanceTransforms); // fills meshID -> list of model matrices
-	}
-
-	for (const auto& [meshID, transforms] : _meshIDToInstanceTransforms) {
-		fmt::print("meshID {} -> {} instances\n", meshID, transforms.size());
-	}
-	fmt::print("Total unique meshIDs: {}\n", _meshIDToInstanceTransforms.size());
-
-	// Build flat baked transform list
-	_transformsList.resize(meshCount, glm::mat4(0.0f));
-
-	for (uint32_t meshID = 0; meshID < meshCount; ++meshID) {
-		auto it = _meshIDToInstanceTransforms.find(meshID);
-
-		// Take the first world transform per meshID for AABB usage
-		if (it != _meshIDToInstanceTransforms.end() && !it->second.empty()) {
-			_transformsList[meshID] = it->second[0]; // One transform per meshID
-		}
-		else {
-			_transformsList[meshID] = glm::mat4(1.0f);
 		}
 	}
 }
 
-
-void RenderScene::updateVisiblesObjects(FrameContext& frameCtx) {
+void RenderScene::updateVisiblesInstances(FrameContext& frameCtx) {
 	// Convert visible mesh ID list to set
-	const std::unordered_set<uint32_t> visibleMeshSet {
+	const std::unordered_set<uint32_t> visibleMeshIDSet {
 		frameCtx.visibleMeshIDs.begin(),
 		frameCtx.visibleMeshIDs.end()
 	};
@@ -342,11 +303,12 @@ void RenderScene::updateVisiblesObjects(FrameContext& frameCtx) {
 	for (auto& [name, scene] : _loadedScenes) {
 		if (!scene) continue;
 
-		scene->FindVisibleObjects(
+		scene->FindVisibleInstances(
 			frameCtx.opaqueInstances,
 			frameCtx.transparentInstances,
-			_meshIDToInstanceTransforms,
-			visibleMeshSet);
+			frameCtx.transformsList,
+			_transformsList,
+			visibleMeshIDSet);
 	}
 }
 
@@ -366,8 +328,6 @@ void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator
 }
 
 void RenderScene::renderGeometry(FrameContext& frameCtx) {
-	auto extent = Renderer::getDrawExtent();
-
 	// all pipelines share push constant and descriptor setup
 	auto defaultPC = Pipelines::_globalLayout.pcRange;
 
@@ -375,7 +335,6 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 
 	// === SKYBOX DRAW ===
 	{
-		VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { extent.width, extent.height });
 		vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::skyboxPipeline.pipeline);
 
 		glm::mat4 view = glm::mat4(glm::mat3(_sceneData.view)); // strip translation
@@ -396,7 +355,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 		profiler.addDrawCall(1);
 	}
 
-	if (frameCtx.visibleCount == 0) return;
+	if (frameCtx.visibleMeshIDs.empty()) return;
 
 	auto& resources = Engine::getState().getGPUResources();
 
@@ -438,11 +397,10 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 				BufferUtils::destroyBuffer(aabbBuf, aabbAlloc, allocator);
 			});
 
-			VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { extent.width, extent.height });
 			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::boundingBoxPipeline.pipeline);
 
-			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &offset);
+			const VkDeviceSize vtxOffset = 0;
+			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
 
 			struct alignas(16) AABBPushConstant {
 				glm::mat4 worldMatrix;
@@ -487,8 +445,6 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 	else
 		pipeline = Pipelines::opaquePipeline.pipeline; // default
 
-	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { extent.width, extent.height });
-
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 
 	struct alignas(16) DrawPushConstants {
@@ -508,14 +464,13 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 		pLayout.pcRange.size,
 		&pc);
 
-	//for (const auto& draw : frameCtx.opaqueIndirectDraws) {
-	//	fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}\n",
-	//		draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount);
-	//}
+	for (const auto& draw : frameCtx.opaqueIndirectDraws) {
+		fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}\n",
+			draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount);
+	}
 
 	if (frameCtx.opaqueVisibleCount > 0) {
 		for (uint32_t i = 0; i < frameCtx.opaqueIndirectDraws.size(); ++i) {
-
 			vkCmdDrawIndexedIndirect(
 				frameCtx.commandBuffer,
 				frameCtx.opaqueIndirectCmdBuffer.buffer,
@@ -526,6 +481,7 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 
 			const auto& draw = frameCtx.opaqueIndirectDraws[i];
 			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
+
 			profiler.addDrawCall(triangleCount);
 		}
 	}
@@ -535,8 +491,7 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::transparentPipeline.pipeline);
 		}
 
-		for (uint32_t i = 0; i < frameCtx.transparentVisibleCount; ++i) {
-
+		for (uint32_t i = 0; i < frameCtx.transparentIndirectDraws.size(); ++i) {
 			vkCmdDrawIndexedIndirect(
 				frameCtx.commandBuffer,
 				frameCtx.transparentIndirectCmdBuffer.buffer,
@@ -546,7 +501,7 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 			);
 
 			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];
-			uint32_t triangleCount = ranges[meshID.drawRangeIndex].indexCount / 3;
+			uint32_t triangleCount = ranges[meshID.drawRangeID].indexCount / 3;
 			profiler.addDrawCall(triangleCount);
 		}
 	}

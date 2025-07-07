@@ -7,18 +7,18 @@
 
 struct OpaqueBatchKey {
 	uint32_t meshID;
-	uint32_t materialIndex;
+	uint32_t materialID;
 
 	bool operator==(const OpaqueBatchKey& other) const {
-		return meshID == other.meshID && materialIndex == other.materialIndex;
+		return meshID == other.meshID && materialID == other.materialID;
 	}
 };
 
 struct OpaqueBatchKeyHash {
 	std::size_t operator()(const OpaqueBatchKey& k) const {
 		std::size_t h1 = std::hash<uint32_t>{}(k.meshID);
-		std::size_t h2 = std::hash<uint32_t>{}(k.materialIndex);
-		return h1 ^ (h2 << 1);
+		std::size_t h2 = std::hash<uint32_t>{}(k.materialID);
+		return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
 	}
 };
 

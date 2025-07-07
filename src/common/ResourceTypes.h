@@ -126,30 +126,28 @@ struct alignas(16) CullingPushConstantsAddrs {
 };
 static_assert(sizeof(CullingPushConstantsAddrs) == 256);
 
-struct RenderInstance {
-	std::shared_ptr<GPUInstance> instances;
-	uint32_t gltfMeshIndex;
-	uint32_t gltfPrimitiveIndex;
-	MaterialPass passType;
-};
-
-struct UploadedMeshView {
-	size_t vertexSizeBytes;
-	size_t indexSizeBytes;
+struct BakedInstance {
+	GPUInstance instance;
+	uint32_t gltfMeshIndex = UINT32_MAX;
+	uint32_t gltfPrimitiveIndex = UINT32_MAX;
+	MaterialPass passType = MaterialPass::None;
+	uint32_t nodeID = UINT32_MAX;
 };
 
 struct UploadMeshContext {
 	std::vector<uint32_t> globalIndices;
 	std::vector<Vertex> globalVertices;
 
-	std::vector<UploadedMeshView> meshViews;
+	size_t totalVertexSizeBytes;
+	size_t totalIndexSizeBytes;
 };
 
 using MeshID = uint32_t;
 struct MeshRegistry {
 	std::vector<GPUMeshData> meshData;
 
-	AllocatedBuffer meshIDBuffer{};
+	// holds a linear list of meshIDs for gpu access
+	AllocatedBuffer meshIDBuffer;
 
 	inline std::vector<MeshID> extractAllMeshIDs() const {
 		std::vector<MeshID> ids;
@@ -191,60 +189,4 @@ struct MaterialResources {
 struct DescriptorsCentral {
 	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
-};
-
-
-struct GPUInstance;
-
-// ====== Interface ======
-class IRenderable {
-public:
-	virtual void FindVisibleObjects(
-		std::vector<GPUInstance>& outOpaqueVisibles,
-		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet) = 0;
-
-	virtual ~IRenderable() = default;
-};
-
-// ====== Scene Graph Node Base ======
-struct Node : public IRenderable {
-	std::weak_ptr<Node> parent;
-	std::vector<std::shared_ptr<Node>> children;
-
-	glm::mat4 localTransform{};
-	glm::mat4 worldTransform{};
-
-	uint32_t nodeIndex = UINT32_MAX;
-
-	void refreshTransform(const glm::mat4& parentMatrix) {
-		worldTransform = parentMatrix * localTransform;
-		for (auto& c : children) {
-			if (c) c->refreshTransform(worldTransform);
-		}
-	}
-
-	virtual void FindVisibleObjects(
-		std::vector<GPUInstance>& outOpaqueVisibles,
-		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet) override
-	{
-		for (auto& c : children) {
-			if (c) c->FindVisibleObjects(outOpaqueVisibles, outTransparentVisibles, meshIDToTransformMap, visibleMeshIDSet);
-		}
-	}
-
-};
-
-// ====== Mesh Node ======
-struct MeshNode : public Node {
-	std::vector<std::shared_ptr<RenderInstance>> instances;
-
-	virtual void FindVisibleObjects(
-		std::vector<GPUInstance>& outOpaqueVisibles,
-		std::vector<GPUInstance>& outTransparentVisibles,
-		const std::unordered_map<uint32_t, std::vector<glm::mat4>>& meshIDToTransformMap,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet) override;
 };

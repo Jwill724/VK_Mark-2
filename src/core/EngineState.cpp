@@ -147,41 +147,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::wait();
 
-		// Mesh buffer prep
-		JobSystem::submitJob([assetQueue, &drawRanges, &meshes](ThreadContext& threadCtx) {
-			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-			ASSERT(queue);
-
-			auto gltfJobs = queue->collect();
-
-			for (auto& context : gltfJobs) {
-				if (!context->isJobComplete(GLTFJobType::ProcessMeshes)) continue;
-
-				auto& uploadCtx = context->uploadMeshCtx;
-				uploadCtx.meshViews.reserve(meshes.meshData.size());
-
-				for (auto& mesh : meshes.meshData) {
-					ASSERT(mesh.drawRangeIndex < drawRanges.size());
-					const GPUDrawRange& range = drawRanges[mesh.drawRangeIndex];
-
-					UploadedMeshView newView {
-						.vertexSizeBytes = range.vertexCount * sizeof(Vertex),
-						.indexSizeBytes = range.indexCount * sizeof(uint32_t)
-					};
-
-					uploadCtx.meshViews.push_back(newView);
-				}
-
-				queue->push(context);
-				context->markJobComplete(GLTFJobType::MeshBufferReady);
-			}
-
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_UPLOAD_MESH_DATA);
-		});
-
-		JobSystem::wait();
-
 		// Mesh upload
 		JobSystem::submitJob([assetQueue, mainAllocator, &drawRanges, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
@@ -191,14 +156,15 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 			auto gltfJobs = queue->collect();
 
-			// Calculate buffer sizes and vertex/index counts
 			size_t vertexBufferSize = 0;
 			size_t indexBufferSize = 0;
 			for (auto& context : gltfJobs) {
-				for (auto& meshView : context->uploadMeshCtx.meshViews) {
-					vertexBufferSize += meshView.vertexSizeBytes;
-					indexBufferSize += meshView.indexSizeBytes;
-				}
+				if (!context->isComplete()) continue;
+
+				auto& meshCtx = context->uploadMeshCtx;
+
+				vertexBufferSize = meshCtx.totalVertexSizeBytes;
+				indexBufferSize = meshCtx.totalIndexSizeBytes;
 			}
 
 			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
@@ -213,7 +179,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				vertexBufferSize,
 				mainAllocator
 			);
-			resources.addGPUBuffer(AddressBufferType::Vertex, vtxBuffer);
+			resources.addGPUBufferToGlobalAddress(AddressBufferType::Vertex, vtxBuffer);
 
 			AllocatedBuffer idxBuffer = BufferUtils::createGPUAddressBuffer(
 				AddressBufferType::Index,
@@ -221,7 +187,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				indexBufferSize,
 				mainAllocator
 			);
-			resources.addGPUBuffer(AddressBufferType::Index, idxBuffer);
+			resources.addGPUBufferToGlobalAddress(AddressBufferType::Index, idxBuffer);
 
 			// Draw range gpu buffer creation
 			AllocatedBuffer drawRangeBuffer = BufferUtils::createGPUAddressBuffer(
@@ -229,7 +195,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				resources.getAddressTable(),
 				drawRangesSize,
 				mainAllocator);
-			resources.addGPUBuffer(AddressBufferType::DrawRange, drawRangeBuffer);
+			resources.addGPUBufferToGlobalAddress(AddressBufferType::DrawRange, drawRangeBuffer);
 
 			// Mesh buffer creation
 			AllocatedBuffer meshBuffer = BufferUtils::createGPUAddressBuffer(
@@ -237,7 +203,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				resources.getAddressTable(),
 				meshesSize,
 				mainAllocator);
-			resources.addGPUBuffer(AddressBufferType::Mesh, meshBuffer);
+			resources.addGPUBufferToGlobalAddress(AddressBufferType::Mesh, meshBuffer);
 
 			// Setup single staging buffer for transfer
 			AllocatedBuffer stagingBuffer = BufferUtils::createBuffer(
@@ -332,7 +298,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::submitJob([assetQueue, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData);
+			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData, RenderScene::_transformsList);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");
@@ -496,11 +462,11 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 
 	EditorImgui::renderImgui();
 
-	engineProfiler.resetRenderTimers();
-	engineProfiler.resetDrawCalls();
-
 	Renderer::prepareFrameContext(frame);
 	if (frame.swapchainResult != VK_SUCCESS) return;
+
+	engineProfiler.resetRenderTimers();
+	engineProfiler.resetDrawCalls();
 
 	engineProfiler.startTimer();
 	RenderScene::updateScene(frame, _resources);

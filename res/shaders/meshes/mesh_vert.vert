@@ -60,7 +60,7 @@ void main() {
 		uint tIndex = drawID - pc.opaqueVisibleCount;
 		if (tIndex >= pc.transparentVisibleCount) return;
 
-		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TrasparentIndirectDraws]);
+		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
@@ -72,7 +72,7 @@ void main() {
 	}
 
     DrawRangeBuffer drawRangeBuf = DrawRangeBuffer(globalAddressTable.addrs[ABT_DrawRange]);
-    GPUDrawRange range = drawRangeBuf.ranges[mesh.drawRangeIndex];
+    GPUDrawRange range = drawRangeBuf.ranges[mesh.drawRangeID];
 
     VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
     IndexBuffer indexBuf = IndexBuffer(globalAddressTable.addrs[ABT_Index]);
@@ -80,13 +80,19 @@ void main() {
     uint vertexIndex = indexBuf.indices[range.firstIndex + gl_VertexIndex];
     Vertex vtx = vertexBuf.vertices[vertexIndex];
 
-    mat4 model = inst.modelMatrix;
-    vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-    gl_Position = scene.viewproj * worldPos4;
-    outWorldPos = worldPos4.xyz;
+	TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
+	mat4 model = transformsBuffer.transforms[inst.transformID];
 
-    mat3 normalMatrix = transpose(inverse(mat3(model)));
-    outNormal = normalize(normalMatrix * vtx.normal);
-    outColor = vtx.color.xyz;
-    outUV = vtx.uv;
+	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
+	gl_Position = scene.viewproj * worldPos4;
+	outWorldPos = worldPos4.xyz;
+
+	mat3 normalMatrix = transpose(inverse(mat3(model)));
+	outNormal = normalize(normalMatrix * vtx.normal);
+	outColor = vtx.color.xyz;
+	// outColor = vec3(gl_VertexIndex % 256) / 255.0;
+	// outColor = vec3(vertexIndex % 256u) / 255.0;
+	// outColor = vec3(float(gl_DrawIDARB) / 10.0);
+	outUV = vtx.uv;
+
 }

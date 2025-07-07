@@ -36,8 +36,8 @@ struct AABB {
 
 struct Vertex {
     vec3 position;
-    vec2 uv;
     vec3 normal;
+    vec2 uv;
     vec4 color;
 };
 
@@ -63,21 +63,22 @@ struct Material {
 struct Mesh {
     AABB localAABB;
     AABB worldAABB;
-    uint drawRangeIndex;
+    uint drawRangeID;
 };
 
 
 struct Instance {
-    mat4 modelMatrix;
-    uint materialIndex;
+    uint instanceID;
+    uint materialID;
     uint meshID;
+    uint transformID;
 };
 
 // Enum address buffer types
 const uint ABT_OpaqueInstances         = 0u;
 const uint ABT_OpaqueIndirectDraws     = 1u;
 const uint ABT_TransparentInstances    = 2u;
-const uint ABT_TrasparentIndirectDraws = 3u;
+const uint ABT_TransparentIndirectDraws = 3u;
 const uint ABT_Material                = 4u;
 const uint ABT_Mesh                    = 5u;
 const uint ABT_DrawRange               = 6u;
@@ -103,7 +104,7 @@ struct IndirectDrawCmd {
     uint indexCount;
     uint instanceCount;
     uint firstIndex;
-    int  vertexOffset;
+    int vertexOffset;
     uint firstInstance;
 };
 
@@ -145,6 +146,10 @@ layout(buffer_reference, scalar) readonly buffer IndexBuffer {
     uint indices[];
 };
 
+layout(buffer_reference, scalar) readonly buffer TransformsListBuffer {
+    mat4 transforms[];
+};
+
 // In current cpu based setup, worldAABBs are done on cpu after main upload,
 // all thats present here currently is localAABB and drawRangeIndex
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {
@@ -159,10 +164,6 @@ layout(buffer_reference, scalar) writeonly buffer VisibleCountBuffer {
 
 layout(buffer_reference, scalar) writeonly buffer VisibleMeshIDBuffer {
     uint visibleMeshIDs[];
-};
-
-layout(buffer_reference, scalar) readonly buffer TransformsListBuffer {
-    mat4 transforms[];
 };
 
 #endif

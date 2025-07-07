@@ -96,7 +96,7 @@ void EditorImgui::renderImgui() {
 	auto& stats = profiler.getStats();
 
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-//	ImGui::SetNextWindowBgAlpha(1.f);
+//	ImGui::SetNextWindowBgAlpha(1.0f);
 	ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
 	ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::_mainCamera._position.x, RenderScene::_mainCamera._position.y, RenderScene::_mainCamera._position.z);
 	ImGui::Text("FPS: %.1f", stats.fps.load());
