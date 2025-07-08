@@ -137,7 +137,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 }
 
 void Renderer::submitFrame(FrameContext& frameCtx) {
-	fmt::print("=== SUBMIT FRAME [{}] ===\n", _frameNumber);
+	//fmt::print("=== SUBMIT FRAME [{}] ===\n", _frameNumber);
 	//fmt::print("FrameIndex: {}\n", frameCtx.frameIndex);
 	//fmt::print("CommandBuffer: {}\n", static_cast<void*>(frameCtx.commandBuffer));
 	//fmt::print("Fence: {}\n", static_cast<void*>(frameCtx.syncObjs.fence));

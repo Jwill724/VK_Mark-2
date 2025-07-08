@@ -163,8 +163,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 				auto& meshCtx = context->uploadMeshCtx;
 
-				vertexBufferSize = meshCtx.totalVertexSizeBytes;
-				indexBufferSize = meshCtx.totalIndexSizeBytes;
+				vertexBufferSize += meshCtx.totalVertexSizeBytes;
+				indexBufferSize += meshCtx.totalIndexSizeBytes;
 			}
 
 			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
@@ -298,7 +298,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::submitJob([assetQueue, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData, RenderScene::_transformsList);
+			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData, RenderScene::_globalTransformsList);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");

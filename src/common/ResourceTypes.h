@@ -130,7 +130,7 @@ struct BakedInstance {
 	GPUInstance instance;
 	uint32_t gltfMeshIndex = UINT32_MAX;
 	uint32_t gltfPrimitiveIndex = UINT32_MAX;
-	MaterialPass passType = MaterialPass::None;
+	MaterialPass passType = MaterialPass::Opaque;
 	uint32_t nodeID = UINT32_MAX;
 };
 

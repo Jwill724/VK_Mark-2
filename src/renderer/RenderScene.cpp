@@ -21,7 +21,8 @@ namespace RenderScene {
 
 	std::vector<MeshID> _currentSceneMeshIDs;
 
-	std::vector<glm::mat4> _transformsList;
+	// all loaded scene instances transforms
+	std::vector<glm::mat4> _globalTransformsList;
 
 	Camera _mainCamera;
 	glm::mat4 _curCamView;
@@ -129,7 +130,6 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	const auto allocator = resources.getAllocator();
 	auto& meshes = resources.getResgisteredMeshes();
 
-
 	if (frameCtx.refreshGlobalTransformList) {
 		frameCtx.cullingPCData.meshCount = static_cast<uint32_t>(meshes.meshData.size());
 		//transformSceneNodes();
@@ -144,7 +144,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 			DrawPreperation::meshDataAndTransformsListUpload(
 				frameCtx,
 				meshes,
-				_transformsList,
+				_globalTransformsList,
 				tQueue,
 				allocator,
 				GPU_ACCELERATION_ENABLED // Should 100% move this check if going full gpu only
@@ -229,7 +229,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		}
 	}
 
-	frameCtx.clearInstanceAndIndirectData();
+	frameCtx.clearRenderData();
 
 	if (!frameCtx.visibleMeshIDs.empty()) {
 		fmt::print("Visible meshIDs this frame:\n");
@@ -300,6 +300,8 @@ void RenderScene::updateVisiblesInstances(FrameContext& frameCtx) {
 		frameCtx.visibleMeshIDs.end()
 	};
 
+	frameCtx.transformsList.reserve(visibleMeshIDSet.size());
+
 	for (auto& [name, scene] : _loadedScenes) {
 		if (!scene) continue;
 
@@ -307,7 +309,7 @@ void RenderScene::updateVisiblesInstances(FrameContext& frameCtx) {
 			frameCtx.opaqueInstances,
 			frameCtx.transparentInstances,
 			frameCtx.transformsList,
-			_transformsList,
+			_globalTransformsList,
 			visibleMeshIDSet);
 	}
 }
@@ -430,7 +432,6 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 
 void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResources& resources) {
 	auto pLayout = Pipelines::_globalLayout;
-	auto extent = Renderer::getDrawExtent();
 
 	auto& profiler = Engine::getProfiler();
 

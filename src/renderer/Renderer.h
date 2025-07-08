@@ -46,7 +46,7 @@ struct FrameContext {
 	std::vector<VkDrawIndexedIndirectCommand> transparentIndirectDraws;
 	AllocatedBuffer transparentIndirectCmdBuffer;
 
-	void clearInstanceAndIndirectData() {
+	void clearRenderData() {
 		opaqueInstances.clear();
 		opaqueIndirectDraws.clear();
 		transparentInstances.clear();

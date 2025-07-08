@@ -50,7 +50,7 @@ void main() {
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+		instanceIdx = gl_InstanceIndex + drawCmd.firstInstance;
 		vInstanceID = instanceIdx;
 
 		inst = instBuf.opaqueInstances[instanceIdx];
@@ -64,7 +64,7 @@ void main() {
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+		instanceIdx = gl_InstanceIndex + drawCmd.firstInstance;
 		vInstanceID = instanceIdx;
 
 		inst = instBuf.transparentInstances[instanceIdx];
@@ -81,7 +81,7 @@ void main() {
     Vertex vtx = vertexBuf.vertices[vertexIndex];
 
 	TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
-	mat4 model = transformsBuffer.transforms[inst.transformID];
+	mat4 model = transformsBuffer.transforms[instanceIdx];
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	gl_Position = scene.viewproj * worldPos4;
