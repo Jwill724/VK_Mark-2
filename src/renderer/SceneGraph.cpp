@@ -81,7 +81,7 @@ void SceneGraph::buildSceneGraph(
 
 		// === Assign transformIDs and store baked world transforms ===
 		modelAsset.scene.nodeIDToTransformID.resize(modelAsset.scene.nodes.size(), UINT32_MAX);
-		bakedTransformsList.reserve(bakedTransformsList.size() + modelAsset.scene.nodes.size());
+		bakedTransformsList.reserve(modelAsset.scene.nodes.size());
 
 		for (uint32_t i = 0; i < modelAsset.scene.nodes.size(); ++i) {
 			const glm::mat4& world = modelAsset.scene.nodes[i]->worldTransform;
@@ -116,7 +116,7 @@ void SceneGraph::buildSceneGraph(
 
 				fmt::print("  BakedInstance -> Node {} | TransformID {} | MeshID {} | MaterialID {} | Pass {}\n",
 					nodeIndex, transformID, meshID, baked->instance.materialID,
-					static_cast<int>(baked->passType));
+					static_cast<uint32_t>(baked->passType));
 			}
 		}
 

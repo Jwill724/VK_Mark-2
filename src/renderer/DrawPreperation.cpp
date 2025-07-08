@@ -153,11 +153,11 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 		AddressBufferType::Transforms, frameCtx.addressTable, MAX_VISIBLE_TRANSFORMS, allocator);
 
 
-	fmt::print("\n[DRAW PREP]opaqueInstBytes: {}\n", opaqueInstanceBytes);
-	fmt::print("\n[DRAW PREP]opauqeIndirectBytes: {}\n", opaqueIndirectBytes);
-	fmt::print("\n[DRAW PREP]transparentInstBytes: {}\n", transparentInstanceBytes);
-	fmt::print("\n[DRAW PREP]transparentIndirectBytes: {}\n", transparentIndirectBytes);
-	fmt::print("\n[DRAW PREP]transformslistbytes: {}\n", transformsListBytes);
+	//fmt::print("\n[DRAW PREP]opaqueInstBytes: {}\n", opaqueInstanceBytes);
+	//fmt::print("\n[DRAW PREP]opauqeIndirectBytes: {}\n", opaqueIndirectBytes);
+	//fmt::print("\n[DRAW PREP]transparentInstBytes: {}\n", transparentInstanceBytes);
+	//fmt::print("\n[DRAW PREP]transparentIndirectBytes: {}\n", transparentIndirectBytes);
+	//fmt::print("\n[DRAW PREP]transformslistbytes: {}\n", transformsListBytes);
 
 	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
 	size_t offset = 0;

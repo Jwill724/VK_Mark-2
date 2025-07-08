@@ -138,8 +138,7 @@ struct TimelineSync {
 
 enum class MaterialPass : uint32_t {
 	Opaque,
-	Transparent,
-	None
+	Transparent
 };
 
 enum class PipelineType : uint32_t {

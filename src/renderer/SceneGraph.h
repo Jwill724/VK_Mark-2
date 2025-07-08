@@ -41,6 +41,7 @@ struct Node : public IRenderable {
 		const std::vector<glm::mat4>& bakedTransformsList,
 		const std::unordered_set<uint32_t>& visibleMeshIDSet
 	) override {
+
 		// === Traverse children first
 		for (auto& c : children) {
 			if (c) c->FindVisibleInstances(
@@ -53,6 +54,8 @@ struct Node : public IRenderable {
 
 		// === Process current node's instances
 		for (auto& inst : instances) {
+			fmt::print("\nCULLING: nodeID {}\n", inst->nodeID);
+
 			if (!inst) continue;
 			if (inst->nodeID >= bakedTransformsList.size()) continue;
 
@@ -64,6 +67,8 @@ struct Node : public IRenderable {
 
 			if (inst->instance.transformID >= bakedTransformsList.size())
 				continue;
+
+			fmt::print("Found visible: Node ID: {}\n", inst->nodeID);
 
 			outFrameTransformsList.push_back(bakedTransformsList[inst->instance.transformID]);
 
