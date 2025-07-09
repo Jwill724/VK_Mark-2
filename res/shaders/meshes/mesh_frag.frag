@@ -158,8 +158,8 @@ void main()
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);
 	//outFragColor = vec4(albedoMap.rgb, 1.0);
-	outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
-	//outFragColor = vec4(sampledNormal, 1.0);
+	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
+	outFragColor = vec4(sampledNormal, 1.0);
 	//outFragColor = vec4(inUV, 0.0, 1.0);
 	//outFragColor = vec4(inColor, 1.0);
 	//outFragColor = vec4(emissive, 1.0);

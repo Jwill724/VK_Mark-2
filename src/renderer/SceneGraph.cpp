@@ -70,6 +70,7 @@ void SceneGraph::buildSceneGraph(
 				modelAsset.scene.topNodes.push_back(node);
 			}
 		}
+
 		fmt::print("Found {} root nodes\n", modelAsset.scene.topNodes.size());
 
 		// === Compute world transforms ===

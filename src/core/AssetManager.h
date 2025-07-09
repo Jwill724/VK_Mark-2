@@ -40,7 +40,6 @@ private:
 struct GLTFJobContext {
 	std::shared_ptr<ModelAsset> scene;
 	fastgltf::Asset gltfAsset;
-	UploadMeshContext uploadMeshCtx;
 
 	// Set to true when scene is passed into loadedscenes
 	std::atomic<bool> hasRegisteredScene = false;
@@ -85,5 +84,10 @@ namespace AssetManager {
 	void decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue);
 	void buildSamplers(ThreadContext& threadCtx);
 	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator);
-	void processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRange>& drawRanges, MeshRegistry& meshes);
+	void processMeshes(
+		ThreadContext& threadCtx,
+		std::vector<GPUDrawRange>& drawRanges,
+		MeshRegistry& meshes,
+		std::vector<Vertex>& vertices,
+		std::vector<uint32_t>& indices);
 }

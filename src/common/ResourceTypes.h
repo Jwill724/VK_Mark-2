@@ -134,12 +134,10 @@ struct BakedInstance {
 	uint32_t nodeID = UINT32_MAX;
 };
 
+// Per model
 struct UploadMeshContext {
 	std::vector<uint32_t> globalIndices;
 	std::vector<Vertex> globalVertices;
-
-	size_t totalVertexSizeBytes;
-	size_t totalIndexSizeBytes;
 };
 
 using MeshID = uint32_t;

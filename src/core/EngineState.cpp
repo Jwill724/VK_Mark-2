@@ -139,36 +139,31 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		auto& drawRanges = _resources.getDrawRanges();
 		auto& meshes = _resources.getResgisteredMeshes();
 
-		JobSystem::submitJob([assetQueue, &drawRanges, &meshes](ThreadContext& threadCtx) {
+		std::vector<Vertex> totalVertices;
+		std::vector<uint32_t> totalIndices;
+
+		JobSystem::submitJob([assetQueue, &drawRanges, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::processMeshes(threadCtx, drawRanges, meshes);
+			AssetManager::processMeshes(threadCtx, drawRanges, meshes, totalVertices, totalIndices);
 			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MESHES_READY);
 		});
 
 		JobSystem::wait();
 
 		// Mesh upload
-		JobSystem::submitJob([assetQueue, mainAllocator, &drawRanges, &meshes](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, mainAllocator, &drawRanges, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue);
 
-			auto gltfJobs = queue->collect();
-
-			size_t vertexBufferSize = 0;
-			size_t indexBufferSize = 0;
-			for (auto& context : gltfJobs) {
-				if (!context->isComplete()) continue;
-
-				auto& meshCtx = context->uploadMeshCtx;
-
-				vertexBufferSize += meshCtx.totalVertexSizeBytes;
-				indexBufferSize += meshCtx.totalIndexSizeBytes;
-			}
+			const size_t vertexBufferSize = totalVertices.size() * sizeof(Vertex);
+			const size_t indexBufferSize = totalIndices.size() * sizeof(uint32_t);
 
 			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
 			const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
+
+			const size_t totalStagingSize = vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize;
 
 			auto& resources = Engine::getState().getGPUResources();
 
@@ -207,12 +202,12 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 			// Setup single staging buffer for transfer
 			AllocatedBuffer stagingBuffer = BufferUtils::createBuffer(
-				vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize,
+				totalStagingSize,
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 				mainAllocator
 			);
-			ASSERT(stagingBuffer.info.size >= vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize);
+			ASSERT(stagingBuffer.info.size >= totalStagingSize);
 
 			auto stgBuf = stagingBuffer.buffer;
 			auto stgAlloc = stagingBuffer.allocation;
@@ -229,29 +224,13 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			VkDeviceSize drawRangesWriteOffset = indexWriteOffset + indexBufferSize;
 			VkDeviceSize meshesWriteOffset = drawRangesWriteOffset + drawRangesSize;
 
-			// Copy drawRanges to staging
+			memcpy(stagingData + vertexWriteOffset, totalVertices.data(), vertexBufferSize);
+			memcpy(stagingData + indexWriteOffset, totalIndices.data(), indexBufferSize);
+
 			memcpy(stagingData + drawRangesWriteOffset, drawRanges.data(), drawRangesSize);
-			// Copy mesh data to staging
 			memcpy(stagingData + meshesWriteOffset, meshes.meshData.data(), meshesSize);
 
 			CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-				for (auto& context : gltfJobs) {
-					if (!context->isComplete()) continue;
-
-					auto& meshCtx = context->uploadMeshCtx;
-
-					// Copy all vertex data into staging
-					memcpy(stagingData + vertexWriteOffset,
-						meshCtx.globalVertices.data(),
-						meshCtx.globalVertices.size() * sizeof(Vertex));
-					// Copy all index data into staging
-					memcpy(stagingData + indexWriteOffset,
-						meshCtx.globalIndices.data(),
-						meshCtx.globalIndices.size() * sizeof(uint32_t));
-
-					queue->push(context);
-				}
-
 				VkBufferCopy vtxCopy {
 					.srcOffset = vertexWriteOffset,
 					.dstOffset = 0,

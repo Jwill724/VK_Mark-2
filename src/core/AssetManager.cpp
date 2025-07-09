@@ -21,11 +21,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	//std::string damagedHelmetPath = { "res/assets/DamagedHelmet.glb" };
-	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	//ASSERT(damagedHelmetFile.has_value());
-	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	//queue->push(damagedHelmetFile.value());
+	std::string damagedHelmetPath = { "res/assets/DamagedHelmet.glb" };
+	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	ASSERT(damagedHelmetFile.has_value());
+	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	queue->push(damagedHelmetFile.value());
 
 	//std::string dragonPath = { "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
@@ -45,11 +45,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
-	auto spheresFile = loadGltfFiles(spheresPath);
-	ASSERT(spheresFile.has_value());
-	spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
-	queue->push(spheresFile.value());
+	//std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
+	//auto spheresFile = loadGltfFiles(spheresPath);
+	//ASSERT(spheresFile.has_value());
+	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
+	//queue->push(spheresFile.value());
 
 	if (!queue->empty()) {
 		return true;
@@ -350,7 +350,12 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 // Define Instances for models, meshIDs and materialIDs are setup here.
 // A global meshes registry holds the mesh vector that'll be uploaded.
 // DrawRangeID is the key to index and vertex buffers, meshbuffer owns this ID.
-void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRange>& drawRanges, MeshRegistry& meshes) {
+void AssetManager::processMeshes(
+	ThreadContext& threadCtx,
+	std::vector<GPUDrawRange>& drawRanges,
+	MeshRegistry& meshes,
+	std::vector<Vertex>& vertices,
+	std::vector<uint32_t>& indices) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -363,7 +368,6 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
-		auto& uploadCtx = context->uploadMeshCtx;
 
 		// Iterate over nodes that reference a mesh
 		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
@@ -380,29 +384,29 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				inst->gltfMeshIndex = meshIdx;
 				inst->gltfPrimitiveIndex = primIdx; // Does nothing currently, one day...
 
-				const uint32_t globalVertexOffset = static_cast<uint32_t>(uploadCtx.globalVertices.size());
-				const uint32_t globalIndexOffset = static_cast<uint32_t>(uploadCtx.globalIndices.size());
+				const uint32_t globalVertexOffset = static_cast<uint32_t>(vertices.size());
+				const uint32_t globalIndexOffset = static_cast<uint32_t>(indices.size());
 
 				const auto& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
 				uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
-				uploadCtx.globalVertices.resize(static_cast<size_t>(globalVertexOffset + vertexCount));
+				vertices.resize(static_cast<size_t>(globalVertexOffset + vertexCount));
 
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 v, size_t index) {
-						ASSERT(globalVertexOffset + index < uploadCtx.globalVertices.size());
+						ASSERT(globalVertexOffset + index < vertices.size());
 						Vertex newvtx{};
 						newvtx.position = v;
 						newvtx.normal = glm::vec3(1.0f, 0.0f, 0.0f);
 						newvtx.color = glm::vec4(1.0f);
 						newvtx.uv = glm::vec2(0.0f);
-						uploadCtx.globalVertices[globalVertexOffset + index] = newvtx;
+						vertices[globalVertexOffset + index] = newvtx;
 					});
 
 				auto normals = p.findAttribute("NORMAL");
 				if (normals != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
 						[&](glm::vec3 v, size_t index) {
-							uploadCtx.globalVertices[globalVertexOffset + index].normal = v;
+							vertices[globalVertexOffset + index].normal = v;
 						});
 				}
 
@@ -410,7 +414,7 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				if (uv != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[uv->accessorIndex],
 						[&](glm::vec2 v, size_t index) {
-							uploadCtx.globalVertices[globalVertexOffset + index].uv = v;
+							vertices[globalVertexOffset + index].uv = v;
 						});
 				}
 
@@ -418,7 +422,7 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				if (colors != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[colors->accessorIndex],
 						[&](glm::vec4 v, size_t index) {
-							uploadCtx.globalVertices[globalVertexOffset + index].color = v;
+							vertices[globalVertexOffset + index].color = v;
 						});
 				}
 
@@ -426,15 +430,15 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
 
 				uint32_t maxIndex = 0;
-				uploadCtx.globalIndices.reserve(static_cast<size_t>(globalIndexOffset + indexCount));
+				indices.reserve(static_cast<size_t>(globalIndexOffset + indexCount));
 
 				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, indexAccessor,
 					[&](uint32_t idx, size_t /*i*/) {
 						maxIndex = std::max(maxIndex, idx);
-						uploadCtx.globalIndices.push_back(globalVertexOffset + idx);
+						indices.push_back(globalVertexOffset + idx);
 					});
 
-				ASSERT(globalVertexOffset + maxIndex < uploadCtx.globalVertices.size() &&
+				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
 				GPUDrawRange range {
@@ -444,20 +448,16 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 					.vertexCount = vertexCount
 				};
 
-				ASSERT(uploadCtx.globalVertices.size() >= range.vertexOffset + range.vertexCount &&
+				ASSERT(vertices.size() >= range.vertexOffset + range.vertexCount &&
 					"Vertex buffer too small for range!");
 
-				ASSERT(uploadCtx.globalIndices.size() >= range.firstIndex + range.indexCount &&
+				ASSERT(indices.size() >= range.firstIndex + range.indexCount &&
 					"Index buffer too small for range!");
 
-				uploadCtx.totalVertexSizeBytes += range.vertexCount * sizeof(Vertex);
-				uploadCtx.totalIndexSizeBytes += range.indexCount * sizeof(uint32_t);
-
 				drawRanges.push_back(range);
-				uint32_t rangeIdx = static_cast<uint32_t>(drawRanges.size() - 1);
 
 				GPUMeshData newMesh{};
-				newMesh.drawRangeID = static_cast<uint32_t>(rangeIdx);
+				newMesh.drawRangeID = static_cast<uint32_t>(drawRanges.size() - 1);
 
 				// Attach material indexes to instances and define pass type
 				if (p.materialIndex.has_value()) {
@@ -471,10 +471,10 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 				}
 
 				// === AABB Calculation ===
-				glm::vec3 vmin = uploadCtx.globalVertices[globalVertexOffset].position;
+				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
 				for (uint32_t i = 0; i < vertexCount; ++i) {
-					glm::vec3 pos = uploadCtx.globalVertices[static_cast<size_t>(globalVertexOffset + i)].position;
+					glm::vec3 pos = vertices[static_cast<size_t>(globalVertexOffset + i)].position;
 					vmin = glm::min(vmin, pos);
 					vmax = glm::max(vmax, pos);
 				}
@@ -500,11 +500,11 @@ void AssetManager::processMeshes(ThreadContext& threadCtx, std::vector<GPUDrawRa
 
 		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}, ranges={}\n",
 			meshes.meshData.size(),
-			uploadCtx.globalVertices.size(),
-			uploadCtx.globalIndices.size(),
+			vertices.size(),
+			indices.size(),
 			drawRanges.size());
 
-		ASSERT(!drawRanges.empty() && !uploadCtx.globalVertices.empty() && !uploadCtx.globalIndices.empty() &&
+		ASSERT(!drawRanges.empty() && !vertices.empty() && !indices.empty() &&
 			"Invalid draw range or empty mesh data");
 
 		queue->push(context);
@@ -536,7 +536,7 @@ void ModelAsset::FindVisibleInstances(
 	const std::vector<glm::mat4>& bakedTransformsList,
 	const std::unordered_set<uint32_t>& visibleMeshIDSet)
 {
-	for (auto& root : scene.topNodes) {
+	for (const auto& root : scene.topNodes) {
 		if (root) {
 			root->FindVisibleInstances(
 				outVisibleOpaqueInstances,

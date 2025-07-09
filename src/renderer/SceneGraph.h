@@ -43,7 +43,7 @@ struct Node : public IRenderable {
 	) override {
 
 		// === Traverse children first
-		for (auto& c : children) {
+		for (const auto& c : children) {
 			if (c) c->FindVisibleInstances(
 				outVisibleOpaqueInstances,
 				outVisibleTransparentInstances,
@@ -53,7 +53,7 @@ struct Node : public IRenderable {
 		}
 
 		// === Process current node's instances
-		for (auto& inst : instances) {
+		for (const auto& inst : instances) {
 			fmt::print("\nCULLING: nodeID {}\n", inst->nodeID);
 
 			if (!inst) continue;
