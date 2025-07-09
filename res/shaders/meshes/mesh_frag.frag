@@ -39,11 +39,11 @@ layout(set = 0, binding = 1) uniform EnvMapData {
 layout(set = 0, binding = 2) uniform samplerCube envMaps[];
 layout(set = 0, binding = 4) uniform sampler2D combindedSamplers[];
 
-layout(push_constant) uniform PushConstants {
-	uint opaqueVisibleCount;
-	uint transparentVisibleCount;
+layout(push_constant) uniform DrawPushConstants {
+	uint opaqueDrawCount;
+	uint transparentDrawCount;
 	uint pad[2];
-} pc;
+} drawData;
 
 const float PI = 3.14159265359;
 const float MAX_REFLECTION_LOD = 4.0;
@@ -74,7 +74,7 @@ void main()
 	Instance inst;
 	Material mat;
 
-	if (drawID < pc.opaqueVisibleCount) {
+	if (drawID < drawData.opaqueDrawCount) {
 		// Opaque draw
 		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
@@ -84,8 +84,8 @@ void main()
 		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 	} else {
 		// Transparent draw
-		uint tIndex = drawID - pc.opaqueVisibleCount;
-		if (tIndex >= pc.transparentVisibleCount) return;
+		uint tIndex = drawID - drawData.opaqueDrawCount;
+		if (tIndex >= drawData.transparentDrawCount) return;
 
 		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);

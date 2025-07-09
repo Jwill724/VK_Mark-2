@@ -121,7 +121,7 @@
     <ClCompile Include="src\renderer\SceneGraph.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\DrawPreperation.cpp">
+    <ClCompile Include="src\renderer\DrawPreparation.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\core\types\Texture.cpp">
@@ -222,7 +222,7 @@
     <ClInclude Include="src\renderer\SceneGraph.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\DrawPreperation.h">
+    <ClInclude Include="src\renderer\DrawPreparation.h">
       <Filter>src\renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\RenderGraph.h">

@@ -101,7 +101,7 @@
     <ClCompile Include="src\input\UserInput.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\DrawPreperation.cpp">
+    <ClCompile Include="src\renderer\DrawPreparation.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\RenderGraph.cpp">
@@ -218,7 +218,7 @@
     <ClInclude Include="src\common\EngineConstants.h" />
     <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\file\File.h" />
-    <ClInclude Include="src\renderer\DrawPreperation.h" />
+    <ClInclude Include="src\renderer\DrawPreparation.h" />
     <ClInclude Include="src\renderer\RenderGraph.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <ClInclude Include="src\renderer\RenderScene.h" />

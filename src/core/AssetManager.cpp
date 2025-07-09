@@ -355,7 +355,8 @@ void AssetManager::processMeshes(
 	std::vector<GPUDrawRange>& drawRanges,
 	MeshRegistry& meshes,
 	std::vector<Vertex>& vertices,
-	std::vector<uint32_t>& indices) {
+	std::vector<uint32_t>& indices)
+{
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -374,7 +375,7 @@ void AssetManager::processMeshes(
 			const auto& node = gltf.nodes[nodeIdx];
 			if (!node.meshIndex.has_value()) continue;
 
-			uint32_t meshIdx = *node.meshIndex;
+			uint32_t meshIdx = static_cast<uint32_t>(*node.meshIndex);
 			const auto& mesh = gltf.meshes[meshIdx];
 
 			for (uint32_t primIdx = 0; primIdx < mesh.primitives.size(); ++primIdx) {
@@ -390,6 +391,9 @@ void AssetManager::processMeshes(
 				const auto& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
 				uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
 				vertices.resize(static_cast<size_t>(globalVertexOffset + vertexCount));
+
+				fmt::print("[processMeshes] primitive {}: globalVertexOffset={}, vertexCount={}\n",
+					primIdx, globalVertexOffset, vertexCount);
 
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 v, size_t index) {
@@ -441,6 +445,9 @@ void AssetManager::processMeshes(
 				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
+				fmt::print("[processMeshes] primitive {}: globalIndexOffset={}, indexCount={}, maxIndexAdjusted={}\n",
+					primIdx, globalIndexOffset, indexCount, globalVertexOffset + maxIndex);
+
 				GPUDrawRange range {
 					.firstIndex = globalIndexOffset,
 					.indexCount = indexCount,
@@ -456,8 +463,12 @@ void AssetManager::processMeshes(
 
 				drawRanges.push_back(range);
 
+				uint32_t rangeID = static_cast<uint32_t>(drawRanges.size() - 1);
+				fmt::print("[processMeshes] -> DrawRange {}: firstIndex={}, indexCount={}, vertexOffset={}, vertexCount={}\n",
+					rangeID, range.firstIndex, range.indexCount, range.vertexOffset, range.vertexCount);
+
 				GPUMeshData newMesh{};
-				newMesh.drawRangeID = static_cast<uint32_t>(drawRanges.size() - 1);
+				newMesh.drawRangeID = rangeID;
 
 				// Attach material indexes to instances and define pass type
 				if (p.materialIndex.has_value()) {
@@ -486,7 +497,6 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
 				inst->instance.meshID = meshes.registerMesh(newMesh);
-
 				scene.runtime.nodeIndexToBakedInstances[nodeIdx].push_back(inst);
 
 				//fmt::print("=== Registered Mesh {} ===\n", meshes.meshData.size());

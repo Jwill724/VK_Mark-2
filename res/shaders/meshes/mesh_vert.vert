@@ -29,11 +29,11 @@ layout(set = 1, binding = 1) uniform SceneUBO {
     SceneData scene;
 };
 
-layout(push_constant) uniform PushConstants {
-	uint opaqueVisibleCount;
-	uint transparentVisibleCount;
+layout(push_constant) uniform DrawPushConstants {
+	uint opaqueDrawCount;
+	uint transparentDrawCount;
 	uint pad[2];
-} pc;
+} drawData;
 
 void main() {
 	uint drawID = gl_DrawIDARB;
@@ -44,55 +44,45 @@ void main() {
 	Mesh mesh;
 	uint instanceIdx;
 
-	if (drawID < pc.opaqueVisibleCount) {
+	if (drawID < drawData.opaqueDrawCount) {
 		// === Opaque path ===
 		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		instanceIdx = gl_InstanceIndex + drawCmd.firstInstance;
+		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
 		vInstanceID = instanceIdx;
 
 		inst = instBuf.opaqueInstances[instanceIdx];
 		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
 	} else {
 		// === Transparent path ===
-		uint tIndex = drawID - pc.opaqueVisibleCount;
-		if (tIndex >= pc.transparentVisibleCount) return;
+		uint tIndex = drawID - drawData.opaqueDrawCount;
+		if (tIndex >= drawData.transparentDrawCount) return;
 
 		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		instanceIdx = gl_InstanceIndex + drawCmd.firstInstance;
+		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
 		vInstanceID = instanceIdx;
 
 		inst = instBuf.transparentInstances[instanceIdx];
 		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
 	}
 
-    DrawRangeBuffer drawRangeBuf = DrawRangeBuffer(globalAddressTable.addrs[ABT_DrawRange]);
-    GPUDrawRange range = drawRangeBuf.ranges[mesh.drawRangeID];
-
-    VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
-    IndexBuffer indexBuf = IndexBuffer(globalAddressTable.addrs[ABT_Index]);
-
-    uint vertexIndex = indexBuf.indices[range.firstIndex + gl_VertexIndex];
-    Vertex vtx = vertexBuf.vertices[vertexIndex];
+	VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
+	Vertex vtx = vertexBuf.vertices[gl_VertexIndex];
 
 	TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
 	mat4 model = transformsBuffer.transforms[instanceIdx];
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-	gl_Position = scene.viewproj * worldPos4;
 	outWorldPos = worldPos4.xyz;
+	gl_Position = scene.viewproj * worldPos4;
 
 	mat3 normalMatrix = transpose(inverse(mat3(model)));
 	outNormal = normalize(normalMatrix * vtx.normal);
 	outColor = vtx.color.xyz;
-	// outColor = vec3(gl_VertexIndex % 256) / 255.0;
-	// outColor = vec3(vertexIndex % 256u) / 255.0;
-	// outColor = vec3(float(gl_DrawIDARB) / 10.0);
 	outUV = vtx.uv;
-
 }

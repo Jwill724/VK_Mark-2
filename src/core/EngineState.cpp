@@ -12,7 +12,6 @@
 #include "JobSystem.h"
 #include "renderer/RenderScene.h"
 #include "renderer/SceneGraph.h"
-#include "renderer/DrawPreperation.h"
 #include "profiler/EditorImgui.h"
 #include "Engine.h"
 
@@ -159,11 +158,20 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 			const size_t vertexBufferSize = totalVertices.size() * sizeof(Vertex);
 			const size_t indexBufferSize = totalIndices.size() * sizeof(uint32_t);
-
 			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
 			const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
-
 			const size_t totalStagingSize = vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize;
+
+			// Debug prints to verify sizes
+			fmt::print("[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
+				vertexBufferSize, totalVertices.size());
+			fmt::print("[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",
+				indexBufferSize, totalIndices.size());
+			fmt::print("[MeshUpload] drawRangesSize     = {} bytes ({} ranges)\n",
+				drawRangesSize, drawRanges.size());
+			fmt::print("[MeshUpload] meshesSize         = {} bytes ({} meshes)\n",
+				meshesSize, meshes.meshData.size());
+			fmt::print("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize);
 
 			auto& resources = Engine::getState().getGPUResources();
 
@@ -189,7 +197,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				AddressBufferType::DrawRange,
 				resources.getAddressTable(),
 				drawRangesSize,
-				mainAllocator);
+				mainAllocator
+			);
 			resources.addGPUBufferToGlobalAddress(AddressBufferType::DrawRange, drawRangeBuffer);
 
 			// Mesh buffer creation
@@ -197,7 +206,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				AddressBufferType::Mesh,
 				resources.getAddressTable(),
 				meshesSize,
-				mainAllocator);
+				mainAllocator
+			);
 			resources.addGPUBufferToGlobalAddress(AddressBufferType::Mesh, meshBuffer);
 
 			// Setup single staging buffer for transfer
@@ -214,45 +224,51 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			resources.getTempDeletionQueue().push_function([stgBuf, stgAlloc, mainAllocator]() mutable {
 				BufferUtils::destroyBuffer(stgBuf, stgAlloc, mainAllocator);
 			});
+
 			threadCtx.stagingMapped = stagingBuffer.info.pMappedData;
 			ASSERT(threadCtx.stagingMapped != nullptr);
-
 			uint8_t* stagingData = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
 
+			// Compute offsets
 			VkDeviceSize vertexWriteOffset = 0;
 			VkDeviceSize indexWriteOffset = vertexWriteOffset + vertexBufferSize;
 			VkDeviceSize drawRangesWriteOffset = indexWriteOffset + indexBufferSize;
 			VkDeviceSize meshesWriteOffset = drawRangesWriteOffset + drawRangesSize;
 
+			fmt::print("[MeshUpload] vertexWriteOffset     = {}\n", vertexWriteOffset);
+			fmt::print("[MeshUpload] indexWriteOffset      = {}\n", indexWriteOffset);
+			fmt::print("[MeshUpload] drawRangesWriteOffset = {}\n", drawRangesWriteOffset);
+			fmt::print("[MeshUpload] meshesWriteOffset     = {}\n", meshesWriteOffset);
+
+			// Copy into staging
 			memcpy(stagingData + vertexWriteOffset, totalVertices.data(), vertexBufferSize);
 			memcpy(stagingData + indexWriteOffset, totalIndices.data(), indexBufferSize);
-
 			memcpy(stagingData + drawRangesWriteOffset, drawRanges.data(), drawRangesSize);
 			memcpy(stagingData + meshesWriteOffset, meshes.meshData.data(), meshesSize);
 
 			CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-				VkBufferCopy vtxCopy {
+				VkBufferCopy vtxCopy{
 					.srcOffset = vertexWriteOffset,
 					.dstOffset = 0,
 					.size = vertexBufferSize
 				};
 				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
 
-				VkBufferCopy idxCopy {
+				VkBufferCopy idxCopy{
 					.srcOffset = indexWriteOffset,
 					.dstOffset = 0,
 					.size = indexBufferSize
 				};
 				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
 
-				VkBufferCopy drawRangeCopy {
+				VkBufferCopy drawRangeCopy{
 					.srcOffset = drawRangesWriteOffset,
 					.dstOffset = 0,
 					.size = drawRangesSize
 				};
 				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
 
-				VkBufferCopy meshCopy {
+				VkBufferCopy meshCopy{
 					.srcOffset = meshesWriteOffset,
 					.dstOffset = 0,
 					.size = meshesSize
