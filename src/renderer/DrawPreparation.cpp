@@ -1,12 +1,12 @@
 #include "pch.h"
 
-#include "DrawPreperation.h"
+#include "DrawPreparation.h"
 #include "Engine.h"
 #include "RenderScene.h"
 #include "gpu_types/CommandBuffer.h"
 #include "utils/BufferUtils.h"
 
-void DrawPreperation::buildAndSortIndirectDraws(
+void DrawPreparation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
 	const std::vector<GPUDrawRange>& drawRanges,
 	const std::vector<GPUMeshData>& meshes)
@@ -25,13 +25,6 @@ void DrawPreperation::buildAndSortIndirectDraws(
 	uint32_t batchIndex = 0;
 	for (const auto& [key, instanceIndices] : opaqueBatches) {
 		const GPUMeshData& mesh = meshes[key.meshID];
-
-		if (mesh.drawRangeID >= drawRanges.size()) {
-			fmt::print("WARNING: [Opaque] Skipped batch {} - meshID={} drawRangeID={} (out of bounds)\n",
-				batchIndex, key.meshID, mesh.drawRangeID);
-			continue;
-		}
-
 		const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
 
 		fmt::print("[Opaque Batch {}] meshID={} materialID={} drawRangeID={} -> indexCount={}, vertexOffset={}, firstIndex={}, vertexCount={},instanceCount={}\n",
@@ -72,12 +65,6 @@ void DrawPreperation::buildAndSortIndirectDraws(
 			const GPUInstance& inst = frameCtx.transparentInstances[i];
 			const GPUMeshData& mesh = meshes[inst.meshID];
 
-			if (mesh.drawRangeID >= drawRanges.size()) {
-				fmt::print("WARNING: [Transparent] Skipped instance {} - meshID={} drawRangeID={} (out of bounds)\n",
-					i, inst.meshID, mesh.drawRangeID);
-				continue;
-			}
-
 			const auto& range = drawRanges[mesh.drawRangeID];
 
 			fmt::print("[Transparent Instance {}] meshID={} -> drawRangeID={} -> indexCount={}, vertexOffset={}, firstIndex={}\n",
@@ -97,19 +84,14 @@ void DrawPreperation::buildAndSortIndirectDraws(
 			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}
 	}
-
-	fmt::print("[DrawPrep] Opaque batches: {}, total instances: {}\n",
-		frameCtx.opaqueIndirectDraws.size(), frameCtx.opaqueVisibleCount);
-	fmt::print("[DrawPrep] Transparent instances: {}\n", frameCtx.transparentVisibleCount);
 }
 
-
-void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
+void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
 	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
-		"[DrawPreperation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
+		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 
 	ASSERT(frameCtx.transformsList.size() > 0 &&
-		"[DrawPreperation::uploadGPUBuffersForFrame] transformList is empty, require valid transforms.");
+		"[DrawPreparation::uploadGPUBuffersForFrame] transformList is empty, require valid transforms.");
 
 	bool isOpaqueVisible = false;
 	bool isTransparentVisible = false;
@@ -348,7 +330,7 @@ void DrawPreperation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 
 
 
-void DrawPreperation::meshDataAndTransformsListUpload(
+void DrawPreparation::meshDataAndTransformsListUpload(
 	FrameContext& frameCtx,
 	MeshRegistry& meshes,
 	const std::vector<glm::mat4>& transformsList,
@@ -356,7 +338,7 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 	const VmaAllocator allocator,
 	bool uploadTransforms // in fully gpu driven this won't be an option, this all going to gpu only
 ) {
-	ASSERT(!meshes.meshData.empty() && "[DrawPreperation] mesh data not set properly.");
+	ASSERT(!meshes.meshData.empty() && "[DrawPreparation] mesh data not set properly.");
 
 	const uint32_t meshCount = static_cast<uint32_t>(meshes.meshData.size());
 	const size_t meshIDBufSize = static_cast<size_t>(meshCount * sizeof(uint32_t));
@@ -446,7 +428,6 @@ void DrawPreperation::meshDataAndTransformsListUpload(
 				allocator);
 		}
 	}
-
 
 	size_t gpuStagingSize = 0;
 	// visible mesh ids

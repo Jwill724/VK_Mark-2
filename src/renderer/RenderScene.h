@@ -22,7 +22,7 @@ namespace RenderScene {
 
 	void setScene();
 	void updateCamera();
-	void uploadFrustumToFrame(CullingPushConstantsAddrs& frustumData);
+	void copyFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
 	void transformSceneNodes();
 

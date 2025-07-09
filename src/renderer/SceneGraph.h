@@ -42,7 +42,7 @@ struct Node : public IRenderable {
 		const std::unordered_set<uint32_t>& visibleMeshIDSet
 	) override {
 
-		// === Traverse children first
+		// Traverse children first
 		for (const auto& c : children) {
 			if (c) c->FindVisibleInstances(
 				outVisibleOpaqueInstances,
@@ -52,9 +52,9 @@ struct Node : public IRenderable {
 				visibleMeshIDSet);
 		}
 
-		// === Process current node's instances
+		// Process current node's instances
 		for (const auto& inst : instances) {
-			fmt::print("\nCULLING: nodeID {}\n", inst->nodeID);
+			//fmt::print("\nCULLING: nodeID {}\n", inst->nodeID);
 
 			if (!inst) continue;
 			if (inst->nodeID >= bakedTransformsList.size()) continue;
@@ -68,7 +68,7 @@ struct Node : public IRenderable {
 			if (inst->instance.transformID >= bakedTransformsList.size())
 				continue;
 
-			fmt::print("Found visible: Node ID: {}\n", inst->nodeID);
+			//fmt::print("Found visible: Node ID: {}\n", inst->nodeID);
 
 			outFrameTransformsList.push_back(bakedTransformsList[inst->instance.transformID]);
 

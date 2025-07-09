@@ -8,7 +8,7 @@
 #include "renderer/gpu_types/Descriptor.h"
 #include "renderer/gpu_types/CommandBuffer.h"
 #include "SceneGraph.h"
-#include "DrawPreperation.h"
+#include "DrawPreparation.h"
 #include "Visibility.h"
 #include "core/Environment.h"
 #include "utils/BufferUtils.h"
@@ -78,14 +78,14 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	if (_isFirstViewProj) {
 		_lastViewProj = _sceneData.viewproj;
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
-		uploadFrustumToFrame(frameCtx.cullingPCData);
+		copyFrustumToFrame(frameCtx.cullingPCData);
 		_isFirstViewProj = false;
 	}
 
 	if (_sceneData.viewproj != _lastViewProj) {
 		_lastViewProj = _sceneData.viewproj;
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
-		uploadFrustumToFrame(frameCtx.cullingPCData);
+		copyFrustumToFrame(frameCtx.cullingPCData);
 	}
 
 	allocateSceneBuffer(frameCtx, resources.getAllocator());
@@ -141,7 +141,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	if (!frameCtx.meshDataSet && !frameCtx.refreshGlobalTransformList) {
 		if (GPU_ACCELERATION_ENABLED) {
 			// Prepare buffers where visibles will go, meshIDs
-			DrawPreperation::meshDataAndTransformsListUpload(
+			DrawPreparation::meshDataAndTransformsListUpload(
 				frameCtx,
 				meshes,
 				_globalTransformsList,
@@ -166,7 +166,6 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		else {
 			_currentSceneMeshIDs = meshes.extractAllMeshIDs();
 			fmt::print("mesh id sizes: {}\n", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
-
 			frameCtx.meshDataSet = true;
 		}
 	}
@@ -197,7 +196,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 				frameCtx.gpuVisibleCountBuffer.buffer,
 				frameCtx.gpuVisibleMeshIDsBuffer.buffer,
 				sets);
-		}, frameCtx.computePool, QueueType::Compute);
+			}, frameCtx.computePool, QueueType::Compute);
 
 		frameCtx.computeCmds = DeferredCmdSubmitQueue::collectCompute();
 
@@ -239,17 +238,16 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		// Using the visible meshIds in culling, find all instances and define obj data
 		updateVisiblesInstances(frameCtx);
 
-		DrawPreperation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
+		DrawPreparation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
 
-		DrawPreperation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
+		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
 	}
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
-	// This ssbo write is for building the draws, the next will occur for actual drawing
 	// If no visibles are present, early outs upload and table isn't marked dirty
-	//
-	// I think this address table dirty will only be useful for outside function, as of now it does nothing
-	// within this packed single function setup
+
+	// Note: in fully gpu driven, draw building in compute would need a buffer write prior
+
 	bool descriptorWriteNeeded = false;
 	if (frameCtx.addressTableDirty) {
 		frameCtx.writer.clear();
@@ -449,40 +447,41 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 
 	struct alignas(16) DrawPushConstants {
-		uint32_t opaqueVisibleCount;
-		uint32_t transparentVisibleCount;
+		uint32_t opaqueDrawCount;
+		uint32_t transparentDrawCount;
 		uint32_t pad[2];
-	} pc{};
-	pc.opaqueVisibleCount = frameCtx.opaqueVisibleCount;
-	pc.transparentVisibleCount = frameCtx.transparentVisibleCount;
+	} drawData{};
 
 	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-	vkCmdPushConstants(frameCtx.commandBuffer,
-		pLayout.layout,
-		pLayout.pcRange.stageFlags,
-		pLayout.pcRange.offset,
-		pLayout.pcRange.size,
-		&pc);
-
-	for (const auto& draw : frameCtx.opaqueIndirectDraws) {
-		fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}\n",
-			draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount);
-	}
 
 	if (frameCtx.opaqueVisibleCount > 0) {
-		for (uint32_t i = 0; i < frameCtx.opaqueIndirectDraws.size(); ++i) {
-			vkCmdDrawIndexedIndirect(
-				frameCtx.commandBuffer,
-				frameCtx.opaqueIndirectCmdBuffer.buffer,
-				0,
-				frameCtx.opaqueVisibleCount,
-				drawCmdSize
-			);
+		drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
+		drawData.transparentDrawCount = 0;
 
+		for (const auto& draw : frameCtx.opaqueIndirectDraws) {
+			fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}, opaqueDrawCount={}\n",
+				draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, drawData.opaqueDrawCount);
+		}
+
+		vkCmdPushConstants(frameCtx.commandBuffer,
+			pLayout.layout,
+			pLayout.pcRange.stageFlags,
+			pLayout.pcRange.offset,
+			pLayout.pcRange.size,
+			&drawData);
+
+		vkCmdDrawIndexedIndirect(
+			frameCtx.commandBuffer,
+			frameCtx.opaqueIndirectCmdBuffer.buffer,
+			0,
+			drawData.opaqueDrawCount,
+			drawCmdSize
+		);
+
+		for (uint32_t i = 0; i < drawData.opaqueDrawCount; ++i) {
 			const auto& draw = frameCtx.opaqueIndirectDraws[i];
 			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
-
 			profiler.addDrawCall(triangleCount);
 		}
 	}
@@ -492,15 +491,25 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::transparentPipeline.pipeline);
 		}
 
-		for (uint32_t i = 0; i < frameCtx.transparentIndirectDraws.size(); ++i) {
-			vkCmdDrawIndexedIndirect(
-				frameCtx.commandBuffer,
-				frameCtx.transparentIndirectCmdBuffer.buffer,
-				0,
-				frameCtx.transparentVisibleCount,
-				drawCmdSize
-			);
+		drawData.opaqueDrawCount = 0;
+		drawData.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
 
+		vkCmdPushConstants(frameCtx.commandBuffer,
+			pLayout.layout,
+			pLayout.pcRange.stageFlags,
+			pLayout.pcRange.offset,
+			pLayout.pcRange.size,
+			&drawData);
+
+		vkCmdDrawIndexedIndirect(
+			frameCtx.commandBuffer,
+			frameCtx.transparentIndirectCmdBuffer.buffer,
+			0,
+			drawData.transparentDrawCount,
+			drawCmdSize
+		);
+
+		for (uint32_t i = 0; i < drawData.transparentDrawCount; ++i) {
 			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];
 			uint32_t triangleCount = ranges[meshID.drawRangeID].indexCount / 3;
 			profiler.addDrawCall(triangleCount);
@@ -508,7 +517,7 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 	}
 }
 
-void RenderScene::uploadFrustumToFrame(CullingPushConstantsAddrs& frustumData) {
+void RenderScene::copyFrustumToFrame(CullingPushConstantsAddrs& frustumData) {
 	if (!GPU_ACCELERATION_ENABLED) return;
 
 	std::copy(
