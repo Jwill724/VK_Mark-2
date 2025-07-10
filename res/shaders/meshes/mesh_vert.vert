@@ -32,57 +32,65 @@ layout(set = 1, binding = 1) uniform SceneUBO {
 layout(push_constant) uniform DrawPushConstants {
 	uint opaqueDrawCount;
 	uint transparentDrawCount;
-	uint pad[2];
+	uint totalVertexCount;
+	uint totalIndexCount;
 } drawData;
 
 void main() {
-	uint drawID = gl_DrawIDARB;
-	vDrawID = drawID;
+    uint drawID = gl_DrawIDARB;
+    vDrawID = drawID;
 
-	IndirectDrawCmd drawCmd;
-	Instance inst;
-	Mesh mesh;
-	uint instanceIdx;
+    IndirectDrawCmd drawCmd;
+    Instance inst;
+    Mesh mesh;
+    uint instanceIdx;
 
-	if (drawID < drawData.opaqueDrawCount) {
-		// === Opaque path ===
-		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
-		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
+    if (drawID < drawData.opaqueDrawCount) {
+        // opaque
+        OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
+        OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
-		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
-		vInstanceID = instanceIdx;
+        drawCmd     = cmdBuf.opaqueIndirect[drawID];
+        instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+        vInstanceID = instanceIdx;
+        inst        = instBuf.opaqueInstances[instanceIdx];
+        mesh        = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
+    } else {
+        // transparent
+        uint tIndex = drawID - drawData.opaqueDrawCount;
+        if (tIndex >= drawData.transparentDrawCount) {
+            return;
+        }
 
-		inst = instBuf.opaqueInstances[instanceIdx];
-		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
-	} else {
-		// === Transparent path ===
-		uint tIndex = drawID - drawData.opaqueDrawCount;
-		if (tIndex >= drawData.transparentDrawCount) return;
+        TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
+        TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
-		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
-		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
+        drawCmd     = cmdBuf.transparentIndirect[tIndex];
+        instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
+        vInstanceID = instanceIdx;
+        inst        = instBuf.transparentInstances[instanceIdx];
+        mesh        = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
+    }
 
-		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
-		vInstanceID = instanceIdx;
+    uint vertIdx = gl_VertexIndex;
+    if (vertIdx >= drawData.totalVertexCount) {
+        return;
+    }
 
-		inst = instBuf.transparentInstances[instanceIdx];
-		mesh = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
-	}
+    // fetch the vertex
+    VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
+    Vertex vtx = vertexBuf.vertices[vertIdx];
 
-	VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
-	Vertex vtx = vertexBuf.vertices[gl_VertexIndex];
+    // fetch transform
+    TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
+    mat4 model = transformsBuffer.transforms[instanceIdx];
 
-	TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
-	mat4 model = transformsBuffer.transforms[instanceIdx];
+    vec4 worldPos4 = model * vec4(vtx.position, 1.0);
+    outWorldPos  = worldPos4.xyz;
+    gl_Position = scene.viewproj * worldPos4;
 
-	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-	outWorldPos = worldPos4.xyz;
-	gl_Position = scene.viewproj * worldPos4;
-
-	mat3 normalMatrix = transpose(inverse(mat3(model)));
-	outNormal = normalize(normalMatrix * vtx.normal);
-	outColor = vtx.color.xyz;
-	outUV = vtx.uv;
+    mat3 normalMatrix = transpose(inverse(mat3(model)));
+    outNormal = normalize(normalMatrix * vtx.normal);
+    outColor = vtx.color.xyz;
+    outUV = vtx.uv;
 }

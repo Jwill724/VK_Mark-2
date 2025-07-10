@@ -428,7 +428,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 	}
 }
 
-void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResources& resources) {
+void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources) {
 	auto pLayout = Pipelines::_globalLayout;
 
 	auto& profiler = Engine::getProfiler();
@@ -442,26 +442,20 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 	if (profiler.pipeOverride.enabled)
 		pipeline = profiler.getPipelineByType(profiler.pipeOverride.selected);
 	else
-		pipeline = Pipelines::opaquePipeline.pipeline; // default
+		pipeline = Pipelines::opaquePipeline.pipeline; // default pipeline
 
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
-
-	struct alignas(16) DrawPushConstants {
-		uint32_t opaqueDrawCount;
-		uint32_t transparentDrawCount;
-		uint32_t pad[2];
-	} drawData{};
 
 	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 	if (frameCtx.opaqueVisibleCount > 0) {
-		drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
-		drawData.transparentDrawCount = 0;
+		frameCtx.drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
+		frameCtx.drawData.transparentDrawCount = 0;
 
 		for (const auto& draw : frameCtx.opaqueIndirectDraws) {
 			fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}, opaqueDrawCount={}\n",
-				draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, drawData.opaqueDrawCount);
+				draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, frameCtx.drawData.opaqueDrawCount);
 		}
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
@@ -469,17 +463,17 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 			pLayout.pcRange.stageFlags,
 			pLayout.pcRange.offset,
 			pLayout.pcRange.size,
-			&drawData);
+			&frameCtx.drawData);
 
 		vkCmdDrawIndexedIndirect(
 			frameCtx.commandBuffer,
 			frameCtx.opaqueIndirectCmdBuffer.buffer,
 			0,
-			drawData.opaqueDrawCount,
+			frameCtx.drawData.opaqueDrawCount,
 			drawCmdSize
 		);
 
-		for (uint32_t i = 0; i < drawData.opaqueDrawCount; ++i) {
+		for (uint32_t i = 0; i < frameCtx.drawData.opaqueDrawCount; ++i) {
 			const auto& draw = frameCtx.opaqueIndirectDraws[i];
 			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
 			profiler.addDrawCall(triangleCount);
@@ -491,25 +485,25 @@ void RenderScene::drawIndirectCommands(const FrameContext& frameCtx, GPUResource
 			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::transparentPipeline.pipeline);
 		}
 
-		drawData.opaqueDrawCount = 0;
-		drawData.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
+		frameCtx.drawData.opaqueDrawCount = 0;
+		frameCtx.drawData.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
 			pLayout.pcRange.stageFlags,
 			pLayout.pcRange.offset,
 			pLayout.pcRange.size,
-			&drawData);
+			&frameCtx.drawData);
 
 		vkCmdDrawIndexedIndirect(
 			frameCtx.commandBuffer,
 			frameCtx.transparentIndirectCmdBuffer.buffer,
 			0,
-			drawData.transparentDrawCount,
+			frameCtx.drawData.transparentDrawCount,
 			drawCmdSize
 		);
 
-		for (uint32_t i = 0; i < drawData.transparentDrawCount; ++i) {
+		for (uint32_t i = 0; i < frameCtx.drawData.transparentDrawCount; ++i) {
 			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];
 			uint32_t triangleCount = ranges[meshID.drawRangeID].indexCount / 3;
 			profiler.addDrawCall(triangleCount);

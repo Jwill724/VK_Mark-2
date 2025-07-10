@@ -24,6 +24,8 @@ void Renderer::initFrameContexts(
 	VkDevice device,
 	VkDescriptorSetLayout layout,
 	const VmaAllocator allocator,
+	const uint32_t totalVertexCount,
+	const uint32_t totalIndexCount,
 	bool isAssetsLoaded)
 {
 	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
@@ -69,6 +71,9 @@ void Renderer::initFrameContexts(
 			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 			VMA_MEMORY_USAGE_GPU_ONLY,
 			allocator);
+
+		frame.drawData.totalVertexCount = totalVertexCount;
+		frame.drawData.totalIndexCount = totalIndexCount;
 
 		if (totalGPUStagingSize > 0) {
 			frame.addressTableStaging = BufferUtils::createBuffer(

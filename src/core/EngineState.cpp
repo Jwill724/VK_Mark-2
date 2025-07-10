@@ -175,6 +175,9 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 			auto& resources = Engine::getState().getGPUResources();
 
+			resources.totalVertexCount = static_cast<uint32_t>(totalVertices.size());
+			resources.totalIndexCount = static_cast<uint32_t>(totalIndices.size());
+
 			// Create large GPU buffers for vertex and index
 			AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
 				AddressBufferType::Vertex,
@@ -441,7 +444,13 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 	auto allocator = _resources.getAllocator();
 
 	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
-	Renderer::initFrameContexts(device, frameLayout, allocator, engineProfiler.assetsLoaded);
+	Renderer::initFrameContexts(
+		device,
+		frameLayout,
+		allocator,
+		_resources.totalVertexCount,
+		_resources.totalIndexCount,
+		engineProfiler.assetsLoaded);
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();

@@ -114,6 +114,7 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 }
 
 // TODO: Multithread the shit out of this
+// Largest bottle neck in the asset loading pipeline
 void AssetManager::decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
@@ -392,9 +393,6 @@ void AssetManager::processMeshes(
 				uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
 				vertices.resize(static_cast<size_t>(globalVertexOffset + vertexCount));
 
-				fmt::print("[processMeshes] primitive {}: globalVertexOffset={}, vertexCount={}\n",
-					primIdx, globalVertexOffset, vertexCount);
-
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 v, size_t index) {
 						ASSERT(globalVertexOffset + index < vertices.size());
@@ -439,14 +437,11 @@ void AssetManager::processMeshes(
 				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, indexAccessor,
 					[&](uint32_t idx, size_t /*i*/) {
 						maxIndex = std::max(maxIndex, idx);
-						indices.push_back(globalVertexOffset + idx);
+						indices.push_back(idx);
 					});
 
 				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
-
-				fmt::print("[processMeshes] primitive {}: globalIndexOffset={}, indexCount={}, maxIndexAdjusted={}\n",
-					primIdx, globalIndexOffset, indexCount, globalVertexOffset + maxIndex);
 
 				GPUDrawRange range {
 					.firstIndex = globalIndexOffset,
@@ -464,8 +459,6 @@ void AssetManager::processMeshes(
 				drawRanges.push_back(range);
 
 				uint32_t rangeID = static_cast<uint32_t>(drawRanges.size() - 1);
-				fmt::print("[processMeshes] -> DrawRange {}: firstIndex={}, indexCount={}, vertexOffset={}, vertexCount={}\n",
-					rangeID, range.firstIndex, range.indexCount, range.vertexOffset, range.vertexCount);
 
 				GPUMeshData newMesh{};
 				newMesh.drawRangeID = rangeID;

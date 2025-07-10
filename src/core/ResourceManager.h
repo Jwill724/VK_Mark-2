@@ -56,6 +56,9 @@ public:
 			imageLUTEntries.push_back(entry);
 	}
 
+	uint32_t totalVertexCount = 0;
+	uint32_t totalIndexCount = 0;
+
 	AllocatedBuffer envMapSetUBO;
 
 	std::vector<ImageLUTEntry>& getImageLUT() { return imageLUTEntries; }
@@ -117,6 +120,7 @@ struct ImageTable {
 
 	uint32_t pushCombined(VkImageView view, VkSampler sampler);
 	uint32_t pushStorage(VkImageView view);
+	std::vector<uint32_t> pushStorageViews(const std::vector<VkImageView>& views);
 	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler);
 
 	void clearTables() {

@@ -46,6 +46,13 @@ struct FrameContext {
 	std::vector<VkDrawIndexedIndirectCommand> transparentIndirectDraws;
 	AllocatedBuffer transparentIndirectCmdBuffer;
 
+	struct alignas(16) DrawPushConstants {
+		uint32_t opaqueDrawCount;
+		uint32_t transparentDrawCount;
+		uint32_t totalVertexCount;
+		uint32_t totalIndexCount;
+	} drawData{};
+
 	void clearRenderData() {
 		opaqueInstances.clear();
 		opaqueIndirectDraws.clear();
@@ -54,6 +61,9 @@ struct FrameContext {
 		transformsList.clear();
 		opaqueVisibleCount = 0;
 		transparentVisibleCount = 0;
+
+		drawData.opaqueDrawCount = 0;
+		drawData.transparentDrawCount = 0;
 	}
 
 	AllocatedBuffer combinedGPUStaging;
@@ -127,6 +137,8 @@ namespace Renderer {
 		VkDevice device,
 		VkDescriptorSetLayout layout,
 		const VmaAllocator allocator,
+		const uint32_t totalVertexCount,
+		const uint32_t totalIndexCount,
 		bool isAssetsLoaded = false);
 
 	void recordRenderCommand(FrameContext& frameCtx);
