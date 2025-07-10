@@ -22,16 +22,27 @@ void DrawPreparation::buildAndSortIndirectDraws(
 
 	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
 
+	fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
+
 	uint32_t batchIndex = 0;
 	for (const auto& [key, instanceIndices] : opaqueBatches) {
 		const GPUMeshData& mesh = meshes[key.meshID];
 		const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
 
-		fmt::print("[Opaque Batch {}] meshID={} materialID={} drawRangeID={} -> indexCount={}, vertexOffset={}, firstIndex={}, vertexCount={},instanceCount={}\n",
-			batchIndex, key.meshID, key.materialID, mesh.drawRangeID,
-			range.indexCount, range.vertexOffset, range.firstIndex, range.vertexCount, instanceIndices.size());
+		ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
+			"[DrawPrep] Opaque batch would read past end of index buffer");
+		ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
+			"[DrawPrep] Opaque batch would read past end of vertex buffer");
 
-		VkDrawIndexedIndirectCommand cmd = {
+		fmt::print(
+			"[Opaque Batch {}] meshID={} materialID={} drawRangeID={} -> "
+			"indexCount={}, vertexOffset={}, firstIndex={}, vertexCount={},instanceCount={}\n",
+			batchIndex, key.meshID, key.materialID, mesh.drawRangeID,
+			range.indexCount, range.vertexOffset, range.firstIndex,
+			range.vertexCount, instanceIndices.size()
+		);
+
+		VkDrawIndexedIndirectCommand cmd{
 			.indexCount = range.indexCount,
 			.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
 			.firstIndex = range.firstIndex,
@@ -39,7 +50,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			.firstInstance = frameCtx.opaqueVisibleCount
 		};
 
-		fmt::print("  -> Cmd: idxCount={}, instCount={}, firstIdx={}, vertOff={}, firstInst={}\n",
+		fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
 			cmd.indexCount, cmd.instanceCount, cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance);
 
 		frameCtx.opaqueIndirectDraws.emplace_back(cmd);
@@ -53,24 +64,34 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
 
 		glm::vec3 camPos = glm::vec3(RenderScene::getCurrentSceneData().cameraPosition);
-
-		std::sort(frameCtx.transparentInstances.begin(), frameCtx.transparentInstances.end(),
+		std::sort(
+			frameCtx.transparentInstances.begin(),
+			frameCtx.transparentInstances.end(),
 			[&](const GPUInstance& A, const GPUInstance& B) {
 				const auto& aabbA = meshes[A.meshID].worldAABB;
 				const auto& aabbB = meshes[B.meshID].worldAABB;
 				return glm::length(aabbA.origin - camPos) > glm::length(aabbB.origin - camPos);
-			});
+			}
+		);
 
 		for (uint32_t i = 0; i < frameCtx.transparentInstances.size(); ++i) {
 			const GPUInstance& inst = frameCtx.transparentInstances[i];
 			const GPUMeshData& mesh = meshes[inst.meshID];
-
 			const auto& range = drawRanges[mesh.drawRangeID];
 
-			fmt::print("[Transparent Instance {}] meshID={} -> drawRangeID={} -> indexCount={}, vertexOffset={}, firstIndex={}\n",
-				i, inst.meshID, mesh.drawRangeID, range.indexCount, range.vertexOffset, range.firstIndex);
+			ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
+				"[DrawPrep] Transparent batch would read past end of index buffer");
+			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
+				"[DrawPrep] Transparent batch would read past end of vertex buffer");
 
-			VkDrawIndexedIndirectCommand cmd = {
+			fmt::print(
+				"[Transparent Instance {}] meshID={} -> drawRangeID={} -> "
+				"indexCount={}, vertexOffset={}, firstIndex={}\n",
+				i, inst.meshID, mesh.drawRangeID,
+				range.indexCount, range.vertexOffset, range.firstIndex
+			);
+
+			VkDrawIndexedIndirectCommand cmd{
 				.indexCount = range.indexCount,
 				.instanceCount = 1,
 				.firstIndex = range.firstIndex,
@@ -78,8 +99,10 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				.firstInstance = i
 			};
 
-			fmt::print("  -> Cmd: idxCount={}, instCount={}, firstIdx={}, vertOff={}, firstInst={}\n",
-				cmd.indexCount, cmd.instanceCount, cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance);
+			fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
+				cmd.indexCount, cmd.instanceCount,
+				cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance
+			);
 
 			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}

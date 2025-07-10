@@ -52,8 +52,8 @@ void SceneGraph::buildSceneGraph(
 				}
 			}, srcNode.transform);
 
-			fmt::print("Node {} localTransform:\n", i);
-			printMat4(node->localTransform);
+			//fmt::print("Node {} localTransform:\n", i);
+			//printMat4(node->localTransform);
 
 			nodes.push_back(node);
 		}
@@ -82,7 +82,7 @@ void SceneGraph::buildSceneGraph(
 		}
 
 		for (size_t i = 0; i < nodes.size(); ++i) {
-			fmt::print("Node {} worldTransform:\n", i);
+			//fmt::print("Node {} worldTransform:\n", i);
 			printMat4(nodes[i]->worldTransform);
 		}
 
@@ -117,16 +117,10 @@ void SceneGraph::buildSceneGraph(
 				baked->instance.instanceID = instanceCounter++;
 				uint32_t meshID = baked->instance.meshID;
 
-				fmt::print("  Mesh {} localAABB origin: ", meshID);
-				printVec3(meshes[meshID].localAABB.origin);
-
 				meshes[meshID].worldAABB = Visibility::transformAABB(
 					meshes[meshID].localAABB,
 					bakedTransformsList[transformID]
 				);
-
-				fmt::print("  Mesh {} worldAABB origin: ", meshID);
-				printVec3(meshes[meshID].worldAABB.origin);
 
 				node->instances.push_back(baked);
 			}

@@ -31,5 +31,5 @@ namespace RenderScene {
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);
 	void renderGeometry(FrameContext& frameCtx);
-	void drawIndirectCommands(const FrameContext& frameCtx, GPUResources& resources);
+	void drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources);
 }

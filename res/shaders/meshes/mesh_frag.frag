@@ -42,7 +42,8 @@ layout(set = 0, binding = 4) uniform sampler2D combindedSamplers[];
 layout(push_constant) uniform DrawPushConstants {
 	uint opaqueDrawCount;
 	uint transparentDrawCount;
-	uint pad[2];
+	uint totalVertexCount;
+	uint totalIndexCount;
 } drawData;
 
 const float PI = 3.14159265359;
