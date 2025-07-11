@@ -21,7 +21,6 @@ namespace RenderScene {
 
 	std::vector<MeshID> _currentSceneMeshIDs;
 
-	// all loaded scene instances transforms
 	std::vector<glm::mat4> _globalTransformsList;
 
 	Camera _mainCamera;
@@ -132,7 +131,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	if (frameCtx.refreshGlobalTransformList) {
 		frameCtx.cullingPCData.meshCount = static_cast<uint32_t>(meshes.meshData.size());
-		//transformSceneNodes();
+		//wetransformSceneNodes();
 		frameCtx.refreshGlobalTransformList = false; // baked until new transforms applied
 	}
 
@@ -307,7 +306,6 @@ void RenderScene::updateVisiblesInstances(FrameContext& frameCtx) {
 			frameCtx.opaqueInstances,
 			frameCtx.transparentInstances,
 			frameCtx.transformsList,
-			_globalTransformsList,
 			visibleMeshIDSet);
 	}
 }

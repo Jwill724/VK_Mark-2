@@ -43,6 +43,6 @@ constexpr uint32_t JOB_WORKER_COUNT = MAX_THREADS;
 // TODO:
 // This will work, i just to fix the compute queue syncing,
 // add gpu sorting, fix the visible count and visiblemeshIds read and write buffer shit
-// draws will have to be fully built on gpu for this to properly work, including making MeshBuffer gpu only
+// draws will have to be fully built on gpu for this to properly work
 // gpu accel is fucking busted
 const static bool GPU_ACCELERATION_ENABLED = false;

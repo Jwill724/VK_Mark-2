@@ -108,33 +108,44 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	tempEntryDiffuse.storageImageIndex = imageTable.pushStorage(diffuseImg.storageView);
 	resources.addImageLUTEntry(tempEntryDiffuse);
 
-	// TODO: Fix the specular array output
-	// Storage view miplevels not working, like its not even sampling
-
 	// Storage view defined per mip level
+
+	uint32_t skyboxIdx = imageTable.pushSamplerCube(skyboxImg.imageView, specSmpl);
 	const uint32_t specMipLevels = specImg.mipLevelCount;
+
 	std::vector<SpecularPC> specularPushConstants;
 	for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
 		float roughness = float(mip) / float(specMipLevels - 1);
 
 		ImageLUTEntry tempEntrySpecular{};
-		tempEntrySpecular.samplerCubeIndex = imageTable.pushSamplerCube(skyboxImg.imageView, specSmpl);
-		tempEntrySpecular.storageImageIndex = imageTable.pushStorage(specImg.storageViews[mip]); // entries per mip level
+		tempEntrySpecular.samplerCubeIndex = skyboxIdx;
+
+		VkImageView mipView = specImg.storageViews[mip];
+		uint32_t storageIdx = imageTable.pushStorage(mipView);
+		tempEntrySpecular.storageImageIndex = storageIdx;
+
 		resources.addImageLUTEntry(tempEntrySpecular);
 
 		SpecularPC pc{};
 		pc.skyboxViewIdx = tempEntrySpecular.samplerCubeIndex;
 		pc.specularStorageIdx = tempEntrySpecular.storageImageIndex;
 
-		fmt::print("Prefiltering mip {} (roughness {:.3f})\n", mip, roughness);
-
-		pc.sampleCount = static_cast<uint32_t>(DIFFUSE_SAMPLE_DELTA);
+		pc.sampleCount = PREFILTER_SAMPLE_COUNT;
 		pc.roughness = roughness;
 		pc.width = std::max(1u, specImg.imageExtent.width >> mip);
 		pc.height = std::max(1u, specImg.imageExtent.height >> mip);
 
+		fmt::print("\n--- Mip {} Prefilter Setup ---\n", mip);
+		fmt::print("-> Roughness: {:.3f}\n", roughness);
+		fmt::print("-> Skybox Sampler Index: {}\n", skyboxIdx);
+		fmt::print("-> Storage View Handle: {}\n", static_cast<void*>(mipView));
+		fmt::print("-> Pushed Storage Index: {}\n", storageIdx);
+		fmt::print("-> PushConstant: skyboxViewIdx = {}, storageIdx = {}\n", pc.skyboxViewIdx, pc.specularStorageIdx);
+		fmt::print("-> Dispatch Dimensions: {}x{} (SampleCount: {})\n", pc.width, pc.height, pc.sampleCount);
+
 		specularPushConstants.push_back(pc);
 	}
+
 
 	auto& graphicsPool = resources.getGraphicsPool();
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
@@ -178,7 +189,6 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	writer.updateSet(device, set);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-
 		// Bind once
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, 0, 1, &set, 0, nullptr);
 
@@ -293,7 +303,7 @@ void Environment::dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, Pipe
 		uint32_t pad0[2];
 	} pc{};
 
-	pc.sampleCount = 1024;
+	pc.sampleCount = PREFILTER_SAMPLE_COUNT;
 	pc.brdfViewIdx = entry.storageImageIndex;
 
 	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);

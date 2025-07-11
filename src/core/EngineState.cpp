@@ -296,7 +296,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::submitJob([assetQueue, &meshes](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData, RenderScene::_globalTransformsList);
+			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");

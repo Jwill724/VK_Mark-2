@@ -24,7 +24,6 @@ layout(push_constant) uniform PC {
 } pc;
 
 
-
 /* Non Bit Shift version
 float VanDerCorput(uint n, uint base)
 {
@@ -103,7 +102,7 @@ void main()
 		return;
 	}
 
-    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[pc.specularStorageIdx]).xy); // Normalized coordinates
+    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[nonuniformEXT(pc.specularStorageIdx)]).xy); // Normalized coordinates
     uv = uv * 2.0 - 1.0; // Map to range [-1, 1]
     vec3 direction;
     switch (storePos.z) {
@@ -143,7 +142,7 @@ void main()
 
             float mipLevel = roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
 
-            prefilteredColor += textureLod(envMaps[pc.skyboxViewIdx], L, mipLevel).rgb * NdotL;
+            prefilteredColor += textureLod(envMaps[nonuniformEXT(pc.skyboxViewIdx)], L, mipLevel).rgb * NdotL;
             totalWeight += NdotL;
         }
     }
@@ -151,5 +150,5 @@ void main()
 
     vec4 color = vec4(prefilteredColor, 1.0);
 
-    imageStore(storageImages[pc.specularStorageIdx], storePos, color);
+    imageStore(storageImages[nonuniformEXT(pc.specularStorageIdx)], storePos, color);
 }

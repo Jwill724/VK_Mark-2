@@ -6,7 +6,7 @@
 
 struct ModelAsset : public IRenderable {
 	struct GPUData {
-		std::unordered_map<uint32_t, std::vector<std::shared_ptr<BakedInstance>>> nodeIndexToBakedInstances;
+		std::vector<std::shared_ptr<BakedInstance>> bakedInstances;
 		std::vector<AllocatedImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
@@ -16,8 +16,6 @@ struct ModelAsset : public IRenderable {
 		std::vector<std::shared_ptr<Node>> nodes;
 		// nodes that don't have a parent, for iterating through the file in tree order
 		std::vector<std::shared_ptr<Node>> topNodes;
-
-		std::vector<uint32_t> nodeIDToTransformID;
 	} scene;
 
 	std::string sceneName;
@@ -29,7 +27,6 @@ struct ModelAsset : public IRenderable {
 		std::vector<GPUInstance>& outVisibleOpaqueInstances,
 		std::vector<GPUInstance>& outVisibleTransparentInstances,
 		std::vector<glm::mat4>& outFrameTransformsList,
-		const std::vector<glm::mat4>& bakedTransformsList,
 		const std::unordered_set<uint32_t>& visibleMeshIDSet) override;
 
 private:

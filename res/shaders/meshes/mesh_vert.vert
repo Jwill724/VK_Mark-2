@@ -1,6 +1,6 @@
 #version 450
 
-#extension GL_ARB_shader_draw_parameters : require
+#extension GL_ARB_shader_draw_parameters : enable
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_ARB_gpu_shader_int64 : enable
