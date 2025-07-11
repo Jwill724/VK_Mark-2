@@ -172,37 +172,6 @@ uint32_t ImageTable::pushStorage(VkImageView view) {
 	return index;
 }
 
-std::vector<uint32_t> ImageTable::pushStorageViews(const std::vector<VkImageView>& views) {
-	std::scoped_lock lock(storageMutex);
-	std::vector<uint32_t> indices;
-	indices.reserve(views.size());
-
-	for (VkImageView view : views) {
-		ASSERT(view != VK_NULL_HANDLE && "Null handle in pushStorageViews");
-
-		size_t hash = std::hash<std::uintptr_t>{}(reinterpret_cast<std::uintptr_t>(view));
-		auto it = storageViewHashToID.find(hash);
-		if (it != storageViewHashToID.end()) {
-			indices.push_back(it->second);
-			continue;
-		}
-
-		VkDescriptorImageInfo info{};
-		info.imageView = view;
-		info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		info.sampler = VK_NULL_HANDLE;
-
-		uint32_t index = static_cast<uint32_t>(storageViews.size());
-		storageViews.push_back(info);
-		storageViewHashToID[hash] = index;
-
-		indices.push_back(index);
-	}
-
-	return indices;
-}
-
-
 namespace ResourceManager {
 	ImageTable _globalImageTable;
 

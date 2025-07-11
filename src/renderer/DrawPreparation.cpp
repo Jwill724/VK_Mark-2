@@ -58,15 +58,34 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		++batchIndex;
 	}
 
+	// Simple draws
+	//frameCtx.opaqueIndirectDraws.clear();
+	//frameCtx.opaqueIndirectDraws.reserve(frameCtx.opaqueInstances.size());
+
+	//for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
+	//	auto& inst = frameCtx.opaqueInstances[i];
+	//	auto& mesh = meshes[inst.meshID];
+	//	auto& range = drawRanges[mesh.drawRangeID];
+
+	//	VkDrawIndexedIndirectCommand cmd{
+	//		.indexCount = range.indexCount,
+	//		.instanceCount = 1,
+	//		.firstIndex = range.firstIndex,
+	//		.vertexOffset = static_cast<int32_t>(range.vertexOffset),
+	//		.firstInstance = i
+	//	};
+
+	//	frameCtx.opaqueIndirectDraws.emplace_back(cmd);
+	//}
+	//frameCtx.opaqueVisibleCount = static_cast<uint32_t>(frameCtx.opaqueInstances.size());
+
 	// === SORT & DRAW TRANSPARENT ===
 	if (!frameCtx.transparentInstances.empty()) {
 		frameCtx.transparentIndirectDraws.reserve(frameCtx.transparentInstances.size());
 		frameCtx.transparentVisibleCount = static_cast<uint32_t>(frameCtx.transparentInstances.size());
 
 		glm::vec3 camPos = glm::vec3(RenderScene::getCurrentSceneData().cameraPosition);
-		std::sort(
-			frameCtx.transparentInstances.begin(),
-			frameCtx.transparentInstances.end(),
+		std::sort(frameCtx.transparentInstances.begin(), frameCtx.transparentInstances.end(),
 			[&](const GPUInstance& A, const GPUInstance& B) {
 				const auto& aabbA = meshes[A.meshID].worldAABB;
 				const auto& aabbB = meshes[B.meshID].worldAABB;

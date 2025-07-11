@@ -371,6 +371,8 @@ void AssetManager::processMeshes(
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
 
+		scene.runtime.bakedInstances.clear();
+
 		// Iterate over nodes that reference a mesh
 		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
 			const auto& node = gltf.nodes[nodeIdx];
@@ -383,6 +385,7 @@ void AssetManager::processMeshes(
 				const auto& p = mesh.primitives[primIdx];
 
 				auto inst = std::make_shared<BakedInstance>();
+				inst->nodeID = nodeIdx;
 				inst->gltfMeshIndex = meshIdx;
 				inst->gltfPrimitiveIndex = primIdx; // Does nothing currently, one day...
 
@@ -443,7 +446,7 @@ void AssetManager::processMeshes(
 				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
-				GPUDrawRange range {
+				GPUDrawRange range{
 					.firstIndex = globalIndexOffset,
 					.indexCount = indexCount,
 					.vertexOffset = globalVertexOffset,
@@ -463,7 +466,6 @@ void AssetManager::processMeshes(
 				GPUMeshData newMesh{};
 				newMesh.drawRangeID = rangeID;
 
-				// Attach material indexes to instances and define pass type
 				if (p.materialIndex.has_value()) {
 					auto matIdx = p.materialIndex.value();
 					inst->instance.materialID = static_cast<uint32_t>(matIdx);
@@ -474,7 +476,6 @@ void AssetManager::processMeshes(
 					inst->passType = MaterialPass::Opaque;
 				}
 
-				// === AABB Calculation ===
 				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
 				for (uint32_t i = 0; i < vertexCount; ++i) {
@@ -490,14 +491,8 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
 				inst->instance.meshID = meshes.registerMesh(newMesh);
-				scene.runtime.nodeIndexToBakedInstances[nodeIdx].push_back(inst);
+				scene.runtime.bakedInstances.push_back(inst);
 
-				//fmt::print("=== Registered Mesh {} ===\n", meshes.meshData.size());
-				//fmt::print("vmin: "); printVec3(vmin); fmt::print("\n");
-				//fmt::print("vmax: "); printVec3(vmax); fmt::print("\n");
-				//fmt::print("origin: "); printVec3(newMesh.localAABB.origin); fmt::print("\n");
-				//fmt::print("extent: "); printVec3(newMesh.localAABB.extent); fmt::print("\n");
-				//fmt::print("radius: {}\n", newMesh.localAABB.sphereRadius);
 			}
 		}
 
@@ -514,6 +509,7 @@ void AssetManager::processMeshes(
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
 	}
 }
+
 
 bool AssetManager::isValidMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf) {
 	if (mat.pbrData.baseColorTexture.has_value()) {
@@ -536,7 +532,6 @@ void ModelAsset::FindVisibleInstances(
 	std::vector<GPUInstance>& outVisibleOpaqueInstances,
 	std::vector<GPUInstance>& outVisibleTransparentInstances,
 	std::vector<glm::mat4>& outFrameTransformsList,
-	const std::vector<glm::mat4>& bakedTransformsList,
 	const std::unordered_set<uint32_t>& visibleMeshIDSet)
 {
 	for (const auto& root : scene.topNodes) {
@@ -545,7 +540,6 @@ void ModelAsset::FindVisibleInstances(
 				outVisibleOpaqueInstances,
 				outVisibleTransparentInstances,
 				outFrameTransformsList,
-				bakedTransformsList,
 				visibleMeshIDSet);
 		}
 	}

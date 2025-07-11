@@ -149,16 +149,17 @@ void main()
 	vec3 correctedAmbient = ambient / (ambient + vec3(1.0));
 	correctedAmbient = pow(correctedAmbient, vec3(1.0 / 2.2));
 	finalColor += correctedAmbient + emissive;
-	finalColor += vec3(0.5) * ao;
+	//finalColor += vec3(0.5) * ao;
 
 	//outFragColor = vec4(finalColor, albedoMap.w);
 
 	//outFragColor = vec4(reflectionSpecular, albedoMap.w);
 	//outFragColor = vec4(reflectionDiffuse, albedoMap.w);
+	//outFragColor = vec4(irradiance, albedoMap.w);
 	//outFragColor = vec4(diffuse, 1.0);
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);
-	//outFragColor = vec4(albedoMap.rgb, 1.0);
+	//outFragColor = vec4(albedo, albedoMap.w);
 	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
 	outFragColor = vec4(sampledNormal, 1.0);
 	//outFragColor = vec4(inUV, 0.0, 1.0);

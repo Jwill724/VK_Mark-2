@@ -201,6 +201,7 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 					mipViewInfo.subresourceRange.baseMipLevel = mip;
 					mipViewInfo.subresourceRange.layerCount = 6;
 					mipViewInfo.subresourceRange.levelCount = 1;
+					mipViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 
 					VK_CHECK(vkCreateImageView(device, &mipViewInfo, nullptr, &renderImage.storageViews[mip]));
 				}

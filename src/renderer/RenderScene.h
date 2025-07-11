@@ -18,8 +18,6 @@ namespace RenderScene {
 
 	extern Camera _mainCamera;
 
-	extern std::vector<glm::mat4> _globalTransformsList;
-
 	void setScene();
 	void updateCamera();
 	void copyFrustumToFrame(CullingPushConstantsAddrs& frustumData);
