@@ -58,6 +58,13 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	//	++batchIndex;
 	//}
 
+	//std::sort(frameCtx.opaqueInstances.begin(), frameCtx.opaqueInstances.end(),
+	//	[](const GPUInstance& a, const GPUInstance& b) {
+	//		if (a.materialID != b.materialID)
+	//			return a.materialID < b.materialID;
+	//		return a.meshID < b.meshID;
+	//});
+
 	// Simple draws
 	frameCtx.opaqueIndirectDraws.reserve(frameCtx.opaqueInstances.size());
 

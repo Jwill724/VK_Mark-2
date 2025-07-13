@@ -45,7 +45,7 @@ void Renderer::initFrameContexts(
 			OPAQUE_INDIRECT_SIZE_BYTES +
 			TRANSPARENT_INSTANCE_SIZE_BYTES +
 			TRANSPARENT_INDIRECT_SIZE_BYTES +
-			TRANSFORM_BUFFER_SIZE;
+			TRANSFORM_LIST_SIZE_BYTES;
 	}
 
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -107,7 +107,7 @@ void Renderer::initFrameContexts(
 			frame.persistentGPUBuffers.push_back(frame.transparentIndirectCmdBuffer);
 
 			frame.transformsListBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Transforms, frame.addressTable, MAX_VISIBLE_TRANSFORMS, allocator);
+				AddressBufferType::Transforms, frame.addressTable, TRANSFORM_LIST_SIZE_BYTES, allocator);
 			frame.persistentGPUBuffers.push_back(frame.transformsListBuffer);
 		}
 

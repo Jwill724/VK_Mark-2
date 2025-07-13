@@ -13,6 +13,7 @@ constexpr size_t OPAQUE_INDIRECT_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(VkDrawIn
 constexpr size_t OPAQUE_INSTANCE_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(GPUInstance);
 constexpr size_t TRANSPARENT_INSTANCE_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(GPUInstance);
 constexpr size_t TRANSPARENT_INDIRECT_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeof(VkDrawIndexedIndirectCommand);
+constexpr size_t TRANSFORM_LIST_SIZE_BYTES = MAX_VISIBLE_TRANSFORMS * sizeof(glm::mat4);
 
 struct FrameContext {
 	RenderSyncObjects syncObjs;

@@ -5,9 +5,7 @@
 // General Engine Limits
 constexpr uint32_t MAX_OPAQUE_DRAWS = 65536;
 constexpr uint32_t MAX_TRANSPARENT_DRAWS = 16384;
-
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_OPAQUE_DRAWS + MAX_TRANSPARENT_DRAWS;
-constexpr size_t TRANSFORM_BUFFER_SIZE = MAX_VISIBLE_TRANSFORMS * sizeof(glm::mat4);
 
 
 // Compute work sizes
