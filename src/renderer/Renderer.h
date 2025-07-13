@@ -34,6 +34,8 @@ struct FrameContext {
 	VkCommandPool computePool = VK_NULL_HANDLE;
 	uint64_t computeWaitValue = UINT64_MAX;
 
+	std::vector<AllocatedBuffer> persistentGPUBuffers;
+
 	// Opaque draws
 	std::vector<GPUInstance> opaqueInstances;
 	AllocatedBuffer opaqueInstanceBuffer;

@@ -21,11 +21,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	std::string damagedHelmetPath = { "res/assets/DamagedHelmet.glb" };
-	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	ASSERT(damagedHelmetFile.has_value());
-	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	queue->push(damagedHelmetFile.value());
+	//std::string damagedHelmetPath = { "res/assets/DamagedHelmet.glb" };
+	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	//ASSERT(damagedHelmetFile.has_value());
+	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	//queue->push(damagedHelmetFile.value());
 
 	//std::string dragonPath = { "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
@@ -45,11 +45,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	//std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
-	//auto spheresFile = loadGltfFiles(spheresPath);
-	//ASSERT(spheresFile.has_value());
-	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
-	//queue->push(spheresFile.value());
+	std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
+	auto spheresFile = loadGltfFiles(spheresPath);
+	ASSERT(spheresFile.has_value());
+	spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
+	queue->push(spheresFile.value());
 
 	if (!queue->empty()) {
 		return true;

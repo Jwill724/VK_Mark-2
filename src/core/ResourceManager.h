@@ -22,7 +22,6 @@ public:
 	void addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
 	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
 
-	void tryClearAddressBuffer(AddressBufferType type);
 
 	// Table is marked dirty if a gpu address is updated, returns to clean afterward
 	// Setting force to 'true' will update the table without having to directly update the individual addresses,

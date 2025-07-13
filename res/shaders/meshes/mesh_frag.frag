@@ -3,9 +3,9 @@
 #extension GL_ARB_shader_draw_parameters : require
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
-#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_gpu_shader_int64 : require
 #extension GL_GOOGLE_include_directive : require
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_separate_shader_objects : require
 #extension GL_EXT_nonuniform_qualifier : require
 
 #include "../include/gpu_scene_structures.glsl"
@@ -142,14 +142,14 @@ void main()
 	vec3 reflectionSpecular = SpecularReflection(viewDir, normal, roughness, F, specularIdx, brdfIdx);
 
 	vec3 ambient = kD * (reflectionDiffuse + reflectionSpecular);
-	float sat_factor = mix(MAX_AO_SATURATION, 1, ao);
-	albedo = pow(albedo, vec3(sat_factor));
+	//float sat_factor = mix(MAX_AO_SATURATION, 1, ao);
+	//albedo = pow(albedo, vec3(sat_factor));
 
 	vec3 finalColor = (diffuse + specular) * lightColor * NdotL;
 	vec3 correctedAmbient = ambient / (ambient + vec3(1.0));
 	correctedAmbient = pow(correctedAmbient, vec3(1.0 / 2.2));
 	finalColor += correctedAmbient + emissive;
-	//finalColor += vec3(0.5) * ao;
+	finalColor += vec3(0.5) * ao;
 
 	//outFragColor = vec4(finalColor, albedoMap.w);
 
