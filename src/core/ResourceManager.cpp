@@ -10,6 +10,76 @@
 #include "common/EngineConstants.h"
 #include "renderer/gpu_types/CommandBuffer.h"
 
+namespace ResourceManager {
+	ImageTable _globalImageTable;
+
+	GPUEnvMapIndices _envMapIndices;
+
+	// primary render image
+	AllocatedImage _drawImage;
+	AllocatedImage& getDrawImage() { return _drawImage; }
+	AllocatedImage _depthImage;
+	AllocatedImage& getDepthImage() { return _depthImage; }
+	AllocatedImage _msaaImage;
+	AllocatedImage& getMSAAImage() { return _msaaImage; }
+	AllocatedImage _postProcessImage;
+	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
+	ColorData toneMappingData;
+
+	// Grabbed during physical device selection
+	std::vector<VkSampleCountFlags> _availableSampleCounts;
+	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
+
+
+	// Textures
+	AllocatedImage _whiteImage;
+	AllocatedImage& getWhiteImage() { return _whiteImage; }
+
+	AllocatedImage _metalRoughImage;
+	AllocatedImage& getMetalRoughImage() { return _metalRoughImage; }
+
+	AllocatedImage _emissiveImage;
+	AllocatedImage& getEmissiveImage() { return _emissiveImage; }
+
+	AllocatedImage _aoImage;
+	AllocatedImage& getAOImage() { return _aoImage; }
+	AllocatedImage _normalImage;
+	AllocatedImage& getNormalImage() { return _normalImage; }
+	AllocatedImage _errorCheckerboardImage;
+	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
+
+	VkSampler _defaultSamplerLinear;
+	VkSampler _defaultSamplerNearest;
+	VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
+	VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+
+
+	AllocatedImage _skyboxImage;
+	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
+
+	VkSampler _skyBoxSampler;
+	VkSampler& getSkyBoxSampler() { return _skyBoxSampler; }
+
+	AllocatedImage _specularPrefilterImage;
+	AllocatedImage& getSpecularPrefilterImage() { return _specularPrefilterImage; }
+
+	VkSampler _specularPrefilterSampler;
+	VkSampler& getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
+
+	AllocatedImage _irradianceImage;
+	AllocatedImage& getIrradianceImage() { return _irradianceImage; }
+
+	VkSampler _irradianceSampler;
+	VkSampler& getIrradianceSampler() { return _irradianceSampler; }
+
+	AllocatedImage _brdfLutImage;
+	AllocatedImage& getBRDFImage() { return _brdfLutImage; }
+
+	VkSampler _brdfSampler;
+	VkSampler& getBRDFSampler() { return _brdfSampler; }
+}
+
+
 void GPUResources::init(VkDevice device) {
 	allocator = VulkanUtils::createAllocator(Backend::getPhysicalDevice(), device, Backend::getInstance());
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
@@ -42,7 +112,7 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 		VkBufferCopy copyRegion{};
 		copyRegion.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.buffer, addressTableBuffer.buffer, 1, &copyRegion);
-	}, transferCommandPool, QueueType::Transfer);
+		}, transferCommandPool, QueueType::Transfer);
 
 	addressTableDirty = false;
 }
@@ -81,14 +151,6 @@ void GPUResources::cleanup(VkDevice device) {
 void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
 	gpuBuffers[addressBufferType] = gpuBuffer;
 	markAddressTableDirty();
-}
-
-void GPUResources::tryClearAddressBuffer(AddressBufferType type) {
-	auto it = gpuBuffers.find(type);
-	if (it == gpuBuffers.end()) return;
-
-	BufferUtils::destroyAllocatedBuffer(it->second, allocator);
-	gpuBuffers.erase(it);
 }
 
 uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
@@ -170,75 +232,6 @@ uint32_t ImageTable::pushStorage(VkImageView view) {
 	fmt::print("Index: {}\n", index);
 
 	return index;
-}
-
-namespace ResourceManager {
-	ImageTable _globalImageTable;
-
-	GPUEnvMapIndices _envMapIndices;
-
-	// primary render image
-	AllocatedImage _drawImage;
-	AllocatedImage& getDrawImage() { return _drawImage; }
-	AllocatedImage _depthImage;
-	AllocatedImage& getDepthImage() { return _depthImage; }
-	AllocatedImage _msaaImage;
-	AllocatedImage& getMSAAImage() { return _msaaImage; }
-	AllocatedImage _postProcessImage;
-	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
-	ColorData toneMappingData;
-
-	// Grabbed during physical device selection
-	std::vector<VkSampleCountFlags> _availableSampleCounts;
-	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
-
-
-	// Textures
-	AllocatedImage _whiteImage;
-	AllocatedImage& getWhiteImage() { return _whiteImage; }
-
-	AllocatedImage _metalRoughImage;
-	AllocatedImage& getMetalRoughImage() { return _metalRoughImage; }
-
-	AllocatedImage _emissiveImage;
-	AllocatedImage& getEmissiveImage() { return _emissiveImage; }
-
-	AllocatedImage _aoImage;
-	AllocatedImage& getAOImage() { return _aoImage; }
-	AllocatedImage _normalImage;
-	AllocatedImage& getNormalImage() { return _normalImage; }
-	AllocatedImage _errorCheckerboardImage;
-	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
-
-	VkSampler _defaultSamplerLinear;
-	VkSampler _defaultSamplerNearest;
-	VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
-	VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
-
-
-	AllocatedImage _skyboxImage;
-	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
-
-	VkSampler _skyBoxSampler;
-	VkSampler& getSkyBoxSampler() { return _skyBoxSampler; }
-
-	AllocatedImage _specularPrefilterImage;
-	AllocatedImage& getSpecularPrefilterImage() { return _specularPrefilterImage; }
-
-	VkSampler _specularPrefilterSampler;
-	VkSampler& getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
-
-	AllocatedImage _irradianceImage;
-	AllocatedImage& getIrradianceImage() { return _irradianceImage; }
-
-	VkSampler _irradianceSampler;
-	VkSampler& getIrradianceSampler() { return _irradianceSampler; }
-
-	AllocatedImage _brdfLutImage;
-	AllocatedImage& getBRDFImage() { return _brdfLutImage; }
-
-	VkSampler _brdfSampler;
-	VkSampler& getBRDFSampler() { return _brdfSampler; }
 }
 
 void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator) {

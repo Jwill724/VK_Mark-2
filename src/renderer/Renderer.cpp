@@ -45,7 +45,7 @@ void Renderer::initFrameContexts(
 			OPAQUE_INDIRECT_SIZE_BYTES +
 			TRANSPARENT_INSTANCE_SIZE_BYTES +
 			TRANSPARENT_INDIRECT_SIZE_BYTES +
-			MAX_VISIBLE_TRANSFORMS;
+			TRANSFORM_BUFFER_SIZE;
 	}
 
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -89,6 +89,26 @@ void Renderer::initFrameContexts(
 				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 				allocator);
 			ASSERT(frame.combinedGPUStaging.info.pMappedData);
+
+			frame.opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::OpaqueIntances, frame.addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
+			frame.persistentGPUBuffers.push_back(frame.opaqueInstanceBuffer);
+
+			frame.opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::OpaqueIndirectDraws, frame.addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
+			frame.persistentGPUBuffers.push_back(frame.opaqueIndirectCmdBuffer);
+
+			frame.transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::TransparentInstances, frame.addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
+			frame.persistentGPUBuffers.push_back(frame.transparentInstanceBuffer);
+
+			frame.transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::TransparentIndirectDraws, frame.addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
+			frame.persistentGPUBuffers.push_back(frame.transparentIndirectCmdBuffer);
+
+			frame.transformsListBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::Transforms, frame.addressTable, MAX_VISIBLE_TRANSFORMS, allocator);
+			frame.persistentGPUBuffers.push_back(frame.transformsListBuffer);
 		}
 
 		frame.frameIndex = i;
@@ -108,7 +128,9 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 			static_cast<uint32_t>(frameCtx.transferCmds.size()),
 			frameCtx.transferCmds.data());
 		frameCtx.transferCmds.clear();
-		frameCtx.transferDeletion.process(device);
+
+		if (frameCtx.transferDeletion.semaphore != VK_NULL_HANDLE && !frameCtx.transferDeletion.queue.empty())
+			frameCtx.transferDeletion.process(device);
 	}
 	if (!frameCtx.computeCmds.empty()) {
 		vkFreeCommandBuffers(
@@ -117,7 +139,9 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 			static_cast<uint32_t>(frameCtx.computeCmds.size()),
 			frameCtx.computeCmds.data());
 		frameCtx.computeCmds.clear();
-		frameCtx.computeDeletion.process(device);
+
+		if (frameCtx.computeDeletion.semaphore != VK_NULL_HANDLE && !frameCtx.computeDeletion.queue.empty())
+			frameCtx.computeDeletion.process(device);
 	}
 
 	frameCtx.cpuDeletion.flush();
@@ -462,13 +486,16 @@ void Renderer::cleanup() {
 	for (auto& frame : _frameContexts) {
 		frame.cpuDeletion.flush();
 
-		if (frame.transferDeletion.semaphore != VK_NULL_HANDLE)
+		for (auto& buf : frame.persistentGPUBuffers)
+			BufferUtils::destroyAllocatedBuffer(buf, allocator);
+
+		if (frame.transferDeletion.semaphore != VK_NULL_HANDLE && !frame.transferDeletion.queue.empty())
 			frame.transferDeletion.process(device);
 
 		if (!frame.transferCmds.empty())
 			frame.transferCmds.clear();
 
-		if (frame.computeDeletion.semaphore != VK_NULL_HANDLE)
+		if (frame.computeDeletion.semaphore != VK_NULL_HANDLE && !frame.computeDeletion.queue.empty())
 			frame.computeDeletion.process(device);
 
 		if (!frame.computeCmds.empty())
