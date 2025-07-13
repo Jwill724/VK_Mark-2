@@ -22,8 +22,6 @@ struct Node : public IRenderable {
 	glm::mat4 localTransform{1.0f};
 	glm::mat4 worldTransform{1.0f};
 
-	uint32_t nodeID = UINT32_MAX;
-
 	std::vector<std::shared_ptr<BakedInstance>> instances;
 
 	void refreshTransform(const glm::mat4& parentMatrix) {

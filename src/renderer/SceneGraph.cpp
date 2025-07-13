@@ -34,7 +34,6 @@ void SceneGraph::buildSceneGraph(
 		for (size_t i = 0; i < gltf.nodes.size(); ++i) {
 			const auto& srcNode = gltf.nodes[i];
 			auto node = std::make_shared<Node>();
-			node->nodeID = static_cast<uint32_t>(i);
 
 			std::visit(fastgltf::visitor{
 				[&](const fastgltf::math::fmat4x4& matrix) {
