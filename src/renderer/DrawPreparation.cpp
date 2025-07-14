@@ -11,7 +11,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	const std::vector<GPUDrawRange>& drawRanges,
 	const std::vector<GPUMeshData>& meshes)
 {
-	// === BATCH OPAQUE INSTANCES ===
+	//// The batching doesnt work. fps sucks
+
+	////=== BATCH OPAQUE INSTANCES ===
 	//std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
 
 	//for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
@@ -24,7 +26,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 
 	//fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
 
-	//uint32_t batchIndex = 0;
+	//std::vector<GPUInstance> originalOpaqueInstances = std::move(frameCtx.opaqueInstances);
+	//frameCtx.opaqueInstances.clear();
+
 	//for (const auto& [key, instanceIndices] : opaqueBatches) {
 	//	const GPUMeshData& mesh = meshes[key.meshID];
 	//	const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
@@ -34,14 +38,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	//	ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
 	//		"[DrawPrep] Opaque batch would read past end of vertex buffer");
 
-	//	fmt::print(
-	//		"[Opaque Batch {}] meshID={} materialID={} drawRangeID={} -> "
-	//		"indexCount={}, vertexOffset={}, firstIndex={}, vertexCount={},instanceCount={}\n",
-	//		batchIndex, key.meshID, key.materialID, mesh.drawRangeID,
-	//		range.indexCount, range.vertexOffset, range.firstIndex,
-	//		range.vertexCount, instanceIndices.size()
-	//	);
-
 	//	VkDrawIndexedIndirectCommand cmd{
 	//		.indexCount = range.indexCount,
 	//		.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
@@ -50,22 +46,23 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	//		.firstInstance = frameCtx.opaqueVisibleCount
 	//	};
 
-	//	fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
-	//		cmd.indexCount, cmd.instanceCount, cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance);
-
 	//	frameCtx.opaqueIndirectDraws.emplace_back(cmd);
+
+	//	for (uint32_t idx : instanceIndices)
+	//		frameCtx.opaqueInstances.emplace_back(originalOpaqueInstances[idx]);
+
 	//	frameCtx.opaqueVisibleCount += cmd.instanceCount;
-	//	++batchIndex;
 	//}
 
-	//std::sort(frameCtx.opaqueInstances.begin(), frameCtx.opaqueInstances.end(),
-	//	[](const GPUInstance& a, const GPUInstance& b) {
-	//		if (a.materialID != b.materialID)
-	//			return a.materialID < b.materialID;
-	//		return a.meshID < b.meshID;
-	//});
 
 	// Simple draws
+	std::sort(frameCtx.opaqueInstances.begin(), frameCtx.opaqueInstances.end(),
+		[](const GPUInstance& a, const GPUInstance& b) {
+			if (a.materialID != b.materialID)
+				return a.materialID < b.materialID;
+			return a.meshID < b.meshID;
+	});
+
 	frameCtx.opaqueIndirectDraws.reserve(frameCtx.opaqueInstances.size());
 
 	for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
@@ -73,7 +70,10 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		auto& mesh = meshes[inst.meshID];
 		auto& range = drawRanges[mesh.drawRangeID];
 
-		VkDrawIndexedIndirectCommand cmd{
+		//fmt::print("Instance[{}], meshID={}, materialID={}, drawRangeI={}\n",
+		//	inst.instanceID, inst.meshID, inst.materialID, mesh.drawRangeID);
+
+		VkDrawIndexedIndirectCommand cmd {
 			.indexCount = range.indexCount,
 			.instanceCount = 1,
 			.firstIndex = range.firstIndex,
@@ -109,12 +109,12 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
 				"[DrawPrep] Transparent batch would read past end of vertex buffer");
 
-			fmt::print(
-				"[Transparent Instance {}] meshID={} -> drawRangeID={} -> "
-				"indexCount={}, vertexOffset={}, firstIndex={}\n",
-				i, inst.meshID, mesh.drawRangeID,
-				range.indexCount, range.vertexOffset, range.firstIndex
-			);
+			//fmt::print(
+			//	"[Transparent Instance {}] meshID={} -> drawRangeID={} -> "
+			//	"indexCount={}, vertexOffset={}, firstIndex={}\n",
+			//	i, inst.meshID, mesh.drawRangeID,
+			//	range.indexCount, range.vertexOffset, range.firstIndex
+			//);
 
 			VkDrawIndexedIndirectCommand cmd{
 				.indexCount = range.indexCount,
@@ -124,17 +124,17 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				.firstInstance = i
 			};
 
-			fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
-				cmd.indexCount, cmd.instanceCount,
-				cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance
-			);
+			//fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
+			//	cmd.indexCount, cmd.instanceCount,
+			//	cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance
+			//);
 
 			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}
 	}
 }
 
-void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
+void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue) {
 	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
 		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 

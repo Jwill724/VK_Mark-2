@@ -237,7 +237,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				continue;
 			}
 
-			MaterialResources materialResources{
+			// Default/fallback images
+			MaterialResources materialResources {
 				.colorImage = ResourceManager::getWhiteImage(),
 				.colorSampler = ResourceManager::getDefaultSamplerLinear(),
 				.metalRoughImage = ResourceManager::getMetalRoughImage(),
@@ -250,29 +251,39 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				.emissiveSampler = ResourceManager::getDefaultSamplerLinear(),
 			};
 
-			auto getImageAndSampler = [&](auto& texRef, AllocatedImage& outImg, VkSampler& outSamp) {
-				if (!texRef.has_value()) return;
-				const auto& texture = gltf.textures[texRef->textureIndex];
-				if (texture.imageIndex.has_value()) outImg = scene.runtime.images[texture.imageIndex.value()];
-				if (texture.samplerIndex.has_value()) outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
-			};
+			auto getImageAndSampler = [&](const fastgltf::TextureInfo& texInfo, AllocatedImage& outImg, VkSampler& outSamp) {
+				const auto& texture = gltf.textures[texInfo.textureIndex];
+				if (texture.imageIndex.has_value())
+					outImg = scene.runtime.images[texture.imageIndex.value()];
+				if (texture.samplerIndex.has_value())
+					outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
+				};
+
 
 			GPUMaterial newMaterial{};
-			newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
-			newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
+
+			if (mat.pbrData.baseColorTexture.has_value()) {
+				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.colorImage, materialResources.colorSampler);
+				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+			}
+
+			if (mat.pbrData.metallicRoughnessTexture.has_value()) {
+				getImageAndSampler(*mat.pbrData.metallicRoughnessTexture, materialResources.metalRoughImage, materialResources.metalRoughSampler);
+				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
+			}
 
 			if (mat.normalTexture.has_value()) {
-				getImageAndSampler(mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
+				getImageAndSampler(*mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
 				newMaterial.normalScale = mat.normalTexture->scale;
 			}
 
 			if (mat.occlusionTexture.has_value()) {
-				getImageAndSampler(mat.occlusionTexture, materialResources.aoImage, materialResources.aoSampler);
+				getImageAndSampler(*mat.occlusionTexture, materialResources.aoImage, materialResources.aoSampler);
 				newMaterial.ambientOcclusion = mat.occlusionTexture->strength;
 			}
 
 			if (mat.emissiveTexture.has_value()) {
-				getImageAndSampler(mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
+				getImageAndSampler(*mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
 				newMaterial.emissiveStrength = mat.emissiveStrength;
 			}
 
@@ -493,6 +504,7 @@ void AssetManager::processMeshes(
 				inst->instance.meshID = meshes.registerMesh(newMesh);
 				scene.runtime.bakedInstances.push_back(inst);
 
+				//fmt::print("MeshID={}, MaterialID={}\n", inst->instance.meshID, inst->instance.materialID);
 			}
 		}
 

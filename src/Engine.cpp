@@ -11,7 +11,7 @@ namespace Engine {
 	// just returns the whole window struct for its use
 	Window& windowModMode() { return *_window; }
 
-	VkExtent2D _windowExtent = { 800, 800 };
+	VkExtent2D _windowExtent = { 1200, 1000 };
 	VkExtent2D& getWindowExtent() { return _windowExtent; }
 
 	Profiler _engineProfiler;

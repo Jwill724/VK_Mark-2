@@ -71,7 +71,7 @@ struct ShaderStageInfo {
 
 struct DescriptorInfo {
 	VkDescriptorType type;
-	uint32_t binding = 0;
+	uint32_t binding = UINT32_MAX;
 	VkShaderStageFlags stageFlags;
 
 	void* pNext = nullptr;

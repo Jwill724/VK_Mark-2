@@ -129,7 +129,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 			frameCtx.transferCmds.data());
 		frameCtx.transferCmds.clear();
 
-		if (frameCtx.transferDeletion.semaphore != VK_NULL_HANDLE && !frameCtx.transferDeletion.queue.empty())
+		if (!frameCtx.transferDeletion.queue.empty())
 			frameCtx.transferDeletion.process(device);
 	}
 	if (!frameCtx.computeCmds.empty()) {
@@ -140,7 +140,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 			frameCtx.computeCmds.data());
 		frameCtx.computeCmds.clear();
 
-		if (frameCtx.computeDeletion.semaphore != VK_NULL_HANDLE && !frameCtx.computeDeletion.queue.empty())
+		if (!frameCtx.computeDeletion.queue.empty())
 			frameCtx.computeDeletion.process(device);
 	}
 
@@ -489,13 +489,13 @@ void Renderer::cleanup() {
 		for (auto& buf : frame.persistentGPUBuffers)
 			BufferUtils::destroyAllocatedBuffer(buf, allocator);
 
-		if (frame.transferDeletion.semaphore != VK_NULL_HANDLE && !frame.transferDeletion.queue.empty())
+		if (!frame.transferDeletion.queue.empty())
 			frame.transferDeletion.process(device);
 
 		if (!frame.transferCmds.empty())
 			frame.transferCmds.clear();
 
-		if (frame.computeDeletion.semaphore != VK_NULL_HANDLE && !frame.computeDeletion.queue.empty())
+		if (!frame.computeDeletion.queue.empty())
 			frame.computeDeletion.process(device);
 
 		if (!frame.computeCmds.empty())

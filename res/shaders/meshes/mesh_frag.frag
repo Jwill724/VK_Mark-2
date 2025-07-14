@@ -142,8 +142,8 @@ void main()
 	vec3 reflectionSpecular = SpecularReflection(viewDir, normal, roughness, F, specularIdx, brdfIdx);
 
 	vec3 ambient = kD * (reflectionDiffuse + reflectionSpecular);
-	//float sat_factor = mix(MAX_AO_SATURATION, 1, ao);
-	//albedo = pow(albedo, vec3(sat_factor));
+	float sat_factor = mix(MAX_AO_SATURATION, 1, ao);
+	albedo = pow(albedo, vec3(sat_factor));
 
 	vec3 finalColor = (diffuse + specular) * lightColor * NdotL;
 	vec3 correctedAmbient = ambient / (ambient + vec3(1.0));
@@ -159,9 +159,9 @@ void main()
 	//outFragColor = vec4(diffuse, 1.0);
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);
-	//outFragColor = vec4(albedo, albedoMap.w);
+	outFragColor = vec4(albedo, albedoMap.w);
 	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
-	outFragColor = vec4(sampledNormal, 1.0);
+	//outFragColor = vec4(sampledNormal, 1.0);
 	//outFragColor = vec4(inUV, 0.0, 1.0);
 	//outFragColor = vec4(inColor, 1.0);
 	//outFragColor = vec4(emissive, 1.0);

@@ -25,11 +25,11 @@ struct DeletionQueue {
 
 struct TimelineDeletionQueue {
 	struct Entry {
-		uint64_t timelineValue;
+		uint64_t timelineValue = UINT32_MAX;
 		std::function<void()> destroy;
 	};
 
-	VkSemaphore semaphore;
+	VkSemaphore semaphore = VK_NULL_HANDLE;
 	std::vector<Entry> queue;
 
 	inline void enqueue(uint64_t timelineValue, std::function<void()> fn) {
