@@ -92,7 +92,6 @@ struct FrameContext {
 	std::vector<glm::mat4> transformsList;
 	AllocatedBuffer transformsListBuffer;
 
-	//
 	std::atomic<bool> refreshGlobalTransformList = true; // Set to false to indicate static transforms
 
 	// Descriptor use

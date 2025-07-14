@@ -84,10 +84,6 @@ void SceneGraph::buildSceneGraph(
 		modelAsset.scene.nodes = nodes;
 
 		// === Assign instances to nodes ===
-		for (auto& node : nodes) {
-			node->instances.clear();
-		}
-
 		uint32_t instanceCounter = 0;
 		for (auto& baked : modelAsset.runtime.bakedInstances) {
 			baked->instance.transformID = baked->nodeID;

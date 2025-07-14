@@ -112,7 +112,7 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 		VkBufferCopy copyRegion{};
 		copyRegion.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.buffer, addressTableBuffer.buffer, 1, &copyRegion);
-		}, transferCommandPool, QueueType::Transfer);
+	}, transferCommandPool, QueueType::Transfer);
 
 	addressTableDirty = false;
 }
@@ -156,7 +156,7 @@ void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferTy
 uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
 	std::scoped_lock lock(combinedMutex);
 
-	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushCombined");
+	ASSERT((view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE) && "Null handle in pushCombined");
 
 	ImageViewSamplerKey key = makeKey(view, sampler);
 
@@ -183,7 +183,7 @@ uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
 uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
 	std::scoped_lock lock(samplerCubeMutex);
 
-	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE && "Null handle in pushSamplerCube");
+	ASSERT((view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE) && "Null handle in pushSamplerCube");
 
 	ImageViewSamplerKey key = makeKey(view, sampler);
 
@@ -382,7 +382,6 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 	});
 }
 
-// TEXTURES
 void ResourceManager::initTextures(
 	VkCommandPool cmdPool,
 	DeletionQueue& imageQueue,

@@ -162,7 +162,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
 			const size_t totalStagingSize = vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize;
 
-			// Debug prints to verify sizes
 			fmt::print("[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
 				vertexBufferSize, totalVertices.size());
 			fmt::print("[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",

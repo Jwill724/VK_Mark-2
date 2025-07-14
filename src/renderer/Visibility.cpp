@@ -4,6 +4,7 @@
 #include "renderer/gpu_types/PipelineManager.h"
 
 // GPU culling
+// This doesn't work right now, due to how buffers are handled and syncing compute queue
 void Visibility::performCulling(
 	VkCommandBuffer cmd,
 	CullingPushConstantsAddrs& cullingData,

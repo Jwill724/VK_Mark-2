@@ -606,7 +606,10 @@ void RendererUtils::insertTransferToGraphicsBufferBarrier(VkCommandBuffer cmd, V
 		VK_ACCESS_2_INDEX_READ_BIT |
 		VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT |
 		VK_ACCESS_2_UNIFORM_READ_BIT |
-		VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+		VK_ACCESS_2_SHADER_READ_BIT;
+
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
 	barrier.buffer = buffer;
 	barrier.offset = 0;

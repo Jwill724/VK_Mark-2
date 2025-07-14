@@ -131,7 +131,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	if (frameCtx.refreshGlobalTransformList) {
 		frameCtx.cullingPCData.meshCount = static_cast<uint32_t>(meshes.meshData.size());
-		//wetransformSceneNodes();
+		//transformSceneNodes();
 		frameCtx.refreshGlobalTransformList = false; // baked until new transforms applied
 	}
 
@@ -239,7 +239,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 		DrawPreparation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
 
-		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
+		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue);
 	}
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
@@ -451,10 +451,10 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 		frameCtx.drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
 		frameCtx.drawData.transparentDrawCount = 0;
 
-		for (const auto& draw : frameCtx.opaqueIndirectDraws) {
-			fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}, opaqueDrawCount={}\n",
-				draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, frameCtx.drawData.opaqueDrawCount);
-		}
+		//for (const auto& draw : frameCtx.opaqueIndirectDraws) {
+		//	fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}, opaqueDrawCount={}\n",
+		//		draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, frameCtx.drawData.opaqueDrawCount);
+		//}
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,

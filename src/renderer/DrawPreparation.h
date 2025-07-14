@@ -23,7 +23,7 @@ struct OpaqueBatchKeyHash {
 };
 
 namespace DrawPreparation {
-	void uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator);
+	void uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue);
 
 	void meshDataAndTransformsListUpload(
 		FrameContext& frameCtx,
