@@ -164,8 +164,6 @@ namespace BackendTools {
 	// Helper function for physical device selection
 	// Chooses based off which device has the most modern features
 	bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
-		// temporary queue family struct to check devices available queues
-		QueueFamilyIndices indices = VulkanUtils::FindQueueFamilies(device, surface);
 
 		bool extensionsSupported = checkDeviceExtensionSupport(device);
 
@@ -177,6 +175,12 @@ namespace BackendTools {
 		VkPhysicalDeviceFeatures supportedFeatures;
 		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-		return indices.isComplete() && extensionsSupported && swapchainAdeuate && supportedFeatures.samplerAnisotropy;
+		bool queuesAvailable = false;
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+		if (queueFamilyCount > 0) queueFamilyCount = true;
+
+		return queueFamilyCount && extensionsSupported && swapchainAdeuate && supportedFeatures.samplerAnisotropy;
 	}
 }
