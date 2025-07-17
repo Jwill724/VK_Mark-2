@@ -184,7 +184,7 @@ void Backend::createLogicalDevice() {
 	features12.descriptorIndexing = VK_TRUE;						// Enables all indexing stuff
 	features12.timelineSemaphore = VK_TRUE;							// Timeline sync (async GPU workloads)
 	features12.scalarBlockLayout = VK_TRUE;							// No descriptor padding
-	features12.shaderBufferInt64Atomics = VK_TRUE;
+	//features12.shaderBufferInt64Atomics = VK_TRUE;
 	features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	features12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
 	features12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;

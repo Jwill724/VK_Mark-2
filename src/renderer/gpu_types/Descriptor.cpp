@@ -296,13 +296,13 @@ void DescriptorWriter::writeBuffer(int binding, VkBuffer buffer, size_t size, si
 		.range = size
 	});
 
-	//fmt::print("Writing buffer at binding {}:\n", binding);
-	//fmt::print("  Buffer Handle: {}\n", reinterpret_cast<uintptr_t>(buffer));
-	//fmt::print("  Offset: {}\n", offset);
-	//fmt::print("  Size: {}\n", size);
-	//fmt::print("  Descriptor Type: {}\n", static_cast<int>(type));
-	//fmt::print("  Descriptor Set: {}\n", reinterpret_cast<uintptr_t>(set));
-	//fmt::print("  Internal Buffer Index: {}\n", bufferIndex);
+	fmt::print("Writing buffer at binding {}:\n", binding);
+	fmt::print("  Buffer Handle: {}\n", reinterpret_cast<uintptr_t>(buffer));
+	fmt::print("  Offset: {}\n", offset);
+	fmt::print("  Size: {}\n", size);
+	fmt::print("  Descriptor Type: {}\n", static_cast<int>(type));
+	fmt::print("  Descriptor Set: {}\n", reinterpret_cast<uintptr_t>(set));
+	fmt::print("  Internal Buffer Index: {}\n", bufferIndex);
 
 	bufferWrites.push_back({
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
