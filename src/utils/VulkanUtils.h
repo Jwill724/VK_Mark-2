@@ -17,6 +17,7 @@ struct QueueFamilyIndices {
 namespace VulkanUtils {
 	uint32_t FindMemoryType(VkPhysicalDevice pDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
+	bool HasRequiredQueues(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
 
 	VkFormat findDepthFormat(VkPhysicalDevice pDevice);
 	VkFormat findSupportedFormat(VkPhysicalDevice pDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags feature);

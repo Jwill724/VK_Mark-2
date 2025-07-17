@@ -74,6 +74,36 @@ QueueFamilyIndices VulkanUtils::FindQueueFamilies(VkPhysicalDevice pDevice, VkSu
 	return indices;
 }
 
+bool VulkanUtils::HasRequiredQueues(VkPhysicalDevice pDevice, VkSurfaceKHR surface) {
+	QueueFamilyIndices indices;
+
+	uint32_t queueFamilyCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(pDevice, &queueFamilyCount, nullptr);
+	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(pDevice, &queueFamilyCount, queueFamilies.data());
+
+	int i = 0;
+	for (const auto& queueFamily : queueFamilies) {
+		if (queueFamily.queueCount > 0 && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+			indices.graphicsFamily = i;
+		}
+
+		VkBool32 presentSupport = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(pDevice, i, surface, &presentSupport);
+		if (presentSupport) {
+			indices.presentFamily = i;
+		}
+
+		if (indices.graphicsFamily.has_value() && indices.presentFamily.has_value()) {
+			return true;
+		}
+
+		i++;
+	}
+
+	return false;
+}
+
 std::vector<uint32_t> VulkanUtils::findSupportedSampleCounts(VkPhysicalDeviceLimits deviceLimits) {
 	std::vector<uint32_t> sampleCounts;
 

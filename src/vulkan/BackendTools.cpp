@@ -164,23 +164,21 @@ namespace BackendTools {
 	// Helper function for physical device selection
 	// Chooses based off which device has the most modern features
 	bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface) {
-
+		bool queuesAvailable = VulkanUtils::HasRequiredQueues(device, surface);
 		bool extensionsSupported = checkDeviceExtensionSupport(device);
 
-		bool swapchainAdeuate = false;
+		bool swapchainAdequate = false;
 		if (extensionsSupported) {
 			SwapChainSupportDetails swapchainSupport = querySwapChainSupport(device, surface);
-			swapchainAdeuate = !swapchainSupport.formats.empty() && !swapchainSupport.presentModes.empty();
+			swapchainAdequate = !swapchainSupport.formats.empty() && !swapchainSupport.presentModes.empty();
 		}
+
 		VkPhysicalDeviceFeatures supportedFeatures;
 		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-		bool queuesAvailable = false;
-		uint32_t queueFamilyCount = 0;
-		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-		if (queueFamilyCount > 0) queueFamilyCount = true;
-
-		return queueFamilyCount && extensionsSupported && swapchainAdeuate && supportedFeatures.samplerAnisotropy;
+		return queuesAvailable &&
+			extensionsSupported &&
+			swapchainAdequate &&
+			supportedFeatures.samplerAnisotropy;
 	}
 }
