@@ -27,7 +27,7 @@ void DescriptorSetOverwatch::initMainDescriptorManager(DeletionQueue& queue) {
 		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          static_cast<float>(MAX_STORAGE_IMAGES) },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<float>(MAX_COMBINED_SAMPLERS_IMAGES) },
 	};
-	mainDescriptorManager.init(MAX_FRAMES_IN_FLIGHT * 2, poolSizes);
+	mainDescriptorManager.init(1, poolSizes);
 
 	queue.push_function([=]() {
 		mainDescriptorManager.destroyPools();
@@ -226,13 +226,13 @@ VkDescriptorSetLayout DescriptorManager::createSetLayout() {
 		bindingFlags.push_back(flags);
 	}
 
-	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo{
+	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
 		.bindingCount = static_cast<uint32_t>(bindingFlags.size()),
 		.pBindingFlags = bindingFlags.data()
 	};
 
-	VkDescriptorSetLayoutCreateInfo layoutInfo{
+	VkDescriptorSetLayoutCreateInfo layoutInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.pNext = &bindingFlagsInfo,
 		.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
@@ -296,13 +296,13 @@ void DescriptorWriter::writeBuffer(int binding, VkBuffer buffer, size_t size, si
 		.range = size
 	});
 
-	fmt::print("Writing buffer at binding {}:\n", binding);
-	fmt::print("  Buffer Handle: {}\n", reinterpret_cast<uintptr_t>(buffer));
-	fmt::print("  Offset: {}\n", offset);
-	fmt::print("  Size: {}\n", size);
-	fmt::print("  Descriptor Type: {}\n", static_cast<int>(type));
-	fmt::print("  Descriptor Set: {}\n", reinterpret_cast<uintptr_t>(set));
-	fmt::print("  Internal Buffer Index: {}\n", bufferIndex);
+	//fmt::print("Writing buffer at binding {}:\n", binding);
+	//fmt::print("  Buffer Handle: {}\n", reinterpret_cast<uintptr_t>(buffer));
+	//fmt::print("  Offset: {}\n", offset);
+	//fmt::print("  Size: {}\n", size);
+	//fmt::print("  Descriptor Type: {}\n", static_cast<int>(type));
+	//fmt::print("  Descriptor Set: {}\n", reinterpret_cast<uintptr_t>(set));
+	//fmt::print("  Internal Buffer Index: {}\n", bufferIndex);
 
 	bufferWrites.push_back({
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -321,7 +321,7 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 	std::vector<VkDescriptorImageInfo> storageDescriptors;
 	std::vector<VkDescriptorImageInfo> combinedDescriptors;
 
-	//fmt::print("[DescriptorWriter] Descriptor set {}\n", static_cast<void*>(descriptorSet));
+	fmt::print("[DescriptorWriter] Descriptor set {}\n", static_cast<void*>(descriptorSet));
 
 	for (size_t i = 0; i < lut.size(); ++i) {
 		const auto& entry = lut[i];
@@ -329,35 +329,35 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 		// Sampler Cube
 		if (entry.samplerCubeIndex != UINT32_MAX && entry.samplerCubeIndex < table.samplerCubeViews.size()) {
 			const auto& info = table.samplerCubeViews[entry.samplerCubeIndex];
-			//fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
-			//	i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
+			fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
+				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
 			samplerCubeDescriptors.push_back(info);
 		}
-		//else {
-		//	fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, entry.samplerCubeIndex);
-		//}
+		else {
+			fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, entry.samplerCubeIndex);
+		}
 
 		// Storage Image
 		if (entry.storageImageIndex != UINT32_MAX && entry.storageImageIndex < table.storageViews.size()) {
 			const auto& info = table.storageViews[entry.storageImageIndex];
-			//fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
-			//	i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
+			fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
+				i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
 			storageDescriptors.push_back(info);
 		}
-		//else {
-		//	fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, entry.storageImageIndex);
-		//}
+		else {
+			fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, entry.storageImageIndex);
+		}
 
 		// Combined Image
 		if (entry.combinedImageIndex != UINT32_MAX && entry.combinedImageIndex < table.combinedViews.size()) {
 			const auto& info = table.combinedViews[entry.combinedImageIndex];
-			//fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
-			//	i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
+			fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
+				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
 			combinedDescriptors.push_back(info);
 		}
-		//else {
-		//	fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, entry.combinedImageIndex);
-		//}
+		else {
+			fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, entry.combinedImageIndex);
+		}
 	}
 
 	writeImages(2, samplerCubeDescriptors, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, descriptorSet);
@@ -371,25 +371,25 @@ void DescriptorWriter::writeImages(int binding, const std::vector<VkDescriptorIm
 		return;
 	}
 
-	//fmt::print("\n[DescriptorWriter] BEGIN writeImages()\n");
-	//fmt::print("[DescriptorWriter] Writing {} descriptors to set {} at binding {} (type = {})\n",
-	//	images.size(), (void*)set, binding, static_cast<int>(type));
-	//fmt::print("[DescriptorWriter] imageInfos capacity BEFORE insert: {}, size BEFORE insert: {}, inserting: {}\n",
-	//	imageInfos.capacity(), imageInfos.size(), images.size());
+	fmt::print("\n[DescriptorWriter] BEGIN writeImages()\n");
+	fmt::print("[DescriptorWriter] Writing {} descriptors to set {} at binding {} (type = {})\n",
+		images.size(), (void*)set, binding, static_cast<int>(type));
+	fmt::print("[DescriptorWriter] imageInfos capacity BEFORE insert: {}, size BEFORE insert: {}, inserting: {}\n",
+		imageInfos.capacity(), imageInfos.size(), images.size());
 
 	size_t startIndex = imageInfos.size();
 	imageInfos.insert(imageInfos.end(), images.begin(), images.end());
 
-	//fmt::print("[DescriptorWriter] imageInfos capacity AFTER insert: {}, size AFTER insert: {}\n", imageInfos.capacity(), imageInfos.size());
+	fmt::print("[DescriptorWriter] imageInfos capacity AFTER insert: {}, size AFTER insert: {}\n", imageInfos.capacity(), imageInfos.size());
 
 	for (size_t i = 0; i < images.size(); ++i) {
 		const auto& info = images[i];
 
-		//fmt::print("[{}] Binding {} - ", static_cast<uint32_t>(i), binding);
+		fmt::print("[{}] Binding {} - ", static_cast<uint32_t>(i), binding);
 
 		if (info.imageView != VK_NULL_HANDLE) {
-			//fmt::print("imageView = {}, sampler = {}, layout = 0x{:08X}\n",
-			//	(void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
+			fmt::print("imageView = {}, sampler = {}, layout = 0x{:08X}\n",
+				(void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
 
 			ASSERT(info.imageLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL ||
 				info.imageLayout == VK_IMAGE_LAYOUT_GENERAL ||
@@ -397,13 +397,13 @@ void DescriptorWriter::writeImages(int binding, const std::vector<VkDescriptorIm
 				info.imageLayout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL ||
 				info.imageLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL);
 		}
-		//else {
-		//	fmt::print("imageView = VK_NULL_HANDLE (skipped layout validation)\n");
-		//}
+		else {
+			fmt::print("imageView = VK_NULL_HANDLE (skipped layout validation)\n");
+		}
 	}
 
-	//const void* ptr = static_cast<const void*>(&imageInfos[startIndex]);
-	//fmt::print("[DescriptorWriter] Write descriptor startIndex = {}, pImageInfo = {}\n", startIndex, ptr);
+	const void* ptr = static_cast<const void*>(&imageInfos[startIndex]);
+	fmt::print("[DescriptorWriter] Write descriptor startIndex = {}, pImageInfo = {}\n", startIndex, ptr);
 
 	// Deferred image writing into set updating
 	pendingImageWrites.push_back({
@@ -426,7 +426,7 @@ void DescriptorWriter::clear() {
 
 void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	if (!pendingImageWrites.empty()) {
-		//fmt::print("Size of total image writes: {}\n", pendingImageWrites.size());
+		fmt::print("Size of total image writes: {}\n", pendingImageWrites.size());
 		for (const auto& pw : pendingImageWrites) {
 			ASSERT(pw.startIndex + pw.count <= imageInfos.size());
 			imageWrites.push_back({

@@ -166,16 +166,6 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 }
 
 void Renderer::submitFrame(FrameContext& frameCtx) {
-	//fmt::print("=== SUBMIT FRAME [{}] ===\n", _frameNumber);
-	//fmt::print("FrameIndex: {}\n", frameCtx.frameIndex);
-	//fmt::print("CommandBuffer: {}\n", static_cast<void*>(frameCtx.commandBuffer));
-	//fmt::print("Fence: {}\n", static_cast<void*>(frameCtx.syncObjs.fence));
-	//fmt::print("WaitSemaphore: {} | SignalSemaphore: {}\n",
-	//	static_cast<void*>(frameCtx.syncObjs.swapchainSemaphore),
-	//	static_cast<void*>(frameCtx.syncObjs.semaphore));
-	//fmt::print("Swapchain Image Index: {}\n", frameCtx.swapchainImageIndex);
-
-
 	VkCommandBufferSubmitInfo cmdInfo{};
 	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
 	cmdInfo.pNext = nullptr;
@@ -196,7 +186,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 		ASSERT(_transferSync.semaphore != VK_NULL_HANDLE && "[Transfer] Timeline semaphore must be set before rendering");
 		waitTransfer.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 		waitTransfer.semaphore = _transferSync.semaphore;
-		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 		waitTransfer.deviceIndex = 0;
 		waitTransfer.value = frameCtx.transferWaitValue;
 	}
@@ -208,7 +198,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 			ASSERT(_computeSync.semaphore != VK_NULL_HANDLE && "[Compute] Timeline semaphore must be set before rendering");
 			waitCompute.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
 			waitCompute.semaphore = _computeSync.semaphore;
-			waitCompute.stageMask = VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+			waitCompute.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 			waitCompute.deviceIndex = 0;
 			waitCompute.value = frameCtx.computeWaitValue;
 		}
@@ -300,22 +290,19 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
 	// color, depth and msaa transitions
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
 		draw.image,
 		draw.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	if (MSAA_ENABLED) {
-		RendererUtils::transitionImage(
-			frameCtx.commandBuffer,
+		RendererUtils::transitionImage(frameCtx.commandBuffer,
 			msaa.image,
 			msaa.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
+	RendererUtils::transitionImage(frameCtx.commandBuffer,
 		depth.image,
 		depth.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -442,16 +429,15 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 
 	if (!frameCtx.transferCmds.empty()) {
 		if (frameCtx.opaqueVisibleCount > 0) {
+			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
 		}
 		if (frameCtx.transparentVisibleCount > 0) {
+			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
 			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
 		}
 
 		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transformsListBuffer.buffer);
-
 		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
 	}
 

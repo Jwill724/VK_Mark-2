@@ -75,10 +75,10 @@ struct GPUMaterial {
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;
 
-	float ambientOcclusion = 1.0f;
+	float ambientOcclusion = 0.9f;
 	float normalScale = 1.0f;
 	float alphaCutoff = 1.0f;
-	uint32_t passType;
+	uint32_t passType = 0;
 };
 
 
@@ -117,7 +117,7 @@ enum class AddressBufferType : uint32_t {
 	Count
 };
 
-struct alignas(128) GPUAddressTable{
+struct alignas(128) GPUAddressTable {
 	std::array<VkDeviceAddress, size_t(AddressBufferType::Count)> addrs;
 	void set(AddressBufferType t, VkDeviceAddress addr) {
 		addrs[size_t(t)] = addr;

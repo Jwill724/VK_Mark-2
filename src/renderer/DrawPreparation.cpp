@@ -11,79 +11,46 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	const std::vector<GPUDrawRange>& drawRanges,
 	const std::vector<GPUMeshData>& meshes)
 {
-	//// The batching doesnt work. fps sucks
-
-	////=== BATCH OPAQUE INSTANCES ===
-	//std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
-
-	//for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
-	//	const GPUInstance& inst = frameCtx.opaqueInstances[i];
-	//	const OpaqueBatchKey key{ inst.meshID, inst.materialID };
-	//	opaqueBatches[key].push_back(i);
-	//}
-
-	//frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
-
-	//fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
-
-	//std::vector<GPUInstance> originalOpaqueInstances = std::move(frameCtx.opaqueInstances);
-	//frameCtx.opaqueInstances.clear();
-
-	//for (const auto& [key, instanceIndices] : opaqueBatches) {
-	//	const GPUMeshData& mesh = meshes[key.meshID];
-	//	const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
-
-	//	ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
-	//		"[DrawPrep] Opaque batch would read past end of index buffer");
-	//	ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
-	//		"[DrawPrep] Opaque batch would read past end of vertex buffer");
-
-	//	VkDrawIndexedIndirectCommand cmd{
-	//		.indexCount = range.indexCount,
-	//		.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
-	//		.firstIndex = range.firstIndex,
-	//		.vertexOffset = static_cast<int32_t>(range.vertexOffset),
-	//		.firstInstance = frameCtx.opaqueVisibleCount
-	//	};
-
-	//	frameCtx.opaqueIndirectDraws.emplace_back(cmd);
-
-	//	for (uint32_t idx : instanceIndices)
-	//		frameCtx.opaqueInstances.emplace_back(originalOpaqueInstances[idx]);
-
-	//	frameCtx.opaqueVisibleCount += cmd.instanceCount;
-	//}
-
-
-	// Simple draws
-	std::sort(frameCtx.opaqueInstances.begin(), frameCtx.opaqueInstances.end(),
-		[](const GPUInstance& a, const GPUInstance& b) {
-			if (a.materialID != b.materialID)
-				return a.materialID < b.materialID;
-			return a.meshID < b.meshID;
-	});
-
-	frameCtx.opaqueIndirectDraws.reserve(frameCtx.opaqueInstances.size());
+	//=== BATCH OPAQUE INSTANCES ===
+	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
 
 	for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
-		auto& inst = frameCtx.opaqueInstances[i];
-		auto& mesh = meshes[inst.meshID];
-		auto& range = drawRanges[mesh.drawRangeID];
+		const GPUInstance& inst = frameCtx.opaqueInstances[i];
+		const OpaqueBatchKey key{ inst.meshID, inst.materialID };
+		opaqueBatches[key].push_back(i);
+	}
 
-		//fmt::print("Instance[{}], meshID={}, materialID={}, drawRangeI={}\n",
-		//	inst.instanceID, inst.meshID, inst.materialID, mesh.drawRangeID);
+	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
 
-		VkDrawIndexedIndirectCommand cmd {
+	fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
+
+	std::vector<GPUInstance> originalOpaqueInstances = std::move(frameCtx.opaqueInstances);
+	frameCtx.opaqueInstances.clear();
+
+	for (const auto& [key, instanceIndices] : opaqueBatches) {
+		const GPUMeshData& mesh = meshes[key.meshID];
+		const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
+
+		ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
+			"[DrawPrep] Opaque batch would read past end of index buffer");
+		ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
+			"[DrawPrep] Opaque batch would read past end of vertex buffer");
+
+		VkDrawIndexedIndirectCommand cmd{
 			.indexCount = range.indexCount,
-			.instanceCount = 1,
+			.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
 			.firstIndex = range.firstIndex,
 			.vertexOffset = static_cast<int32_t>(range.vertexOffset),
-			.firstInstance = i
+			.firstInstance = frameCtx.opaqueVisibleCount
 		};
 
 		frameCtx.opaqueIndirectDraws.emplace_back(cmd);
+
+		for (uint32_t idx : instanceIndices)
+			frameCtx.opaqueInstances.emplace_back(originalOpaqueInstances[idx]);
+
+		frameCtx.opaqueVisibleCount += cmd.instanceCount;
 	}
-	frameCtx.opaqueVisibleCount = static_cast<uint32_t>(frameCtx.opaqueInstances.size());
 
 	// === SORT & DRAW TRANSPARENT ===
 	if (!frameCtx.transparentInstances.empty()) {

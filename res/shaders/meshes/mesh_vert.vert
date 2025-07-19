@@ -42,7 +42,6 @@ void main() {
 
     IndirectDrawCmd drawCmd;
     Instance inst;
-    Mesh mesh;
     uint instanceIdx;
 
     if (drawID < drawData.opaqueDrawCount) {
@@ -54,7 +53,6 @@ void main() {
         instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
         vInstanceID = instanceIdx;
         inst        = instBuf.opaqueInstances[instanceIdx];
-        mesh        = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
     } else {
         // transparent
         uint tIndex = drawID - drawData.opaqueDrawCount;
@@ -69,7 +67,6 @@ void main() {
         instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
         vInstanceID = instanceIdx;
         inst        = instBuf.transparentInstances[instanceIdx];
-        mesh        = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]).meshes[inst.meshID];
     }
 
     uint vertIdx = gl_VertexIndex;
