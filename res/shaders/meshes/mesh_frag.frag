@@ -24,6 +24,14 @@ layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
+layout(set = 0, binding = 1) uniform EnvMapData {
+    EnvMapBindingSet envMapSet;
+};
+
+layout(set = 0, binding = 2) uniform samplerCube envMaps[];
+layout(set = 0, binding = 4) uniform sampler2D combinedSamplers[];
+
+
 layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
     GPUAddressTable frameAddressTable;
 };
@@ -31,13 +39,6 @@ layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
 layout(set = 1, binding = 1) uniform SceneUBO {
     SceneData scene;
 };
-
-layout(set = 0, binding = 1) uniform EnvMapData {
-    EnvMapBindingSet envMapSet;
-};
-
-layout(set = 0, binding = 2) uniform samplerCube envMaps[];
-layout(set = 0, binding = 4) uniform sampler2D combindedSamplers[];
 
 layout(push_constant) uniform DrawPushConstants {
 	uint opaqueDrawCount;
@@ -62,7 +63,7 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 	vec3 R = reflect(-V, N);
 	if (FLIP_ENVIRONMENT_MAP_Y) R.y = -R.y;
 	vec3 prefilteredColor = textureLod(envMaps[nonuniformEXT(specularIdx)], R, roughness * MAX_REFLECTION_LOD).rgb;
-	vec2 envBRDF = texture(combindedSamplers[nonuniformEXT(brdfIdx)], vec2(max(dot(N, V), 0.0), roughness)).rg;
+	vec2 envBRDF = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(max(dot(N, V), 0.0), roughness)).rg;
 	return prefilteredColor * (F * envBRDF.x + envBRDF.y);
 }
 
@@ -73,7 +74,6 @@ void main()
 
 	IndirectDrawCmd drawCmd;
 	Instance inst;
-	Material mat;
 
 	if (drawID < drawData.opaqueDrawCount) {
 		// Opaque draw
@@ -82,7 +82,6 @@ void main()
 
 		drawCmd = cmdBuf.opaqueIndirect[drawID];
 		inst = instBuf.opaqueInstances[instanceID];
-		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 	} else {
 		// Transparent draw
 		uint tIndex = drawID - drawData.opaqueDrawCount;
@@ -93,18 +92,25 @@ void main()
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
 		inst = instBuf.transparentInstances[instanceID];
-		mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 	}
+
+	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 
 	// Environment image indices for IBL
 	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);
 	uint specularIdx = uint(envMapSet.mapIndices[0].y);
 	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
 
-	vec4 albedoMap = texture(combindedSamplers[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
-	vec4 mrSample = texture(combindedSamplers[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
-	vec3 normalMap = texture(combindedSamplers[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
-	float ao = texture(combindedSamplers[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
+	uint albedoIdx  = mat.albedoLUTIndex;
+	uint mrIdx      = mat.metalRoughLUTIndex;
+	uint normalIdx  = mat.normalLUTIndex;
+	uint aoIdx      = mat.aoLUTIndex;
+
+	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(albedoIdx)], inUV) * mat.colorFactor;
+	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mrIdx)], inUV);
+	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(normalIdx)], inUV).rgb;
+	float ao       = texture(combinedSamplers[nonuniformEXT(aoIdx)], inUV).r * mat.ambientOcclusion;
+
 	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
 
 	if (albedoMap.w < mat.alphaCutoff) discard;

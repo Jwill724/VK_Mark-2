@@ -12,7 +12,7 @@ namespace RendererUtils {
 	// Render being something I directly draw and textures going to the gpu, which will need a buffer to do gpu stuff.
 	// Texture creation just defers the cmd work and buffer deletion
 	// Create texture just holds createrenderimage inside it and skipping the use of a deletion queue is designed only for asset loading
-	// since a loadedscene structure should own its resources
+	// since a ModelAsset type should own its resources
 	void createTextureImage(
 		VkCommandPool cmdPool,
 		void* data,
@@ -35,6 +35,9 @@ namespace RendererUtils {
 
 	size_t getPixelSize(VkFormat format);
 
+	// Buffer barriers
+	void insertIndirectDrawBufferBarrier(VkCommandBuffer cmd, VkBuffer buffer);
+	void insertShaderReadVisibilityBarrier(VkCommandBuffer cmd, VkBuffer buffer);
 	void insertTransferToGraphicsBufferBarrier(VkCommandBuffer cmd, VkBuffer buffer);
 
 	VkImageView createImageView(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);

@@ -431,7 +431,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 	auto& profiler = Engine::getProfiler();
 
-	auto& idxBuffer = resources.getBuffer(AddressBufferType::Index);
+	const auto& idxBuffer = resources.getBuffer(AddressBufferType::Index);
 	const auto& ranges = resources.getDrawRanges();
 	const auto& meshes = resources.getResgisteredMeshes().meshData;
 

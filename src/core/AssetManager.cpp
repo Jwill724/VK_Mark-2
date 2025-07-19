@@ -504,7 +504,7 @@ void AssetManager::processMeshes(
 				inst->instance.meshID = meshes.registerMesh(newMesh);
 				scene.runtime.bakedInstances.push_back(inst);
 
-				//fmt::print("MeshID={}, MaterialID={}\n", inst->instance.meshID, inst->instance.materialID);
+				fmt::print("MeshID={}, MaterialID={}\n", inst->instance.meshID, inst->instance.materialID);
 			}
 		}
 

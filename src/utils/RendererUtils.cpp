@@ -590,6 +590,8 @@ size_t RendererUtils::getPixelSize(VkFormat format) {
 	}
 }
 
+// TODO: Create a agnostic and improved barrier system, included within the rendergraph
+
 void RendererUtils::insertTransferToGraphicsBufferBarrier(VkCommandBuffer cmd, VkBuffer buffer) {
 	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
@@ -598,15 +600,61 @@ void RendererUtils::insertTransferToGraphicsBufferBarrier(VkCommandBuffer cmd, V
 	barrier.dstStageMask =
 		VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
 		VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
-		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-		VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 
 	barrier.dstAccessMask =
 		VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT |
 		VK_ACCESS_2_INDEX_READ_BIT |
-		VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT |
 		VK_ACCESS_2_UNIFORM_READ_BIT |
 		VK_ACCESS_2_SHADER_READ_BIT;
+
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+	barrier.buffer = buffer;
+	barrier.offset = 0;
+	barrier.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	depInfo.bufferMemoryBarrierCount = 1;
+	depInfo.pBufferMemoryBarriers = &barrier;
+
+	vkCmdPipelineBarrier2(cmd, &depInfo);
+}
+
+void RendererUtils::insertIndirectDrawBufferBarrier(VkCommandBuffer cmd, VkBuffer buffer) {
+	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+
+	barrier.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+	barrier.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+	barrier.buffer = buffer;
+	barrier.offset = 0;
+	barrier.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo depInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	depInfo.bufferMemoryBarrierCount = 1;
+	depInfo.pBufferMemoryBarriers = &barrier;
+
+	vkCmdPipelineBarrier2(cmd, &depInfo);
+}
+
+void RendererUtils::insertShaderReadVisibilityBarrier(VkCommandBuffer cmd, VkBuffer buffer) {
+	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+	barrier.srcAccessMask = 0; // static buffer access
+
+	barrier.dstStageMask =
+		VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+		VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+		VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+
+	barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
 
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
