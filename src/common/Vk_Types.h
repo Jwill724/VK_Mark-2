@@ -119,7 +119,7 @@ enum class AddressBufferType : uint32_t {
 
 struct alignas(128) GPUAddressTable {
 	std::array<VkDeviceAddress, size_t(AddressBufferType::Count)> addrs;
-	void set(AddressBufferType t, VkDeviceAddress addr) {
+	void setAddress(AddressBufferType t, VkDeviceAddress addr) {
 		addrs[size_t(t)] = addr;
 	}
 };

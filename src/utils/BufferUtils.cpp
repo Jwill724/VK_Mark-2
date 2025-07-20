@@ -11,7 +11,7 @@ AllocatedBuffer BufferUtils::createBuffer(size_t allocSize, VkBufferUsageFlags u
 
 	if (allocSize == 0) {
 		fmt::print("[BufferUtils] Warning: Attempting to create 0-byte buffer.\n");
-		allocSize = 4; // Vulkan requires non-zero buffer size
+		allocSize = 4;
 	}
 
 	VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
@@ -99,7 +99,7 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		allocator
 	);
 
-	addressTable.set(addressBufferType, buffer.address);
+	addressTable.setAddress(addressBufferType, buffer.address);
 
 	return buffer;
 }
