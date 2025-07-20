@@ -142,7 +142,8 @@ VkDescriptorPool DescriptorManager::createDescriptorPool(uint32_t setCount, std:
 
 	VkDescriptorPoolCreateInfo poolInfo{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
+		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
+		VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
 		.maxSets = setCount,
 		.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 		.pPoolSizes = poolSizes.data()
@@ -221,6 +222,11 @@ VkDescriptorSetLayout DescriptorManager::createSetLayout() {
 
 		if (binding.binding == highestBinding && binding.descriptorCount > 1) {
 			flags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+		}
+
+		// image array specific
+		if (binding.binding == 2 || binding.binding == 3 || binding.binding == 4) {
+			flags |= VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
 		}
 
 		bindingFlags.push_back(flags);

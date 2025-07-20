@@ -51,7 +51,7 @@ struct Node : public IRenderable {
 
 			outFrameTransformsList.push_back(worldTransform);
 
-			GPUInstance gpuInst = {
+			GPUInstance gpuInst {
 				.instanceID = inst->instance.instanceID,
 				.materialID = inst->instance.materialID,
 				.meshID = meshID,

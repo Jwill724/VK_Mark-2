@@ -290,19 +290,22 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
 	// color, depth and msaa transitions
-	RendererUtils::transitionImage(frameCtx.commandBuffer,
+	RendererUtils::transitionImage(
+		frameCtx.commandBuffer,
 		draw.image,
 		draw.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	if (MSAA_ENABLED) {
-		RendererUtils::transitionImage(frameCtx.commandBuffer,
+		RendererUtils::transitionImage(
+			frameCtx.commandBuffer,
 			msaa.image,
 			msaa.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
-	RendererUtils::transitionImage(frameCtx.commandBuffer,
+	RendererUtils::transitionImage(
+		frameCtx.commandBuffer,
 		depth.image,
 		depth.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -311,7 +314,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx);
 
 	// Post process transition and copy
-	RendererUtils::transitionImage(frameCtx.commandBuffer,
+	RendererUtils::transitionImage(
+		frameCtx.commandBuffer,
 		draw.image,
 		draw.imageFormat,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

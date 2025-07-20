@@ -22,7 +22,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 
 	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
 
-	fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
+	//fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
 
 	std::vector<GPUInstance> originalOpaqueInstances = std::move(frameCtx.opaqueInstances);
 	frameCtx.opaqueInstances.clear();
@@ -32,11 +32,11 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
 
 		ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
-			"[DrawPrep] Opaque batch would read past end of index buffer");
+			"[DrawPrep] Opaque batch would read past end of index buffer.");
 		ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
-			"[DrawPrep] Opaque batch would read past end of vertex buffer");
+			"[DrawPrep] Opaque batch would read past end of vertex buffer.");
 
-		VkDrawIndexedIndirectCommand cmd{
+		VkDrawIndexedIndirectCommand cmd {
 			.indexCount = range.indexCount,
 			.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
 			.firstIndex = range.firstIndex,
@@ -72,9 +72,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			const auto& range = drawRanges[mesh.drawRangeID];
 
 			ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
-				"[DrawPrep] Transparent batch would read past end of index buffer");
+				"[DrawPrep] Transparent batch would read past end of index buffer.");
 			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
-				"[DrawPrep] Transparent batch would read past end of vertex buffer");
+				"[DrawPrep] Transparent batch would read past end of vertex buffer.");
 
 			//fmt::print(
 			//	"[Transparent Instance {}] meshID={} -> drawRangeID={} -> "
@@ -83,7 +83,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			//	range.indexCount, range.vertexOffset, range.firstIndex
 			//);
 
-			VkDrawIndexedIndirectCommand cmd{
+			VkDrawIndexedIndirectCommand cmd {
 				.indexCount = range.indexCount,
 				.instanceCount = 1,
 				.firstIndex = range.firstIndex,

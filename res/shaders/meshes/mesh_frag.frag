@@ -67,8 +67,7 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 	return prefilteredColor * (F * envBRDF.x + envBRDF.y);
 }
 
-void main()
-{
+void main() {
 	uint drawID = vDrawID;
 	uint instanceID = vInstanceID;
 
@@ -94,7 +93,7 @@ void main()
 		inst = instBuf.transparentInstances[instanceID];
 	}
 
-	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
+	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[nonuniformEXT(inst.materialID)];
 
 	// Environment image indices for IBL
 	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);

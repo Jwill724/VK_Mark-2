@@ -67,7 +67,7 @@ void RenderScene::updateCamera() {
 }
 
 
-// Draw preperation work
+// Draw preparation work
 // Temporary, need a place to center ideas
 void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	// === Update and draw scene ===
@@ -164,7 +164,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		}
 		else {
 			_currentSceneMeshIDs = meshes.extractAllMeshIDs();
-			fmt::print("mesh id sizes: {}\n", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
+			//fmt::print("mesh id sizes: {}\n", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
 			frameCtx.meshDataSet = true;
 		}
 	}
@@ -230,9 +230,9 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	frameCtx.clearRenderData();
 
 	if (!frameCtx.visibleMeshIDs.empty()) {
-		fmt::print("Visible meshIDs this frame:\n");
-		for (auto id : frameCtx.visibleMeshIDs)
-			fmt::print("  meshID {}\n", id);
+		//fmt::print("Visible meshIDs this frame:\n");
+		//for (auto id : frameCtx.visibleMeshIDs)
+		//	fmt::print("  meshID {}\n", id);
 
 		// Using the visible meshIds in culling, find all instances and define obj data
 		updateVisiblesInstances(frameCtx);
@@ -463,8 +463,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			pLayout.pcRange.size,
 			&frameCtx.drawData);
 
-		vkCmdDrawIndexedIndirect(
-			frameCtx.commandBuffer,
+		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.opaqueIndirectCmdBuffer.buffer,
 			0,
 			frameCtx.drawData.opaqueDrawCount,
@@ -493,8 +492,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			pLayout.pcRange.size,
 			&frameCtx.drawData);
 
-		vkCmdDrawIndexedIndirect(
-			frameCtx.commandBuffer,
+		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.transparentIndirectCmdBuffer.buffer,
 			0,
 			frameCtx.drawData.transparentDrawCount,
