@@ -163,6 +163,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	else
 		offset += transparentIndirectBytes;
 
+	ASSERT(offset + transformsListBytes <= frameCtx.combinedGPUStaging.info.size);
 	memcpy(mappedStagingPtr + offset, frameCtx.transformsList.data(), transformsListBytes);
 
 	// frame address table

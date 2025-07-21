@@ -26,8 +26,9 @@ struct ImageLUTEntry {
 
 struct AllocatedImage {
 	VkImage image = VK_NULL_HANDLE;
-	VkImageView imageView = VK_NULL_HANDLE;
-	VkImageView storageView = VK_NULL_HANDLE;
+	// Only real distinction between imageview and storageview is imagetype
+	VkImageView imageView = VK_NULL_HANDLE; // VK_IMAGE_TYPE_2D
+	VkImageView storageView = VK_NULL_HANDLE; // VK_IMAGE_TYPE_2D_ARRAY
 	std::vector<VkImageView> storageViews{};
 	bool perMipStorageViews = false;
 	VkFormat imageFormat = VK_FORMAT_UNDEFINED;

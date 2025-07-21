@@ -457,7 +457,7 @@ void AssetManager::processMeshes(
 				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
-				GPUDrawRange range{
+				GPUDrawRange range {
 					.firstIndex = globalIndexOffset,
 					.indexCount = indexCount,
 					.vertexOffset = globalVertexOffset,

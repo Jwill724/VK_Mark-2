@@ -95,7 +95,24 @@ void Backend::createInstance() {
 
 		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 		BackendTools::populateDebugMessengerCreateInfo(debugCreateInfo);
-		createInfo.pNext = &debugCreateInfo;
+
+		if (BackendTools::enableGPUValidationLayers) {
+			static VkValidationFeatureEnableEXT gpuEnableFeatures[] = {
+				VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
+				VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT
+			};
+
+			static VkValidationFeaturesEXT gpuValidationFeatures{};
+			gpuValidationFeatures.sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT;
+			gpuValidationFeatures.enabledValidationFeatureCount = 2;
+			gpuValidationFeatures.pEnabledValidationFeatures = gpuEnableFeatures;
+			gpuValidationFeatures.pNext = &debugCreateInfo;
+
+			createInfo.pNext = &gpuValidationFeatures;
+		}
+		else {
+			createInfo.pNext = &debugCreateInfo;
+		}
 	}
 	else {
 		createInfo.enabledLayerCount = 0;

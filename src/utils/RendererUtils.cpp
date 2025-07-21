@@ -191,6 +191,7 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 
 		if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.storageView));
 
 			if (imgInfo.mipLevels > 1 && renderImage.isCubeMap && renderImage.perMipStorageViews) {
