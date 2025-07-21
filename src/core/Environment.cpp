@@ -101,7 +101,7 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	tempEntryEquirect.storageImageIndex = imageTable.pushStorage(skyboxImg.storageView);
 	resources.addImageLUTEntry(tempEntryEquirect);
 
-	tempEntryBRDF.storageImageIndex = imageTable.pushStorage(brdfImg.imageView);
+	tempEntryBRDF.storageImageIndex = imageTable.pushStorage(brdfImg.storageView);
 	resources.addImageLUTEntry(tempEntryBRDF);
 
 	tempEntryDiffuse.samplerCubeIndex = imageTable.pushSamplerCube(skyboxImg.imageView, diffuseSmpl);

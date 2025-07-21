@@ -144,8 +144,6 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 			frameCtx.computeDeletion.process(device);
 	}
 
-	frameCtx.cpuDeletion.flush();
-
 	frameCtx.swapchainResult = vkAcquireNextImageKHR(
 		device,
 		Backend::getSwapchainDef().swapchain,
@@ -163,6 +161,8 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	}
 
 	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
+
+	frameCtx.cpuDeletion.flush();
 }
 
 void Renderer::submitFrame(FrameContext& frameCtx) {

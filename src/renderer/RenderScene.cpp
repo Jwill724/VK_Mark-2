@@ -77,14 +77,14 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	if (_isFirstViewProj) {
 		_lastViewProj = _sceneData.viewproj;
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
-		copyFrustumToFrame(frameCtx.cullingPCData);
+		//copyFrustumToFrame(frameCtx.cullingPCData);
 		_isFirstViewProj = false;
 	}
 
 	if (_sceneData.viewproj != _lastViewProj) {
 		_lastViewProj = _sceneData.viewproj;
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
-		copyFrustumToFrame(frameCtx.cullingPCData);
+		//copyFrustumToFrame(frameCtx.cullingPCData);
 	}
 
 	allocateSceneBuffer(frameCtx, resources.getAllocator());

@@ -58,7 +58,7 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
 	mainDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
-	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1); // Global image indexes
+	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
 
 	VkShaderStageFlags imageStageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES);
@@ -214,23 +214,18 @@ VkDescriptorSetLayout DescriptorManager::createSetLayout() {
 		VkDescriptorBindingFlags flags = 0;
 
 		// Always allow updating while in use
-		flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-
-		if (binding.descriptorCount > 1) {
-			flags |= VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-		}
+		flags |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+			VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+			VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
 
 		if (binding.binding == highestBinding && binding.descriptorCount > 1) {
 			flags |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
 		}
 
-		// image array specific
-		if (binding.binding == 2 || binding.binding == 3 || binding.binding == 4) {
-			flags |= VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-		}
-
 		bindingFlags.push_back(flags);
 	}
+
+	ASSERT(highestBinding == _bindings.back().binding && "Variable descriptor binding must be last");
 
 	VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlagsInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO,
@@ -432,9 +427,12 @@ void DescriptorWriter::clear() {
 
 void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	if (!pendingImageWrites.empty()) {
-		fmt::print("Size of total image writes: {}\n", pendingImageWrites.size());
+		uint32_t totalWrites = 0;
 		for (const auto& pw : pendingImageWrites) {
 			ASSERT(pw.startIndex + pw.count <= imageInfos.size());
+
+			totalWrites += static_cast<uint32_t>(pw.count);
+
 			imageWrites.push_back({
 				.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 				.dstSet = pw.dstSet,
@@ -445,6 +443,7 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 			});
 		}
 		if (!imageWrites.empty()) {
+			fmt::print("Size of total image writes: {}\n", totalWrites);
 			vkUpdateDescriptorSets(device, static_cast<uint32_t>(imageWrites.size()), imageWrites.data(), 0, nullptr);
 		}
 	}

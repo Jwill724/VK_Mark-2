@@ -34,11 +34,11 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	// === GRAPHIC PIPELINES ===
 
 	std::vector<ShaderStageInfo> meshShaderStages;
-	ShaderStageInfo vertexStage = {
+	ShaderStageInfo vertexStage {
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
 		.filePath = "res/shaders/meshes/mesh_vert.spv"
 	};
-	ShaderStageInfo fragmentStage = {
+	ShaderStageInfo fragmentStage {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/meshes/mesh_frag.spv"
 	};
@@ -56,11 +56,11 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 
 
 	// separate shaders needed for bounding boxes
-	ShaderStageInfo bbVertStage = {
+	ShaderStageInfo bbVertStage {
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
 		.filePath = "res/shaders/debug/aabb_vert.spv"
 	};
-	ShaderStageInfo bbFragStage = {
+	ShaderStageInfo bbFragStage {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/debug/aabb_frag.spv"
 	};
@@ -69,11 +69,11 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	setupShaders(PipelinePresents::boundingBoxSettings, dq);
 
 
-	ShaderStageInfo skyboxVertStage = {
+	ShaderStageInfo skyboxVertStage {
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
 		.filePath = "res/shaders/environment/skybox_vert.spv"
 	};
-	ShaderStageInfo skyboxFragStage = {
+	ShaderStageInfo skyboxFragStage {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/environment/skybox_frag.spv"
 	};
@@ -84,7 +84,7 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	// === COMPUTE PIPELINES ===
 
 	// POST PROCESS
-	ShaderStageInfo colorCorrectShaderStage = {
+	ShaderStageInfo colorCorrectShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/post_process/color_correction_comp.spv"
 	};
@@ -93,14 +93,14 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 
 
 	// ENVIRONMENTAL AND IBL
-	ShaderStageInfo cubemapShaderStage = {
+	ShaderStageInfo cubemapShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/hdr2cubemap_comp.spv"
 	};
 	PipelinePresents::hdr2cubemapPipelineSettings.shaderStagesInfo.push_back(cubemapShaderStage);
 	setupShaders(PipelinePresents::hdr2cubemapPipelineSettings, dq);
 
-	ShaderStageInfo prefilterShaderStage = {
+	ShaderStageInfo prefilterShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/specular_prefilter_comp.spv"
 	};
@@ -108,14 +108,14 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::specularPrefilterPipelineSettings.shaderStagesInfo.push_back(prefilterShaderStage);
 	setupShaders(PipelinePresents::specularPrefilterPipelineSettings, dq);
 
-	ShaderStageInfo diffuseShaderStage = {
+	ShaderStageInfo diffuseShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/diffuse_irradiance_comp.spv"
 	};
 	PipelinePresents::diffuseIrradiancePipelineSettings.shaderStagesInfo.push_back(diffuseShaderStage);
 	setupShaders(PipelinePresents::diffuseIrradiancePipelineSettings, dq);
 
-	ShaderStageInfo brdfLutShaderStage = {
+	ShaderStageInfo brdfLutShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/brdf_lut_comp.spv"
 	};
@@ -124,21 +124,21 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 
 
 	// gpu frustum culling
-	ShaderStageInfo visibilityShaderStage = {
+	ShaderStageInfo visibilityShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/visibility/visibility_comp.spv"
 	};
 	PipelinePresents::visibilitySettings.shaderStagesInfo.push_back(visibilityShaderStage);
 	setupShaders(PipelinePresents::visibilitySettings, dq);
 
-	//ShaderStageInfo buildDrawsShaderStage = {
+	//ShaderStageInfo buildDrawsShaderStage {
 	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 	//	.filePath = "res/shaders/gpu_driven/build_draws_comp.spv"
 	//};
 	//PipelinePresents::buildDrawsSettings.shaderStagesInfo.push_back(buildDrawsShaderStage);
 	//setupShaders(PipelinePresents::buildDrawsSettings, dq);
 
-	//ShaderStageInfo sortDrawsShaderStage = {
+	//ShaderStageInfo sortDrawsShaderStage {
 	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 	//	.filePath = "res/shaders/gpu_driven/sort_draws_comp.spv"
 	//};
@@ -160,13 +160,13 @@ void PipelineManager::definePipelineData() {
 		assert(false && "GPU doesn't support required 256 byte push constant size!");
 	}
 
-	const PushConstantDef pcRange = {
+	const PushConstantDef pcRange {
 		.offset = 0,
 		.size = maxPCsize,
 		.stageFlags = VK_SHADER_STAGE_ALL
 	};
 
-	const std::vector<VkDescriptorSetLayout> setLayouts = {
+	const std::vector<VkDescriptorSetLayout> setLayouts {
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorLayout, // set: 0
 		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout    // set: 1
 	};

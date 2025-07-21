@@ -84,7 +84,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	JobSystem::wait();
 
 	if (availableAssets) {
-		fmt::print("Assets available for loading!\n");
+		fmt::print("\nAssets available for loading!\n");
 
 		engineProfiler.startTimer();
 
@@ -333,7 +333,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// Perma imagelut work starts here
 	auto& postProcessImg = ResourceManager::getPostProcessImage();
 	auto& drawImg = ResourceManager::getDrawImage();
-	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.storageView);
+	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.imageView);
 	postProcessImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(drawImg.imageView,
 		ResourceManager::getDefaultSamplerLinear());
 	_resources.addImageLUTEntry(postProcessImg.lutEntry);
@@ -369,7 +369,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	tempEnvMapIdx.push_back(specImg.lutEntry);
 	_resources.addImageLUTEntry(specImg.lutEntry);
 
-	brdfImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(brdfImg.imageView, brdfSmpl);
+	brdfImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(brdfImg.storageView, brdfSmpl);
 	tempEnvMapIdx.push_back(brdfImg.lutEntry);
 	_resources.addImageLUTEntry(brdfImg.lutEntry);
 
@@ -401,6 +401,12 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		ResourceManager::_envMapIndices.indices[setIndex++] = envEntry;
 	}
 
+	//for (int i = 0; i < MAX_ENV_SETS; i++) {
+	//	const auto& e = ResourceManager::_envMapIndices.indices[i];
+	//	fmt::print("[EnvMap {}] Diffuse: {:.0f}, Specular: {:.0f}, BRDF: {:.0f}, Skybox: {:.0f}\n",
+	//		i, e.x, e.y, e.z, e.w);
+	//}
+
 	auto allocator = _resources.getAllocator();
 
 	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(GPUEnvMapIndices),
@@ -425,12 +431,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		globalSet);
-
-	//for (int i = 0; i < MAX_ENV_SETS; i++) {
-	//	const auto& e = ResourceManager::_envMapIndices.indices[i];
-	//	fmt::print("[EnvMap {}] Diffuse: {:.0f}, Specular: {:.0f}, BRDF: {:.0f}, Skybox: {:.0f}\n",
-	//		i, e.x, e.y, e.z, e.w);
-	//}
 
 	mainWriter.writeFromImageLUT(_resources.getImageLUT(), ResourceManager::_globalImageTable, globalSet);
 	mainWriter.updateSet(Backend::getDevice(), globalSet);

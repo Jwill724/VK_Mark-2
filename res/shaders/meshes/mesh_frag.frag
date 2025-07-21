@@ -93,22 +93,17 @@ void main() {
 		inst = instBuf.transparentInstances[instanceID];
 	}
 
-	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[nonuniformEXT(inst.materialID)];
+	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 
 	// Environment image indices for IBL
 	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);
 	uint specularIdx = uint(envMapSet.mapIndices[0].y);
 	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
 
-	uint albedoIdx  = mat.albedoLUTIndex;
-	uint mrIdx      = mat.metalRoughLUTIndex;
-	uint normalIdx  = mat.normalLUTIndex;
-	uint aoIdx      = mat.aoLUTIndex;
-
-	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(albedoIdx)], inUV) * mat.colorFactor;
-	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mrIdx)], inUV);
-	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(normalIdx)], inUV).rgb;
-	float ao       = texture(combinedSamplers[nonuniformEXT(aoIdx)], inUV).r * mat.ambientOcclusion;
+	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
+	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
+	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
+	float ao       = texture(combinedSamplers[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
 
 	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
 

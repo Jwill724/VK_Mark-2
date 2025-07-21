@@ -116,6 +116,7 @@ namespace BackendTools {
 
 		if (enableValidationLayers) {
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+			extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 		}
 
 		return extensions;
@@ -175,6 +176,12 @@ namespace BackendTools {
 
 		VkPhysicalDeviceFeatures supportedFeatures;
 		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
+
+		fmt::print("Device check:\n");
+		fmt::print("  QueuesAvailable: {}\n", queuesAvailable);
+		fmt::print("  ExtensionsSupported: {}\n", extensionsSupported);
+		fmt::print("  SwapchainAdequate: {}\n", swapchainAdequate);
+		fmt::print("  SamplerAnisotropy: {}\n", supportedFeatures.samplerAnisotropy);
 
 		return queuesAvailable &&
 			extensionsSupported &&

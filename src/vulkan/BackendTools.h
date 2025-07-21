@@ -20,6 +20,8 @@ namespace BackendTools {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
 
+	inline bool enableGPUValidationLayers = false;
+
 #ifdef NDEBUG
 	const bool enableValidationLayers = false;
 #else

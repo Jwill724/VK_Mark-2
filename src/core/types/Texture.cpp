@@ -46,7 +46,6 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 				else {
 					newImage.mipmapped = false;
 				}
-				//newImage.mipmapped = true;
 				newImage.imageFormat = format;
 
 				//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
@@ -100,7 +99,6 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 				else {
 					newImage.mipmapped = false;
 				}
-				//newImage.mipmapped = true;
 				newImage.imageFormat = format;
 
 				//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
@@ -159,7 +157,6 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 						else {
 							newImage.mipmapped = false;
 						}
-						//newImage.mipmapped = true;
 						newImage.imageFormat = format;
 
 						//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
@@ -224,7 +221,6 @@ std::optional<AllocatedImage> Textures::loadImage(fastgltf::Asset& asset, fastgl
 						else {
 							newImage.mipmapped = false;
 						}
-						//newImage.mipmapped = true;
 						newImage.imageFormat = format;
 
 						//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
