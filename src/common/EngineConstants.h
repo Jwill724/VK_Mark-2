@@ -10,8 +10,6 @@ constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_OPAQUE_DRAWS + MAX_TRANSPARENT_D
 
 // Compute work sizes
 static constexpr uint32_t LOCAL_SIZE_X = 64;
-
-constexpr unsigned int MAX_FRAMES_IN_FLIGHT = 2;
 constexpr unsigned int MAX_THREADS = 12;
 constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256;
 constexpr float TARGET_FRAME_RATE_60 = 60.0f;
@@ -31,9 +29,6 @@ constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * vec4(16 byte
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100;
 constexpr uint32_t MAX_STORAGE_IMAGES = 100;
 constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 1000;
-
-// Command Buffer / Pool Limits
-constexpr uint32_t TOTAL_CMD_BUFFERS = MAX_THREADS * MAX_FRAMES_IN_FLIGHT;
 
 // Threading / Job System
 constexpr uint32_t JOB_WORKER_COUNT = MAX_THREADS;

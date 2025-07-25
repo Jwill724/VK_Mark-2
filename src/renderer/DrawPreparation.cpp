@@ -22,8 +22,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 
 	frameCtx.opaqueIndirectDraws.reserve(opaqueBatches.size());
 
-	//fmt::print("TotalVertexCount={}\n TotalIndexCount={}\n", frameCtx.drawData.totalVertexCount, frameCtx.drawData.totalIndexCount);
-
 	std::vector<GPUInstance> originalOpaqueInstances = std::move(frameCtx.opaqueInstances);
 	frameCtx.opaqueInstances.clear();
 
@@ -76,13 +74,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
 				"[DrawPrep] Transparent batch would read past end of vertex buffer.");
 
-			//fmt::print(
-			//	"[Transparent Instance {}] meshID={} -> drawRangeID={} -> "
-			//	"indexCount={}, vertexOffset={}, firstIndex={}\n",
-			//	i, inst.meshID, mesh.drawRangeID,
-			//	range.indexCount, range.vertexOffset, range.firstIndex
-			//);
-
 			VkDrawIndexedIndirectCommand cmd {
 				.indexCount = range.indexCount,
 				.instanceCount = 1,
@@ -90,11 +81,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				.vertexOffset = static_cast<int32_t>(range.vertexOffset),
 				.firstInstance = i
 			};
-
-			//fmt::print("  -> Cmd: idxCount={} instCount={} firstIdx={} vertOff={} firstInst={}\n",
-			//	cmd.indexCount, cmd.instanceCount,
-			//	cmd.firstIndex, cmd.vertexOffset, cmd.firstInstance
-			//);
 
 			frameCtx.transparentIndirectDraws.emplace_back(cmd);
 		}

@@ -260,22 +260,26 @@
     <!-- Library Directories for project-wide usage -->
     <LibraryPath>$(ProjectDir)vendor\GLFW\lib;$(ProjectDir)vendor\Vulkan\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
-  <ItemDefinitionGroup>
-    <Link>
-      <!-- Link Libraries -->
-      <AdditionalDependencies>glfw3.lib;vulkan-1.lib;shaderc_combined.lib;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-    <PreBuildEvent>
-      <Command>
-        REM Compile Shaders
-        IF "$(Configuration)|$(Platform)"=="Debug|x64" (
-            call "$(ProjectDir)res\shaders\compile_shaders.bat"
-        )
-        IF "$(Configuration)|$(Platform)"=="Release|x64" (
-            call "$(ProjectDir)res\shaders\compile_shaders.bat"
-        )
+<ItemDefinitionGroup>
+  <Link>
+    <!-- Link Libraries -->
+  <AdditionalDependencies>
+    glfw3.lib;vulkan-1.lib;shaderc_combined.lib;
+    kernel32.lib;user32.lib;gdi32.lib;winmm.lib;
+    %(AdditionalDependencies)
+  </AdditionalDependencies>
+  </Link>
+  <PreBuildEvent>
+    <Command>
+      REM Compile Shaders
+      IF "$(Configuration)|$(Platform)"=="Debug|x64" (
+          call "$(ProjectDir)res\shaders\compile_shaders.bat"
+      )
+      IF "$(Configuration)|$(Platform)"=="Release|x64" (
+          call "$(ProjectDir)res\shaders\compile_shaders.bat"
+      )
     </Command>
-    </PreBuildEvent>
+  </PreBuildEvent>
     <ClCompile>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">_UNICODE;UNICODE;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>

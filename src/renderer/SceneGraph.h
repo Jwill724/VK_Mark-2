@@ -9,7 +9,7 @@ public:
 		std::vector<GPUInstance>& outVisibleOpaqueInstances,
 		std::vector<GPUInstance>& outVisibleTransparentInstances,
 		std::vector<glm::mat4>& outFrameTransformsList,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet) = 0;
+		const std::unordered_set<uint32_t> visibleMeshIDSet) = 0;
 
 	virtual ~IRenderable() = default;
 };
@@ -35,12 +35,10 @@ struct Node : public IRenderable {
 		std::vector<GPUInstance>& outVisibleOpaqueInstances,
 		std::vector<GPUInstance>& outVisibleTransparentInstances,
 		std::vector<glm::mat4>& outFrameTransformsList,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet
+		const std::unordered_set<uint32_t> visibleMeshIDSet
 	) override {
 
 		for (const auto& inst : instances) {
-			//fmt::print("\nCULLING: nodeID {}\n", inst->nodeID);
-
 			if (!inst) continue;
 
 			const uint32_t meshID = inst->instance.meshID;

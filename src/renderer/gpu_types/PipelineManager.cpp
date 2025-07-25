@@ -199,7 +199,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::opaqueSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	PipelinePresents::opaqueSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::opaqueSettings);
+	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::opaqueSettings, MSAA_ENABLED);
 	Pipelines::opaquePipeline.type = PipelineCategory::Raster;
 	pipeline_builder.createPipeline(Pipelines::opaquePipeline, PipelinePresents::opaqueSettings);
 
@@ -216,7 +216,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::transparentSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	PipelinePresents::transparentSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::transparentSettings);
+	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::transparentSettings, MSAA_ENABLED);
 	Pipelines::transparentPipeline.type = PipelineCategory::Raster;
 	pipeline_builder.createPipeline(Pipelines::transparentPipeline, PipelinePresents::transparentSettings);
 
@@ -234,7 +234,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::wireframeSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	PipelinePresents::wireframeSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::wireframeSettings);
+	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::wireframeSettings, MSAA_ENABLED);
 	Pipelines::wireframePipeline.type = PipelineCategory::Raster;
 	pipeline_builder.createPipeline(Pipelines::wireframePipeline, PipelinePresents::wireframeSettings);
 
@@ -251,7 +251,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::boundingBoxSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	PipelinePresents::boundingBoxSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::boundingBoxSettings);
+	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::boundingBoxSettings, MSAA_ENABLED);
 	Pipelines::boundingBoxPipeline.type = PipelineCategory::Raster;
 	pipeline_builder.createPipeline(Pipelines::boundingBoxPipeline, PipelinePresents::boundingBoxSettings);
 
@@ -268,7 +268,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresents::skyboxPipelineSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	PipelinePresents::skyboxPipelineSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::skyboxPipelineSettings);
+	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::skyboxPipelineSettings, MSAA_ENABLED);
 	Pipelines::skyboxPipeline.type = PipelineCategory::Raster;
 	pipeline_builder.createPipeline(Pipelines::skyboxPipeline, PipelinePresents::skyboxPipelineSettings);
 

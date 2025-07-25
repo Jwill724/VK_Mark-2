@@ -17,8 +17,6 @@ namespace Engine {
 
 	bool isInitialized();
 
-	float& getLastFrameTime();
-
 	// inits everything, controls runtime, and cleans up
 	void run();
 }

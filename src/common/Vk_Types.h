@@ -124,13 +124,6 @@ struct alignas(128) GPUAddressTable {
 	}
 };
 
-
-struct RenderSyncObjects {
-	VkSemaphore swapchainSemaphore = VK_NULL_HANDLE;
-	VkSemaphore semaphore = VK_NULL_HANDLE;
-	VkFence fence = VK_NULL_HANDLE;
-};
-
 struct TimelineSync {
 	VkSemaphore semaphore = VK_NULL_HANDLE;
 	uint64_t signalValue = UINT64_MAX;
@@ -146,36 +139,6 @@ enum class PipelineType : uint32_t {
 	Transparent,
 	Wireframe
 };
-
-//enum class BufferType : uint32_t {
-//	Vertex,
-//	Index,
-//	Uniform,             // UBO
-//	Storage,             // SSBO
-//	MaterialData,
-//	InstanceData,
-//	IndirectDraw,
-//	Staging,
-//	SceneConstants,
-//	ImageLUT,
-//	LightData,
-//};
-//
-//
-//enum class RenderImageType : uint32_t {
-//	Albedo,              // G-Buffer base color
-//	Normals,             // G-Buffer normals (world or view space)
-//	MetalRoughAO,        // Packed metalness, roughness, AO
-//	Emissive,            // Optional emissive G-buffer
-//	Depth,               // Shared depth buffer
-//	LightingAccum,       // Deferred lighting accumulation buffer
-//	FinalOutput,         // Swapchain-ready image
-//	PostProcess,         // Temporary post-processing buffer
-//	ShadowMap,           // Depth-only shadow map
-//	BRDFLUT,             // BRDF lookup texture
-//	EnvDiffuse,          // Diffuse irradiance cubemap
-//	EnvSpecular,         // Prefiltered specular cubemap
-//};
 
 // Push constant use
 struct alignas(16) ColorData {

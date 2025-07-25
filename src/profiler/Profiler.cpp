@@ -1,38 +1,84 @@
 #include "pch.h"
-
 #include "Profiler.h"
 #include "Engine.h"
 
-// TODO: Rework this whole fucking thing,
-// renderer is so fast it destroys the visual timers
+void Profiler::enablePlatformTimerPrecision() {
+	timeBeginPeriod(1);
+	QueryPerformanceFrequency(&_qpcFreq);
+}
+
+void Profiler::disablePlatformTimerPrecision() {
+	timeEndPeriod(1);
+}
+
+Profiler::~Profiler() {
+	disablePlatformTimerPrecision();
+}
 
 void Profiler::beginFrame() {
-	_frameStart = std::chrono::system_clock::now();
+	_frameStartTime = [&]() {
+		LARGE_INTEGER now;
+		QueryPerformanceCounter(&now);
+		return static_cast<double>(now.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
+	}();
+
+	double now = _frameStartTime;
+	double delta = now - _lastDeltaTime;
+	_lastDeltaTime = now;
+
+	float dt = std::min(static_cast<float>(delta), 0.1f);
+	_stats.deltaTime = dt;
 }
 
 void Profiler::endFrame() {
-	auto end = std::chrono::system_clock::now();
-	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - _frameStart);
+	LARGE_INTEGER nowQPC;
+	QueryPerformanceCounter(&nowQPC);
+	double endTime = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
+	float elapsed = static_cast<float>(endTime - _frameStartTime);
 
-	_stats.frameTime = static_cast<float>(elapsed.count()) / 1000.0f;
-	_stats.fps = 1000.0f / _stats.frameTime;
+	if (_stats.capFramerate && _stats.targetFrameRate > 0.0f) {
+		const float targetFrameTime = 1.0f / _stats.targetFrameRate;
+		float timeLeft = targetFrameTime - elapsed;
 
-	//if (_stats.capFramerate) {
-	//	float targetFrame = 1.0f / _stats.targetFrameRate; // seconds
-	//	float deltaTimeSeconds = _stats.deltaTime / 1000.0f; // convert from ms to seconds
+		if (timeLeft > 0.002f) {
+			Sleep(static_cast<DWORD>((timeLeft - 0.001f) * 1000.0f));
+		}
 
-	//	if (deltaTimeSeconds < targetFrame) {
-	//		std::this_thread::sleep_for(std::chrono::duration<float>(targetFrame - deltaTimeSeconds));
-	//	}
-	//}
+		while (true) {
+			QueryPerformanceCounter(&nowQPC);
+			double current = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
+			if ((current - _frameStartTime) >= targetFrameTime)
+				break;
+			_mm_pause();
+		}
+
+		QueryPerformanceCounter(&nowQPC);
+		endTime = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
+		elapsed = static_cast<float>(endTime - _frameStartTime);
+	}
+
+	_stats.frameTime = elapsed * 1000.0f;
+	_stats.fps = 1.0f / std::max(elapsed, 0.00001f);
+	_stats.deltaTime = elapsed;
+}
+
+void Profiler::startTimer() {
+	QueryPerformanceCounter(&_startTimer);
+}
+
+float Profiler::endTimer() const {
+	LARGE_INTEGER now;
+	QueryPerformanceCounter(&now);
+	auto elapsedTicks = now.QuadPart - _startTimer.QuadPart;
+	return static_cast<float>(elapsedTicks) / static_cast<float>(_qpcFreq.QuadPart);
 }
 
 VkPipeline Profiler::getPipelineByType(PipelineType type) const {
 	switch (type) {
-		case PipelineType::Opaque: return Pipelines::opaquePipeline.pipeline;
-		case PipelineType::Transparent: return Pipelines::transparentPipeline.pipeline;
-		case PipelineType::Wireframe: return Pipelines::wireframePipeline.pipeline;
-		default: return nullptr;
+	case PipelineType::Opaque: return Pipelines::opaquePipeline.pipeline;
+	case PipelineType::Transparent: return Pipelines::transparentPipeline.pipeline;
+	case PipelineType::Wireframe: return Pipelines::wireframePipeline.pipeline;
+	default: return nullptr;
 	}
 }
 
@@ -70,12 +116,4 @@ VkDeviceSize Profiler::GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator a
 
 	fmt::print("Total VRAM Usage (Device-local): {} MB\n", totalUsage / (1024ull * 1024ull));
 	return totalUsage;
-}
-
-void Profiler::updateDeltaTime(float& lastFrameTime) {
-	const float currentTime = static_cast<float>(glfwGetTime());
-	const float deltaTime = currentTime - lastFrameTime;
-	lastFrameTime = currentTime;
-
-	_stats.deltaTime = deltaTime;
 }

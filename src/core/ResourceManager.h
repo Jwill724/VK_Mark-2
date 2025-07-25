@@ -18,7 +18,7 @@ public:
 	GPUAddressTable& getAddressTable() { return gpuAddresses; }
 	AllocatedBuffer& getAddressTableBuffer() { return addressTableBuffer; }
 
-	AllocatedBuffer& getBuffer(AddressBufferType type) { return gpuBuffers.at(type); }
+	AllocatedBuffer& getGPUAddrsBuffer(AddressBufferType type) { return gpuBuffers.at(type); }
 	void addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
 	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
 

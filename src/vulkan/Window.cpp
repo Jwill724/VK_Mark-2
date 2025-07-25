@@ -14,8 +14,6 @@ bool WindowIsOpen(GLFWwindow* window) {
 
 bool Window::throttleIfWindowUnfocused(int sleepMs) const {
 	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
-		Engine::getProfiler().resetFrameTimer();
-		Engine::getProfiler().resetRenderTimers();
 		std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
 		return true;
 	}
@@ -41,8 +39,6 @@ void Window::updateWindowSize() const {
 	};
 
 	Renderer::setDrawExtent(newDrawExtent);
-
-	Engine::getProfiler().resetRenderTimers();
 }
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {

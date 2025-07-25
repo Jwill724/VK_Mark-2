@@ -76,10 +76,10 @@ void Backend::createInstance() {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
 	appInfo.pApplicationName = "Mk2";
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 3, 0);
+	appInfo.applicationVersion = VK_MAKE_VERSION(1, 4, 0);
 	appInfo.pEngineName = "Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_3;
+	appInfo.apiVersion = VK_API_VERSION_1_4;
 
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -217,8 +217,13 @@ void Backend::createLogicalDevice() {
 	features13.dynamicRendering = VK_TRUE;
 	features13.synchronization2 = VK_TRUE;
 	features13.maintenance4 = VK_TRUE;
+	features13.shaderDemoteToHelperInvocation = VK_TRUE;
 
-	features13.pNext = nullptr;
+	VkPhysicalDeviceVulkan14Features features14{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES };
+	features14.pushDescriptor = VK_TRUE;
+
+	features14.pNext = nullptr;
+	features13.pNext = &features14;
 	features12.pNext = &features13;
 	features11.pNext = &features12;
 	baseFeatures.pNext = &features11;
@@ -288,7 +293,7 @@ void Backend::createSwapchain() {
 	createInfo.presentMode = VSYNC;
 	createInfo.clipped = VK_TRUE;
 
-	uint32_t qFamIndices[] = {
+	uint32_t qFamIndices[] {
 		_queueFamilyIndices.graphicsFamily.value(),
 		_queueFamilyIndices.presentFamily.value()
 	};
@@ -317,10 +322,22 @@ void Backend::createSwapchain() {
 
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, nullptr);
 	_swapchainDef.images.resize(imageCount);
+	_swapchainDef.imageCount = imageCount;
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, _swapchainDef.images.data());
 
 	_swapchainDef.imageFormat = surfaceFormat.format;
 	_swapchainDef.extent = extent;
+
+	_swapchainDef.presentSemaphores.resize(imageCount);
+	_swapchainDef.renderFinishedSemaphores.resize(imageCount);
+	_swapchainDef.inFlightFences.resize(imageCount);
+	_swapchainDef.imageInFlightFrame.resize(imageCount, UINT32_MAX);
+
+	for (uint32_t i = 0; i < imageCount; ++i) {
+		_swapchainDef.presentSemaphores[i] = RendererUtils::createSemaphore();
+		_swapchainDef.renderFinishedSemaphores[i] = RendererUtils::createSemaphore();
+		_swapchainDef.inFlightFences[i] = RendererUtils::createFence();
+	}
 }
 
 void Backend::resizeSwapchain() {
@@ -342,6 +359,26 @@ void Backend::cleanupSwapchain() {
 	for (size_t i = 0; i < _swapchainDef.imageViews.size(); ++i) {
 		vkDestroyImageView(_device, _swapchainDef.imageViews[i], nullptr);
 	}
+
+	_swapchainDef.imageInFlightFrame.clear();
+
+	for (auto fence : _swapchainDef.inFlightFences) {
+		if (fence != VK_NULL_HANDLE)
+			vkDestroyFence(_device, fence, nullptr);
+	}
+	_swapchainDef.inFlightFences.clear();
+
+	for (auto sem : _swapchainDef.presentSemaphores) {
+		if (sem != VK_NULL_HANDLE)
+			vkDestroySemaphore(_device, sem, nullptr);
+	}
+	_swapchainDef.presentSemaphores.clear();
+
+	for (auto sem : _swapchainDef.renderFinishedSemaphores) {
+		if (sem != VK_NULL_HANDLE)
+			vkDestroySemaphore(_device, sem, nullptr);
+	}
+	_swapchainDef.renderFinishedSemaphores.clear();
 }
 
 VkExtent2D Backend::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {

@@ -37,7 +37,7 @@ namespace PipelineManager {
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts, const PushConstantDef pushConstants);
 
-	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn = true);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn);
 	void setupShaders(PipelinePresent& pipelineSettings, DeletionQueue& shaderDeletionQueue);
 
 	// configurations for pipelines altered here
