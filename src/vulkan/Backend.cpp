@@ -185,8 +185,8 @@ void Backend::createLogicalDevice() {
 	VkPhysicalDeviceFeatures2 baseFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	baseFeatures.features.fillModeNonSolid = VK_TRUE;
 	baseFeatures.features.samplerAnisotropy = VK_TRUE;
-	baseFeatures.features.multiDrawIndirect = VK_TRUE;				// indirect draws enabled
-	baseFeatures.features.shaderInt64 = VK_TRUE;					// 64-bit addressing
+	baseFeatures.features.multiDrawIndirect = VK_TRUE; // indirect draws enabled
+	baseFeatures.features.shaderInt64 = VK_TRUE; // 64-bit addressing
 	baseFeatures.features.tessellationShader = VK_TRUE;
 	baseFeatures.features.depthBiasClamp = VK_TRUE;
 	baseFeatures.features.drawIndirectFirstInstance = VK_TRUE;
@@ -194,14 +194,13 @@ void Backend::createLogicalDevice() {
 	baseFeatures.features.occlusionQueryPrecise = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	features11.shaderDrawParameters = VK_TRUE;						// InstanceIndex
+	features11.shaderDrawParameters = VK_TRUE; // InstanceIndex
 
 	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	features12.bufferDeviceAddress = VK_TRUE;						// GPU pointers
-	features12.descriptorIndexing = VK_TRUE;						// Enables all indexing stuff
-	features12.timelineSemaphore = VK_TRUE;							// Timeline sync (async GPU workloads)
-	features12.scalarBlockLayout = VK_TRUE;							// No descriptor padding
-	//features12.shaderBufferInt64Atomics = VK_TRUE;
+	features12.bufferDeviceAddress = VK_TRUE; // GPU pointers
+	features12.descriptorIndexing = VK_TRUE; // Enables all indexing stuff
+	features12.timelineSemaphore = VK_TRUE; // Timeline sync (async GPU workloads)
+	features12.scalarBlockLayout = VK_TRUE; // No descriptor padding
 	features12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 	features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	features12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
@@ -213,6 +212,11 @@ void Backend::createLogicalDevice() {
 	features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 	features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
 
+	if (features12.shaderBufferInt64Atomics)
+		features12.shaderBufferInt64Atomics = VK_TRUE;
+	else
+		features12.shaderBufferInt64Atomics = VK_FALSE;
+
 	VkPhysicalDeviceVulkan13Features features13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	features13.dynamicRendering = VK_TRUE;
 	features13.synchronization2 = VK_TRUE;
@@ -221,6 +225,8 @@ void Backend::createLogicalDevice() {
 
 	VkPhysicalDeviceVulkan14Features features14{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES };
 	features14.pushDescriptor = VK_TRUE;
+	features14.maintenance5 = VK_TRUE;
+	features14.maintenance6 = VK_TRUE;
 
 	features14.pNext = nullptr;
 	features13.pNext = &features14;
@@ -273,11 +279,12 @@ void Backend::createSwapchain() {
 	VkPresentModeKHR VSYNC = VK_PRESENT_MODE_FIFO_KHR;
 	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-	if (swapChainSupport.capabilities.maxImageCount > 0 &&
-		imageCount > swapChainSupport.capabilities.maxImageCount) {
-		imageCount = swapChainSupport.capabilities.maxImageCount;
-	}
+	uint32_t minImageCount = swapChainSupport.capabilities.minImageCount;
+	uint32_t maxImageCount = swapChainSupport.capabilities.maxImageCount;
+	uint32_t imageCount = minImageCount + 1;
+
+	const uint32_t maxFramesInFlight = std::min(MAX_FRAMES_IN_FLIGHT, maxImageCount > 0 ? maxImageCount : UINT32_MAX);
+	imageCount = std::clamp(minImageCount + 1, minImageCount, maxFramesInFlight);
 
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;

@@ -267,7 +267,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 	_drawExtent.width = static_cast<uint32_t>(std::min(swp.extent.width, draw.imageExtent.width));
 	_drawExtent.height = static_cast<uint32_t>(std::min(swp.extent.height, draw.imageExtent.height));
 
-	const VkDescriptorSet sets[2] = {
+	const VkDescriptorSet sets[2] {
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
 		frameCtx.set
 	};
