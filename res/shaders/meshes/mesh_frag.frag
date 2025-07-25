@@ -68,29 +68,26 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 }
 
 void main() {
-	uint drawID = vDrawID;
-	uint instanceID = vInstanceID;
-
 	IndirectDrawCmd drawCmd;
 	Instance inst;
 
-	if (drawID < drawData.opaqueDrawCount) {
+	if (vDrawID < drawData.opaqueDrawCount) {
 		// Opaque draw
 		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
-		drawCmd = cmdBuf.opaqueIndirect[drawID];
-		inst = instBuf.opaqueInstances[instanceID];
+		drawCmd = cmdBuf.opaqueIndirect[vDrawID];
+		inst = instBuf.opaqueInstances[vInstanceID];
 	} else {
 		// Transparent draw
-		uint tIndex = drawID - drawData.opaqueDrawCount;
+		uint tIndex = vDrawID - drawData.opaqueDrawCount;
 		if (tIndex >= drawData.transparentDrawCount) return;
 
 		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
 		drawCmd = cmdBuf.transparentIndirect[tIndex];
-		inst = instBuf.transparentInstances[instanceID];
+		inst = instBuf.transparentInstances[vInstanceID];
 	}
 
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];

@@ -431,7 +431,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 	auto& profiler = Engine::getProfiler();
 
-	const auto& idxBuffer = resources.getBuffer(AddressBufferType::Index);
+	const auto& idxBuffer = resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
 	const auto& ranges = resources.getDrawRanges();
 	const auto& meshes = resources.getResgisteredMeshes().meshData;
 
@@ -445,7 +445,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 
 	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 	if (frameCtx.opaqueVisibleCount > 0) {
 		frameCtx.drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());

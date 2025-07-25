@@ -2,6 +2,7 @@
 
 #include "Engine.h"
 #include "core/JobSystem.h"
+#include "profiler/Profiler.h"
 
 static std::unique_ptr<Window> _window;
 static std::unique_ptr<EngineState> engineState;
@@ -19,9 +20,6 @@ namespace Engine {
 
 	bool _isInitialized{ false };
 	bool isInitialized() { return _isInitialized; }
-
-	float _lastFrameTime = 0.0f;
-	float& getLastFrameTime() { return _lastFrameTime; }
 
 	void resetState();
 
@@ -52,7 +50,6 @@ void Engine::resetWindow() {
 	_window->initWindow(_windowExtent.width, _windowExtent.height);
 }
 
-
 void Engine::run() {
 	initWindow();
 	Backend::initVulkanCore();
@@ -63,19 +60,22 @@ void Engine::run() {
 	getState().loadAssets(_engineProfiler);
 	getState().initRenderer(_engineProfiler);
 
+	_engineProfiler.getStats().capFramerate = true;
+	_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_240;
+
+	_engineProfiler.enablePlatformTimerPrecision();
+
 	while (WindowIsOpen(_window->window)) {
 		glfwPollEvents();
 
 		if (_window->throttleIfWindowUnfocused(33)) continue;
 
-		_engineProfiler.updateDeltaTime(_lastFrameTime);
 		_engineProfiler.beginFrame();
 
 		getState().renderFrame(_engineProfiler);
 
 		_engineProfiler.endFrame();
 	}
-	JobSystem::wait();
 
 	cleanup();
 }

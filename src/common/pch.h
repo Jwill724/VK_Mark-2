@@ -1,5 +1,14 @@
 #pragma once
 
+// Platform
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <mmsystem.h>
+#endif
+
+// STL
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -12,12 +21,12 @@
 #include <functional>
 #include <deque>
 #include <cmath>
-#include "fmt/core.h"
 
+// Third-party
+#include "fmt/core.h"
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
-
 #include <GLFW/glfw3.h>
 #include <stb_image/stb_image.h>
 
@@ -32,9 +41,9 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
+// Project
 #include "ErrorChecking.h"
 #include "file/File.h"
-
 #include "common/glm_common.hpp"
 
 #include "enkiTS/TaskScheduler.h"

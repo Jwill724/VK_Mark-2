@@ -37,6 +37,7 @@ struct TimelineDeletionQueue {
 	}
 
 	inline void process(VkDevice device) {
+		if (queue.empty()) return;
 		uint64_t current = 0;
 		VK_CHECK(vkGetSemaphoreCounterValue(device, semaphore, &current));
 

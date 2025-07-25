@@ -28,6 +28,11 @@ void Renderer::initFrameContexts(
 	const uint32_t totalIndexCount,
 	bool isAssetsLoaded)
 {
+	auto& swapDef = Backend::getSwapchainDef();
+	framesInFlight = swapDef.imageCount;
+
+	_frameContexts.resize(framesInFlight);
+
 	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
 	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
 	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
@@ -48,23 +53,24 @@ void Renderer::initFrameContexts(
 			TRANSFORM_LIST_SIZE_BYTES;
 	}
 
-	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-		auto& frame = _frameContexts[i];
-		frame.syncObjs.swapchainSemaphore = RendererUtils::createSemaphore();
-		frame.syncObjs.semaphore = RendererUtils::createSemaphore();
-		frame.syncObjs.fence = RendererUtils::createFence();
-		frame.graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
-		frame.transferPool = CommandBuffer::createCommandPool(device, transferIndex);
-		frame.commandBuffer = CommandBuffer::createCommandBuffer(device, frame.graphicsPool);
-		frame.set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, layout);
-		frame.transferDeletion.semaphore = _transferSync.semaphore;
+	fmt::print("Frames in flight:[{}]\n", framesInFlight);
+
+	for (uint32_t i = 0; i < framesInFlight; ++i) {
+		auto frame = std::make_unique<FrameContext>();
+		frame->frameIndex = i;
+
+		frame->graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
+		frame->transferPool = CommandBuffer::createCommandPool(device, transferIndex);
+		frame->commandBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
+		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, layout);
+		frame->transferDeletion.semaphore = _transferSync.semaphore;
 
 		if (GPU_ACCELERATION_ENABLED) {
-			frame.computePool = CommandBuffer::createCommandPool(device, computeIndex);
-			frame.computeDeletion.semaphore = _computeSync.semaphore;
+			frame->computePool = CommandBuffer::createCommandPool(device, computeIndex);
+			frame->computeDeletion.semaphore = _computeSync.semaphore;
 		}
 
-		frame.addressTableBuffer = BufferUtils::createBuffer(
+		frame->addressTableBuffer = BufferUtils::createBuffer(
 			sizeof(GPUAddressTable),
 			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
@@ -72,193 +78,178 @@ void Renderer::initFrameContexts(
 			VMA_MEMORY_USAGE_GPU_ONLY,
 			allocator);
 
-		frame.drawData.totalVertexCount = totalVertexCount;
-		frame.drawData.totalIndexCount = totalIndexCount;
+		frame->drawData.totalVertexCount = totalVertexCount;
+		frame->drawData.totalIndexCount = totalIndexCount;
 
 		if (totalGPUStagingSize > 0) {
-			frame.addressTableStaging = BufferUtils::createBuffer(
+			frame->addressTableStaging = BufferUtils::createBuffer(
 				sizeof(GPUAddressTable),
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 				allocator);
-			ASSERT(frame.addressTableStaging.info.pMappedData);
+			ASSERT(frame->addressTableStaging.info.pMappedData);
 
-			frame.combinedGPUStaging = BufferUtils::createBuffer(
+			frame->combinedGPUStaging = BufferUtils::createBuffer(
 				totalGPUStagingSize,
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 				allocator);
-			ASSERT(frame.combinedGPUStaging.info.pMappedData);
+			ASSERT(frame->combinedGPUStaging.info.pMappedData);
 
-			frame.opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::OpaqueIntances, frame.addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
-			frame.persistentGPUBuffers.push_back(frame.opaqueInstanceBuffer);
+			frame->opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::OpaqueIntances, frame->addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
+			frame->persistentGPUBuffers.push_back(frame->opaqueInstanceBuffer);
 
-			frame.opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::OpaqueIndirectDraws, frame.addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
-			frame.persistentGPUBuffers.push_back(frame.opaqueIndirectCmdBuffer);
+			frame->opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::OpaqueIndirectDraws, frame->addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
+			frame->persistentGPUBuffers.push_back(frame->opaqueIndirectCmdBuffer);
 
-			frame.transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::TransparentInstances, frame.addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
-			frame.persistentGPUBuffers.push_back(frame.transparentInstanceBuffer);
+			frame->transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::TransparentInstances, frame->addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
+			frame->persistentGPUBuffers.push_back(frame->transparentInstanceBuffer);
 
-			frame.transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::TransparentIndirectDraws, frame.addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
-			frame.persistentGPUBuffers.push_back(frame.transparentIndirectCmdBuffer);
+			frame->transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::TransparentIndirectDraws, frame->addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
+			frame->persistentGPUBuffers.push_back(frame->transparentIndirectCmdBuffer);
 
-			frame.transformsListBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Transforms, frame.addressTable, TRANSFORM_LIST_SIZE_BYTES, allocator);
-			frame.persistentGPUBuffers.push_back(frame.transformsListBuffer);
+			frame->transformsListBuffer = BufferUtils::createGPUAddressBuffer(
+				AddressBufferType::Transforms, frame->addressTable, TRANSFORM_LIST_SIZE_BYTES, allocator);
+			frame->persistentGPUBuffers.push_back(frame->transformsListBuffer);
 		}
 
-		frame.frameIndex = i;
+		_frameContexts[i] = std::move(frame);
 	}
 }
 
 void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	auto device = Backend::getDevice();
+	auto& swapDef = Backend::getSwapchainDef();
 
-	VK_CHECK(vkWaitForFences(device, 1, &frameCtx.syncObjs.fence, VK_TRUE, UINT64_MAX));
-	VK_CHECK(vkResetFences(device, 1, &frameCtx.syncObjs.fence));
+	VkFence fence = swapDef.inFlightFences[frameCtx.frameIndex];
+	VK_CHECK(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
+	VK_CHECK(vkResetFences(device, 1, &fence));
 
-	if (!frameCtx.transferCmds.empty()) {
-		vkFreeCommandBuffers(
-			device,
-			frameCtx.transferPool,
-			static_cast<uint32_t>(frameCtx.transferCmds.size()),
-			frameCtx.transferCmds.data());
-		frameCtx.transferCmds.clear();
-
-		if (!frameCtx.transferDeletion.queue.empty())
-			frameCtx.transferDeletion.process(device);
-	}
-	if (!frameCtx.computeCmds.empty()) {
-		vkFreeCommandBuffers(
-			device,
-			frameCtx.computePool,
-			static_cast<uint32_t>(frameCtx.computeCmds.size()),
-			frameCtx.computeCmds.data());
-		frameCtx.computeCmds.clear();
-
-		if (!frameCtx.computeDeletion.queue.empty())
-			frameCtx.computeDeletion.process(device);
-	}
-
+	uint32_t imageIndex = 0;
 	frameCtx.swapchainResult = vkAcquireNextImageKHR(
 		device,
-		Backend::getSwapchainDef().swapchain,
+		swapDef.swapchain,
 		UINT64_MAX,
-		frameCtx.syncObjs.swapchainSemaphore,
+		swapDef.presentSemaphores[frameCtx.frameIndex],
 		VK_NULL_HANDLE,
-		&frameCtx.swapchainImageIndex);
+		&imageIndex);
+
 	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
 		Backend::getGraphicsQueue().waitIdle();
 		Backend::resizeSwapchain();
 		return;
 	}
-	else {
-		ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swap chain image!");
-	}
+	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
+
+	frameCtx.swapchainImageIndex = imageIndex;
+
+	// Mark image as in use
+	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
 
 	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
+
+	if (!frameCtx.transferCmds.empty()) {
+		vkFreeCommandBuffers(device, frameCtx.transferPool,
+			static_cast<uint32_t>(frameCtx.transferCmds.size()),
+			frameCtx.transferCmds.data());
+		frameCtx.transferCmds.clear();
+		frameCtx.transferDeletion.process(device);
+	}
+
+	if (!frameCtx.computeCmds.empty()) {
+		vkFreeCommandBuffers(device, frameCtx.computePool,
+			static_cast<uint32_t>(frameCtx.computeCmds.size()),
+			frameCtx.computeCmds.data());
+		frameCtx.computeCmds.clear();
+		frameCtx.computeDeletion.process(device);
+	}
 
 	frameCtx.cpuDeletion.flush();
 }
 
 void Renderer::submitFrame(FrameContext& frameCtx) {
-	VkCommandBufferSubmitInfo cmdInfo{};
-	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-	cmdInfo.pNext = nullptr;
-	cmdInfo.commandBuffer = frameCtx.commandBuffer;
-	cmdInfo.deviceMask = 0;
+	auto& swapDef = Backend::getSwapchainDef();
+	uint32_t imageIndex = frameCtx.swapchainImageIndex;
 
-	// WAIT: Swapchain acquire
-	VkSemaphoreSubmitInfo waitSwapchain{};
-	waitSwapchain.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	waitSwapchain.semaphore = frameCtx.syncObjs.swapchainSemaphore;
-	waitSwapchain.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
-	waitSwapchain.deviceIndex = 0;
-	waitSwapchain.value = 1;
+	VkSemaphore presentSem = swapDef.presentSemaphores[frameCtx.frameIndex];
 
-	// WAIT: Transfer completion
-	VkSemaphoreSubmitInfo waitTransfer{};
-	if (frameCtx.transferWaitValue <= _transferSync.signalValue - 1) {
-		ASSERT(_transferSync.semaphore != VK_NULL_HANDLE && "[Transfer] Timeline semaphore must be set before rendering");
-		waitTransfer.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		waitTransfer.semaphore = _transferSync.semaphore;
-		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		waitTransfer.deviceIndex = 0;
-		waitTransfer.value = frameCtx.transferWaitValue;
-	}
+	// Use image-indexed render finished semaphore and fence
+	VkSemaphore renderSem = swapDef.renderFinishedSemaphores[imageIndex];
 
-	// WAIT: Compute completion
-	VkSemaphoreSubmitInfo waitCompute{};
-	if (GPU_ACCELERATION_ENABLED) {
-		if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
-			ASSERT(_computeSync.semaphore != VK_NULL_HANDLE && "[Compute] Timeline semaphore must be set before rendering");
-			waitCompute.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-			waitCompute.semaphore = _computeSync.semaphore;
-			waitCompute.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			waitCompute.deviceIndex = 0;
-			waitCompute.value = frameCtx.computeWaitValue;
-		}
-	}
-
-
-	// SIGNAL: Rendering done
-	VkSemaphoreSubmitInfo signalRender{};
-	signalRender.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-	signalRender.semaphore = frameCtx.syncObjs.semaphore;
-	signalRender.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-	signalRender.deviceIndex = 0;
-	signalRender.value = 1;
+	VkFence fence = swapDef.inFlightFences[frameCtx.frameIndex];
 
 	std::vector<VkSemaphoreSubmitInfo> waitInfos;
-	if (waitSwapchain.semaphore != VK_NULL_HANDLE) waitInfos.push_back(waitSwapchain);
-	if (waitTransfer.semaphore != VK_NULL_HANDLE) waitInfos.push_back(waitTransfer);
-	if (waitCompute.semaphore != VK_NULL_HANDLE) waitInfos.push_back(waitCompute);
 
+	// Wait on image acquired semaphore
+	VkSemaphoreSubmitInfo waitImageAvailable{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	waitImageAvailable.semaphore = presentSem;
+	waitImageAvailable.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	waitInfos.push_back(waitImageAvailable);
 
-	VkSubmitInfo2 graphicsSubmitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
-	graphicsSubmitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
-	graphicsSubmitInfo.pWaitSemaphoreInfos = waitInfos.empty() ? nullptr : waitInfos.data();
-	graphicsSubmitInfo.signalSemaphoreInfoCount = signalRender.semaphore != VK_NULL_HANDLE ? 1 : 0;
-	graphicsSubmitInfo.pSignalSemaphoreInfos = signalRender.semaphore != VK_NULL_HANDLE ? &signalRender : nullptr;
-	graphicsSubmitInfo.commandBufferInfoCount = 1;
-	graphicsSubmitInfo.pCommandBufferInfos = &cmdInfo;
+	if (frameCtx.transferWaitValue <= _transferSync.signalValue - 1) {
+		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+		waitTransfer.semaphore = _transferSync.semaphore;
+		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		waitTransfer.value = frameCtx.transferWaitValue;
+		waitInfos.push_back(waitTransfer);
+	}
 
+	if (GPU_ACCELERATION_ENABLED) {
+		if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
+			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+			waitCompute.semaphore = _computeSync.semaphore;
+			waitCompute.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			waitCompute.value = frameCtx.computeWaitValue;
+			waitInfos.push_back(waitCompute);
+		}
+	}
 
-	auto& graphicsQueue = Backend::getGraphicsQueue();
-	auto& presentQueue = Backend::getPresentQueue();
+	VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
+	cmdInfo.commandBuffer = frameCtx.commandBuffer;
 
-	VK_CHECK(vkQueueSubmit2(graphicsQueue.queue, 1, &graphicsSubmitInfo, frameCtx.syncObjs.fence));
+	// Signal render finished semaphore
+	VkSemaphoreSubmitInfo signalRender{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+	signalRender.semaphore = renderSem;
+	signalRender.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
 
-	VkPresentInfoKHR presentInfo{};
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+	submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+	submitInfo.pWaitSemaphoreInfos = waitInfos.data();
+	submitInfo.commandBufferInfoCount = 1;
+	submitInfo.pCommandBufferInfos = &cmdInfo;
+	submitInfo.signalSemaphoreInfoCount = 1;
+	submitInfo.pSignalSemaphoreInfos = &signalRender;
+
+	auto& gQueue = Backend::getGraphicsQueue();
+	auto& pQueue = Backend::getPresentQueue();
+
+	VK_CHECK(vkQueueSubmit2(gQueue.queue, 1, &submitInfo, fence));
+
+	// Present using the image-indexed renderSem
+	VkPresentInfoKHR presentInfo{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &frameCtx.syncObjs.semaphore;
-
+	presentInfo.pWaitSemaphores = &renderSem;
 	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &Backend::getSwapchainDef().swapchain;
-	presentInfo.pImageIndices = &frameCtx.swapchainImageIndex;
+	presentInfo.pSwapchains = &swapDef.swapchain;
+	presentInfo.pImageIndices = &imageIndex;
 
-	frameCtx.swapchainResult = vkQueuePresentKHR(presentQueue.queue, &presentInfo);
-
+	frameCtx.swapchainResult = vkQueuePresentKHR(pQueue.queue, &presentInfo);
 	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
-		if (graphicsQueue.queue != presentQueue.queue) {
-			presentQueue.waitIdle();
-		}
-		else {
-			graphicsQueue.waitIdle();
-		}
+		if (gQueue.queue != pQueue.queue)
+			pQueue.waitIdle();
+		else
+			gQueue.waitIdle();
 
 		Backend::resizeSwapchain();
 	}
 	else {
-		ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swap chain image!");
+		ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swapchain image!");
 	}
 
-	// double buffering, frames indexed at 0 and 1
 	_frameNumber++;
 }
 
@@ -393,7 +384,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 
 // draw[0], msaa[1], depth[2]
 void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx) {
-	VkRenderingAttachmentInfo colorAttachment = {
+	VkRenderingAttachmentInfo colorAttachment {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
 		.imageView = !MSAA_ENABLED ? imageViews[0] : imageViews[1],
@@ -405,7 +396,7 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
 	};
 
-	VkRenderingAttachmentInfo depthAttachment = {
+	VkRenderingAttachmentInfo depthAttachment {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
 		.imageView = imageViews[2],
@@ -418,7 +409,7 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 	};
 	depthAttachment.clearValue.depthStencil.depth = 1.0f;
 
-	VkRenderingInfo renderInfo = {
+	VkRenderingInfo renderInfo {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
 		.pNext = nullptr,
 		.flags = 0,
@@ -473,7 +464,11 @@ void Renderer::cleanup() {
 	auto device = Backend::getDevice();
 	auto allocator = Engine::getState().getGPUResources().getAllocator();
 
-	for (auto& frame : _frameContexts) {
+	for (auto& framePtr : _frameContexts) {
+		if (!framePtr) continue;
+
+		auto& frame = *framePtr;
+
 		frame.cpuDeletion.flush();
 
 		for (auto& buf : frame.persistentGPUBuffers)
@@ -482,21 +477,12 @@ void Renderer::cleanup() {
 		if (!frame.transferDeletion.queue.empty())
 			frame.transferDeletion.process(device);
 
-		if (!frame.transferCmds.empty())
-			frame.transferCmds.clear();
+		frame.transferCmds.clear();
 
 		if (!frame.computeDeletion.queue.empty())
 			frame.computeDeletion.process(device);
 
-		if (!frame.computeCmds.empty())
-			frame.computeCmds.clear();
-
-		if (frame.syncObjs.fence != VK_NULL_HANDLE)
-			vkDestroyFence(device, frame.syncObjs.fence, nullptr);
-		if (frame.syncObjs.semaphore != VK_NULL_HANDLE)
-			vkDestroySemaphore(device, frame.syncObjs.semaphore, nullptr);
-		if (frame.syncObjs.swapchainSemaphore != VK_NULL_HANDLE)
-			vkDestroySemaphore(device, frame.syncObjs.swapchainSemaphore, nullptr);
+		frame.computeCmds.clear();
 
 		if (frame.graphicsPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);
@@ -519,7 +505,6 @@ void Renderer::cleanup() {
 		if (frame.gpuVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyAllocatedBuffer(frame.gpuVisibleMeshIDsBuffer, allocator);
 
-		// address buffers last
 		if (frame.combinedGPUStaging.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyAllocatedBuffer(frame.combinedGPUStaging, allocator);
 
@@ -535,4 +520,6 @@ void Renderer::cleanup() {
 
 	if (_computeSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _computeSync.semaphore, nullptr);
+
+	_frameContexts.clear();
 }

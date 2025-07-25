@@ -314,6 +314,34 @@ typedef enum spv_operand_type_t {
   SPV_OPERAND_TYPE_RAW_ACCESS_CHAIN_OPERANDS,
   // Optional enum type from SPV_NV_raw_access_chains
   SPV_OPERAND_TYPE_OPTIONAL_RAW_ACCESS_CHAIN_OPERANDS,
+  // Enum type from SPV_NV_tensor_addressing
+  SPV_OPERAND_TYPE_TENSOR_CLAMP_MODE,
+  // Enum type from SPV_NV_cooperative_matrix2
+  SPV_OPERAND_TYPE_COOPERATIVE_MATRIX_REDUCE,
+  // Enum type from SPV_NV_cooperative_matrix2
+  SPV_OPERAND_TYPE_TENSOR_ADDRESSING_OPERANDS,
+  // Optional types from SPV_INTEL_subgroup_matrix_multiply_accumulate
+  SPV_OPERAND_TYPE_MATRIX_MULTIPLY_ACCUMULATE_OPERANDS,
+  SPV_OPERAND_TYPE_OPTIONAL_MATRIX_MULTIPLY_ACCUMULATE_OPERANDS,
+
+  SPV_OPERAND_TYPE_COOPERATIVE_VECTOR_MATRIX_LAYOUT,
+  SPV_OPERAND_TYPE_COMPONENT_TYPE,
+
+  // From nonesmantic.clspvreflection
+  SPV_OPERAND_TYPE_KERNEL_PROPERTY_FLAGS,
+
+  // From nonesmantic.shader.debuginfo.100
+  SPV_OPERAND_TYPE_SHDEBUG100_BUILD_IDENTIFIER_FLAGS,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_BASE_TYPE_ATTRIBUTE_ENCODING,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_COMPOSITE_TYPE,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_IMPORTED_ENTITY,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_INFO_FLAGS,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_OPERATION,
+  SPV_OPERAND_TYPE_SHDEBUG100_DEBUG_TYPE_QUALIFIER,
+
+  // SPV_ARM_tensors
+  SPV_OPERAND_TYPE_TENSOR_OPERANDS,
+  SPV_OPERAND_TYPE_OPTIONAL_TENSOR_OPERANDS,
 
   // This is a sentinel value, and does not represent an operand type.
   // It should come last.
@@ -341,6 +369,7 @@ typedef enum spv_ext_inst_type_t {
   SPV_EXT_INST_TYPE_NONSEMANTIC_CLSPVREFLECTION,
   SPV_EXT_INST_TYPE_NONSEMANTIC_SHADER_DEBUGINFO_100,
   SPV_EXT_INST_TYPE_NONSEMANTIC_VKSPREFLECTION,
+  SPV_EXT_INST_TYPE_TOSA_001000_1,
 
   // Multiple distinct extended instruction set types could return this
   // value, if they are prefixed with NonSemantic. and are otherwise
@@ -361,6 +390,18 @@ typedef enum spv_number_kind_t {
   SPV_NUMBER_SIGNED_INT,
   SPV_NUMBER_FLOATING,
 } spv_number_kind_t;
+
+// Represent the encoding of floating point values
+typedef enum spv_fp_encoding_t {
+  SPV_FP_ENCODING_UNKNOWN =
+      0,  // The encoding is not specified. Has to be deduced from bitwidth
+  SPV_FP_ENCODING_IEEE754_BINARY16,  // half float
+  SPV_FP_ENCODING_IEEE754_BINARY32,  // single float
+  SPV_FP_ENCODING_IEEE754_BINARY64,  // double float
+  SPV_FP_ENCODING_BFLOAT16,
+  SPV_FP_ENCODING_FLOAT8_E4M3,
+  SPV_FP_ENCODING_FLOAT8_E5M2,
+} spv_fp_encoding_t;
 
 typedef enum spv_text_to_binary_options_t {
   SPV_TEXT_TO_BINARY_OPTION_NONE = SPV_BIT(0),
@@ -417,6 +458,8 @@ typedef struct spv_parsed_operand_t {
   spv_number_kind_t number_kind;
   // The number of bits for a literal number type.
   uint32_t number_bit_width;
+  // The encoding used for floating point values
+  spv_fp_encoding_t fp_encoding;
 } spv_parsed_operand_t;
 
 // An instruction parsed from a binary SPIR-V module.
@@ -534,6 +577,7 @@ SPIRV_TOOLS_EXPORT const char* spvSoftwareVersionDetailsString(void);
 //    SPV_ENV_VULKAN_1_1_SPIRV_1_4 ->  SPIR-V 1.4
 //    SPV_ENV_VULKAN_1_2           ->  SPIR-V 1.5
 //    SPV_ENV_VULKAN_1_3           ->  SPIR-V 1.6
+//    SPV_ENV_VULKAN_1_4           ->  SPIR-V 1.6
 // Consult the description of API entry points for specific rules.
 typedef enum {
   SPV_ENV_UNIVERSAL_1_0,  // SPIR-V 1.0 latest revision, no other restrictions.
@@ -571,6 +615,7 @@ typedef enum {
 
   SPV_ENV_UNIVERSAL_1_6,  // SPIR-V 1.6 latest revision, no other restrictions.
   SPV_ENV_VULKAN_1_3,     // Vulkan 1.3 latest revision.
+  SPV_ENV_VULKAN_1_4,     // Vulkan 1.4 latest revision.
 
   SPV_ENV_MAX  // Keep this as the last enum value.
 } spv_target_env;
@@ -719,6 +764,16 @@ SPIRV_TOOLS_EXPORT void spvValidatorOptionsSetSkipBlockLayout(
 // Records whether or not the validator should allow the LocalSizeId
 // decoration where the environment otherwise would not allow it.
 SPIRV_TOOLS_EXPORT void spvValidatorOptionsSetAllowLocalSizeId(
+    spv_validator_options options, bool val);
+
+// Allow Offset (in addition to ConstOffset) for texture operations.
+// Was added for VK_KHR_maintenance8
+SPIRV_TOOLS_EXPORT void spvValidatorOptionsSetAllowOffsetTextureOperand(
+    spv_validator_options options, bool val);
+
+// Allow base operands of some bit operations to be non-32-bit wide.
+// Was added for VK_KHR_maintenance9
+SPIRV_TOOLS_EXPORT void spvValidatorOptionsSetAllowVulkan32BitBitwise(
     spv_validator_options options, bool val);
 
 // Whether friendly names should be used in validation error messages.

@@ -5,6 +5,11 @@
 #include "renderer/gpu_types/PipelineManager.h"
 #include "common/EngineConstants.h"
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 struct FrameStats {
 	std::atomic<uint32_t> drawCalls = 0;
 	std::atomic<uint32_t> triangleCount = 0;
@@ -41,12 +46,8 @@ public:
 	void beginFrame();
 	void endFrame();
 
-	void startTimer() { _startTimer = std::chrono::system_clock::now(); }
-	float endTimer() const {
-		auto end = std::chrono::system_clock::now();
-		auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - _startTimer);
-		return static_cast<float>(elapsed.count()) / 1000000.0f;
-	}
+	void startTimer();
+	float endTimer() const;
 
 	bool assetsLoaded = false;
 
@@ -62,13 +63,6 @@ public:
 		_stats.triangleCount += tris;
 	}
 
-	// For long stalls
-	// grabbing window stops rendering which will need this to reset
-	void resetFrameTimer() {
-		_stats.deltaTime.store(0);
-		_frameStart = std::chrono::system_clock::now();
-	}
-
 	void resetRenderTimers() {
 		_stats.drawTime.store(0);
 		_stats.sceneUpdateTime.store(0);
@@ -80,17 +74,21 @@ public:
 	std::mutex camMutex;
 
 	DebugToggles debugToggles;
-	VkPipeline getPipelineByType(PipelineType type) const;
 	PipelineOverride pipeOverride;
+	VkPipeline getPipelineByType(PipelineType type) const;
 
 	VkDeviceSize GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 
-	void updateDeltaTime(float& lastFrameTime);
+	void enablePlatformTimerPrecision();
+	void disablePlatformTimerPrecision();
+
+	~Profiler();
 
 private:
-	FrameStats _stats{ .targetFrameRate = TARGET_FRAME_RATE_240 };
+	FrameStats _stats;
 
-	std::chrono::time_point<std::chrono::system_clock> _frameStart;
-
-	std::chrono::time_point<std::chrono::system_clock> _startTimer;
+	LARGE_INTEGER _qpcFreq{};
+	double _frameStartTime = 0.0;
+	double _lastDeltaTime = 0.0;
+	LARGE_INTEGER _startTimer{};
 };

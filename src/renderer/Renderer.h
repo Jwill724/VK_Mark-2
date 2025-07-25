@@ -16,7 +16,6 @@ constexpr size_t TRANSPARENT_INDIRECT_SIZE_BYTES = MAX_TRANSPARENT_DRAWS * sizeo
 constexpr size_t TRANSFORM_LIST_SIZE_BYTES = MAX_VISIBLE_TRANSFORMS * sizeof(glm::mat4);
 
 struct FrameContext {
-	RenderSyncObjects syncObjs;
 	uint32_t frameIndex = 0;
 
 	VkResult swapchainResult;
@@ -123,12 +122,13 @@ namespace Renderer {
 	}
 	inline unsigned int _frameNumber{ 0 };
 
-	inline FrameContext _frameContexts[MAX_FRAMES_IN_FLIGHT];
+	inline std::vector<std::unique_ptr<FrameContext>> _frameContexts;
+	inline uint32_t framesInFlight = 0;
 
 	inline std::mutex frameAccessMutex;
 	inline FrameContext& getCurrentFrame() {
 		std::scoped_lock lock(frameAccessMutex);
-		return _frameContexts[_frameNumber % MAX_FRAMES_IN_FLIGHT];
+		return *_frameContexts[_frameNumber % framesInFlight];
 	}
 
 	// Timeline semaphore for tracking transfer and compute work

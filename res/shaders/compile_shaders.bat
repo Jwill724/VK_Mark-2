@@ -3,7 +3,13 @@ cd /d "%~dp0"
 setlocal enabledelayedexpansion
 
 set VULKAN_BIN=%VULKAN_SDK%\Bin
-set INCLUDE_PATH=-Ires/shaders/ -Ires/shaders/include/ -Ires/shaders/debug/ -Ires/shaders/environment/ -Ires/shaders/meshes/ -Ires/shaders/post_process/ -Ires/shaders/visibility/
+set INCLUDE_PATH=-Ires/shaders/
+-Ires/shaders/include/
+-Ires/shaders/debug/
+-Ires/shaders/environment/
+-Ires/shaders/meshes/
+-Ires/shaders/post_process/
+-Ires/shaders/visibility/
 
 if not exist "%VULKAN_BIN%\glslangValidator.exe" (
     echo Error: glslangValidator.exe not found in %VULKAN_BIN%!
@@ -15,11 +21,11 @@ for /R %%F in (*.vert *.frag *.comp) do (
     set FILE=%%~nxF
 
     if "%%~xF"==".vert" (
-        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.3 -S vert !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
+        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S vert !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
     ) else if "%%~xF"==".frag" (
-        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.3 -S frag !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
+        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S frag !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
     ) else if "%%~xF"==".comp" (
-        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.3 -S comp !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
+        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S comp !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
     )
 
     if ERRORLEVEL 1 (

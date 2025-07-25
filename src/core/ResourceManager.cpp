@@ -271,7 +271,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 		queue,
 		allocator);
 
-	VkSampleCountFlagBits sampleCount = static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
+	VkSampleCountFlagBits sampleCount = !MSAA_ENABLED ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
 	_msaaImage.imageExtent = extent;
@@ -438,7 +438,7 @@ void ResourceManager::initTextures(
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
 	RendererUtils::createTextureImage(cmdPool, (void*)&white, _whiteImage, usage, samples, imageQueue, bufferQueue, allocator);
 
-	//checkerboard image
+	// checkerboard image
 	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
 	std::array<uint32_t, 16 * 16 > pixels{}; //for 16x16 checkerboard texture
 	for (int x = 0; x < 16; x++) {

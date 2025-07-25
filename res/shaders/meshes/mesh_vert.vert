@@ -37,42 +37,34 @@ layout(push_constant) uniform DrawPushConstants {
 } drawData;
 
 void main() {
-    uint drawID = gl_DrawIDARB;
-    vDrawID = drawID;
+    vDrawID = gl_DrawIDARB;
 
     IndirectDrawCmd drawCmd;
     Instance inst;
-    uint instanceIdx;
 
-    if (drawID < drawData.opaqueDrawCount) {
+    if (vDrawID < drawData.opaqueDrawCount) {
         // opaque
         OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
         OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
-        drawCmd     = cmdBuf.opaqueIndirect[drawID];
-        instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
-        vInstanceID = instanceIdx;
-        inst        = instBuf.opaqueInstances[instanceIdx];
+        drawCmd     = cmdBuf.opaqueIndirect[vDrawID];
+        vInstanceID = drawCmd.firstInstance + gl_InstanceIndex;
+        inst        = instBuf.opaqueInstances[vInstanceID];
     } else {
         // transparent
-        uint tIndex = drawID - drawData.opaqueDrawCount;
-        if (tIndex >= drawData.transparentDrawCount) {
-            return;
-        }
+        uint tIndex = vDrawID - drawData.opaqueDrawCount;
+        if (tIndex >= drawData.transparentDrawCount) return;
 
         TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
         TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
         drawCmd     = cmdBuf.transparentIndirect[tIndex];
-        instanceIdx = drawCmd.firstInstance + gl_InstanceIndex;
-        vInstanceID = instanceIdx;
-        inst        = instBuf.transparentInstances[instanceIdx];
+        vInstanceID = drawCmd.firstInstance + gl_InstanceIndex;
+        inst        = instBuf.transparentInstances[vInstanceID];
     }
 
     uint vertIdx = gl_VertexIndex;
-    if (vertIdx >= drawData.totalVertexCount) {
-        return;
-    }
+    if (vertIdx >= drawData.totalVertexCount) return;
 
     // fetch the vertex
     VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);

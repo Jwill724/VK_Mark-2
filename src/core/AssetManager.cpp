@@ -470,12 +470,10 @@ void AssetManager::processMeshes(
 				ASSERT(indices.size() >= range.firstIndex + range.indexCount &&
 					"Index buffer too small for range!");
 
-				drawRanges.push_back(range);
-
-				uint32_t rangeID = static_cast<uint32_t>(drawRanges.size() - 1);
-
 				GPUMeshData newMesh{};
-				newMesh.drawRangeID = rangeID;
+				newMesh.drawRangeID = static_cast<uint32_t>(drawRanges.size());
+
+				drawRanges.push_back(range);
 
 				if (p.materialIndex.has_value()) {
 					auto matIdx = p.materialIndex.value();
@@ -503,8 +501,6 @@ void AssetManager::processMeshes(
 
 				inst->instance.meshID = meshes.registerMesh(newMesh);
 				scene.runtime.bakedInstances.push_back(inst);
-
-				fmt::print("MeshID={}, MaterialID={}\n", inst->instance.meshID, inst->instance.materialID);
 			}
 		}
 
@@ -544,7 +540,7 @@ void ModelAsset::FindVisibleInstances(
 	std::vector<GPUInstance>& outVisibleOpaqueInstances,
 	std::vector<GPUInstance>& outVisibleTransparentInstances,
 	std::vector<glm::mat4>& outFrameTransformsList,
-	const std::unordered_set<uint32_t>& visibleMeshIDSet)
+	const std::unordered_set<uint32_t> visibleMeshIDSet)
 {
 	for (const auto& root : scene.topNodes) {
 		if (root) {

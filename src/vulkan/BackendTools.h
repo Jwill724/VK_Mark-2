@@ -10,22 +10,28 @@ struct SwapchainDef {
 	std::vector<VkImageView> imageViews{};
 	VkFormat imageFormat{};
 	VkExtent2D extent{};
+	uint32_t imageCount = UINT32_MAX;
+
+	std::vector<VkSemaphore> presentSemaphores;
+	std::vector<VkSemaphore> renderFinishedSemaphores;
+	std::vector<VkFence> inFlightFences;
+	std::vector<uint32_t> imageInFlightFrame;
 };
 
 namespace BackendTools {
-	const std::vector<const char*> validationLayers = {
+	const std::vector<const char*> validationLayers {
 		"VK_LAYER_KHRONOS_validation"
 	};
-	const std::vector<const char*> deviceExtensions = {
+	const std::vector<const char*> deviceExtensions {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME
 	};
 
-	inline bool enableGPUValidationLayers = false;
-
 #ifdef NDEBUG
-	const bool enableValidationLayers = false;
+	inline const bool enableValidationLayers = false;
+	inline const bool enableGPUValidationLayers = false;
 #else
-	const bool enableValidationLayers = true;
+	inline const bool enableValidationLayers = true;
+	inline const bool enableGPUValidationLayers = false;
 #endif
 
 	// Swap chain controls how GPU renders images

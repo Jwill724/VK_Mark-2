@@ -27,7 +27,7 @@ struct ModelAsset : public IRenderable {
 		std::vector<GPUInstance>& outVisibleOpaqueInstances,
 		std::vector<GPUInstance>& outVisibleTransparentInstances,
 		std::vector<glm::mat4>& outFrameTransformsList,
-		const std::unordered_set<uint32_t>& visibleMeshIDSet) override;
+		const std::unordered_set<uint32_t> visibleMeshIDSet) override;
 
 private:
 	void clearAll();
