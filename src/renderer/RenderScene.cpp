@@ -241,40 +241,6 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue);
 	}
-
-	// Depending on if theres visibles, this could be the first and only write for the storage buffer
-	// If no visibles are present, early outs upload and table isn't marked dirty
-
-	// Note: in fully gpu driven, draw building in compute would need a buffer write prior
-
-	bool descriptorWriteNeeded = false;
-	if (frameCtx.addressTableDirty) {
-		frameCtx.writer.clear();
-		frameCtx.writer.writeBuffer(
-			0,
-			frameCtx.addressTableBuffer.buffer,
-			frameCtx.addressTableBuffer.info.size,
-			0,
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			frameCtx.set
-		);
-		descriptorWriteNeeded = true;
-		frameCtx.addressTableDirty = false;
-	}
-
-	if (!descriptorWriteNeeded) {
-		frameCtx.writer.clear(); // Only clear if it wasn't already cleared
-	}
-
-	frameCtx.writer.writeBuffer(
-		1,
-		frameCtx.sceneDataBuffer.buffer,
-		sizeof(GPUSceneData),
-		0,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		frameCtx.set
-	);
-	frameCtx.writer.updateSet(device, frameCtx.set);
 }
 
 

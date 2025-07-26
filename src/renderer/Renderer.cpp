@@ -274,6 +274,52 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
+	if (!frameCtx.transferCmds.empty()) {
+		if (frameCtx.opaqueVisibleCount > 0) {
+			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
+			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer.buffer);
+		}
+		if (frameCtx.transparentVisibleCount > 0) {
+			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
+			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer.buffer);
+		}
+
+		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transformsListBuffer.buffer);
+		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
+	}
+
+	// Depending on if theres visibles, this could be the first and only write for the storage buffer
+	// If no visibles are present, early outs upload and table isn't marked dirty
+	// Note: in fully gpu driven, draw building in compute would need a buffer write prior
+	bool descriptorWriteNeeded = false;
+	if (frameCtx.addressTableDirty) {
+		frameCtx.writer.clear();
+		frameCtx.writer.writeBuffer(
+			0,
+			frameCtx.addressTableBuffer.buffer,
+			frameCtx.addressTableBuffer.info.size,
+			0,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			frameCtx.set
+		);
+		descriptorWriteNeeded = true;
+		frameCtx.addressTableDirty = false;
+	}
+
+	if (!descriptorWriteNeeded) {
+		frameCtx.writer.clear(); // Only clear if it wasn't already cleared
+	}
+
+	frameCtx.writer.writeBuffer(
+		1,
+		frameCtx.sceneDataBuffer.buffer,
+		sizeof(GPUSceneData),
+		0,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		frameCtx.set
+	);
+	frameCtx.writer.updateSet(Backend::getDevice(), frameCtx.set);
+
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
@@ -421,20 +467,6 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 		.pDepthAttachment = &depthAttachment,
 		.pStencilAttachment = nullptr
 	};
-
-	if (!frameCtx.transferCmds.empty()) {
-		if (frameCtx.opaqueVisibleCount > 0) {
-			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer.buffer);
-		}
-		if (frameCtx.transparentVisibleCount > 0) {
-			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer.buffer);
-		}
-
-		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transformsListBuffer.buffer);
-		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
-	}
 
 	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
 	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { _drawExtent.width, _drawExtent.height });
