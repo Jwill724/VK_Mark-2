@@ -7,6 +7,10 @@ void Profiler::enablePlatformTimerPrecision() {
 	QueryPerformanceFrequency(&_qpcFreq);
 }
 
+Profiler::Profiler() {
+	enablePlatformTimerPrecision();
+}
+
 void Profiler::disablePlatformTimerPrecision() {
 	timeEndPeriod(1);
 }

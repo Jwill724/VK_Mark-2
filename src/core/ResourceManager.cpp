@@ -22,8 +22,8 @@ namespace ResourceManager {
 	AllocatedImage& getDepthImage() { return _depthImage; }
 	AllocatedImage _msaaImage;
 	AllocatedImage& getMSAAImage() { return _msaaImage; }
-	AllocatedImage _postProcessImage;
-	AllocatedImage& getPostProcessImage() { return _postProcessImage; }
+	AllocatedImage _toneMappingImage;
+	AllocatedImage& getToneMappingImage() { return _toneMappingImage; }
 	ColorData toneMappingData;
 
 	// Grabbed during physical device selection
@@ -256,8 +256,8 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 		allocator);
 
 	// post process image
-	_postProcessImage.imageFormat = _drawImage.imageFormat;
-	_postProcessImage.imageExtent = extent;
+	_toneMappingImage.imageFormat = _drawImage.imageFormat;
+	_toneMappingImage.imageExtent = extent;
 
 	VkImageUsageFlags postUsages{};
 	postUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
@@ -265,7 +265,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 	postUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
 
 	// compute draw image for post processing
-	RendererUtils::createRenderImage(_postProcessImage,
+	RendererUtils::createRenderImage(_toneMappingImage,
 		postUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		queue,

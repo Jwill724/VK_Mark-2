@@ -82,8 +82,8 @@ public:
 	void enablePlatformTimerPrecision();
 	void disablePlatformTimerPrecision();
 
+	Profiler();
 	~Profiler();
-
 private:
 	FrameStats _stats;
 

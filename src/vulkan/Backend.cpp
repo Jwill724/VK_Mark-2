@@ -195,6 +195,8 @@ void Backend::createLogicalDevice() {
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	features11.shaderDrawParameters = VK_TRUE; // InstanceIndex
+	features11.variablePointers = VK_TRUE;
+	features11.variablePointersStorageBuffer = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	features12.bufferDeviceAddress = VK_TRUE; // GPU pointers
@@ -211,6 +213,8 @@ void Backend::createLogicalDevice() {
 	features12.runtimeDescriptorArray = VK_TRUE;
 	features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
 	features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+	features12.drawIndirectCount = VK_TRUE;
+	features12.shaderFloat16 = VK_TRUE;
 
 	if (features12.shaderBufferInt64Atomics)
 		features12.shaderBufferInt64Atomics = VK_TRUE;
@@ -222,6 +226,7 @@ void Backend::createLogicalDevice() {
 	features13.synchronization2 = VK_TRUE;
 	features13.maintenance4 = VK_TRUE;
 	features13.shaderDemoteToHelperInvocation = VK_TRUE;
+	features13.subgroupSizeControl = VK_TRUE;
 
 	VkPhysicalDeviceVulkan14Features features14{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES };
 	features14.pushDescriptor = VK_TRUE;

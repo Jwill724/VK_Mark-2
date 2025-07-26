@@ -144,7 +144,7 @@ namespace ResourceManager {
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
-	AllocatedImage& getPostProcessImage();
+	AllocatedImage& getToneMappingImage();
 	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
 	void initRenderImages(DeletionQueue& queue, const VmaAllocator allocator);

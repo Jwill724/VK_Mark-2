@@ -21,31 +21,31 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	//std::string damagedHelmetPath = { "res/assets/DamagedHelmet.glb" };
+	//std::string damagedHelmetPath { "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
 	//ASSERT(damagedHelmetFile.has_value());
 	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
 	//queue->push(damagedHelmetFile.value());
 
-	//std::string dragonPath = { "res/assets/DragonAttenuation.glb" };
+	//std::string dragonPath { "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
 	//ASSERT(dragonFile.has_value());
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
 
-	std::string sponza1Path = { "res/assets/sponza.glb" };
+	std::string sponza1Path { "res/assets/sponza.glb" };
 	auto sponza1File = loadGltfFiles(sponza1Path);
 	ASSERT(sponza1File.has_value());
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
 
-	//std::string cubePath = { "res/assets/basic_cube/Cube.gltf" };
+	//std::string cubePath { "res/assets/basic_cube/Cube.gltf" };
 	//auto cubeFile = loadGltfFiles(cubePath);
 	//ASSERT(cubeFile.has_value());
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	//std::string spheresPath = { "res/assets/MetalRoughSpheres.glb" };
+	//std::string spheresPath { "res/assets/MetalRoughSpheres.glb" };
 	//auto spheresFile = loadGltfFiles(spheresPath);
 	//ASSERT(spheresFile.has_value());
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
@@ -326,27 +326,27 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	}
 
 	// Upload flattened materials
-	const size_t totalSize = materialUploadList.size() * sizeof(GPUMaterial);
+	const size_t totalMatBufSize = materialUploadList.size() * sizeof(GPUMaterial);
 	AllocatedBuffer materialStaging = BufferUtils::createBuffer(
-		totalSize,
+		totalMatBufSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 		allocator
 	);
 
-	memcpy(materialStaging.info.pMappedData, materialUploadList.data(), totalSize);
+	memcpy(materialStaging.info.pMappedData, materialUploadList.data(), totalMatBufSize);
 
 	AllocatedBuffer materialBuffer = BufferUtils::createGPUAddressBuffer(
 		AddressBufferType::Material,
 		resources.getAddressTable(),
-		totalSize,
+		totalMatBufSize,
 		allocator
 	);
 	resources.addGPUBufferToGlobalAddress(AddressBufferType::Material, materialBuffer);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
-		copyRegion.size = totalSize;
+		copyRegion.size = totalMatBufSize;
 		vkCmdCopyBuffer(cmd, materialStaging.buffer, materialBuffer.buffer, 1, &copyRegion);
 	}, threadCtx.cmdPool, QueueType::Transfer);
 
@@ -555,7 +555,7 @@ void ModelAsset::FindVisibleInstances(
 
 void ModelAsset::clearAll() {
 	auto device = Backend::getDevice();
-	auto allocator = Engine::getState().getGPUResources().getAllocator();
+	const auto allocator = Engine::getState().getGPUResources().getAllocator();
 
 	Backend::getGraphicsQueue().waitIdle();
 
