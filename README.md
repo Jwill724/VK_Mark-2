@@ -4,7 +4,7 @@
 
 ## Features
 
-- Vulkan 1.3 GPU-Driven renderer
+- Vulkan 1.4 GPU-Driven renderer
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
 - Multithreaded asset & command preparation (EnkiTS)
 - Descriptor indexing (bindless rendering)
@@ -37,7 +37,7 @@
 ## Requirements for build
 
 - Windows 10+
-- Vulkan SDK (1.3+)
+- Vulkan SDK (1.4+)
 - CMake 3.20+
 - Visual Studio 2022
 

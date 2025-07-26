@@ -209,7 +209,7 @@ VmaAllocator VulkanUtils::createAllocator(VkPhysicalDevice pDevice, VkDevice dev
 	static std::mutex allocMutex;
 	std::scoped_lock lock(allocMutex);
 
-	VmaAllocatorCreateInfo allocInfo = {
+	VmaAllocatorCreateInfo allocInfo {
 		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
 		.physicalDevice = pDevice,
 		.device = device,
@@ -222,7 +222,7 @@ VmaAllocator VulkanUtils::createAllocator(VkPhysicalDevice pDevice, VkDevice dev
 }
 
 void VulkanUtils::defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent) {
-	VkViewport viewport = {
+	VkViewport viewport {
 		.x = 0.0f,
 		.y = 0.0f,
 		.width = static_cast<float>(drawExtent.width),
@@ -232,7 +232,7 @@ void VulkanUtils::defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawE
 	};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-	VkRect2D scissor = {
+	VkRect2D scissor {
 		.offset = { 0, 0 },
 		.extent = { drawExtent.width, drawExtent.height}
 	};

@@ -132,8 +132,6 @@ void EditorImgui::renderImgui() {
 		}
 	}
 
-	// FIXME
-	// Doesnt do shit
 	// Background controls section (Compute shader/post process effects)
 	if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
 		auto& color = ResourceManager::toneMappingData;

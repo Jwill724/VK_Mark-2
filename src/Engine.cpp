@@ -63,8 +63,6 @@ void Engine::run() {
 	_engineProfiler.getStats().capFramerate = true;
 	_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_240;
 
-	_engineProfiler.enablePlatformTimerPrecision();
-
 	while (WindowIsOpen(_window->window)) {
 		glfwPollEvents();
 

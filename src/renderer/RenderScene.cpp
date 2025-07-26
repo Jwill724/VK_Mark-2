@@ -331,7 +331,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 			std::vector<glm::vec3> allVerts;
 			std::vector<uint32_t> drawOffsets;
 
-			auto& meshes = resources.getResgisteredMeshes().meshData;
+			const auto& meshes = resources.getResgisteredMeshes().meshData;
 
 			auto emitAABBVerts = [&](const GPUInstance& inst) {
 				const auto& aabb = meshes[inst.meshID].worldAABB;
@@ -343,7 +343,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 			for (const auto& inst : frameCtx.opaqueInstances) emitAABBVerts(inst);
 			for (const auto& inst : frameCtx.transparentInstances) emitAABBVerts(inst);
 
-			auto allocator = resources.getAllocator();
+			const auto allocator = resources.getAllocator();
 
 			const size_t totalSize = sizeof(glm::vec3) * allVerts.size();
 

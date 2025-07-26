@@ -22,7 +22,7 @@ namespace Renderer {
 
 void Renderer::initFrameContexts(
 	VkDevice device,
-	VkDescriptorSetLayout layout,
+	VkDescriptorSetLayout frameLayout,
 	const VmaAllocator allocator,
 	const uint32_t totalVertexCount,
 	const uint32_t totalIndexCount,
@@ -62,7 +62,7 @@ void Renderer::initFrameContexts(
 		frame->graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
 		frame->transferPool = CommandBuffer::createCommandPool(device, transferIndex);
 		frame->commandBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
-		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, layout);
+		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, frameLayout);
 		frame->transferDeletion.semaphore = _transferSync.semaphore;
 
 		if (GPU_ACCELERATION_ENABLED) {
@@ -262,7 +262,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 	auto& draw = ResourceManager::getDrawImage();
 	auto& msaa = ResourceManager::getMSAAImage();
 	auto& depth = ResourceManager::getDepthImage();
-	auto& postProcess = ResourceManager::getPostProcessImage();
+	auto& toneMap = ResourceManager::getToneMappingImage();
 
 	_drawExtent.width = static_cast<uint32_t>(std::min(swp.extent.width, draw.imageExtent.width));
 	_drawExtent.height = static_cast<uint32_t>(std::min(swp.extent.height, draw.imageExtent.height));
@@ -359,15 +359,15 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer,
-		postProcess.image,
-		postProcess.imageFormat,
+		toneMap.image,
+		toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	RendererUtils::copyImageToImage(
 		frameCtx.commandBuffer,
 		draw.image,
-		postProcess.image,
+		toneMap.image,
 		{ _drawExtent.width, _drawExtent.height },
 		{ _drawExtent.width, _drawExtent.height }
 	);
@@ -380,8 +380,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		VK_IMAGE_LAYOUT_GENERAL);
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer,
-		postProcess.image,
-		postProcess.imageFormat,
+		toneMap.image,
+		toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_GENERAL);
 
@@ -389,8 +389,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer,
-		postProcess.image,
-		postProcess.imageFormat,
+		toneMap.image,
+		toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_GENERAL,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	RendererUtils::transitionImage(
@@ -402,7 +402,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 
 	RendererUtils::copyImageToImage(
 		frameCtx.commandBuffer,
-		postProcess.image,
+		toneMap.image,
 		swp.images[frameCtx.swapchainImageIndex],
 		{ _drawExtent.width, _drawExtent.height },
 		swp.extent

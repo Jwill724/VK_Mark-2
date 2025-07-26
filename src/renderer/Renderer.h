@@ -137,7 +137,7 @@ namespace Renderer {
 
 	void initFrameContexts(
 		VkDevice device,
-		VkDescriptorSetLayout layout,
+		VkDescriptorSetLayout frameLayout,
 		const VmaAllocator allocator,
 		const uint32_t totalVertexCount,
 		const uint32_t totalIndexCount,

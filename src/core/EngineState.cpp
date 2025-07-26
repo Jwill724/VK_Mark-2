@@ -331,7 +331,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	engineProfiler.assetsLoaded = availableAssets;
 
 	// Perma imagelut work starts here
-	auto& postProcessImg = ResourceManager::getPostProcessImage();
+	auto& postProcessImg = ResourceManager::getToneMappingImage();
 	auto& drawImg = ResourceManager::getDrawImage();
 	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.imageView);
 	postProcessImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(drawImg.imageView,
