@@ -75,18 +75,18 @@ struct Instance {
 };
 
 // Enum address buffer types
-const uint ABT_OpaqueInstances          = 0u;
-const uint ABT_OpaqueIndirectDraws      = 1u;
-const uint ABT_TransparentInstances     = 2u;
-const uint ABT_TransparentIndirectDraws = 3u;
-const uint ABT_Material                 = 4u;
-const uint ABT_Mesh                     = 5u;
-const uint ABT_DrawRange                = 6u;
-const uint ABT_Vertex                   = 7u;
-const uint ABT_Index                    = 8u;
-const uint ABT_Transforms               = 9u;
-const uint ABT_VisibleCount             = 10u;
-const uint ABT_VisibleMeshIDs           = 11u;
+const uint ABT_OpaqueInstances          = 0u; // frame
+const uint ABT_OpaqueIndirectDraws      = 1u; // frame
+const uint ABT_TransparentInstances     = 2u; // frame
+const uint ABT_TransparentIndirectDraws = 3u; // frame
+const uint ABT_Material                 = 4u; // global
+const uint ABT_Mesh                     = 5u; // global
+const uint ABT_DrawRange                = 6u; // global
+const uint ABT_Vertex                   = 7u; // global
+const uint ABT_Index                    = 8u; // global
+const uint ABT_Transforms               = 9u; // frame
+const uint ABT_VisibleCount             = 10u; // frame
+const uint ABT_VisibleMeshIDs           = 11u; // frame
 const uint ABT_Count                    = 12u;
 
 struct GPUAddressTable {
