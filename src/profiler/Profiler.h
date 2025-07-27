@@ -33,11 +33,13 @@ struct PipelineOverride {
 
 struct DebugToggles {
 	bool showAABBs = false;
-	bool showNormals = false;
-	bool showSpecular = false;
-	bool showDiffuse = false;
-	bool showMetallic = false;
-	bool showRoughness = false;
+	bool enableSettings = false;
+	bool enableStats = true;
+	//bool showNormals = false;
+	//bool showSpecular = false;
+	//bool showDiffuse = false;
+	//bool showMetallic = false;
+	//bool showRoughness = false;
 	bool forceWireframe = false;
 };
 

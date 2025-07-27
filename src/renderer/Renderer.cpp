@@ -253,7 +253,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	_frameNumber++;
 }
 
-void Renderer::recordRenderCommand(FrameContext& frameCtx) {
+void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& debug) {
 	VkCommandBufferBeginInfo cmdBeginInfo{};
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -350,7 +350,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 
 	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx);
 
-	// Post process transition and copy
+	// ToneMapImage transition and copy
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer,
 		draw.image,
@@ -408,22 +408,32 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx) {
 		swp.extent
 	);
 
-	// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		swp.images[frameCtx.swapchainImageIndex],
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	if (debug.enableSettings || debug.enableStats) {
+		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
+		RendererUtils::transitionImage(
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-	EditorImgui::drawImgui(frameCtx.commandBuffer, swp.imageViews[frameCtx.swapchainImageIndex], false);
+		EditorImgui::drawImgui(frameCtx.commandBuffer, swp.imageViews[frameCtx.swapchainImageIndex], false);
 
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		swp.images[frameCtx.swapchainImageIndex],
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+		RendererUtils::transitionImage(
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	}
+	else {
+		RendererUtils::transitionImage(
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+	}
 
 	VK_CHECK(vkEndCommandBuffer(frameCtx.commandBuffer));
 }
