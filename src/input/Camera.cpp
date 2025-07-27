@@ -5,7 +5,7 @@
 #include "renderer/RenderScene.h"
 
 void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
-	UserInput::updateLocalInput(window, true, true);
+	UserInput::updateLocalInput(window);
 
 	auto& debug = profiler.debugToggles;
 	// debug toggle settings
