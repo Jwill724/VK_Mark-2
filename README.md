@@ -2,8 +2,6 @@
 
 ## Features
 
-## Features
-
 - Vulkan 1.4 GPU-Driven renderer
 - GPUAddress table enables a 100% bindless indirect buffer system
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
