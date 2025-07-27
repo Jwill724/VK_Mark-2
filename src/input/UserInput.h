@@ -62,5 +62,5 @@ namespace UserInput {
 	extern KeyboardState keyboard;
 
 	// in current scope of defined instance
-	void updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable);
+	void updateLocalInput(GLFWwindow* window);
 }

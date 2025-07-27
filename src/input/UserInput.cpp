@@ -132,13 +132,9 @@ bool UserInput::KeyboardState::isReleased(int key) const {
 	return it != keyStates.end() && it->second == KeyState::Released;
 }
 
-void UserInput::updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable) {
-	if (mouseEnable) {
-		mouse.update(window);
-	}
-	if (keyboardEnable) {
-		keyboard.update(window);
-	}
+void UserInput::updateLocalInput(GLFWwindow* window) {
+	mouse.update(window);
+	keyboard.update(window);
 }
 
 // Mouse recentering for consistent deltas, even across frames/resizes
