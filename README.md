@@ -5,7 +5,7 @@
 ## Features
 
 - Vulkan 1.4 GPU-Driven renderer
-- GPUAddress table enables 100% bindless indirect buffer system
+- GPUAddress table enables a 100% bindless indirect buffer system
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
 - Multithreaded asset & command preparation (EnkiTS)
 - Descriptor indexing (bindless rendering)
@@ -28,14 +28,14 @@
 
 
 ## Controls
-- `W A S D` – Move forward, left, back, right  
-- `Space` – Move up  
-- `Ctrl` – Move down  
-- `Mouse (Left Click + Move)` – Look around  
-- `R` – Reset camera to spawn/origin  
-- 'Tab' - Toggle ImGui editor setting
-- 'P' - Toggle rendering stats
-- `Esc` – Exit application
+- `W A S D` ‐ Move forward, left, back, right  
+- `Space` ‐ Move up  
+- `Ctrl` ‐ Move down  
+- `Mouse (Left Click + Move)` ‐ Look around  
+- `R` ‐ Reset camera to spawn/origin  
+- `Tab` ‐ Toggle ImGui editor setting  
+- `P` ‐ Toggle rendering stats  
+- `Esc` ‐ Exit application
 
 ## Requirements for build
 - Windows 10+
