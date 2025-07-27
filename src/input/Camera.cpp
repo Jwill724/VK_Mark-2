@@ -4,13 +4,18 @@
 #include "profiler/EditorImgui.h"
 #include "renderer/RenderScene.h"
 
-void Camera::processInput(GLFWwindow* window, const float deltaTime) {
+void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	UserInput::updateLocalInput(window, true, true);
+
+	auto& debug = profiler.debugToggles;
+	// debug toggle settings
+	if (UserInput::keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = !debug.enableSettings;
+	if (UserInput::keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = !debug.enableStats;
 
 	// TODO: movement is slow asf in space station model, due to model units being too large so
 	// some scaling factor will need to be added for this particular model
-	float baseSpeed = UserInput::keyboard.isPressed(GLFW_KEY_LEFT_SHIFT) ? 15.0f : 5.0f;
-	float moveSpeed = baseSpeed * deltaTime;
+	float baseSpeed = UserInput::keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 15.0f : 5.0f;
+	float moveSpeed = baseSpeed * profiler.getStats().deltaTime;
 
 	// Mouse rotation, imgui can be properly used with free cam
 	if (!ImGui::GetIO().WantCaptureMouse && UserInput::mouse.leftPressed) {
@@ -39,16 +44,15 @@ void Camera::processInput(GLFWwindow* window, const float deltaTime) {
 	glm::vec3 flatFoward = glm::normalize(glm::vec3(_currentView.x, 0.0f, _currentView.z));
 	glm::vec3 rightFoward = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
 
-
 	glm::vec3 horiz(0.0f);
-	if (UserInput::keyboard.isPressed(GLFW_KEY_W)) horiz += flatFoward;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_S)) horiz -= flatFoward;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_A)) horiz -= rightFoward;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_D)) horiz += rightFoward;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_W)) horiz += flatFoward;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_S)) horiz -= flatFoward;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_A)) horiz -= rightFoward;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_D)) horiz += rightFoward;
 
 	glm::vec3 vert(0.0f);
-	if (UserInput::keyboard.isPressed(GLFW_KEY_SPACE)) vert += up * upWorld;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_SPACE)) vert += up * upWorld;
+	if (UserInput::keyboard.isHeld(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld;
 
 
 	if (glm::length(horiz) > 0.0f) horiz = glm::normalize(horiz);

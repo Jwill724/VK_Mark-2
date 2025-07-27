@@ -91,24 +91,45 @@ void UserInput::MouseState::update(GLFWwindow* window) {
 
 void UserInput::KeyboardState::update(GLFWwindow* window) {
 	// First check if window is closing
-	keys[GLFW_KEY_ESCAPE] = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-	if (keys[GLFW_KEY_ESCAPE]) {
+	if (isPressed(GLFW_KEY_ESCAPE))
 		glfwSetWindowShouldClose(window, true);
-	}
 
-	keys[GLFW_KEY_W] = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
-	keys[GLFW_KEY_A] = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
-	keys[GLFW_KEY_S] = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-	keys[GLFW_KEY_D] = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-	keys[GLFW_KEY_SPACE] = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
-	keys[GLFW_KEY_LEFT_CONTROL] = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS;
-	keys[GLFW_KEY_LEFT_SHIFT] = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
-	keys[GLFW_KEY_R] = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+	for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
+		int state = glfwGetKey(window, key);
+		bool isDown = (state == GLFW_PRESS || state == GLFW_REPEAT);
+
+		KeyState& prevState = keyStates[key];
+
+		switch (prevState) {
+		case KeyState::None:
+			prevState = isDown ? KeyState::Pressed : KeyState::None;
+			break;
+		case KeyState::Pressed:
+			prevState = isDown ? KeyState::Held : KeyState::Released;
+			break;
+		case KeyState::Held:
+			prevState = isDown ? KeyState::Held : KeyState::Released;
+			break;
+		case KeyState::Released:
+			prevState = isDown ? KeyState::Pressed : KeyState::None;
+			break;
+		}
+	}
 }
 
 bool UserInput::KeyboardState::isPressed(int key) const {
-	auto it = keys.find(key);
-	return it != keys.end() && it->second;
+	auto it = keyStates.find(key);
+	return it != keyStates.end() && it->second == KeyState::Pressed;
+}
+
+bool UserInput::KeyboardState::isHeld(int key) const {
+	auto it = keyStates.find(key);
+	return it != keyStates.end() && it->second == KeyState::Held;
+}
+
+bool UserInput::KeyboardState::isReleased(int key) const {
+	auto it = keyStates.find(key);
+	return it != keyStates.end() && it->second == KeyState::Released;
 }
 
 void UserInput::updateLocalInput(GLFWwindow* window, bool mouseEnable, bool keyboardEnable) {

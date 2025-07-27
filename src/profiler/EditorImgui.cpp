@@ -86,84 +86,88 @@ void EditorImgui::initImgui(DeletionQueue& queue) {
 }
 
 // call before RenderFrame
-void EditorImgui::renderImgui() {
+void EditorImgui::renderImgui(Profiler& profiler) {
 
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	auto& profiler = Engine::getProfiler();
 	auto& stats = profiler.getStats();
+	const auto& debug = profiler.debugToggles;
 
-	ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-//	ImGui::SetNextWindowBgAlpha(1.0f);
-	ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
-	ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::_mainCamera._position.x, RenderScene::_mainCamera._position.y, RenderScene::_mainCamera._position.z);
-	ImGui::Text("FPS: %.1f", stats.fps.load());
-	ImGui::Text("Frame Time: %f ms", stats.frameTime.load());
-	ImGui::Text("Draw Time: %f ms", stats.drawTime.load());
-	ImGui::Text("Scene Update Time: %f ms", stats.sceneUpdateTime.load());
-	ImGui::Text("Triangles: %i", stats.triangleCount.load());
-	ImGui::Text("Draws: %i", stats.drawCalls.load());
-	ImGui::Text("VRAM Used: %llu MB", stats.vramUsed.load() / (1024ull * 1024ull));
-
-	ImGui::End();
-
-	ImGui::SetNextWindowPos(ImVec2(10.f, 10.f), ImGuiCond_Always);
-	ImGui::SetNextWindowSize(ImVec2(300.f, 330.f), ImGuiCond_Always);
-
-	// -- DEBUG TOOLS WINDOW --
-	ImGui::Begin("Debug");
-
-	// Pipeline override section
-	if (ImGui::CollapsingHeader("Pipeline Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-		ImGui::Checkbox("Pipeline Override", &profiler.pipeOverride.enabled);
-
-		static int selected = static_cast<int>(profiler.pipeOverride.selected);
-		const char* names[] = { "Opaque", "Transparent", "Wireframe" };
-
-		if (ImGui::Combo("Force Pipeline", &selected, names, IM_ARRAYSIZE(names))) {
-			profiler.pipeOverride.selected = static_cast<PipelineType>(selected);
-		}
-
-		if (ImGui::TreeNode("Debug Draw")) {
-			ImGui::Checkbox("Draw AABB", &profiler.debugToggles.showAABBs);
-			ImGui::TreePop();
-		}
+	if (debug.enableStats) {
+		ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+		//	ImGui::SetNextWindowBgAlpha(1.0f);
+		ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
+		ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::_mainCamera._position.x, RenderScene::_mainCamera._position.y, RenderScene::_mainCamera._position.z);
+		ImGui::Text("FPS: %.1f", stats.fps.load());
+		ImGui::Text("Frame Time: %f ms", stats.frameTime.load());
+		ImGui::Text("Draw Time: %f ms", stats.drawTime.load());
+		ImGui::Text("Scene Update Time: %f ms", stats.sceneUpdateTime.load());
+		ImGui::Text("Triangles: %i", stats.triangleCount.load());
+		ImGui::Text("Draws: %i", stats.drawCalls.load());
+		ImGui::Text("VRAM Used: %llu MB", stats.vramUsed.load() / (1024ull * 1024ull));
+		ImGui::End();
 	}
 
-	// Background controls section (Compute shader/post process effects)
-	if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
-		auto& color = ResourceManager::toneMappingData;
-		ImGui::Text("Post process color correction");
-		ImGui::SliderFloat("Brightness", &color.brightness, 0.0f, 2.0f);
-		ImGui::SliderFloat("Saturation", &color.saturation, 0.0f, 2.0f);
-		ImGui::SliderFloat("Contrast", &color.contrast, 0.0f, 2.0f);
-	}
+	if (debug.enableSettings) {
+		ImGui::SetNextWindowPos(ImVec2(10.f, 10.f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(300.f, 330.f), ImGuiCond_Always);
 
-	if (ImGui::CollapsingHeader("Scene Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
-		auto& sceneData = RenderScene::getCurrentSceneData();
-		static glm::vec3 ambientColor = glm::vec3(sceneData.ambientColor);
-		static glm::vec3 sunlightColor = glm::vec3(sceneData.sunlightColor);
-		static float lightIntensity = sceneData.sunlightColor.w;
-		static glm::vec3 lightDir = glm::vec3(sceneData.sunlightDirection);
+		// -- DEBUG TOOLS WINDOW --
+		ImGui::Begin("Debug");
 
-		if (ImGui::TreeNode("Light Colors")) {
-			ImGui::SliderFloat3("Ambient Color", glm::value_ptr(ambientColor), 0.0f, 1.0f);
-			ImGui::SliderFloat3("Sunlight Color", glm::value_ptr(sunlightColor), 0.0f, 1.0f);
-			ImGui::TreePop();
+		// Pipeline override section
+		if (ImGui::CollapsingHeader("Pipeline Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+			ImGui::Checkbox("Pipeline Override", &profiler.pipeOverride.enabled);
+
+			static int selected = static_cast<int>(profiler.pipeOverride.selected);
+			const char* names[] = { "Opaque", "Transparent", "Wireframe" };
+
+			if (ImGui::Combo("Force Pipeline", &selected, names, IM_ARRAYSIZE(names))) {
+				profiler.pipeOverride.selected = static_cast<PipelineType>(selected);
+			}
+
+			if (ImGui::TreeNode("Debug Draw")) {
+				ImGui::Checkbox("Draw AABB", &profiler.debugToggles.showAABBs);
+				ImGui::TreePop();
+			}
 		}
 
-		ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.0f, 10.0f);
-		ImGui::SliderFloat3("Light Direction", glm::value_ptr(lightDir), -1.0f, 1.0f);
+		// Background controls section (Compute shader/post process effects)
+		if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& color = ResourceManager::toneMappingData;
+			ImGui::Text("Post process color correction");
+			ImGui::SliderFloat("Brightness", &color.brightness, 0.0f, 2.0f);
+			ImGui::SliderFloat("Saturation", &color.saturation, 0.0f, 2.0f);
+			ImGui::SliderFloat("Contrast", &color.contrast, 0.0f, 2.0f);
+		}
 
-		// Update actual scene data
-		sceneData.ambientColor = glm::vec4(ambientColor, 1.0f);
-		sceneData.sunlightColor = glm::vec4(sunlightColor, lightIntensity);
-		sceneData.sunlightDirection = glm::normalize(glm::vec4(lightDir, 0.0f));
+		if (ImGui::CollapsingHeader("Scene Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& sceneData = RenderScene::getCurrentSceneData();
+			static glm::vec3 ambientColor = glm::vec3(sceneData.ambientColor);
+			static glm::vec3 sunlightColor = glm::vec3(sceneData.sunlightColor);
+			static float lightIntensity = sceneData.sunlightColor.w;
+			static glm::vec3 lightDir = glm::vec3(sceneData.sunlightDirection);
+
+			if (ImGui::TreeNode("Light Colors")) {
+				ImGui::SliderFloat3("Ambient Color", glm::value_ptr(ambientColor), 0.0f, 1.0f);
+				ImGui::SliderFloat3("Sunlight Color", glm::value_ptr(sunlightColor), 0.0f, 1.0f);
+				ImGui::TreePop();
+			}
+
+			ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.0f, 10.0f);
+			ImGui::SliderFloat3("Light Direction", glm::value_ptr(lightDir), -1.0f, 1.0f);
+
+			// Update actual scene data
+			sceneData.ambientColor = glm::vec4(ambientColor, 1.0f);
+			sceneData.sunlightColor = glm::vec4(sunlightColor, lightIntensity);
+			sceneData.sunlightDirection = glm::normalize(glm::vec4(lightDir, 0.0f));
+		}
+
+		ImGui::End();
 	}
 
-	ImGui::End();
 	ImGui::Render();
 }
 

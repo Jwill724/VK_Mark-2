@@ -143,7 +143,7 @@ namespace Renderer {
 		const uint32_t totalIndexCount,
 		bool isAssetsLoaded = false);
 
-	void recordRenderCommand(FrameContext& frameCtx);
+	void recordRenderCommand(FrameContext& frameCtx, const DebugToggles& debug);
 	void prepareFrameContext(FrameContext& frameCtx);
 	void submitFrame(FrameContext& frameCtx);
 

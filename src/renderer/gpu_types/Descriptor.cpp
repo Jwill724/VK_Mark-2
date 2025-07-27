@@ -20,7 +20,7 @@ namespace DescriptorSetOverwatch {
 
 void DescriptorSetOverwatch::initMainDescriptorManager(DeletionQueue& queue) {
 
-	std::vector<PoolSizeRatio> poolSizes = {
+	std::vector<PoolSizeRatio> poolSizes {
 		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         static_cast<float>(1) },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         static_cast<float>(1) },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<float>(MAX_SAMPLER_CUBE_IMAGES) },

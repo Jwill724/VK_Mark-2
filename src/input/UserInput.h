@@ -2,6 +2,13 @@
 
 #include "common/Vk_Types.h"
 
+enum struct KeyState : uint8_t {
+	None,
+	Pressed,
+	Held,
+	Released
+};
+
 namespace UserInput {
 	enum class InputType {
 		Keyboard,
@@ -43,10 +50,12 @@ namespace UserInput {
 	};
 
 	struct KeyboardState {
-		std::unordered_map<int, bool> keys;
+		std::unordered_map<int, KeyState> keyStates;
 
 		void update(GLFWwindow* window);
 		bool isPressed(int key) const;
+		bool isHeld(int key) const;
+		bool isReleased(int key) const;
 	};
 
 	extern MouseState mouse;

@@ -379,7 +379,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	ASSERT(tempEnvMapIdx.size() % 4 == 0 && "Environment LUT entries must be in sets of 4");
 
-	size_t setIndex = 0;
+	uint32_t setIndex = 0;
 	for (size_t i = 0; i < tempEnvMapIdx.size(); i += 4) {
 		const ImageLUTEntry& diffuse = tempEnvMapIdx[i];
 		const ImageLUTEntry& specular = tempEnvMapIdx[i + 1];
@@ -407,10 +407,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	//		i, e.x, e.y, e.z, e.w);
 	//}
 
-	auto allocator = _resources.getAllocator();
-
 	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(GPUEnvMapIndices),
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, _resources.getAllocator());
 
 	GPUEnvMapIndices* envMapIndices = reinterpret_cast<GPUEnvMapIndices*>(_resources.envMapSetUBO.mapped);
 	*envMapIndices = ResourceManager::_envMapIndices;
@@ -440,7 +438,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 void EngineState::initRenderer(Profiler& engineProfiler) {
 	auto device = Backend::getDevice();
-	auto allocator = _resources.getAllocator();
+	const auto allocator = _resources.getAllocator();
 
 	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
 	Renderer::initFrameContexts(
@@ -463,7 +461,9 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 void EngineState::renderFrame(Profiler& engineProfiler) {
 	auto& frame = Renderer::getCurrentFrame();
 
-	EditorImgui::renderImgui();
+	auto& debug = engineProfiler.debugToggles;
+	if (debug.enableSettings || debug.enableStats)
+		EditorImgui::renderImgui(engineProfiler);
 
 	Renderer::prepareFrameContext(frame);
 	if (frame.swapchainResult != VK_SUCCESS) return;
@@ -477,7 +477,7 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	engineProfiler.getStats().sceneUpdateTime = elapsed;
 
 	engineProfiler.startTimer();
-	Renderer::recordRenderCommand(frame);
+	Renderer::recordRenderCommand(frame, debug);
 	elapsed = engineProfiler.endTimer();
 	engineProfiler.getStats().drawTime = elapsed;
 

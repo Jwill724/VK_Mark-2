@@ -50,7 +50,7 @@ void RenderScene::updateCamera() {
 	auto extent = Renderer::getDrawExtent();
 	float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
 
-	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler().getStats().deltaTime);
+	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler());
 
 	_curCamView = _mainCamera.getViewMatrix();
 
@@ -403,10 +403,10 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 	// All pipelines use the same layout
 	VkPipeline pipeline{};
-	if (profiler.pipeOverride.enabled)
-		pipeline = profiler.getPipelineByType(profiler.pipeOverride.selected);
-	else
+	if (!profiler.pipeOverride.enabled)
 		pipeline = Pipelines::opaquePipeline.pipeline; // default pipeline
+	else
+		pipeline = profiler.getPipelineByType(profiler.pipeOverride.selected);
 
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 

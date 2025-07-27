@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UserInput.h"
+#include "profiler/Profiler.h"
 
 struct Camera {
 	glm::vec3 _velocity;
@@ -15,7 +16,7 @@ struct Camera {
 	glm::mat4 getViewMatrix() const;
 	glm::mat4 getRotationMatrix() const;
 
-	void processInput(GLFWwindow* window, const float deltaTime);
+	void processInput(GLFWwindow* window, Profiler& profiler);
 
 	void reset();
 };
