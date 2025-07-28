@@ -61,9 +61,9 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
 
 	VkShaderStageFlags imageStageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES);
-	mainDescriptorManager.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, imageStageFlags, MAX_STORAGE_IMAGES);
-	mainDescriptorManager.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_COMBINED_SAMPLERS_IMAGES);
+	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES); // 100 image count
+	mainDescriptorManager.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, imageStageFlags, MAX_STORAGE_IMAGES); // 100 image count
+	mainDescriptorManager.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_COMBINED_SAMPLERS_IMAGES); // 1000 image count
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout();
 
@@ -140,7 +140,7 @@ VkDescriptorPool DescriptorManager::createDescriptorPool(uint32_t setCount, std:
 		});
 	}
 
-	VkDescriptorPoolCreateInfo poolInfo{
+	VkDescriptorPoolCreateInfo poolInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT |
 		VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,
@@ -252,7 +252,6 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(VkDevice device, VkDescrip
 
 	void* finalPNext = pNext;
 	VkDescriptorSetVariableDescriptorCountAllocateInfo countInfo{};
-
 	if (useVariableCount) {
 		countInfo = {
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO,
@@ -262,7 +261,7 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(VkDevice device, VkDescrip
 		finalPNext = &countInfo;
 	}
 
-	VkDescriptorSetAllocateInfo allocInfo{
+	VkDescriptorSetAllocateInfo allocInfo {
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.pNext = finalPNext,
 		.descriptorPool = poolToUse,

@@ -2,13 +2,6 @@
 
 #include "common/Vk_Types.h"
 
-enum struct KeyState : uint8_t {
-	None,
-	Pressed,
-	Held,
-	Released
-};
-
 namespace UserInput {
 	enum class InputType {
 		Keyboard,
@@ -47,6 +40,13 @@ namespace UserInput {
 		}
 
 		void update(GLFWwindow* window);
+	};
+
+	enum struct KeyState {
+		None,
+		Pressed,
+		Held,
+		Released
 	};
 
 	struct KeyboardState {

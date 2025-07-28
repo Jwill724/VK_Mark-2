@@ -28,6 +28,6 @@ namespace RenderScene {
 
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);
-	void renderGeometry(FrameContext& frameCtx);
-	void drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources);
+	void renderGeometry(FrameContext& frameCtx, Profiler& profiler);
+	void drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler);
 }

@@ -87,7 +87,8 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		//copyFrustumToFrame(frameCtx.cullingPCData);
 	}
 
-	allocateSceneBuffer(frameCtx, resources.getAllocator());
+	const auto allocator = resources.getAllocator();
+	allocateSceneBuffer(frameCtx, allocator);
 
 	auto device = Backend::getDevice();
 
@@ -126,7 +127,6 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	}
 
 	auto& tQueue = Backend::getTransferQueue();
-	const auto allocator = resources.getAllocator();
 	auto& meshes = resources.getResgisteredMeshes();
 
 	if (frameCtx.refreshGlobalTransformList) {
@@ -135,7 +135,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		frameCtx.refreshGlobalTransformList = false; // baked until new transforms applied
 	}
 
-	// Frame 0 will define all buffers needed until either new meshes or transforms
+	// Initial frame contexts will define all buffers needed until either new meshes or transforms
 	// After data is defined it'll only need to update frustum each frame
 	if (!frameCtx.meshDataSet && !frameCtx.refreshGlobalTransformList) {
 		if (GPU_ACCELERATION_ENABLED) {
@@ -234,7 +234,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		//for (auto id : frameCtx.visibleMeshIDs)
 		//	fmt::print("  meshID {}\n", id);
 
-		// Using the visible meshIds in culling, find all instances and define obj data
+		// Using the visible meshIds in culling, find all instances and define data
 		updateVisiblesInstances(frameCtx);
 
 		DrawPreparation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData);
@@ -291,11 +291,9 @@ void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator
 	*sceneDataPtr = _sceneData;
 }
 
-void RenderScene::renderGeometry(FrameContext& frameCtx) {
+void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 	// all pipelines share push constant and descriptor setup
 	auto defaultPC = Pipelines::_globalLayout.pcRange;
-
-	auto& profiler = Engine::getProfiler();
 
 	// === SKYBOX DRAW ===
 	{
@@ -323,7 +321,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 
 	auto& resources = Engine::getState().getGPUResources();
 
-	drawIndirectCommands(frameCtx, resources);
+	drawIndirectCommands(frameCtx, resources, profiler);
 
 	// === VISIBLE AABB FOR OBJECTS ===
 	{
@@ -392,14 +390,10 @@ void RenderScene::renderGeometry(FrameContext& frameCtx) {
 	}
 }
 
-void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources) {
+void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler) {
 	auto pLayout = Pipelines::_globalLayout;
 
-	auto& profiler = Engine::getProfiler();
-
 	const auto& idxBuffer = resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
-	const auto& ranges = resources.getDrawRanges();
-	const auto& meshes = resources.getResgisteredMeshes().meshData;
 
 	// All pipelines use the same layout
 	VkPipeline pipeline{};
@@ -464,6 +458,9 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			frameCtx.drawData.transparentDrawCount,
 			drawCmdSize
 		);
+
+		const auto& ranges = resources.getDrawRanges();
+		const auto& meshes = resources.getResgisteredMeshes().meshData;
 
 		for (uint32_t i = 0; i < frameCtx.drawData.transparentDrawCount; ++i) {
 			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];

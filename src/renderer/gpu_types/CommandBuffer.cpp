@@ -31,7 +31,7 @@ VkCommandBuffer CommandBuffer::createCommandBuffer(VkDevice device, VkCommandPoo
 }
 
 VkCommandBuffer CommandBuffer::createSecondaryCmd(VkDevice device, VkCommandPool pool, VkCommandBufferInheritanceInfo& inheritance) {
-	VkCommandBufferAllocateInfo allocInfo = {
+	VkCommandBufferAllocateInfo allocInfo {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.commandPool = pool,
 		.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY,
@@ -41,7 +41,7 @@ VkCommandBuffer CommandBuffer::createSecondaryCmd(VkDevice device, VkCommandPool
 	VkCommandBuffer secondaryCmd;
 	vkAllocateCommandBuffers(device, &allocInfo, &secondaryCmd);
 
-	VkCommandBufferBeginInfo beginInfo = {
+	VkCommandBufferBeginInfo beginInfo {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT,
 		.pInheritanceInfo = &inheritance
@@ -57,7 +57,7 @@ void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& fun
 	//fmt::print("Allocated cmd: 0x{:X} from pool: 0x{:X}\n", (uint64_t)cmd, (uint64_t)cmdPool);
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
-	VkCommandBufferBeginInfo cmdBeginInfo = {
+	VkCommandBufferBeginInfo cmdBeginInfo {
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 	};

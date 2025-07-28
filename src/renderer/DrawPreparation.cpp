@@ -241,7 +241,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 		if (GPU_ACCELERATION_ENABLED) {
 			// GPU draw building next
 			// compute must wait for transfer to complete
-			VkMemoryBarrier2 memoryBarrier{
+			VkMemoryBarrier2 memoryBarrier {
 				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
 				.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
 				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
@@ -289,6 +289,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 			);
 		}
 	}
+
 	frameCtx.transferWaitValue = transferSync.signalValue++;
 }
 
@@ -474,7 +475,7 @@ void DrawPreparation::meshDataAndTransformsListUpload(
 		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
 		frameCtx.addressTableDirty = true;
 
-		}, frameCtx.transferPool, QueueType::Transfer);
+	}, frameCtx.transferPool, QueueType::Transfer);
 
 	frameCtx.transferCmds = DeferredCmdSubmitQueue::collectTransfer();
 
