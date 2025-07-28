@@ -68,28 +68,22 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 }
 
 void main() {
-	IndirectDrawCmd drawCmd;
 	Instance inst;
 
 	if (vDrawID < drawData.opaqueDrawCount) {
-		// Opaque draw
-		OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
+		// Opaque instances
 		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
-
-		drawCmd = cmdBuf.opaqueIndirect[vDrawID];
 		inst = instBuf.opaqueInstances[vInstanceID];
 	} else {
-		// Transparent draw
+		// Transparent instances
 		uint tIndex = vDrawID - drawData.opaqueDrawCount;
 		if (tIndex >= drawData.transparentDrawCount) return;
 
-		TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
 		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
-
-		drawCmd = cmdBuf.transparentIndirect[tIndex];
 		inst = instBuf.transparentInstances[vInstanceID];
 	}
 
+	// fetch material data
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
 
 	// Environment image indices for IBL
@@ -97,10 +91,10 @@ void main() {
 	uint specularIdx = uint(envMapSet.mapIndices[0].y);
 	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
 
-	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(mat.albedoLUTIndex)], inUV) * mat.colorFactor;
-	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughLUTIndex)], inUV);
-	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(mat.normalLUTIndex)], inUV).rgb;
-	float ao       = texture(combinedSamplers[nonuniformEXT(mat.aoLUTIndex)], inUV).r * mat.ambientOcclusion;
+	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
+	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV);
+	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(mat.normalID)], inUV).rgb;
+	float ao       = texture(combinedSamplers[nonuniformEXT(mat.aoID)], inUV).r * mat.ambientOcclusion;
 
 	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
 

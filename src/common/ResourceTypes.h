@@ -22,6 +22,18 @@ struct ImageLUTEntry {
 	uint32_t combinedImageIndex = UINT32_MAX;
 	uint32_t storageImageIndex = UINT32_MAX;
 	uint32_t samplerCubeIndex = UINT32_MAX;
+
+	static constexpr ImageLUTEntry CombinedOnly(uint32_t id) {
+		return { id, UINT32_MAX, UINT32_MAX };
+	}
+
+	static constexpr ImageLUTEntry StorageOnly(uint32_t id) {
+		return { UINT32_MAX, id, UINT32_MAX };
+	}
+
+	static constexpr ImageLUTEntry SamplerOnly(uint32_t id) {
+		return { UINT32_MAX, UINT32_MAX, id };
+	}
 };
 
 struct AllocatedImage {
@@ -169,8 +181,8 @@ struct MeshRegistry {
 };
 
 struct MaterialResources {
-	AllocatedImage colorImage;
-	VkSampler colorSampler;
+	AllocatedImage albedoImage;
+	VkSampler albedoSampler;
 
 	AllocatedImage metalRoughImage;
 	VkSampler metalRoughSampler;

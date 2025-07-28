@@ -66,13 +66,11 @@ void main() {
     uint vertIdx = gl_VertexIndex;
     if (vertIdx >= drawData.totalVertexCount) return;
 
-    // fetch the vertex
-    VertexBuffer vertexBuf = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]);
-    Vertex vtx = vertexBuf.vertices[vertIdx];
+    // fetch vertex
+    Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[vertIdx];
 
     // fetch transform
-    TransformsListBuffer transformsBuffer = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]);
-    mat4 model = transformsBuffer.transforms[inst.transformID];
+    mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
     vec4 worldPos4 = model * vec4(vtx.position, 1.0);
     outWorldPos  = worldPos4.xyz;

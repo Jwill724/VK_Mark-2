@@ -46,10 +46,10 @@ struct Material {
     vec4 colorFactor;
     vec2 metalRoughFactors;
 
-    uint albedoLUTIndex;
-    uint metalRoughLUTIndex;
-    uint normalLUTIndex;
-    uint aoLUTIndex;
+    uint albedoID;
+    uint metalRoughnessID;
+    uint normalID;
+    uint aoID;
 
     vec3 emissiveColor;
     float emissiveStrength;

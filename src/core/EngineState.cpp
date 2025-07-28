@@ -461,7 +461,7 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 void EngineState::renderFrame(Profiler& engineProfiler) {
 	auto& frame = Renderer::getCurrentFrame();
 
-	auto& debug = engineProfiler.debugToggles;
+	const auto& debug = engineProfiler.debugToggles;
 	if (debug.enableSettings || debug.enableStats)
 		EditorImgui::renderImgui(engineProfiler);
 
@@ -477,7 +477,7 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	engineProfiler.getStats().sceneUpdateTime = elapsed;
 
 	engineProfiler.startTimer();
-	Renderer::recordRenderCommand(frame, debug);
+	Renderer::recordRenderCommand(frame, engineProfiler);
 	elapsed = engineProfiler.endTimer();
 	engineProfiler.getStats().drawTime = elapsed;
 

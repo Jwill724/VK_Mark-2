@@ -17,7 +17,7 @@ namespace Renderer {
 	TimelineSync _computeSync;
 
 	void colorCorrectPass(FrameContext& frame, ColorData& toneMappingData);
-	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx);
+	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler);
 }
 
 void Renderer::initFrameContexts(
@@ -253,10 +253,13 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	_frameNumber++;
 }
 
-void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& debug) {
-	VkCommandBufferBeginInfo cmdBeginInfo{};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
+	auto device = Backend::getDevice();
+	Backend::getTransferQueue().waitTimelineValue(
+		device,
+		_transferSync.semaphore,
+		frameCtx.transferWaitValue
+	);
 
 	auto& swp = Backend::getSwapchainDef();
 	auto& draw = ResourceManager::getDrawImage();
@@ -271,6 +274,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
 		frameCtx.set
 	};
+
+	VkCommandBufferBeginInfo cmdBeginInfo{};
+	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
@@ -290,7 +297,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
 	// If no visibles are present, early outs upload and table isn't marked dirty
-	// Note: in fully gpu driven, draw building in compute would need a buffer write prior
 	bool descriptorWriteNeeded = false;
 	if (frameCtx.addressTableDirty) {
 		frameCtx.writer.clear();
@@ -318,7 +324,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		frameCtx.set
 	);
-	frameCtx.writer.updateSet(Backend::getDevice(), frameCtx.set);
+	frameCtx.writer.updateSet(device, frameCtx.set);
 
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
@@ -348,7 +354,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx);
+	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx, profiler);
 
 	// ToneMapImage transition and copy
 	RendererUtils::transitionImage(
@@ -408,6 +414,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 		swp.extent
 	);
 
+	const auto& debug = profiler.debugToggles;
 	if (debug.enableSettings || debug.enableStats) {
 		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
 		RendererUtils::transitionImage(
@@ -439,7 +446,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, const DebugToggles& d
 }
 
 // draw[0], msaa[1], depth[2]
-void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx) {
+void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler) {
 	VkRenderingAttachmentInfo colorAttachment {
 		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 		.pNext = nullptr,
@@ -480,7 +487,7 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 
 	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
 	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { _drawExtent.width, _drawExtent.height });
-	RenderScene::renderGeometry(frameCtx);
+	RenderScene::renderGeometry(frameCtx, profiler);
 	vkCmdEndRendering(frameCtx.commandBuffer);
 }
 
@@ -516,15 +523,11 @@ void Renderer::cleanup() {
 		for (auto& buf : frame.persistentGPUBuffers)
 			BufferUtils::destroyAllocatedBuffer(buf, allocator);
 
-		if (!frame.transferDeletion.queue.empty())
-			frame.transferDeletion.process(device);
-
 		frame.transferCmds.clear();
-
-		if (!frame.computeDeletion.queue.empty())
-			frame.computeDeletion.process(device);
+		frame.transferDeletion.process(device);
 
 		frame.computeCmds.clear();
+		frame.computeDeletion.process(device);
 
 		if (frame.graphicsPool != VK_NULL_HANDLE)
 			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);

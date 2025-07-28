@@ -1,0 +1,358 @@
+; SPIR-V
+; Version: 1.6
+; Generator: Khronos Glslang Reference Front End; 11
+; Bound: 198
+; Schema: 0
+               OpCapability Shader
+               OpCapability ImageQuery
+               OpCapability ShaderNonUniform
+               OpCapability RuntimeDescriptorArray
+               OpCapability SampledImageArrayNonUniformIndexing
+               OpCapability StorageImageArrayNonUniformIndexing
+          %2 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %main "main" %gl_GlobalInvocationID %storageImages %pc %combinedSamplers
+               OpExecutionMode %main LocalSize 16 16 1
+          %1 = OpString "C:\\Users\\Justi\\source\\repos\\VulkanRenderer\\VulkanRenderer\\res\\shaders\\environment\\hdr2cubemap_comp.comp"
+               OpSource GLSL 450 %1 "#version 450
+
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_EXT_nonuniform_qualifier : require
+
+layout (local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 3, rgba32f) writeonly uniform image2DArray storageImages[]; // skybox storage view
+layout(set = 0, binding = 4) uniform sampler2D combinedSamplers[]; // equirect source image
+
+const float PI = 3.14159265359;
+
+layout(push_constant) uniform PC {
+	uint equirectViewIdx;
+	uint skyboxStorageIdx;
+    uint pad0[2];
+} pc;
+
+
+vec2 SampleSphericalMap(vec3 v) {
+    vec2 invAtan = vec2(0.1591, 0.3183); // 1 / (2 * pi), 1 / pi
+    vec2 uv = vec2(atan(v.z, v.x), asin(v.y));
+    uv *= invAtan;
+    uv += 0.5;
+    return uv;
+}
+
+void main() {
+    ivec3 storePos = ivec3(gl_GlobalInvocationID.xy, gl_GlobalInvocationID.z);
+    vec2 uv = (vec2(storePos.xy) + 0.5) / vec2(imageSize(storageImages[nonuniformEXT(pc.skyboxStorageIdx)]).xy); // Normalized coordinates
+    uv = uv * 2.0 - 1.0; // Map to range [-1, 1]
+
+    vec3 direction;
+    switch (storePos.z) {
+        case 0: direction = normalize(vec3(1.0,   -uv.y, -uv.x)); break; // +X
+        case 1: direction = normalize(vec3(-1.0,  -uv.y,  uv.x)); break; // -X
+        case 2: direction = normalize(vec3(uv.x,   1.0,   uv.y)); break; // +Y
+        case 3: direction = normalize(vec3(uv.x,  -1.0,  -uv.y)); break; // -Y
+        case 4: direction = normalize(vec3(uv.x,  -uv.y,  1.0));  break; // +Z
+        case 5: direction = normalize(vec3(-uv.x, -uv.y, -1.0));  break; // -Z
+        default: direction = vec3(0.0); break; // Should not happen
+    }
+
+    vec2 sphericalUV = SampleSphericalMap(normalize(direction));
+    sphericalUV = clamp(sphericalUV, vec2(0.0), vec2(1.0));
+
+    vec4 color = texture(combinedSamplers[nonuniformEXT(pc.equirectViewIdx)], sphericalUV);
+
+    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, color);
+
+//    if (storePos.z == 0) {
+//	    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, vec4(1.0, 0.0, 0.0, 1.0)); // red debug
+//	    return;
+//    } else {
+//	    imageStore(storageImages[nonuniformEXT(pc.skyboxStorageIdx)], storePos, vec4(0.0, 1.0, 0.0, 1.0)); // green debug
+//    }
+}"
+               OpSourceExtension "GL_ARB_separate_shader_objects"
+               OpSourceExtension "GL_EXT_nonuniform_qualifier"
+               OpName %main "main"
+               OpName %SampleSphericalMap_vf3_ "SampleSphericalMap(vf3;"
+               OpName %v "v"
+               OpName %invAtan "invAtan"
+               OpName %uv "uv"
+               OpName %storePos "storePos"
+               OpName %gl_GlobalInvocationID "gl_GlobalInvocationID"
+               OpName %uv_0 "uv"
+               OpName %storageImages "storageImages"
+               OpName %PC "PC"
+               OpMemberName %PC 0 "equirectViewIdx"
+               OpMemberName %PC 1 "skyboxStorageIdx"
+               OpMemberName %PC 2 "pad0"
+               OpName %pc "pc"
+               OpName %direction "direction"
+               OpName %sphericalUV "sphericalUV"
+               OpName %param "param"
+               OpName %color "color"
+               OpName %combinedSamplers "combinedSamplers"
+               OpModuleProcessed "client vulkan100"
+               OpModuleProcessed "target-env spirv1.6"
+               OpModuleProcessed "target-env vulkan1.4"
+               OpModuleProcessed "entry-point main"
+               OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+               OpDecorate %storageImages NonReadable
+               OpDecorate %storageImages Binding 3
+               OpDecorate %storageImages DescriptorSet 0
+               OpDecorate %_arr_uint_uint_2 ArrayStride 4
+               OpDecorate %PC Block
+               OpMemberDecorate %PC 0 Offset 0
+               OpMemberDecorate %PC 1 Offset 4
+               OpMemberDecorate %PC 2 Offset 8
+               OpDecorate %82 NonUniform
+               OpDecorate %84 NonUniform
+               OpDecorate %85 NonUniform
+               OpDecorate %combinedSamplers Binding 4
+               OpDecorate %combinedSamplers DescriptorSet 0
+               OpDecorate %182 NonUniform
+               OpDecorate %184 NonUniform
+               OpDecorate %185 NonUniform
+               OpDecorate %190 NonUniform
+               OpDecorate %191 NonUniform
+               OpDecorate %192 NonUniform
+       %void = OpTypeVoid
+          %4 = OpTypeFunction %void
+      %float = OpTypeFloat 32
+    %v3float = OpTypeVector %float 3
+%_ptr_Function_v3float = OpTypePointer Function %v3float
+    %v2float = OpTypeVector %float 2
+         %11 = OpTypeFunction %v2float %_ptr_Function_v3float
+%_ptr_Function_v2float = OpTypePointer Function %v2float
+%float_0_159099996 = OpConstant %float 0.159099996
+%float_0_318300009 = OpConstant %float 0.318300009
+         %19 = OpConstantComposite %v2float %float_0_159099996 %float_0_318300009
+       %uint = OpTypeInt 32 0
+     %uint_2 = OpConstant %uint 2
+%_ptr_Function_float = OpTypePointer Function %float
+     %uint_0 = OpConstant %uint 0
+     %uint_1 = OpConstant %uint 1
+  %float_0_5 = OpConstant %float 0.5
+        %int = OpTypeInt 32 1
+      %v3int = OpTypeVector %int 3
+%_ptr_Function_v3int = OpTypePointer Function %v3int
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+     %v2uint = OpTypeVector %uint 2
+      %v2int = OpTypeVector %int 2
+%_ptr_Input_uint = OpTypePointer Input %uint
+         %70 = OpTypeImage %float 2D 0 1 0 2 Rgba32f
+%_runtimearr_70 = OpTypeRuntimeArray %70
+%_ptr_UniformConstant__runtimearr_70 = OpTypePointer UniformConstant %_runtimearr_70
+%storageImages = OpVariable %_ptr_UniformConstant__runtimearr_70 UniformConstant
+%_arr_uint_uint_2 = OpTypeArray %uint %uint_2
+         %PC = OpTypeStruct %uint %uint %_arr_uint_uint_2
+%_ptr_PushConstant_PC = OpTypePointer PushConstant %PC
+         %pc = OpVariable %_ptr_PushConstant_PC PushConstant
+      %int_1 = OpConstant %int 1
+%_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+%_ptr_UniformConstant_70 = OpTypePointer UniformConstant %70
+    %float_2 = OpConstant %float 2
+    %float_1 = OpConstant %float 1
+%_ptr_Function_int = OpTypePointer Function %int
+   %float_n1 = OpConstant %float -1
+    %float_0 = OpConstant %float 0
+        %159 = OpConstantComposite %v3float %float_0 %float_0 %float_0
+        %168 = OpConstantComposite %v2float %float_0 %float_0
+        %169 = OpConstantComposite %v2float %float_1 %float_1
+    %v4float = OpTypeVector %float 4
+%_ptr_Function_v4float = OpTypePointer Function %v4float
+        %174 = OpTypeImage %float 2D 0 0 0 1 Unknown
+        %175 = OpTypeSampledImage %174
+%_runtimearr_175 = OpTypeRuntimeArray %175
+%_ptr_UniformConstant__runtimearr_175 = OpTypePointer UniformConstant %_runtimearr_175
+%combinedSamplers = OpVariable %_ptr_UniformConstant__runtimearr_175 UniformConstant
+      %int_0 = OpConstant %int 0
+%_ptr_UniformConstant_175 = OpTypePointer UniformConstant %175
+    %uint_16 = OpConstant %uint 16
+        %196 = OpConstantComposite %v3uint %uint_16 %uint_16 %uint_1
+%float_3_14159274 = OpConstant %float 3.14159274
+               OpLine %1 28 11
+       %main = OpFunction %void None %4
+          %6 = OpLabel
+   %storePos = OpVariable %_ptr_Function_v3int Function
+       %uv_0 = OpVariable %_ptr_Function_v2float Function
+  %direction = OpVariable %_ptr_Function_v3float Function
+%sphericalUV = OpVariable %_ptr_Function_v2float Function
+      %param = OpVariable %_ptr_Function_v3float Function
+      %color = OpVariable %_ptr_Function_v4float Function
+               OpLine %1 29 0
+         %53 = OpLoad %v3uint %gl_GlobalInvocationID
+         %54 = OpVectorShuffle %v2uint %53 %53 0 1
+         %56 = OpBitcast %v2int %54
+         %58 = OpAccessChain %_ptr_Input_uint %gl_GlobalInvocationID %uint_2
+         %59 = OpLoad %uint %58
+         %60 = OpBitcast %int %59
+         %61 = OpCompositeExtract %int %56 0
+         %62 = OpCompositeExtract %int %56 1
+         %63 = OpCompositeConstruct %v3int %61 %62 %60
+               OpStore %storePos %63
+               OpLine %1 30 0
+         %65 = OpLoad %v3int %storePos
+         %66 = OpVectorShuffle %v2int %65 %65 0 1
+         %67 = OpConvertSToF %v2float %66
+         %68 = OpCompositeConstruct %v2float %float_0_5 %float_0_5
+         %69 = OpFAdd %v2float %67 %68
+         %80 = OpAccessChain %_ptr_PushConstant_uint %pc %int_1
+         %81 = OpLoad %uint %80
+         %82 = OpCopyObject %uint %81
+         %84 = OpAccessChain %_ptr_UniformConstant_70 %storageImages %82
+         %85 = OpLoad %70 %84
+         %86 = OpImageQuerySize %v3int %85
+         %87 = OpVectorShuffle %v2int %86 %86 0 1
+         %88 = OpConvertSToF %v2float %87
+         %89 = OpFDiv %v2float %69 %88
+               OpStore %uv_0 %89
+               OpLine %1 31 0
+         %90 = OpLoad %v2float %uv_0
+         %92 = OpVectorTimesScalar %v2float %90 %float_2
+         %94 = OpCompositeConstruct %v2float %float_1 %float_1
+         %95 = OpFSub %v2float %92 %94
+               OpStore %uv_0 %95
+               OpLine %1 34 0
+         %97 = OpAccessChain %_ptr_Function_int %storePos %uint_2
+         %98 = OpLoad %int %97
+               OpSelectionMerge %106 None
+               OpSwitch %98 %105 0 %99 1 %100 2 %101 3 %102 4 %103 5 %104
+        %105 = OpLabel
+               OpLine %1 41 0
+               OpStore %direction %159
+               OpBranch %106
+         %99 = OpLabel
+               OpLine %1 35 0
+        %108 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %109 = OpLoad %float %108
+        %110 = OpFNegate %float %109
+        %111 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %112 = OpLoad %float %111
+        %113 = OpFNegate %float %112
+        %114 = OpCompositeConstruct %v3float %float_1 %110 %113
+        %115 = OpExtInst %v3float %2 Normalize %114
+               OpStore %direction %115
+               OpBranch %106
+        %100 = OpLabel
+               OpLine %1 36 0
+        %118 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %119 = OpLoad %float %118
+        %120 = OpFNegate %float %119
+        %121 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %122 = OpLoad %float %121
+        %123 = OpCompositeConstruct %v3float %float_n1 %120 %122
+        %124 = OpExtInst %v3float %2 Normalize %123
+               OpStore %direction %124
+               OpBranch %106
+        %101 = OpLabel
+               OpLine %1 37 0
+        %126 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %127 = OpLoad %float %126
+        %128 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %129 = OpLoad %float %128
+        %130 = OpCompositeConstruct %v3float %127 %float_1 %129
+        %131 = OpExtInst %v3float %2 Normalize %130
+               OpStore %direction %131
+               OpBranch %106
+        %102 = OpLabel
+               OpLine %1 38 0
+        %133 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %134 = OpLoad %float %133
+        %135 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %136 = OpLoad %float %135
+        %137 = OpFNegate %float %136
+        %138 = OpCompositeConstruct %v3float %134 %float_n1 %137
+        %139 = OpExtInst %v3float %2 Normalize %138
+               OpStore %direction %139
+               OpBranch %106
+        %103 = OpLabel
+               OpLine %1 39 0
+        %141 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %142 = OpLoad %float %141
+        %143 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %144 = OpLoad %float %143
+        %145 = OpFNegate %float %144
+        %146 = OpCompositeConstruct %v3float %142 %145 %float_1
+        %147 = OpExtInst %v3float %2 Normalize %146
+               OpStore %direction %147
+               OpBranch %106
+        %104 = OpLabel
+               OpLine %1 40 0
+        %149 = OpAccessChain %_ptr_Function_float %uv_0 %uint_0
+        %150 = OpLoad %float %149
+        %151 = OpFNegate %float %150
+        %152 = OpAccessChain %_ptr_Function_float %uv_0 %uint_1
+        %153 = OpLoad %float %152
+        %154 = OpFNegate %float %153
+        %155 = OpCompositeConstruct %v3float %151 %154 %float_n1
+        %156 = OpExtInst %v3float %2 Normalize %155
+               OpStore %direction %156
+               OpBranch %106
+        %106 = OpLabel
+               OpLine %1 44 0
+        %163 = OpLoad %v3float %direction
+        %164 = OpExtInst %v3float %2 Normalize %163
+               OpStore %param %164
+        %166 = OpFunctionCall %v2float %SampleSphericalMap_vf3_ %param
+               OpStore %sphericalUV %166
+               OpLine %1 45 0
+        %167 = OpLoad %v2float %sphericalUV
+        %170 = OpExtInst %v2float %2 FClamp %167 %168 %169
+               OpStore %sphericalUV %170
+               OpLine %1 47 0
+        %180 = OpAccessChain %_ptr_PushConstant_uint %pc %int_0
+        %181 = OpLoad %uint %180
+        %182 = OpCopyObject %uint %181
+        %184 = OpAccessChain %_ptr_UniformConstant_175 %combinedSamplers %182
+        %185 = OpLoad %175 %184
+        %186 = OpLoad %v2float %sphericalUV
+        %187 = OpImageSampleExplicitLod %v4float %185 %186 Lod %float_0
+               OpStore %color %187
+               OpLine %1 49 0
+        %188 = OpAccessChain %_ptr_PushConstant_uint %pc %int_1
+        %189 = OpLoad %uint %188
+        %190 = OpCopyObject %uint %189
+        %191 = OpAccessChain %_ptr_UniformConstant_70 %storageImages %190
+        %192 = OpLoad %70 %191
+        %193 = OpLoad %v3int %storePos
+        %194 = OpLoad %v4float %color
+               OpImageWrite %192 %193 %194
+               OpLine %1 57 0
+               OpReturn
+               OpFunctionEnd
+               OpLine %1 20 31
+%SampleSphericalMap_vf3_ = OpFunction %v2float None %11
+          %v = OpFunctionParameter %_ptr_Function_v3float
+         %14 = OpLabel
+    %invAtan = OpVariable %_ptr_Function_v2float Function
+         %uv = OpVariable %_ptr_Function_v2float Function
+               OpLine %1 21 0
+               OpStore %invAtan %19
+               OpLine %1 22 0
+         %24 = OpAccessChain %_ptr_Function_float %v %uint_2
+         %25 = OpLoad %float %24
+         %27 = OpAccessChain %_ptr_Function_float %v %uint_0
+         %28 = OpLoad %float %27
+         %29 = OpExtInst %float %2 Atan2 %25 %28
+         %31 = OpAccessChain %_ptr_Function_float %v %uint_1
+         %32 = OpLoad %float %31
+         %33 = OpExtInst %float %2 Asin %32
+         %34 = OpCompositeConstruct %v2float %29 %33
+               OpStore %uv %34
+               OpLine %1 23 0
+         %35 = OpLoad %v2float %invAtan
+         %36 = OpLoad %v2float %uv
+         %37 = OpFMul %v2float %36 %35
+               OpStore %uv %37
+               OpLine %1 24 0
+         %39 = OpLoad %v2float %uv
+         %40 = OpCompositeConstruct %v2float %float_0_5 %float_0_5
+         %41 = OpFAdd %v2float %39 %40
+               OpStore %uv %41
+               OpLine %1 25 0
+         %42 = OpLoad %v2float %uv
+               OpReturnValue %42
+               OpFunctionEnd

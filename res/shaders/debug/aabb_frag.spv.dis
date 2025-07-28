@@ -1,0 +1,46 @@
+; SPIR-V
+; Version: 1.6
+; Generator: Khronos Glslang Reference Front End; 11
+; Bound: 14
+; Schema: 0
+               OpCapability Shader
+          %2 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint Fragment %main "main" %outColor
+               OpExecutionMode %main OriginUpperLeft
+          %1 = OpString "C:\\Users\\Justi\\source\\repos\\VulkanRenderer\\VulkanRenderer\\res\\shaders\\debug\\aabb_frag.frag"
+               OpSource GLSL 450 %1 "#version 450
+
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) out vec4 outColor;
+
+void main()
+{
+	outColor = vec4(1.f, 0.f, 0.f, 1.f); // red debug color
+}"
+               OpSourceExtension "GL_ARB_separate_shader_objects"
+               OpName %main "main"
+               OpName %outColor "outColor"
+               OpModuleProcessed "client vulkan100"
+               OpModuleProcessed "target-env spirv1.6"
+               OpModuleProcessed "target-env vulkan1.4"
+               OpModuleProcessed "entry-point main"
+               OpDecorate %outColor Location 0
+       %void = OpTypeVoid
+          %4 = OpTypeFunction %void
+      %float = OpTypeFloat 32
+    %v4float = OpTypeVector %float 4
+%_ptr_Output_v4float = OpTypePointer Output %v4float
+   %outColor = OpVariable %_ptr_Output_v4float Output
+    %float_1 = OpConstant %float 1
+    %float_0 = OpConstant %float 0
+         %13 = OpConstantComposite %v4float %float_1 %float_0 %float_0 %float_1
+               OpLine %1 7 11
+       %main = OpFunction %void None %4
+          %6 = OpLabel
+               OpLine %1 9 0
+               OpStore %outColor %13
+               OpLine %1 10 0
+               OpReturn
+               OpFunctionEnd

@@ -239,8 +239,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 			// Default/fallback images
 			MaterialResources materialResources {
-				.colorImage = ResourceManager::getWhiteImage(),
-				.colorSampler = ResourceManager::getDefaultSamplerLinear(),
+				.albedoImage = ResourceManager::getWhiteImage(),
+				.albedoSampler = ResourceManager::getDefaultSamplerLinear(),
 				.metalRoughImage = ResourceManager::getMetalRoughImage(),
 				.metalRoughSampler = ResourceManager::getDefaultSamplerNearest(),
 				.aoImage = ResourceManager::getAOImage(),
@@ -263,7 +263,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			GPUMaterial newMaterial{};
 
 			if (mat.pbrData.baseColorTexture.has_value()) {
-				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.colorImage, materialResources.colorSampler);
+				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.albedoImage, materialResources.albedoSampler);
 				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
 			}
 
@@ -299,20 +299,20 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			newMaterial.passType = static_cast<uint32_t>(passType);
 
 			// LUT Indexing
-			uint32_t colorViewIdx = imageTable.pushCombined(materialResources.colorImage.imageView, materialResources.colorSampler);
-			uint32_t metalRoughViewIdx = imageTable.pushCombined(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
-			uint32_t normalViewIdx = imageTable.pushCombined(materialResources.normalImage.imageView, materialResources.normalSampler);
-			uint32_t aoViewIdx = imageTable.pushCombined(materialResources.aoImage.imageView, materialResources.aoSampler);
+			uint32_t albedoID = imageTable.pushCombined(materialResources.albedoImage.imageView, materialResources.albedoSampler);
+			uint32_t metalRoughID = imageTable.pushCombined(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
+			uint32_t normalID = imageTable.pushCombined(materialResources.normalImage.imageView, materialResources.normalSampler);
+			uint32_t aoID = imageTable.pushCombined(materialResources.aoImage.imageView, materialResources.aoSampler);
 
-			newMaterial.albedoLUTIndex = colorViewIdx;
-			newMaterial.metalRoughLUTIndex = metalRoughViewIdx;
-			newMaterial.normalLUTIndex = normalViewIdx;
-			newMaterial.aoLUTIndex = aoViewIdx;
+			newMaterial.albedoID = albedoID;
+			newMaterial.metalRoughnessID = metalRoughID;
+			newMaterial.normalID = normalID;
+			newMaterial.aoID = aoID;
 
-			resources.addImageLUTEntry({ colorViewIdx });
-			resources.addImageLUTEntry({ metalRoughViewIdx });
-			resources.addImageLUTEntry({ normalViewIdx });
-			resources.addImageLUTEntry({ aoViewIdx });
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(albedoID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(metalRoughID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(normalID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(aoID));
 
 			// Store in scene-local and global staging
 			scene.runtime.materials.push_back(newMaterial);
@@ -476,9 +476,9 @@ void AssetManager::processMeshes(
 				drawRanges.push_back(range);
 
 				if (p.materialIndex.has_value()) {
-					auto matIdx = p.materialIndex.value();
-					inst->instance.materialID = static_cast<uint32_t>(matIdx);
-					inst->passType = static_cast<MaterialPass>(scene.runtime.materials[static_cast<uint32_t>(matIdx)].passType);
+					auto matID = p.materialIndex.value();
+					inst->instance.materialID = static_cast<uint32_t>(matID);
+					inst->passType = static_cast<MaterialPass>(scene.runtime.materials[static_cast<uint32_t>(matID)].passType);
 				}
 				else {
 					inst->instance.materialID = 0;
