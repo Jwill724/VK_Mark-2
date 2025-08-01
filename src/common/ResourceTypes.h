@@ -18,21 +18,172 @@ struct EqualPair {
 	}
 };
 
+enum class ImageLUTType {
+	Global,
+	MaterialTextures
+};
+
 struct ImageLUTEntry {
 	uint32_t combinedImageIndex = UINT32_MAX;
 	uint32_t storageImageIndex = UINT32_MAX;
 	uint32_t samplerCubeIndex = UINT32_MAX;
 
+	// Used for single index and non lut entry structs
 	static constexpr ImageLUTEntry CombinedOnly(uint32_t id) {
-		return { id, UINT32_MAX, UINT32_MAX };
+		return ImageLUTEntry{ .combinedImageIndex = id };
 	}
-
 	static constexpr ImageLUTEntry StorageOnly(uint32_t id) {
-		return { UINT32_MAX, id, UINT32_MAX };
+		return ImageLUTEntry{ .storageImageIndex = id };
+	}
+	static constexpr ImageLUTEntry SamplerCubeOnly(uint32_t id) {
+		return ImageLUTEntry{ .samplerCubeIndex = id };
+	}
+};
+
+struct ImageLUTManager {
+	std::vector<ImageLUTEntry> entries;
+	std::unordered_set<uint32_t> pushedCombined;
+	std::unordered_set<uint32_t> pushedStorage;
+	std::unordered_set<uint32_t> pushedCube;
+	std::mutex mutex;
+
+	void addEntry(const ImageLUTEntry& entry) {
+		std::scoped_lock lock(mutex);
+
+		bool alreadyAdded = false;
+
+		if (entry.combinedImageIndex != UINT32_MAX &&
+			pushedCombined.insert(entry.combinedImageIndex).second) {
+			alreadyAdded = true;
+		}
+		if (entry.storageImageIndex != UINT32_MAX &&
+			pushedStorage.insert(entry.storageImageIndex).second) {
+			alreadyAdded = true;
+		}
+		if (entry.samplerCubeIndex != UINT32_MAX &&
+			pushedCube.insert(entry.samplerCubeIndex).second) {
+			alreadyAdded = true;
+		}
+		if (alreadyAdded) {
+			entries.emplace_back(entry);
+		}
 	}
 
-	static constexpr ImageLUTEntry SamplerOnly(uint32_t id) {
-		return { UINT32_MAX, UINT32_MAX, id };
+	void clear() {
+		std::scoped_lock lock(mutex);
+		entries.clear();
+		pushedCombined.clear();
+		pushedStorage.clear();
+		pushedCube.clear();
+	}
+
+	~ImageLUTManager() {
+		clear();
+	}
+
+	const std::vector<ImageLUTEntry>& getEntries() const { return entries; }
+};
+
+struct ImageTable {
+	std::mutex combinedMutex, storageMutex, samplerCubeMutex;
+
+	std::vector<VkDescriptorImageInfo> combinedViews;
+	std::vector<VkDescriptorImageInfo> storageViews;
+	std::vector<VkDescriptorImageInfo> samplerCubeViews;
+
+	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> combinedViewHashToID;
+	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> samplerCubeViewHashToID;
+	std::unordered_map<size_t, uint32_t> storageViewHashToID;
+
+	void clearTables() {
+		std::scoped_lock l1(combinedMutex, storageMutex, samplerCubeMutex);
+		combinedViews.clear();
+		combinedViewHashToID.clear();
+		storageViews.clear();
+		storageViewHashToID.clear();
+		samplerCubeViews.clear();
+		samplerCubeViewHashToID.clear();
+	}
+
+	static ImageViewSamplerKey makeKey(VkImageView view, VkSampler sampler) {
+		return { view, sampler };
+	}
+
+	uint32_t pushCombined(VkImageView view, VkSampler sampler);
+	uint32_t pushStorage(VkImageView view);
+	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler);
+};
+
+inline uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
+	std::scoped_lock lock(combinedMutex);
+	ASSERT(view && sampler && "Null handle in pushCombined");
+	auto key = makeKey(view, sampler);
+
+	if (auto it = combinedViewHashToID.find(key); it != combinedViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+	uint32_t index = static_cast<uint32_t>(combinedViews.size());
+	combinedViews.push_back(info);
+	combinedViewHashToID[key] = index;
+
+	fmt::print("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+	return index;
+}
+
+inline uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
+	std::scoped_lock lock(samplerCubeMutex);
+	ASSERT(view && sampler && "Null handle in pushSamplerCube");
+	auto key = makeKey(view, sampler);
+
+	if (auto it = samplerCubeViewHashToID.find(key); it != samplerCubeViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+	uint32_t index = static_cast<uint32_t>(samplerCubeViews.size());
+	samplerCubeViews.push_back(info);
+	samplerCubeViewHashToID[key] = index;
+
+	fmt::print("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+	return index;
+}
+
+inline uint32_t ImageTable::pushStorage(VkImageView view) {
+	std::scoped_lock lock(storageMutex);
+	ASSERT(view && "Null handle in pushStorage");
+
+	size_t hash = std::hash<std::uintptr_t>{}(reinterpret_cast<std::uintptr_t>(view));
+	if (auto it = storageViewHashToID.find(hash); it != storageViewHashToID.end())
+		return it->second;
+
+	VkDescriptorImageInfo info { VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_GENERAL };
+	uint32_t index = static_cast<uint32_t>(storageViews.size());
+	storageViews.push_back(info);
+	storageViewHashToID[hash] = index;
+
+	fmt::print("[ImageTable::pushStorage] New [{}] = view={}\n", index, (void*)view);
+	return index;
+}
+
+struct ImageTableManager {
+	ImageTable table;
+
+	uint32_t addCombinedImage(VkImageView view, VkSampler sampler) {
+		return table.pushCombined(view, sampler);
+	}
+	uint32_t addStorageImage(VkImageView view) {
+		return table.pushStorage(view);
+	}
+	uint32_t addCubeImage(VkImageView view, VkSampler sampler) {
+		return table.pushSamplerCube(view, sampler);
+	}
+
+	void clear() {
+		table.clearTables();
+	}
+
+	~ImageTableManager() {
+		clear();
 	}
 };
 
@@ -56,10 +207,19 @@ struct AllocatedImage {
 	VkImageLayout finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	VmaAllocation allocation = nullptr;
-	ImageLUTEntry lutEntry{};
+	ImageLUTEntry lutEntry;
 
 	bool mipmapped = false;
 	bool isCubeMap = false;
+};
+
+// Total values in memory
+// TODO: Utilize this more effectively to hold more values and support future dynamic updates
+struct ResourceStats {
+	uint32_t totalVertexCount = 0;
+	uint32_t totalIndexCount = 0;
+	uint32_t totalMaterialCount = 0;
+	uint32_t totalMeshCount = 0;
 };
 
 

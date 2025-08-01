@@ -5,25 +5,27 @@
 #include "renderer/RenderScene.h"
 
 void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
-	UserInput::updateLocalInput(window);
+	using namespace UserInput;
+
+	updateLocalInput(window);
 
 	auto& debug = profiler.debugToggles;
 	// debug toggle settings
-	if (UserInput::keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = !debug.enableSettings;
-	if (UserInput::keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = !debug.enableStats;
+	if (keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = !debug.enableSettings;
+	if (keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = !debug.enableStats;
+
+	// Mouse rotation, imgui can be properly used with free cam
+	if (!ImGui::GetIO().WantCaptureMouse && mouse.leftPressed) {
+		float sensitivity = 30.0f;
+		_yaw -= mouse.delta.x * sensitivity;
+		_pitch += mouse.delta.y * sensitivity;
+		_pitch = std::clamp(_pitch, -89.0f, 89.0f);
+	}
 
 	// TODO: movement is slow asf in space station model, due to model units being too large so
 	// some scaling factor will need to be added for this particular model
-	float baseSpeed = UserInput::keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 15.0f : 5.0f;
+	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 15.0f : 5.0f;
 	float moveSpeed = baseSpeed * profiler.getStats().deltaTime;
-
-	// Mouse rotation, imgui can be properly used with free cam
-	if (!ImGui::GetIO().WantCaptureMouse && UserInput::mouse.leftPressed) {
-		float sensitivity = 30.0f;
-		_yaw -= UserInput::mouse.delta.x * sensitivity;
-		_pitch += UserInput::mouse.delta.y * sensitivity;
-		_pitch = std::clamp(_pitch, -89.0f, 89.0f);
-	}
 
 	float radPitch = glm::radians(_pitch);
 	float radYaw = glm::radians(_yaw);
@@ -45,15 +47,14 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	glm::vec3 rightFoward = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
 
 	glm::vec3 horiz(0.0f);
-	if (UserInput::keyboard.isHeld(GLFW_KEY_W)) horiz += flatFoward;
-	if (UserInput::keyboard.isHeld(GLFW_KEY_S)) horiz -= flatFoward;
-	if (UserInput::keyboard.isHeld(GLFW_KEY_A)) horiz -= rightFoward;
-	if (UserInput::keyboard.isHeld(GLFW_KEY_D)) horiz += rightFoward;
-
 	glm::vec3 vert(0.0f);
-	if (UserInput::keyboard.isHeld(GLFW_KEY_SPACE)) vert += up * upWorld;
-	if (UserInput::keyboard.isHeld(GLFW_KEY_LEFT_CONTROL)) vert -= up * upWorld;
 
+	if (keyboard.isHeld(GLFW_KEY_W)) { horiz += flatFoward; }
+	if (keyboard.isHeld(GLFW_KEY_S)) { horiz -= flatFoward; }
+	if (keyboard.isHeld(GLFW_KEY_A)) { horiz -= rightFoward; }
+	if (keyboard.isHeld(GLFW_KEY_D)) { horiz += rightFoward; }
+	if (keyboard.isHeld(GLFW_KEY_SPACE)) { vert += up * upWorld; }
+	if (keyboard.isHeld(GLFW_KEY_LEFT_CONTROL)) { vert -= up * upWorld;}
 
 	if (glm::length(horiz) > 0.0f) horiz = glm::normalize(horiz);
 	if (glm::length(vert) > 0.0f) vert = glm::normalize(vert);
@@ -61,7 +62,7 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	// scale speed on whole axis while frame independent
 	_velocity = (horiz + vert) * moveSpeed;
 
-	if (UserInput::keyboard.isPressed(GLFW_KEY_R)) {
+	if (keyboard.isPressed(GLFW_KEY_R)) {
 		reset();
 	}
 

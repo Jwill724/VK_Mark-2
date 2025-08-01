@@ -13,7 +13,7 @@ bool WindowIsOpen(GLFWwindow* window) {
 }
 
 bool Window::throttleIfWindowUnfocused(int sleepMs) const {
-	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
+	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {\
 		std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
 		return true;
 	}
@@ -32,7 +32,7 @@ void Window::updateWindowSize() const {
 	Engine::getWindowExtent().width = static_cast<uint32_t>(width);
 	Engine::getWindowExtent().height = static_cast<uint32_t>(height);
 
-	VkExtent3D newDrawExtent = {
+	VkExtent3D newDrawExtent {
 		Engine::getWindowExtent().width,
 		Engine::getWindowExtent().height,
 		1

@@ -89,32 +89,49 @@ void UserInput::MouseState::update(GLFWwindow* window) {
 	//}
 }
 
+// TODO: Investigate and possibly refactor input system to SDL
+//
+// - Input "ghosting" occurs after stalls (e.g., clicking window, resizing window).
+// - When a stall happens, GLFW event queue may lose or delay key/button release events.
+// - This causes any keys held, mouse buttons, etc., to appear "stuck" until another physical press/release.
+// - Even after resetting local input state post-stall, GLFW still processes stale/missing input.
+// Bug can be replicated by holding a key into a window stall then releasing.
+
 void UserInput::KeyboardState::update(GLFWwindow* window) {
-	// First check if window is closing
 	if (isPressed(GLFW_KEY_ESCAPE))
 		glfwSetWindowShouldClose(window, true);
 
-	for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
+	for (int key : trackedKeys) {
 		int state = glfwGetKey(window, key);
 		bool isDown = (state == GLFW_PRESS || state == GLFW_REPEAT);
 
 		KeyState& prevState = keyStates[key];
+		KeyState newState = KeyState::None;
 
 		switch (prevState) {
 		case KeyState::None:
-			prevState = isDown ? KeyState::Pressed : KeyState::None;
+			newState = isDown ? KeyState::Pressed : KeyState::None;
 			break;
 		case KeyState::Pressed:
-			prevState = isDown ? KeyState::Held : KeyState::Released;
-			break;
 		case KeyState::Held:
-			prevState = isDown ? KeyState::Held : KeyState::Released;
+			newState = isDown ? KeyState::Held : KeyState::Released;
 			break;
 		case KeyState::Released:
-			prevState = isDown ? KeyState::Pressed : KeyState::None;
+			newState = isDown ? KeyState::Pressed : KeyState::None;
 			break;
 		}
+
+		if (!isDown && (prevState == KeyState::Held || prevState == KeyState::Pressed)) {
+			newState = KeyState::Released;
+		}
+
+		prevState = newState;
 	}
+}
+
+void UserInput::updateLocalInput(GLFWwindow* window) {
+	mouse.update(window);
+	keyboard.update(window);
 }
 
 bool UserInput::KeyboardState::isPressed(int key) const {
@@ -124,7 +141,10 @@ bool UserInput::KeyboardState::isPressed(int key) const {
 
 bool UserInput::KeyboardState::isHeld(int key) const {
 	auto it = keyStates.find(key);
-	return it != keyStates.end() && it->second == KeyState::Held;
+	if (it == keyStates.end()) return false;
+
+	KeyState state = it->second;
+	return state == KeyState::Held || state == KeyState::Pressed;
 }
 
 bool UserInput::KeyboardState::isReleased(int key) const {
@@ -132,9 +152,10 @@ bool UserInput::KeyboardState::isReleased(int key) const {
 	return it != keyStates.end() && it->second == KeyState::Released;
 }
 
-void UserInput::updateLocalInput(GLFWwindow* window) {
-	mouse.update(window);
-	keyboard.update(window);
+void UserInput::KeyboardState::resetKeyStates() {
+	for (auto& [key, state] : keyStates) {
+		state = KeyState::None;
+	}
 }
 
 // Mouse recentering for consistent deltas, even across frames/resizes

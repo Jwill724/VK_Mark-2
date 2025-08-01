@@ -3,15 +3,13 @@
 #include "ResourceManager.h"
 #include "utils/RendererUtils.h"
 #include "utils/BufferUtils.h"
-#include "EngineState.h"
-#include "renderer/Renderer.h"
 #include "core/types/Texture.h"
 #include "Environment.h"
-#include "common/EngineConstants.h"
 #include "renderer/gpu_types/CommandBuffer.h"
 
 namespace ResourceManager {
-	ImageTable _globalImageTable;
+	ImageTableManager _globalImageManager;
+	//ImageTableManager _materialTextureManager;
 
 	GPUEnvMapIndices _envMapIndices;
 
@@ -85,6 +83,9 @@ void GPUResources::init(VkDevice device) {
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
 	transferPool = CommandBuffer::createCommandPool(device, Backend::getTransferQueue().familyIndex);
 	computePool = CommandBuffer::createCommandPool(device, Backend::getComputeQueue().familyIndex);
+
+	lutManagers.emplace(ImageLUTType::Global, std::make_unique<ImageLUTManager>());
+	//lutManagers.emplace(ImageLUTType::MaterialTextures, std::make_unique<ImageLUTManager>());
 }
 
 void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, bool force) {
@@ -153,92 +154,9 @@ void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferTy
 	markAddressTableDirty();
 }
 
-uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
-	std::scoped_lock lock(combinedMutex);
-
-	ASSERT((view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE) && "Null handle in pushCombined");
-
-	ImageViewSamplerKey key = makeKey(view, sampler);
-
-	auto it = combinedViewHashToID.find(key);
-	if (it != combinedViewHashToID.end())
-		return it->second;
-
-	VkDescriptorImageInfo info{};
-	info.imageView = view;
-	info.sampler = sampler;
-	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	fmt::print("[ImageTable::pushCombined] New entry: view={}, sampler={}, layout=0x{:08X}\n",
-		(void*)view, (void*)sampler, static_cast<uint32_t>(info.imageLayout));
-
-	uint32_t index = static_cast<uint32_t>(combinedViews.size());
-	combinedViews.push_back(info);
-	combinedViewHashToID[key] = index;
-	fmt::print("Index: {}\n", index);
-
-	return index;
-}
-
-uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
-	std::scoped_lock lock(samplerCubeMutex);
-
-	ASSERT((view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE) && "Null handle in pushSamplerCube");
-
-	ImageViewSamplerKey key = makeKey(view, sampler);
-
-	auto it = samplerCubeViewHashToID.find(key);
-	if (it != samplerCubeViewHashToID.end())
-		return it->second;
-
-	VkDescriptorImageInfo info{};
-	info.imageView = view;
-	info.sampler = sampler;
-	info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	fmt::print("[ImageTable::pushSamplerCube] New entry: view={}, sampler={}, layout=0x{:08X}\n",
-		(void*)view, (void*)sampler, static_cast<uint32_t>(info.imageLayout));
-
-	uint32_t index = static_cast<uint32_t>(samplerCubeViews.size());
-	samplerCubeViews.push_back(info);
-	samplerCubeViewHashToID[key] = index;
-	fmt::print("Index: {}\n", index);
-
-	return index;
-}
-
-uint32_t ImageTable::pushStorage(VkImageView view) {
-	std::scoped_lock lock(storageMutex);
-
-	ASSERT(view != VK_NULL_HANDLE && "Null handle in pushStorage");
-
-	size_t hash = std::hash<std::uintptr_t>{}(reinterpret_cast<std::uintptr_t>(view));
-
-	auto it = storageViewHashToID.find(hash);
-	if (it != storageViewHashToID.end())
-		return it->second;
-
-	VkDescriptorImageInfo info{};
-	info.imageView = view;
-	info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-	info.sampler = VK_NULL_HANDLE;
-
-	fmt::print("[ImageTable::pushStorage] New entry: view={}, layout=0x{:08X}\n",
-		(void*)view, static_cast<uint32_t>(info.imageLayout));
-
-	uint32_t index = static_cast<uint32_t>(storageViews.size());
-	storageViews.push_back(info);
-	storageViewHashToID[hash] = index;
-	fmt::print("Index: {}\n", index);
-
-	return index;
-}
-
-void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator) {
-	auto extent = Renderer::getDrawExtent();
-
+void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator, const VkExtent3D drawExtent) {
 	_drawImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-	_drawImage.imageExtent = extent;
+	_drawImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags drawImageUsages{};
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -257,7 +175,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 
 	// post process image
 	_toneMappingImage.imageFormat = _drawImage.imageFormat;
-	_toneMappingImage.imageExtent = extent;
+	_toneMappingImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags postUsages{};
 	postUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
@@ -274,7 +192,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 	VkSampleCountFlagBits sampleCount = !MSAA_ENABLED ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
 
 	_msaaImage.imageFormat = _drawImage.imageFormat;
-	_msaaImage.imageExtent = extent;
+	_msaaImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags msaaImageUsages{};
 	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -289,7 +207,7 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 
 	// DEPTH
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_depthImage.imageExtent = extent;
+	_depthImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -389,7 +307,7 @@ void ResourceManager::initTextures(
 	const VmaAllocator allocator)
 {
 	// reuse for now
-	VkExtent3D texExtent = { 1, 1, 1 };
+	VkExtent3D texExtent { 1, 1, 1 };
 
 	VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
 	VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -422,7 +340,7 @@ void ResourceManager::initTextures(
 	_metalRoughImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_metalRoughImage.mipmapped = true;
 
-	uint8_t rgPixelData[4] = {
+	uint8_t rgPixelData[4] {
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(0.5f * 255), // roughness
 		static_cast<uint8_t>(0.0f * 255), // metallic?

@@ -1,4 +1,5 @@
 #include "pch.h"
+
 #include "Profiler.h"
 #include "Engine.h"
 
@@ -32,6 +33,10 @@ void Profiler::beginFrame() {
 
 	float dt = std::min(static_cast<float>(delta), 0.1f);
 	_stats.deltaTime = dt;
+
+	// Stall detection
+	constexpr float stallThreshold = 0.05f; // 50ms
+	rendererWasStalled = (delta > stallThreshold);
 }
 
 void Profiler::endFrame() {

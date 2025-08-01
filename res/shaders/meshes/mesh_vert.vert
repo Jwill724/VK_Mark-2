@@ -34,6 +34,9 @@ layout(push_constant) uniform DrawPushConstants {
 	uint transparentDrawCount;
 	uint totalVertexCount;
 	uint totalIndexCount;
+	uint totalMeshCount;
+	uint totalMaterialCount;
+	uint pad0[2];
 } drawData;
 
 void main() {

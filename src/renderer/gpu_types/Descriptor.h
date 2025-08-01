@@ -1,36 +1,48 @@
 #pragma once
 
-#include <utils/BufferUtils.h>
 #include <common/Vk_Types.h>
+#include <common/ResourceTypes.h>
+#include <common/EngineTypes.h>
 
 struct PoolSizeRatio {
 	VkDescriptorType type;
 	float ratio = 0.0f;
 };
 
-struct PendingWrite {
-	uint32_t binding;
-	VkDescriptorType type;
-	size_t startIndex;
-	size_t count;
-	VkDescriptorSet dstSet;
+struct DescriptorWriteGroup {
+	uint32_t binding = 0;
+	VkDescriptorType type{};
+	VkDescriptorSet dstSet = VK_NULL_HANDLE;
+	std::vector<VkDescriptorImageInfo> imageInfos;
+};
+
+enum class DescriptorImageType {
+	SamplerCube,
+	StorageImage,
+	CombinedSampler
 };
 
 struct DescriptorWriter {
-	std::vector<VkDescriptorImageInfo> imageInfos;
-	std::vector<VkWriteDescriptorSet> imageWrites;
-	std::vector<PendingWrite> pendingImageWrites;
+	// Per-binding grouped image descriptor writes
+	std::vector<DescriptorWriteGroup> imageWriteGroups;
 
 	std::vector<VkDescriptorBufferInfo> bufferInfos;
 	std::vector<VkWriteDescriptorSet> bufferWrites;
 	std::vector<size_t> writeBufferIndices;
 
-	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table, VkDescriptorSet descriptorSet);
+	std::vector<VkDescriptorImageInfo> samplerCubeDescriptors;
+	std::vector<VkDescriptorImageInfo> storageDescriptors;
+	std::vector<VkDescriptorImageInfo> combinedDescriptors;
 
-	void writeBuffer(int binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type, VkDescriptorSet set);
-	void writeImages(int binding, const std::vector<VkDescriptorImageInfo>& images, VkDescriptorType type, VkDescriptorSet set);
+	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
+
+	void writeBuffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type, VkDescriptorSet set);
+	void writeImages(uint32_t binding, DescriptorImageType type, VkDescriptorSet set);
 
 	void clear();
+
+	~DescriptorWriter() { clear(); }
+
 	void updateSet(VkDevice device, VkDescriptorSet set);
 };
 

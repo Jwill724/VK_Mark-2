@@ -1,8 +1,6 @@
 #pragma once
 
 #include "renderer/gpu_types/PipelineManager.h"
-#include "common/EngineTypes.h"
-#include "common/ResourceTypes.h"
 #include "utils/RendererUtils.h"
 #include "ResourceManager.h"
 #include "AssetManager.h"

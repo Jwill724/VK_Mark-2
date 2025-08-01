@@ -1,13 +1,8 @@
 #pragma once
 
-#include <common/Vk_Types.h>
-#include "common/EngineTypes.h"
-#include "common/EngineConstants.h"
 #include "core/ResourceManager.h"
 #include "gpu_types/Descriptor.h"
-
-static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
-static bool MSAA_ENABLED = true;
+#include "profiler/Profiler.h"
 
 constexpr size_t OPAQUE_INDIRECT_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(VkDrawIndexedIndirectCommand);
 constexpr size_t OPAQUE_INSTANCE_SIZE_BYTES = MAX_OPAQUE_DRAWS * sizeof(GPUInstance);
@@ -53,6 +48,9 @@ struct FrameContext {
 		uint32_t transparentDrawCount;
 		uint32_t totalVertexCount;
 		uint32_t totalIndexCount;
+		uint32_t totalMeshCount;
+		uint32_t totalMaterialCount;
+		uint32_t pad0[2]{};
 	} drawData{};
 
 	void clearRenderData() {
@@ -102,7 +100,7 @@ struct FrameContext {
 	AllocatedBuffer sceneDataBuffer;
 
 	VkDescriptorSet set = VK_NULL_HANDLE;
-	DescriptorWriter writer;
+	DescriptorWriter descriptorWriter;
 
 	DeletionQueue cpuDeletion;
 	TimelineDeletionQueue transferDeletion; // gpu buffer deletion
@@ -120,7 +118,7 @@ namespace Renderer {
 		std::scoped_lock lock(drawExtentMutex);
 		_drawExtent = extent;
 	}
-	inline unsigned int _frameNumber{ 0 };
+	inline uint32_t _frameNumber{ 0 };
 
 	inline std::vector<std::unique_ptr<FrameContext>> _frameContexts;
 	inline uint32_t framesInFlight = 0;
@@ -137,10 +135,8 @@ namespace Renderer {
 
 	void initFrameContexts(
 		VkDevice device,
-		VkDescriptorSetLayout frameLayout,
-		const VmaAllocator allocator,
-		const uint32_t totalVertexCount,
-		const uint32_t totalIndexCount,
+		const VkDescriptorSetLayout frameLayout,
+		GPUResources& gpuResouces,
 		bool isAssetsLoaded = false);
 
 	void recordRenderCommand(FrameContext& frameCtx, Profiler& profiler);

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "common/Vk_Types.h"
 #include "core/EngineState.h"
 #include "vulkan/Pipeline.h"
+#include "common/Vk_Types.h"
 #include "common/ResourceTypes.h"
 #include "common/EngineTypes.h"
 

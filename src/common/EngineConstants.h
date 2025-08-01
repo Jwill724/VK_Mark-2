@@ -24,6 +24,7 @@ static constexpr uint32_t MSAACOUNT_4 = 4;
 static constexpr uint32_t MSAACOUNT_2 = 2;
 constexpr uint32_t MAX_MIP_LEVELS = 12;
 constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * vec4(16 bytes)
+constexpr uint32_t MAX_MATERIAL_TEXTURES = 2048;
 
 // Descriptor max sizing
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100;

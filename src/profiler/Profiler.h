@@ -1,9 +1,7 @@
 #pragma once
 
-#include "common/Vk_Types.h"
 #include "common/ResourceTypes.h"
 #include "renderer/gpu_types/PipelineManager.h"
-#include "common/EngineConstants.h"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -48,10 +46,12 @@ public:
 	void beginFrame();
 	void endFrame();
 
+	bool rendererWasStalled{ false };
+
 	void startTimer();
 	float endTimer() const;
 
-	bool assetsLoaded = false;
+	bool assetsLoaded{ false };
 
 	FrameStats& getStats() { return _stats; }
 

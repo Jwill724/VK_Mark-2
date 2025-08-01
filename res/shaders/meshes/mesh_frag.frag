@@ -45,6 +45,9 @@ layout(push_constant) uniform DrawPushConstants {
 	uint transparentDrawCount;
 	uint totalVertexCount;
 	uint totalIndexCount;
+	uint totalMeshCount;
+	uint totalMaterialCount;
+	uint pad0[2];
 } drawData;
 
 const float PI = 3.14159265359;
@@ -84,7 +87,10 @@ void main() {
 	}
 
 	// fetch material data
-	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inst.materialID];
+	uint matID = min(inst.materialID, drawData.totalMaterialCount - 1);
+	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[matID];
+//	uint matID = 1;
+//	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[matID];
 
 	// Environment image indices for IBL
 	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);
@@ -94,9 +100,9 @@ void main() {
 	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
 	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV);
 	vec3 normalMap = texture(combinedSamplers[nonuniformEXT(mat.normalID)], inUV).rgb;
-	float ao       = texture(combinedSamplers[nonuniformEXT(mat.aoID)], inUV).r * mat.ambientOcclusion;
-
-	vec3 emissive = mat.emissiveColor * mat.emissiveStrength;
+	float ao = texture(combinedSamplers[nonuniformEXT(mat.aoID)], inUV).r * mat.ambientOcclusion;
+	vec3 emissiveTex = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
+	vec3 emissive = emissiveTex * mat.emissiveColor * mat.emissiveStrength;
 
 	if (albedoMap.w < mat.alphaCutoff) discard;
 
@@ -110,7 +116,7 @@ void main() {
 	vec3 H = normalize(viewDir + lightDir);
 
 	float roughness = clamp(mrSample.g * mat.metalRoughFactors.y, 0.05, 1.0);
-	float metallic = mrSample.b * mat.metalRoughFactors.x;
+	float metallic = mrSample.r * mat.metalRoughFactors.x;
 
 	float NDF = D_GGX(normal, H, roughness);
 	float G = G_SCHLICKGGX_SMITH(normal, viewDir, lightDir, roughness);
@@ -142,7 +148,7 @@ void main() {
 	finalColor += correctedAmbient + emissive;
 	finalColor += vec3(0.5) * ao;
 
-	//outFragColor = vec4(finalColor, albedoMap.w);
+	outFragColor = vec4(finalColor, albedoMap.w);
 
 	//outFragColor = vec4(reflectionSpecular, albedoMap.w);
 	//outFragColor = vec4(reflectionDiffuse, albedoMap.w);
@@ -156,4 +162,11 @@ void main() {
 	//outFragColor = vec4(inUV, 0.0, 1.0);
 	//outFragColor = vec4(inColor, 1.0);
 	//outFragColor = vec4(emissive, 1.0);
+
+//	vec3 debugColor = vec3(
+//    float(inst.materialID & 0xFFu) / 255.0,
+//    float((inst.materialID >> 8) & 0xFFu) / 255.0,
+//    float((inst.materialID >> 16) & 0xFFu) / 255.0
+//	);
+//	outFragColor = vec4(debugColor, 1.0);
 }
