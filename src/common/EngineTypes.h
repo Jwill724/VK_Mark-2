@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ResourceTypes.h"
+#include "Vk_Types.h"
 #include "ErrorChecking.h"
 
 // General use cpu side

@@ -32,11 +32,11 @@ namespace UserInput {
 		} mousePos;
 
 		MouseState() :
-			position(0.f), delta(0.f), scrollOffset(0.f),
+			position(0.0f), delta(0.0f), scrollOffset(0.0f),
 			leftPressed(false), rightPressed(false),
 			leftHideCursor(false), rightHideCursor(false),
 			leftJustClicked(false), rightJustClicked(false),
-			normalized{ 0.f, 0.f }, mousePos{ 0.0, 0.0 } {
+			normalized{ 0.0f, 0.0f }, mousePos{ 0.0, 0.0 } {
 		}
 
 		void update(GLFWwindow* window);
@@ -52,15 +52,22 @@ namespace UserInput {
 	struct KeyboardState {
 		std::unordered_map<int, KeyState> keyStates;
 
+		inline static constexpr std::array trackedKeys {
+			GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D,
+			GLFW_KEY_SPACE, GLFW_KEY_LEFT_CONTROL, GLFW_KEY_LEFT_SHIFT,
+			GLFW_KEY_ESCAPE, GLFW_KEY_TAB, GLFW_KEY_P, GLFW_KEY_R
+		};
+
 		void update(GLFWwindow* window);
 		bool isPressed(int key) const;
 		bool isHeld(int key) const;
 		bool isReleased(int key) const;
+
+		void resetKeyStates();
 	};
 
 	extern MouseState mouse;
 	extern KeyboardState keyboard;
 
-	// in current scope of defined instance
 	void updateLocalInput(GLFWwindow* window);
 }

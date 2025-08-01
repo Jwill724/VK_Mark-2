@@ -33,7 +33,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
 
-	std::string sponza1Path { "res/assets/sponza.glb" };
+	std::string sponza1Path{ "res/assets/sponza.glb" };
 	auto sponza1File = loadGltfFiles(sponza1Path);
 	ASSERT(sponza1File.has_value());
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
@@ -184,9 +184,11 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 
 			sampl.anisotropyEnable = VK_TRUE;
 			sampl.maxAnisotropy = Backend::getDeviceLimits().maxSamplerAnisotropy;
-			sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+
+			VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+			sampl.addressModeU = addressMode;
+			sampl.addressModeV = addressMode;
+			sampl.addressModeW = addressMode;
 
 			VkSampler newSampler;
 			VK_CHECK(vkCreateSampler(device, &sampl, nullptr, &newSampler));
@@ -202,7 +204,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
-	auto& imageTable = ResourceManager::_globalImageTable;
+	auto& imageManager = ResourceManager::_globalImageManager;
 	auto& resources = Engine::getState().getGPUResources();
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -216,9 +218,38 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		totalMaterialCount += context->gltfAsset.materials.size();
 	}
 
+	resources.stats.totalMaterialCount = static_cast<uint32_t>(totalMaterialCount);
+
 	// Pre-allocate space for flat material staging
 	std::vector<GPUMaterial> materialUploadList;
 	materialUploadList.reserve(totalMaterialCount);
+
+	// Default/fallback images
+	MaterialResources materialResources {
+		.albedoImage = ResourceManager::getWhiteImage(),
+		.albedoSampler = ResourceManager::getDefaultSamplerLinear(),
+		.metalRoughImage = ResourceManager::getMetalRoughImage(),
+		.metalRoughSampler = ResourceManager::getDefaultSamplerNearest(),
+		.aoImage = ResourceManager::getAOImage(),
+		.aoSampler = ResourceManager::getDefaultSamplerNearest(),
+		.normalImage = ResourceManager::getNormalImage(),
+		.normalSampler = ResourceManager::getDefaultSamplerLinear(),
+		.emissiveImage = ResourceManager::getEmissiveImage(),
+		.emissiveSampler = ResourceManager::getDefaultSamplerLinear(),
+	};
+
+	// Default lut indexes
+	uint32_t defaultAlbedoID = imageManager.addCombinedImage(materialResources.albedoImage.imageView, materialResources.albedoSampler);
+	uint32_t defaultMetalRoughID = imageManager.addCombinedImage(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
+	uint32_t defaultNormalID = imageManager.addCombinedImage(materialResources.normalImage.imageView, materialResources.normalSampler);
+	uint32_t defaultAoID = imageManager.addCombinedImage(materialResources.aoImage.imageView, materialResources.aoSampler);
+	uint32_t defaultEmissiveID = imageManager.addCombinedImage(materialResources.emissiveImage.imageView, materialResources.emissiveSampler);
+
+	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultAlbedoID));
+	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
+	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultNormalID));
+	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultAoID));
+	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultEmissiveID));
 
 	for (auto& context : gltfJobs) {
 		if (!context->isJobComplete(GLTFJobType::DecodeImages) ||
@@ -237,20 +268,6 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				continue;
 			}
 
-			// Default/fallback images
-			MaterialResources materialResources {
-				.albedoImage = ResourceManager::getWhiteImage(),
-				.albedoSampler = ResourceManager::getDefaultSamplerLinear(),
-				.metalRoughImage = ResourceManager::getMetalRoughImage(),
-				.metalRoughSampler = ResourceManager::getDefaultSamplerNearest(),
-				.aoImage = ResourceManager::getAOImage(),
-				.aoSampler = ResourceManager::getDefaultSamplerNearest(),
-				.normalImage = ResourceManager::getNormalImage(),
-				.normalSampler = ResourceManager::getDefaultSamplerLinear(),
-				.emissiveImage = ResourceManager::getEmissiveImage(),
-				.emissiveSampler = ResourceManager::getDefaultSamplerLinear(),
-			};
-
 			auto getImageAndSampler = [&](const fastgltf::TextureInfo& texInfo, AllocatedImage& outImg, VkSampler& outSamp) {
 				const auto& texture = gltf.textures[texInfo.textureIndex];
 				if (texture.imageIndex.has_value())
@@ -265,26 +282,47 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			if (mat.pbrData.baseColorTexture.has_value()) {
 				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.albedoImage, materialResources.albedoSampler);
 				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+				newMaterial.albedoID = imageManager.addCombinedImage(materialResources.albedoImage.imageView, materialResources.albedoSampler);
+			}
+			else {
+				newMaterial.albedoID = defaultAlbedoID;
 			}
 
 			if (mat.pbrData.metallicRoughnessTexture.has_value()) {
 				getImageAndSampler(*mat.pbrData.metallicRoughnessTexture, materialResources.metalRoughImage, materialResources.metalRoughSampler);
 				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
+				newMaterial.metalRoughnessID = imageManager.addCombinedImage(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
+			}
+			else {
+				newMaterial.metalRoughnessID = defaultMetalRoughID;
 			}
 
 			if (mat.normalTexture.has_value()) {
 				getImageAndSampler(*mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
 				newMaterial.normalScale = mat.normalTexture->scale;
+				newMaterial.normalID = imageManager.addCombinedImage(materialResources.normalImage.imageView, materialResources.normalSampler);
+			}
+			else {
+				newMaterial.normalID = defaultNormalID;
 			}
 
 			if (mat.occlusionTexture.has_value()) {
 				getImageAndSampler(*mat.occlusionTexture, materialResources.aoImage, materialResources.aoSampler);
 				newMaterial.ambientOcclusion = mat.occlusionTexture->strength;
+				newMaterial.aoID = imageManager.addCombinedImage(materialResources.aoImage.imageView, materialResources.aoSampler);
+			}
+			else {
+				newMaterial.aoID = defaultAoID;
 			}
 
 			if (mat.emissiveTexture.has_value()) {
 				getImageAndSampler(*mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
+				newMaterial.emissiveColor = glm::make_vec3(mat.emissiveFactor.data());
 				newMaterial.emissiveStrength = mat.emissiveStrength;
+				newMaterial.emissiveID = imageManager.addCombinedImage(materialResources.emissiveImage.imageView, materialResources.emissiveSampler);
+			}
+			else {
+				newMaterial.emissiveID = defaultEmissiveID;
 			}
 
 			if (mat.alphaMode == fastgltf::AlphaMode::Mask) {
@@ -298,35 +336,25 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
 
-			// LUT Indexing
-			uint32_t albedoID = imageTable.pushCombined(materialResources.albedoImage.imageView, materialResources.albedoSampler);
-			uint32_t metalRoughID = imageTable.pushCombined(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
-			uint32_t normalID = imageTable.pushCombined(materialResources.normalImage.imageView, materialResources.normalSampler);
-			uint32_t aoID = imageTable.pushCombined(materialResources.aoImage.imageView, materialResources.aoSampler);
-
-			newMaterial.albedoID = albedoID;
-			newMaterial.metalRoughnessID = metalRoughID;
-			newMaterial.normalID = normalID;
-			newMaterial.aoID = aoID;
-
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(albedoID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(metalRoughID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(normalID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(aoID));
+			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
+			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
+			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.normalID));
+			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.aoID));
+			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
 
 			// Store in scene-local and global staging
 			scene.runtime.materials.push_back(newMaterial);
 			materialUploadList.push_back(newMaterial);
 		}
 
-		fmt::print("Scene Materials Processed: {}.\n", scene.runtime.materials.size());
-
 		queue->push(context);
 		context->markJobComplete(GLTFJobType::ProcessMaterials);
 	}
 
+	fmt::print("Scene Materials Processed: {}.\n", totalMaterialCount);
+
 	// Upload flattened materials
-	const size_t totalMatBufSize = materialUploadList.size() * sizeof(GPUMaterial);
+	const size_t totalMatBufSize = totalMaterialCount * sizeof(GPUMaterial);
 	AllocatedBuffer materialStaging = BufferUtils::createBuffer(
 		totalMatBufSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -375,6 +403,8 @@ void AssetManager::processMeshes(
 	ASSERT(queue && "[processMeshes] queue broken.");
 
 	auto gltfJobs = queue->collect();
+
+	auto& resourceStats = Engine::getState().getGPUResources().stats;
 
 	for (auto& context : gltfJobs) {
 		if (!context->isJobComplete(GLTFJobType::ProcessMaterials)) continue;
@@ -484,6 +514,7 @@ void AssetManager::processMeshes(
 					inst->instance.materialID = 0;
 					inst->passType = MaterialPass::Opaque;
 				}
+				ASSERT(inst->instance.materialID <= resourceStats.totalMaterialCount && "MaterialID out of range");
 
 				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
@@ -504,10 +535,14 @@ void AssetManager::processMeshes(
 			}
 		}
 
+		resourceStats.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
+		resourceStats.totalVertexCount = static_cast<uint32_t>(vertices.size());
+		resourceStats.totalIndexCount = static_cast<uint32_t>(indices.size());
+
 		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}, ranges={}\n",
-			meshes.meshData.size(),
-			vertices.size(),
-			indices.size(),
+			resourceStats.totalMeshCount,
+			resourceStats.totalVertexCount,
+			resourceStats.totalIndexCount,
 			drawRanges.size());
 
 		ASSERT(!drawRanges.empty() && !vertices.empty() && !indices.empty() &&

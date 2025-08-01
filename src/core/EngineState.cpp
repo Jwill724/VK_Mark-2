@@ -1,12 +1,11 @@
 #include "pch.h"
 
 #include "EngineState.h"
-#include "common/Vk_Types.h"
-#include "common/EngineConstants.h"
 #include "renderer/gpu_types/CommandBuffer.h"
 #include "renderer/gpu_types/Descriptor.h"
 #include "renderer/renderer.h"
 #include "utils/VulkanUtils.h"
+#include "utils/BufferUtils.h"
 #include "AssetManager.h"
 #include "Environment.h"
 #include "JobSystem.h"
@@ -36,7 +35,7 @@ void EngineState::init() {
 
 	auto& winExtent = Engine::getWindowExtent();
 	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1 });
-	ResourceManager::initRenderImages(dQueue, mainAllocator);
+	ResourceManager::initRenderImages(dQueue, mainAllocator, Renderer::getDrawExtent());
 	ResourceManager::initTextures(_resources.getGraphicsPool(), dQueue, _resources.getTempDeletionQueue(), mainAllocator);
 
 	ResourceManager::initEnvironmentImages(dQueue, mainAllocator);
@@ -57,19 +56,19 @@ void EngineState::init() {
 
 	// early environment compute work
 	// all work is cleared afterward
-	Environment::dispatchEnvironmentMaps(_resources, ResourceManager::_globalImageTable);
+	Environment::dispatchEnvironmentMaps(_resources, ResourceManager::_globalImageManager);
 
 	_resources.getTempDeletionQueue().flush();
 
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
-	_resources.clearLUTEntries();
-	ResourceManager::_globalImageTable.clearTables();
+	_resources.clearLUTEntries(ImageLUTType::Global);
+	ResourceManager::_globalImageManager.clear();
 }
 
 void EngineState::loadAssets(Profiler& engineProfiler) {
 	auto assetQueue = std::make_shared<GLTFAssetQueue>();
 
-	auto mainAllocator = _resources.getAllocator();
+	const auto mainAllocator = _resources.getAllocator();
 
 	EngineStages::SetGoal(ENGINE_STAGE_LOADING_START);
 
@@ -173,9 +172,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			fmt::print("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize);
 
 			auto& resources = Engine::getState().getGPUResources();
-
-			resources.totalVertexCount = static_cast<uint32_t>(totalVertices.size());
-			resources.totalIndexCount = static_cast<uint32_t>(totalIndices.size());
 
 			// Create large GPU buffers for vertex and index
 			AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
@@ -330,19 +326,22 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	engineProfiler.assetsLoaded = availableAssets;
 
-	// Perma imagelut work starts here
-	auto& postProcessImg = ResourceManager::getToneMappingImage();
+	// Define static images in global image table manager
+	auto& globalImgManager = ResourceManager::_globalImageManager;
+
+	auto& toneMapImg = ResourceManager::getToneMappingImage();
 	auto& drawImg = ResourceManager::getDrawImage();
-	postProcessImg.lutEntry.storageImageIndex = ResourceManager::_globalImageTable.pushStorage(postProcessImg.imageView);
-	postProcessImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(drawImg.imageView,
+	toneMapImg.lutEntry.storageImageIndex = globalImgManager.addStorageImage(toneMapImg.imageView);
+	drawImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(drawImg.imageView,
 		ResourceManager::getDefaultSamplerLinear());
-	_resources.addImageLUTEntry(postProcessImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, toneMapImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, drawImg.lutEntry);
 
 	ResourceManager::toneMappingData.brightness = 1.0f;
 	ResourceManager::toneMappingData.saturation = 1.0f;
 	ResourceManager::toneMappingData.contrast = 1.0f;
-	ResourceManager::toneMappingData.cmbViewIdx = postProcessImg.lutEntry.combinedImageIndex;
-	ResourceManager::toneMappingData.storageViewIdx = postProcessImg.lutEntry.storageImageIndex;
+	ResourceManager::toneMappingData.cmbViewIdx = drawImg.lutEntry.combinedImageIndex;
+	ResourceManager::toneMappingData.storageViewIdx = toneMapImg.lutEntry.storageImageIndex;
 
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
@@ -361,21 +360,21 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// Diffuse -> Specular -> BRDF -> Skybox
 	// Uniforms are strict and environment images work in sets of 4
 	std::vector<ImageLUTEntry> tempEnvMapIdx;
-	diffuseImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(diffuseImg.imageView, diffuseSmpl);
+	diffuseImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(diffuseImg.imageView, diffuseSmpl);
 	tempEnvMapIdx.push_back(diffuseImg.lutEntry);
-	_resources.addImageLUTEntry(diffuseImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, diffuseImg.lutEntry);
 
-	specImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(specImg.imageView, specSmpl);
+	specImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specImg.imageView, specSmpl);
 	tempEnvMapIdx.push_back(specImg.lutEntry);
-	_resources.addImageLUTEntry(specImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, specImg.lutEntry);
 
-	brdfImg.lutEntry.combinedImageIndex = ResourceManager::_globalImageTable.pushCombined(brdfImg.storageView, brdfSmpl);
+	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.storageView, brdfSmpl);
 	tempEnvMapIdx.push_back(brdfImg.lutEntry);
-	_resources.addImageLUTEntry(brdfImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, brdfImg.lutEntry);
 
-	skyboxImg.lutEntry.samplerCubeIndex = ResourceManager::_globalImageTable.pushSamplerCube(skyboxImg.imageView, skyboxSmpl);
+	skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
 	tempEnvMapIdx.push_back(skyboxImg.lutEntry);
-	_resources.addImageLUTEntry(skyboxImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTType::Global, skyboxImg.lutEntry);
 
 	ASSERT(tempEnvMapIdx.size() % 4 == 0 && "Environment LUT entries must be in sets of 4");
 
@@ -408,12 +407,12 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	//}
 
 	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(GPUEnvMapIndices),
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, _resources.getAllocator());
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, mainAllocator);
 
 	GPUEnvMapIndices* envMapIndices = reinterpret_cast<GPUEnvMapIndices*>(_resources.envMapSetUBO.mapped);
 	*envMapIndices = ResourceManager::_envMapIndices;
 
-	auto globalSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
+	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter mainWriter;
 	mainWriter.writeBuffer(
 		0,
@@ -421,39 +420,38 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		_resources.getAddressTableBuffer().info.size,
 		0,
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		globalSet);
+		unifiedSet);
 	mainWriter.writeBuffer(
 		1,
 		_resources.envMapSetUBO.buffer,
 		sizeof(GPUEnvMapIndices),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		globalSet);
+		unifiedSet);
 
-	mainWriter.writeFromImageLUT(_resources.getImageLUT(), ResourceManager::_globalImageTable, globalSet);
-	mainWriter.updateSet(Backend::getDevice(), globalSet);
+	mainWriter.writeFromImageLUT(_resources.getLUTManager(ImageLUTType::Global).getEntries(), globalImgManager.table);
+	mainWriter.writeImages(2, DescriptorImageType::SamplerCube, unifiedSet);
+	mainWriter.writeImages(3, DescriptorImageType::StorageImage, unifiedSet);
+	mainWriter.writeImages(4, DescriptorImageType::CombinedSampler, unifiedSet);
+	mainWriter.updateSet(Backend::getDevice(), unifiedSet);
 
 	EngineStages::SetGoal(ENGINE_STAGE_READY);
 }
 
 void EngineState::initRenderer(Profiler& engineProfiler) {
 	auto device = Backend::getDevice();
-	const auto allocator = _resources.getAllocator();
 
-	auto frameLayout = DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout;
 	Renderer::initFrameContexts(
 		device,
-		frameLayout,
-		allocator,
-		_resources.totalVertexCount,
-		_resources.totalIndexCount,
+		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout,
+		_resources,
 		engineProfiler.assetsLoaded);
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();
 	VkDeviceSize totalUsedVRAM = 0;
 
-	totalUsedVRAM += engineProfiler.GetTotalVRAMUsage(physicalDevice, allocator);
+	totalUsedVRAM += engineProfiler.GetTotalVRAMUsage(physicalDevice, _resources.getAllocator());
 	engineProfiler.getStats().vramUsed = totalUsedVRAM;
 }
 

@@ -50,6 +50,7 @@ struct Material {
     uint metalRoughnessID;
     uint normalID;
     uint aoID;
+    uint emissiveID;
 
     vec3 emissiveColor;
     float emissiveStrength;

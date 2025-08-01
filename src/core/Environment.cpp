@@ -72,7 +72,7 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 	return equirect;
 }
 
-void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& imageTable) {
+void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableManager& globalImgTable) {
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
 	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
@@ -97,20 +97,20 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 	ImageLUTEntry tempEntryDiffuse{};
 	ImageLUTEntry tempEntryBRDF{};
 
-	tempEntryEquirect.combinedImageIndex = imageTable.pushCombined(equirect.imageView, skyboxSmpl);
-	tempEntryEquirect.storageImageIndex = imageTable.pushStorage(skyboxImg.storageView);
-	resources.addImageLUTEntry(tempEntryEquirect);
+	tempEntryEquirect.combinedImageIndex = globalImgTable.addCombinedImage(equirect.imageView, skyboxSmpl);
+	tempEntryEquirect.storageImageIndex = globalImgTable.addStorageImage(skyboxImg.storageView);
+	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryEquirect);
 
-	tempEntryBRDF.storageImageIndex = imageTable.pushStorage(brdfImg.storageView);
-	resources.addImageLUTEntry(tempEntryBRDF);
+	tempEntryBRDF.storageImageIndex = globalImgTable.addStorageImage(brdfImg.storageView);
+	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryBRDF);
 
-	tempEntryDiffuse.samplerCubeIndex = imageTable.pushSamplerCube(skyboxImg.imageView, diffuseSmpl);
-	tempEntryDiffuse.storageImageIndex = imageTable.pushStorage(diffuseImg.storageView);
-	resources.addImageLUTEntry(tempEntryDiffuse);
+	tempEntryDiffuse.samplerCubeIndex = globalImgTable.addCubeImage(skyboxImg.imageView, diffuseSmpl);
+	tempEntryDiffuse.storageImageIndex = globalImgTable.addStorageImage(diffuseImg.storageView);
+	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryDiffuse);
 
 	// Storage view defined per mip level
 
-	uint32_t skyboxIdx = imageTable.pushSamplerCube(skyboxImg.imageView, specSmpl);
+	uint32_t skyboxIdx = globalImgTable.addCubeImage(skyboxImg.imageView, specSmpl);
 	const uint32_t specMipLevels = specImg.mipLevelCount;
 
 	std::vector<SpecularPC> specularPushConstants;
@@ -121,10 +121,10 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 		tempEntrySpecular.samplerCubeIndex = skyboxIdx;
 
 		VkImageView mipView = specImg.storageViews[mip];
-		uint32_t storageIdx = imageTable.pushStorage(mipView);
+		uint32_t storageIdx = globalImgTable.addStorageImage(mipView);
 		tempEntrySpecular.storageImageIndex = storageIdx;
 
-		resources.addImageLUTEntry(tempEntrySpecular);
+		resources.addImageLUTEntry(ImageLUTType::Global, tempEntrySpecular);
 
 		SpecularPC pc{};
 		pc.skyboxViewIdx = tempEntrySpecular.samplerCubeIndex;
@@ -185,7 +185,10 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTable& i
 
 	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter writer;
-	writer.writeFromImageLUT(resources.getImageLUT(), imageTable, set);
+	writer.writeFromImageLUT(resources.getLUTManager(ImageLUTType::Global).getEntries(), globalImgTable.table);
+	writer.writeImages(2, DescriptorImageType::SamplerCube, set);
+	writer.writeImages(3, DescriptorImageType::StorageImage, set);
+	writer.writeImages(4, DescriptorImageType::CombinedSampler, set);
 	writer.updateSet(device, set);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {

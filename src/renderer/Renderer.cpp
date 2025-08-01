@@ -6,11 +6,10 @@
 #include "RenderScene.h"
 #include "SceneGraph.h"
 #include "utils/RendererUtils.h"
+#include "utils/BufferUtils.h"
 #include "core/AssetManager.h"
 #include "gpu_types/PipelineManager.h"
 #include "gpu_types/CommandBuffer.h"
-
-#include "common/ResourceTypes.h"
 
 namespace Renderer {
 	TimelineSync _transferSync;
@@ -22,10 +21,8 @@ namespace Renderer {
 
 void Renderer::initFrameContexts(
 	VkDevice device,
-	VkDescriptorSetLayout frameLayout,
-	const VmaAllocator allocator,
-	const uint32_t totalVertexCount,
-	const uint32_t totalIndexCount,
+	const VkDescriptorSetLayout frameLayout,
+	GPUResources& gpuResouces,
 	bool isAssetsLoaded)
 {
 	auto& swapDef = Backend::getSwapchainDef();
@@ -53,6 +50,9 @@ void Renderer::initFrameContexts(
 			TRANSFORM_LIST_SIZE_BYTES;
 	}
 
+	const auto allocator = gpuResouces.getAllocator();
+	const auto stats = gpuResouces.stats;
+
 	fmt::print("Frames in flight:[{}]\n", framesInFlight);
 
 	for (uint32_t i = 0; i < framesInFlight; ++i) {
@@ -78,10 +78,12 @@ void Renderer::initFrameContexts(
 			VMA_MEMORY_USAGE_GPU_ONLY,
 			allocator);
 
-		frame->drawData.totalVertexCount = totalVertexCount;
-		frame->drawData.totalIndexCount = totalIndexCount;
+		frame->drawData.totalVertexCount = stats.totalVertexCount;
+		frame->drawData.totalIndexCount = stats.totalIndexCount;
+		frame->drawData.totalMeshCount = stats.totalMeshCount;
+		frame->drawData.totalMaterialCount = stats.totalMaterialCount;
 
-		if (totalGPUStagingSize > 0) {
+		if (isAssetsLoaded) {
 			frame->addressTableStaging = BufferUtils::createBuffer(
 				sizeof(GPUAddressTable),
 				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -138,20 +140,6 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		VK_NULL_HANDLE,
 		&imageIndex);
 
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
-		Backend::getGraphicsQueue().waitIdle();
-		Backend::resizeSwapchain();
-		return;
-	}
-	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
-
-	frameCtx.swapchainImageIndex = imageIndex;
-
-	// Mark image as in use
-	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
-
-	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
-
 	if (!frameCtx.transferCmds.empty()) {
 		vkFreeCommandBuffers(device, frameCtx.transferPool,
 			static_cast<uint32_t>(frameCtx.transferCmds.size()),
@@ -167,6 +155,20 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		frameCtx.computeCmds.clear();
 		frameCtx.computeDeletion.process(device);
 	}
+
+	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
+		Backend::getGraphicsQueue().waitIdle();
+		Backend::resizeSwapchain();
+		return;
+	}
+	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
+
+	frameCtx.swapchainImageIndex = imageIndex;
+
+	// Mark image as in use
+	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
+
+	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
 
 	frameCtx.cpuDeletion.flush();
 }
@@ -299,8 +301,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// If no visibles are present, early outs upload and table isn't marked dirty
 	bool descriptorWriteNeeded = false;
 	if (frameCtx.addressTableDirty) {
-		frameCtx.writer.clear();
-		frameCtx.writer.writeBuffer(
+		frameCtx.descriptorWriter.clear();
+		frameCtx.descriptorWriter.writeBuffer(
 			0,
 			frameCtx.addressTableBuffer.buffer,
 			frameCtx.addressTableBuffer.info.size,
@@ -313,10 +315,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	if (!descriptorWriteNeeded) {
-		frameCtx.writer.clear(); // Only clear if it wasn't already cleared
+		frameCtx.descriptorWriter.clear(); // Only clear if it wasn't already cleared
 	}
 
-	frameCtx.writer.writeBuffer(
+	frameCtx.descriptorWriter.writeBuffer(
 		1,
 		frameCtx.sceneDataBuffer.buffer,
 		sizeof(GPUSceneData),
@@ -324,7 +326,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		frameCtx.set
 	);
-	frameCtx.writer.updateSet(device, frameCtx.set);
+	frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
 
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);

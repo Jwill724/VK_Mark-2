@@ -71,6 +71,7 @@ struct GPUMaterial {
 	uint32_t metalRoughnessID = UINT32_MAX;
 	uint32_t normalID = UINT32_MAX;
 	uint32_t aoID = UINT32_MAX;
+	uint32_t emissiveID = UINT32_MAX;
 
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;

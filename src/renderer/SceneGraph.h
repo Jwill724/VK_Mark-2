@@ -1,7 +1,8 @@
 #pragma once
 
-#include "common/EngineTypes.h"
 #include "common/Vk_Types.h"
+#include "common/ResourceTypes.h"
+#include "common/EngineTypes.h"
 
 class IRenderable {
 public:

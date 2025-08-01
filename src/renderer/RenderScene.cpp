@@ -1,6 +1,5 @@
 #include "pch.h"
 
-#include "common/Vk_Types.h"
 #include "RenderScene.h"
 #include "Renderer.h"
 #include "vulkan/Backend.h"
@@ -71,6 +70,7 @@ void RenderScene::updateCamera() {
 // Temporary, need a place to center ideas
 void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	// === Update and draw scene ===
+
 	updateCamera();
 
 	// first frustum extracted to start chain of reuse
@@ -94,12 +94,12 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	// No scene loaded in
 	if (_loadedScenes.empty()) {
-		frameCtx.writer.clear();
+		frameCtx.descriptorWriter.clear();
 
 		// Fully empty storage buffer writing
 		// Only update ssbo once if no scene is loaded
 		if (!frameCtx.addressTableDirty) {
-			frameCtx.writer.writeBuffer(
+			frameCtx.descriptorWriter.writeBuffer(
 				0,
 				frameCtx.addressTableBuffer.buffer,
 				frameCtx.addressTableBuffer.info.size,
@@ -112,7 +112,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		}
 
 		// The one write needed for scene uniform
-		frameCtx.writer.writeBuffer(
+		frameCtx.descriptorWriter.writeBuffer(
 			1,
 			frameCtx.sceneDataBuffer.buffer,
 			sizeof(GPUSceneData),
@@ -121,7 +121,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 			frameCtx.set
 		);
 
-		frameCtx.writer.updateSet(device, frameCtx.set);
+		frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
 
 		return;
 	}
@@ -151,8 +151,8 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 			frameCtx.meshDataSet = true;
 
-			frameCtx.writer.clear();
-			frameCtx.writer.writeBuffer(
+			frameCtx.descriptorWriter.clear();
+			frameCtx.descriptorWriter.writeBuffer(
 				0,
 				frameCtx.addressTableBuffer.buffer,
 				frameCtx.addressTableBuffer.info.size,
@@ -160,7 +160,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 				frameCtx.set
 			);
-			frameCtx.writer.updateSet(device, frameCtx.set);
+			frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
 		}
 		else {
 			_currentSceneMeshIDs = meshes.extractAllMeshIDs();
