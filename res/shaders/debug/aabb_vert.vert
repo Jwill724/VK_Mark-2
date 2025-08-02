@@ -2,7 +2,7 @@
 
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_separate_shader_objects : require
 
 layout(buffer_reference, scalar) readonly buffer VertexBuffer
 {

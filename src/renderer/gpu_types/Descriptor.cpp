@@ -43,7 +43,7 @@ void DescriptorSetOverwatch::initDescriptors(DeletionQueue& queue) {
 // Unified descriptor bindings:
 // Global access constant descriptors
 // [0] = GPU address table (draw ranges/material buffers)
-// [1] = UBO (Environment image set indexes)
+// [1] = EnvSetUBO (Environment image indexes)
 // [2] = Samplercube images (environment images)
 // [3] = Storage image array (All writable images)
 // [4] = Combined sampler (All static global samplers, e.g, material textures)
@@ -56,13 +56,28 @@ void DescriptorSetOverwatch::initDescriptors(DeletionQueue& queue) {
 void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
-	mainDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
-	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
+	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
+	mainDescriptorManager.addBinding(GLOBAL_BINDING_ENV_INDEX, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
 
 	VkShaderStageFlags imageStageFlags = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-	mainDescriptorManager.addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_SAMPLER_CUBE_IMAGES); // 100 image count
-	mainDescriptorManager.addBinding(3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, imageStageFlags, MAX_STORAGE_IMAGES); // 100 image count
-	mainDescriptorManager.addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageStageFlags, MAX_COMBINED_SAMPLERS_IMAGES); // 1000 image count
+	mainDescriptorManager.addBinding(
+		GLOBAL_BINDING_SAMPLER_CUBE,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		imageStageFlags,
+		MAX_SAMPLER_CUBE_IMAGES // 100 image count
+	);
+	mainDescriptorManager.addBinding(
+		GLOBAL_BINDING_STORAGE_IMAGE,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		imageStageFlags,
+		MAX_STORAGE_IMAGES // 100 image count
+	);
+	mainDescriptorManager.addBinding(
+		GLOBAL_BINDING_COMBINED_SAMPLER,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		imageStageFlags,
+		MAX_COMBINED_SAMPLERS_IMAGES // 1000 image count
+	);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout();
 
@@ -84,8 +99,8 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(DeletionQueue& queue) {
 void DescriptorSetOverwatch::initFrameDescriptors(DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
-	mainDescriptorManager.addBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
-	mainDescriptorManager.addBinding(1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
+	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
+	mainDescriptorManager.addBinding(FRAME_BINDING_SCENE, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_ALL, 1);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout();
 	frameDescriptor.descriptorLayout = layout;

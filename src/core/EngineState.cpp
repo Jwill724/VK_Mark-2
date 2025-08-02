@@ -40,7 +40,7 @@ void EngineState::init() {
 
 	ResourceManager::initEnvironmentImages(dQueue, mainAllocator);
 
-	// address table buffer
+	// main address table buffer
 	_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
 		sizeof(GPUAddressTable),
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -61,7 +61,7 @@ void EngineState::init() {
 	_resources.getTempDeletionQueue().flush();
 
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
-	_resources.clearLUTEntries(ImageLUTType::Global);
+	_resources.clearLUTEntries();
 	ResourceManager::_globalImageManager.clear();
 }
 
@@ -334,8 +334,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	toneMapImg.lutEntry.storageImageIndex = globalImgManager.addStorageImage(toneMapImg.imageView);
 	drawImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(drawImg.imageView,
 		ResourceManager::getDefaultSamplerLinear());
-	_resources.addImageLUTEntry(ImageLUTType::Global, toneMapImg.lutEntry);
-	_resources.addImageLUTEntry(ImageLUTType::Global, drawImg.lutEntry);
+	_resources.addImageLUTEntry(toneMapImg.lutEntry);
+	_resources.addImageLUTEntry(drawImg.lutEntry);
 
 	ResourceManager::toneMappingData.brightness = 1.0f;
 	ResourceManager::toneMappingData.saturation = 1.0f;
@@ -362,19 +362,19 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	std::vector<ImageLUTEntry> tempEnvMapIdx;
 	diffuseImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(diffuseImg.imageView, diffuseSmpl);
 	tempEnvMapIdx.push_back(diffuseImg.lutEntry);
-	_resources.addImageLUTEntry(ImageLUTType::Global, diffuseImg.lutEntry);
+	_resources.addImageLUTEntry(diffuseImg.lutEntry);
 
 	specImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specImg.imageView, specSmpl);
 	tempEnvMapIdx.push_back(specImg.lutEntry);
-	_resources.addImageLUTEntry(ImageLUTType::Global, specImg.lutEntry);
+	_resources.addImageLUTEntry(specImg.lutEntry);
 
 	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.storageView, brdfSmpl);
 	tempEnvMapIdx.push_back(brdfImg.lutEntry);
-	_resources.addImageLUTEntry(ImageLUTType::Global, brdfImg.lutEntry);
+	_resources.addImageLUTEntry(brdfImg.lutEntry);
 
 	skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
 	tempEnvMapIdx.push_back(skyboxImg.lutEntry);
-	_resources.addImageLUTEntry(ImageLUTType::Global, skyboxImg.lutEntry);
+	_resources.addImageLUTEntry(skyboxImg.lutEntry);
 
 	ASSERT(tempEnvMapIdx.size() % 4 == 0 && "Environment LUT entries must be in sets of 4");
 
@@ -390,49 +390,45 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		ASSERT(brdf.combinedImageIndex != UINT32_MAX);
 		ASSERT(skybox.samplerCubeIndex != UINT32_MAX);
 
-		glm::vec4 envEntry{};
-		envEntry.x = static_cast<float>(diffuse.samplerCubeIndex);
-		envEntry.y = static_cast<float>(specular.samplerCubeIndex);
-		envEntry.z = static_cast<float>(brdf.combinedImageIndex);
-		envEntry.w = static_cast<float>(skybox.samplerCubeIndex);
+		glm::uvec4 envEntry{};
+		envEntry.x = diffuse.samplerCubeIndex;
+		envEntry.y = specular.samplerCubeIndex;
+		envEntry.z = brdf.combinedImageIndex;
+		envEntry.w = skybox.samplerCubeIndex;
 
 		ASSERT(setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
-		ResourceManager::_envMapIndices.indices[setIndex++] = envEntry;
+		ResourceManager::_envMapIdxArray.indices[setIndex++] = envEntry;
 	}
 
-	//for (int i = 0; i < MAX_ENV_SETS; i++) {
-	//	const auto& e = ResourceManager::_envMapIndices.indices[i];
-	//	fmt::print("[EnvMap {}] Diffuse: {:.0f}, Specular: {:.0f}, BRDF: {:.0f}, Skybox: {:.0f}\n",
-	//		i, e.x, e.y, e.z, e.w);
-	//}
-
-	_resources.envMapSetUBO = BufferUtils::createBuffer(sizeof(GPUEnvMapIndices),
+	_resources.envMapIndexBuffer = BufferUtils::createBuffer(sizeof(GPUEnvMapIndexArray),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, mainAllocator);
 
-	GPUEnvMapIndices* envMapIndices = reinterpret_cast<GPUEnvMapIndices*>(_resources.envMapSetUBO.mapped);
-	*envMapIndices = ResourceManager::_envMapIndices;
+	GPUEnvMapIndexArray* envMapIndices = reinterpret_cast<GPUEnvMapIndexArray*>(_resources.envMapIndexBuffer.mapped);
+	vmaFlushAllocation(mainAllocator, _resources.envMapIndexBuffer.allocation, 0, VK_WHOLE_SIZE);
+	*envMapIndices = ResourceManager::_envMapIdxArray;
 
+	// Global descriptor writing and update
 	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter mainWriter;
 	mainWriter.writeBuffer(
-		0,
+		ADDRESS_TABLE_BINDING,
 		_resources.getAddressTableBuffer().buffer,
 		_resources.getAddressTableBuffer().info.size,
 		0,
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 		unifiedSet);
 	mainWriter.writeBuffer(
-		1,
-		_resources.envMapSetUBO.buffer,
-		sizeof(GPUEnvMapIndices),
+		GLOBAL_BINDING_ENV_INDEX,
+		_resources.envMapIndexBuffer.buffer,
+		sizeof(GPUEnvMapIndexArray),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		unifiedSet);
 
-	mainWriter.writeFromImageLUT(_resources.getLUTManager(ImageLUTType::Global).getEntries(), globalImgManager.table);
-	mainWriter.writeImages(2, DescriptorImageType::SamplerCube, unifiedSet);
-	mainWriter.writeImages(3, DescriptorImageType::StorageImage, unifiedSet);
-	mainWriter.writeImages(4, DescriptorImageType::CombinedSampler, unifiedSet);
+	mainWriter.writeFromImageLUT(_resources.getLUTManager().getEntries(), globalImgManager.table);
+	mainWriter.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, unifiedSet);
+	mainWriter.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, unifiedSet);
+	mainWriter.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, unifiedSet);
 	mainWriter.updateSet(Backend::getDevice(), unifiedSet);
 
 	EngineStages::SetGoal(ENGINE_STAGE_READY);
@@ -445,7 +441,8 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 		device,
 		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout,
 		_resources,
-		engineProfiler.assetsLoaded);
+		engineProfiler.assetsLoaded
+	);
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();

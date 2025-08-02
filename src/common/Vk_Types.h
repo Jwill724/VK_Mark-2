@@ -76,14 +76,14 @@ struct GPUMaterial {
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;
 
-	float ambientOcclusion = 0.9f;
+	float ambientOcclusion = 1.0f;
 	float normalScale = 1.0f;
 	float alphaCutoff = 1.0f;
 	uint32_t passType = 0;
 };
 
-
 // Uniforms
+
 struct alignas(16) GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
@@ -96,10 +96,10 @@ struct alignas(16) GPUSceneData {
 static_assert(sizeof(GPUSceneData) == 256);
 
 // x = diffuse, y = specular, z = brdf, w = skybox
-struct alignas(16) GPUEnvMapIndices {
-	glm::vec4 indices[MAX_ENV_SETS];
+struct alignas(16) GPUEnvMapIndexArray {
+	glm::uvec4 indices[MAX_ENV_SETS];
 };
-static_assert(sizeof(GPUEnvMapIndices) == 256);
+static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 
 // GPU only buffers
 enum class AddressBufferType : uint32_t {

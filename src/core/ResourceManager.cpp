@@ -9,9 +9,8 @@
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
-	//ImageTableManager _materialTextureManager;
 
-	GPUEnvMapIndices _envMapIndices;
+	GPUEnvMapIndexArray _envMapIdxArray;
 
 	// primary render image
 	AllocatedImage _drawImage;
@@ -83,9 +82,6 @@ void GPUResources::init(VkDevice device) {
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
 	transferPool = CommandBuffer::createCommandPool(device, Backend::getTransferQueue().familyIndex);
 	computePool = CommandBuffer::createCommandPool(device, Backend::getComputeQueue().familyIndex);
-
-	lutManagers.emplace(ImageLUTType::Global, std::make_unique<ImageLUTManager>());
-	//lutManagers.emplace(ImageLUTType::MaterialTextures, std::make_unique<ImageLUTManager>());
 }
 
 void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, bool force) {
@@ -127,8 +123,8 @@ void GPUResources::cleanup(VkDevice device) {
 	if (registeredMeshes.meshIDBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyAllocatedBuffer(registeredMeshes.meshIDBuffer, allocator);
 
-	if (envMapSetUBO.buffer != VK_NULL_HANDLE)
-		BufferUtils::destroyAllocatedBuffer(envMapSetUBO, allocator);
+	if (envMapIndexBuffer.buffer != VK_NULL_HANDLE)
+		BufferUtils::destroyAllocatedBuffer(envMapIndexBuffer, allocator);
 
 	if (addressTableStagingBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyAllocatedBuffer(addressTableStagingBuffer, allocator);

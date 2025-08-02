@@ -18,8 +18,8 @@ struct SceneData {
 // Number of env sets stored in the buffer (must match C++ side)
 const uint MAX_ENV_SETS = 16u;
 
-struct EnvMapBindingSet {
-    vec4 mapIndices[MAX_ENV_SETS];
+struct EnvMapIndexArray {
+    uvec4 indices[MAX_ENV_SETS];
     // x = diffuseMapIndex
     // y = specularMapIndex
     // z = brdfLUTIndex
@@ -40,7 +40,6 @@ struct Vertex {
     vec2 uv;
     vec4 color;
 };
-
 
 struct Material {
     vec4 colorFactor;

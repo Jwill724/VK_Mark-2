@@ -23,10 +23,18 @@ static constexpr uint32_t MSAACOUNT_8 = 8;
 static constexpr uint32_t MSAACOUNT_4 = 4;
 static constexpr uint32_t MSAACOUNT_2 = 2;
 constexpr uint32_t MAX_MIP_LEVELS = 12;
-constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * vec4(16 bytes)
-constexpr uint32_t MAX_MATERIAL_TEXTURES = 2048;
+constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * uvec4(16 bytes)
+constexpr uint32_t MAX_MATERIALS = 512;
 
-// Descriptor max sizing
+// Descriptor info
+constexpr uint32_t GLOBAL_SET = 0;
+constexpr uint32_t FRAME_SET = 1;
+constexpr uint32_t ADDRESS_TABLE_BINDING = 0;
+constexpr uint32_t GLOBAL_BINDING_ENV_INDEX = 1;
+constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE = 2;
+constexpr uint32_t GLOBAL_BINDING_STORAGE_IMAGE = 3;
+constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 4;
+constexpr uint32_t FRAME_BINDING_SCENE = 1;
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100;
 constexpr uint32_t MAX_STORAGE_IMAGES = 100;
 constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 1000;

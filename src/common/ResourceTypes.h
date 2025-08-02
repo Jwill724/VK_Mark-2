@@ -18,10 +18,10 @@ struct EqualPair {
 	}
 };
 
-enum class ImageLUTType {
-	Global,
-	MaterialTextures
-};
+//enum class ImageLUTType {
+//	Global,
+//	MaterialTextures
+//};
 
 struct ImageLUTEntry {
 	uint32_t combinedImageIndex = UINT32_MAX;

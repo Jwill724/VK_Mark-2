@@ -303,7 +303,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	if (frameCtx.addressTableDirty) {
 		frameCtx.descriptorWriter.clear();
 		frameCtx.descriptorWriter.writeBuffer(
-			0,
+			ADDRESS_TABLE_BINDING,
 			frameCtx.addressTableBuffer.buffer,
 			frameCtx.addressTableBuffer.info.size,
 			0,
@@ -319,7 +319,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	frameCtx.descriptorWriter.writeBuffer(
-		1,
+		FRAME_BINDING_SCENE,
 		frameCtx.sceneDataBuffer.buffer,
 		sizeof(GPUSceneData),
 		0,

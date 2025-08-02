@@ -35,23 +35,20 @@ public:
 	std::vector<GPUDrawRange>& getDrawRanges() { return drawRanges; }
 	MeshRegistry& getResgisteredMeshes() { return registeredMeshes; }
 
-	ImageLUTManager& getLUTManager(ImageLUTType type) {
-		auto it = lutManagers.find(type);
-		ASSERT(it != lutManagers.end() && "Unknown ImageLUTType in getLUTManager()");
-		return *(it->second);
+	ImageLUTManager& getLUTManager() { return lutManager; }
+
+	void addImageLUTEntry(const ImageLUTEntry& entry) {
+		getLUTManager().addEntry(entry);
 	}
 
-	void addImageLUTEntry(ImageLUTType type, const ImageLUTEntry& entry) {
-		getLUTManager(type).addEntry(entry);
-	}
-
-	void clearLUTEntries(ImageLUTType type) {
-		getLUTManager(type).clear();
+	void clearLUTEntries() {
+		getLUTManager().clear();
 	}
 
 	ResourceStats stats;
 
-	AllocatedBuffer envMapSetUBO;
+	// Uniform buffers
+	AllocatedBuffer envMapIndexBuffer;
 
 	void cleanup(VkDevice device);
 
@@ -68,7 +65,7 @@ private:
 		addressTableDirty = true;
 	}
 
-	std::unordered_map<ImageLUTType, std::unique_ptr<ImageLUTManager>> lutManagers;
+	ImageLUTManager lutManager;
 
 	std::vector<GPUDrawRange> drawRanges;
 
@@ -86,9 +83,8 @@ private:
 };
 
 namespace ResourceManager {
-	extern ImageTableManager _globalImageManager; // static images
-	//extern ImageTableManager _materialTextureManager; // per frame based
-	extern GPUEnvMapIndices _envMapIndices;
+	extern ImageTableManager _globalImageManager;
+	extern GPUEnvMapIndexArray _envMapIdxArray;
 
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();

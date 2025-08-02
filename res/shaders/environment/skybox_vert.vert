@@ -1,6 +1,6 @@
 #version 450
 
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_separate_shader_objects : require
 
 layout(push_constant) uniform PC {
     mat4 viewproj;

@@ -1,12 +1,15 @@
 #version 450
 
-#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_separate_shader_objects : require
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/set_bindings.glsl"
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout(set = 0, binding = 2) uniform samplerCube envMaps[]; // skybox image view cube map
-layout(set = 0, binding = 3, rgba32f) writeonly uniform image2DArray storageImages[]; // specular storage view
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_SAMPLER_CUBE) uniform samplerCube envMaps[]; // skybox image view cube map
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba32f) writeonly uniform image2DArray storageImages[]; // specular storage view
 
 
 const float PI = 3.14159265359;
