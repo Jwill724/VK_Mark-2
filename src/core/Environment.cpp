@@ -75,10 +75,10 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableManager& globalImgTable) {
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
-	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
-		resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+	AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
+		resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/rogland_clear_night_4k.hdr",
 	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
 
@@ -99,14 +99,14 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 
 	tempEntryEquirect.combinedImageIndex = globalImgTable.addCombinedImage(equirect.imageView, skyboxSmpl);
 	tempEntryEquirect.storageImageIndex = globalImgTable.addStorageImage(skyboxImg.storageView);
-	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryEquirect);
+	resources.addImageLUTEntry(tempEntryEquirect);
 
 	tempEntryBRDF.storageImageIndex = globalImgTable.addStorageImage(brdfImg.storageView);
-	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryBRDF);
+	resources.addImageLUTEntry(tempEntryBRDF);
 
 	tempEntryDiffuse.samplerCubeIndex = globalImgTable.addCubeImage(skyboxImg.imageView, diffuseSmpl);
 	tempEntryDiffuse.storageImageIndex = globalImgTable.addStorageImage(diffuseImg.storageView);
-	resources.addImageLUTEntry(ImageLUTType::Global, tempEntryDiffuse);
+	resources.addImageLUTEntry(tempEntryDiffuse);
 
 	// Storage view defined per mip level
 
@@ -124,7 +124,7 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 		uint32_t storageIdx = globalImgTable.addStorageImage(mipView);
 		tempEntrySpecular.storageImageIndex = storageIdx;
 
-		resources.addImageLUTEntry(ImageLUTType::Global, tempEntrySpecular);
+		resources.addImageLUTEntry(tempEntrySpecular);
 
 		SpecularPC pc{};
 		pc.skyboxViewIdx = tempEntrySpecular.samplerCubeIndex;
@@ -185,15 +185,15 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 
 	auto set = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter writer;
-	writer.writeFromImageLUT(resources.getLUTManager(ImageLUTType::Global).getEntries(), globalImgTable.table);
-	writer.writeImages(2, DescriptorImageType::SamplerCube, set);
-	writer.writeImages(3, DescriptorImageType::StorageImage, set);
-	writer.writeImages(4, DescriptorImageType::CombinedSampler, set);
+	writer.writeFromImageLUT(resources.getLUTManager().getEntries(), globalImgTable.table);
+	writer.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, set);
+	writer.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, set);
+	writer.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, set);
 	writer.updateSet(device, set);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		// Bind once
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, 0, 1, &set, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, GLOBAL_SET, 1, &set, 0, nullptr);
 
 		dispatchHDRToCubemap(cmd, tempEntryEquirect, Pipelines::hdr2cubemapPipeline, Pipelines::_globalLayout);
 		RendererUtils::transitionImage(cmd,

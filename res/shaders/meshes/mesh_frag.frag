@@ -8,6 +8,7 @@
 #extension GL_ARB_separate_shader_objects : require
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 #include "../include/pbr.glsl"
 
@@ -15,28 +16,23 @@ layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inUV;
 layout(location = 3) in vec3 inWorldPos;
-layout(location = 4) flat in uint vDrawID;
-layout(location = 5) flat in uint vInstanceID;
+layout(location = 4) flat in uint inMaterialID;
 
 layout(location = 0) out vec4 outFragColor;
 
-layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
+layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
-layout(set = 0, binding = 1) uniform EnvMapData {
-    EnvMapBindingSet envMapSet;
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_ENV_INDEX) uniform EnvMapData {
+    EnvMapIndexArray envMapSet;
 };
 
-layout(set = 0, binding = 2) uniform samplerCube envMaps[];
-layout(set = 0, binding = 4) uniform sampler2D combinedSamplers[];
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_SAMPLER_CUBE) uniform samplerCube envMaps[];
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
 
 
-layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
-    GPUAddressTable frameAddressTable;
-};
-
-layout(set = 1, binding = 1) uniform SceneUBO {
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
     SceneData scene;
 };
 
@@ -52,9 +48,9 @@ layout(push_constant) uniform DrawPushConstants {
 
 const float PI = 3.14159265359;
 const float MAX_REFLECTION_LOD = 4.0;
-const uint DIFF_IRRA_MIP_LEVEL = 2;
+const uint DIFF_IRRA_MIP_LEVEL = 5;
 const bool FLIP_ENVIRONMENT_MAP_Y = true;
-const float MAX_AO_SATURATION = 10.0;
+const float MAX_AO_SATURATION = 4.0;
 
 vec3 DiffuseIrradiance(vec3 N, uint diffuseIdx) {
 	vec3 ENV_N = N;
@@ -71,31 +67,8 @@ vec3 SpecularReflection(vec3 V, vec3 N, float roughness, vec3 F, uint specularId
 }
 
 void main() {
-	Instance inst;
-
-	if (vDrawID < drawData.opaqueDrawCount) {
-		// Opaque instances
-		OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
-		inst = instBuf.opaqueInstances[vInstanceID];
-	} else {
-		// Transparent instances
-		uint tIndex = vDrawID - drawData.opaqueDrawCount;
-		if (tIndex >= drawData.transparentDrawCount) return;
-
-		TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
-		inst = instBuf.transparentInstances[vInstanceID];
-	}
-
 	// fetch material data
-	uint matID = min(inst.materialID, drawData.totalMaterialCount - 1);
-	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[matID];
-//	uint matID = 1;
-//	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[matID];
-
-	// Environment image indices for IBL
-	uint diffuseIdx = uint(envMapSet.mapIndices[0].x);
-	uint specularIdx = uint(envMapSet.mapIndices[0].y);
-	uint brdfIdx = uint(envMapSet.mapIndices[0].z);
+	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inMaterialID];
 
 	vec4 albedoMap = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
 	vec4 mrSample  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV);
@@ -103,6 +76,11 @@ void main() {
 	float ao = texture(combinedSamplers[nonuniformEXT(mat.aoID)], inUV).r * mat.ambientOcclusion;
 	vec3 emissiveTex = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
 	vec3 emissive = emissiveTex * mat.emissiveColor * mat.emissiveStrength;
+
+	// Environment image indices for IBL
+	uint diffuseIdx = uint(envMapSet.indices[0].x);
+	uint specularIdx = uint(envMapSet.indices[0].y);
+	uint brdfIdx = uint(envMapSet.indices[0].z);
 
 	if (albedoMap.w < mat.alphaCutoff) discard;
 
@@ -148,7 +126,7 @@ void main() {
 	finalColor += correctedAmbient + emissive;
 	finalColor += vec3(0.5) * ao;
 
-	outFragColor = vec4(finalColor, albedoMap.w);
+	//outFragColor = vec4(finalColor, albedoMap.w);
 
 	//outFragColor = vec4(reflectionSpecular, albedoMap.w);
 	//outFragColor = vec4(reflectionDiffuse, albedoMap.w);
@@ -156,6 +134,7 @@ void main() {
 	//outFragColor = vec4(diffuse, 1.0);
 	//outFragColor = vec4(vec3(metallic), 1.0);
 	//outFragColor = vec4(vec3(roughness), 1.0);
+	//outFragColor = vec4(vec3(ao), 1.0);
 	outFragColor = vec4(albedo, albedoMap.w);
 	//outFragColor = vec4(normalize(reflect(-viewDir, normal)) * 0.5 + 0.5, 1.0);
 	//outFragColor = vec4(sampledNormal, 1.0);

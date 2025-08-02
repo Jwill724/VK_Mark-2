@@ -8,24 +8,24 @@
 #extension GL_ARB_separate_shader_objects : require
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec3 outColor;
 layout(location = 2) out vec2 outUV;
 layout(location = 3) out vec3 outWorldPos;
-layout(location = 4) flat out uint vDrawID;
-layout(location = 5) flat out uint vInstanceID;
+layout(location = 4) flat out uint outMaterialID;
 
-layout(set = 0, binding = 0, scalar) readonly buffer GlobalAddressTableBuffer {
+layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
     GPUAddressTable globalAddressTable;
 };
 
-layout(set = 1, binding = 0, scalar) readonly buffer FrameAddressTableBuffer {
+layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
     GPUAddressTable frameAddressTable;
 };
 
-layout(set = 1, binding = 1) uniform SceneUBO {
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
     SceneData scene;
 };
 
@@ -40,30 +40,31 @@ layout(push_constant) uniform DrawPushConstants {
 } drawData;
 
 void main() {
-    vDrawID = gl_DrawIDARB;
+    uint drawID = gl_DrawIDARB;
 
     IndirectDrawCmd drawCmd;
     Instance inst;
 
-    if (vDrawID < drawData.opaqueDrawCount) {
+    uint instanceID;
+    if (drawID < drawData.opaqueDrawCount) {
         // opaque
         OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
         OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
 
-        drawCmd     = cmdBuf.opaqueIndirect[vDrawID];
-        vInstanceID = drawCmd.firstInstance + gl_InstanceIndex;
-        inst        = instBuf.opaqueInstances[vInstanceID];
+        drawCmd     = cmdBuf.opaqueIndirect[drawID];
+        instanceID  = drawCmd.firstInstance + gl_InstanceIndex;
+        inst        = instBuf.opaqueInstances[instanceID];
     } else {
         // transparent
-        uint tIndex = vDrawID - drawData.opaqueDrawCount;
+        uint tIndex = drawID - drawData.opaqueDrawCount;
         if (tIndex >= drawData.transparentDrawCount) return;
 
         TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
         TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
 
         drawCmd     = cmdBuf.transparentIndirect[tIndex];
-        vInstanceID = drawCmd.firstInstance + gl_InstanceIndex;
-        inst        = instBuf.transparentInstances[vInstanceID];
+        instanceID  = drawCmd.firstInstance + gl_InstanceIndex;
+        inst        = instBuf.transparentInstances[instanceID];
     }
 
     uint vertIdx = gl_VertexIndex;
@@ -83,4 +84,5 @@ void main() {
     outNormal = normalize(normalMatrix * vtx.normal);
     outColor = vtx.color.xyz;
     outUV = vtx.uv;
+    outMaterialID = inst.materialID;
 }

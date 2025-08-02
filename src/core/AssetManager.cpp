@@ -21,11 +21,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	//std::string damagedHelmetPath { "res/assets/DamagedHelmet.glb" };
-	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	//ASSERT(damagedHelmetFile.has_value());
-	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	//queue->push(damagedHelmetFile.value());
+	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	ASSERT(damagedHelmetFile.has_value());
+	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	queue->push(damagedHelmetFile.value());
 
 	//std::string dragonPath { "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
@@ -33,11 +33,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
 
-	std::string sponza1Path{ "res/assets/sponza.glb" };
-	auto sponza1File = loadGltfFiles(sponza1Path);
-	ASSERT(sponza1File.has_value());
-	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	queue->push(sponza1File.value());
+	//std::string sponza1Path{ "res/assets/sponza.glb" };
+	//auto sponza1File = loadGltfFiles(sponza1Path);
+	//ASSERT(sponza1File.has_value());
+	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	//queue->push(sponza1File.value());
 
 	//std::string cubePath { "res/assets/basic_cube/Cube.gltf" };
 	//auto cubeFile = loadGltfFiles(cubePath);
@@ -239,17 +239,33 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	};
 
 	// Default lut indexes
-	uint32_t defaultAlbedoID = imageManager.addCombinedImage(materialResources.albedoImage.imageView, materialResources.albedoSampler);
-	uint32_t defaultMetalRoughID = imageManager.addCombinedImage(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
-	uint32_t defaultNormalID = imageManager.addCombinedImage(materialResources.normalImage.imageView, materialResources.normalSampler);
-	uint32_t defaultAoID = imageManager.addCombinedImage(materialResources.aoImage.imageView, materialResources.aoSampler);
-	uint32_t defaultEmissiveID = imageManager.addCombinedImage(materialResources.emissiveImage.imageView, materialResources.emissiveSampler);
+	const uint32_t defaultAlbedoID = imageManager.addCombinedImage(
+		materialResources.albedoImage.imageView,
+		materialResources.albedoSampler
+	);
+	const uint32_t defaultMetalRoughID = imageManager.addCombinedImage(
+		materialResources.metalRoughImage.imageView,
+		materialResources.metalRoughSampler
+	);
+	const uint32_t defaultNormalID = imageManager.addCombinedImage(
+		materialResources.normalImage.imageView,
+		materialResources.normalSampler
+	);
+	const uint32_t defaultAoID = imageManager.addCombinedImage(
+		materialResources.aoImage.imageView,
+		materialResources.aoSampler
+	);
+	const uint32_t defaultEmissiveID = imageManager.addCombinedImage(
+		materialResources.emissiveImage.imageView,
+		materialResources.emissiveSampler
+	);
 
-	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultAlbedoID));
-	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
-	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultNormalID));
-	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultAoID));
-	resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(defaultEmissiveID));
+	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAlbedoID));
+	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
+	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultNormalID));
+	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAoID));
+	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultEmissiveID));
+
 
 	for (auto& context : gltfJobs) {
 		if (!context->isJobComplete(GLTFJobType::DecodeImages) ||
@@ -262,9 +278,10 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		scene.runtime.materials.clear();
 		scene.runtime.materials.reserve(gltf.materials.size());
 
+		uint32_t currentMat = 0;
 		for (fastgltf::Material& mat : gltf.materials) {
 			if (!isValidMaterial(mat, gltf)) {
-				fmt::print("Warning: Skipping invalid material: {}\n", mat.name);
+				fmt::print("Warning: Skipping invalid material\n");
 				continue;
 			}
 
@@ -279,47 +296,67 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 			GPUMaterial newMaterial{};
 
+			// Albedo
 			if (mat.pbrData.baseColorTexture.has_value()) {
 				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.albedoImage, materialResources.albedoSampler);
 				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
-				newMaterial.albedoID = imageManager.addCombinedImage(materialResources.albedoImage.imageView, materialResources.albedoSampler);
+				newMaterial.albedoID = imageManager.addCombinedImage(
+					materialResources.albedoImage.imageView,
+					materialResources.albedoSampler
+				);
 			}
 			else {
 				newMaterial.albedoID = defaultAlbedoID;
 			}
 
+			// Metal roughness
 			if (mat.pbrData.metallicRoughnessTexture.has_value()) {
 				getImageAndSampler(*mat.pbrData.metallicRoughnessTexture, materialResources.metalRoughImage, materialResources.metalRoughSampler);
 				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
-				newMaterial.metalRoughnessID = imageManager.addCombinedImage(materialResources.metalRoughImage.imageView, materialResources.metalRoughSampler);
+				newMaterial.metalRoughnessID = imageManager.addCombinedImage(
+					materialResources.metalRoughImage.imageView,
+					materialResources.metalRoughSampler
+				);
 			}
 			else {
 				newMaterial.metalRoughnessID = defaultMetalRoughID;
 			}
 
+			// Normals
 			if (mat.normalTexture.has_value()) {
 				getImageAndSampler(*mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
 				newMaterial.normalScale = mat.normalTexture->scale;
-				newMaterial.normalID = imageManager.addCombinedImage(materialResources.normalImage.imageView, materialResources.normalSampler);
+				newMaterial.normalID = imageManager.addCombinedImage(
+					materialResources.normalImage.imageView,
+					materialResources.normalSampler
+				);
 			}
 			else {
 				newMaterial.normalID = defaultNormalID;
 			}
 
+			// Ambient occlusion
 			if (mat.occlusionTexture.has_value()) {
 				getImageAndSampler(*mat.occlusionTexture, materialResources.aoImage, materialResources.aoSampler);
 				newMaterial.ambientOcclusion = mat.occlusionTexture->strength;
-				newMaterial.aoID = imageManager.addCombinedImage(materialResources.aoImage.imageView, materialResources.aoSampler);
+				newMaterial.aoID = imageManager.addCombinedImage(
+					materialResources.aoImage.imageView,
+					materialResources.aoSampler
+				);
 			}
 			else {
 				newMaterial.aoID = defaultAoID;
 			}
 
+			// Emissive
 			if (mat.emissiveTexture.has_value()) {
 				getImageAndSampler(*mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
 				newMaterial.emissiveColor = glm::make_vec3(mat.emissiveFactor.data());
 				newMaterial.emissiveStrength = mat.emissiveStrength;
-				newMaterial.emissiveID = imageManager.addCombinedImage(materialResources.emissiveImage.imageView, materialResources.emissiveSampler);
+				newMaterial.emissiveID = imageManager.addCombinedImage(
+					materialResources.emissiveImage.imageView,
+					materialResources.emissiveSampler
+				);
 			}
 			else {
 				newMaterial.emissiveID = defaultEmissiveID;
@@ -331,20 +368,29 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 			MaterialPass passType = MaterialPass::Opaque;
 			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
-				fmt::print("Material name: {}\n", mat.name);
 				passType = MaterialPass::Transparent;
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
 
-			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
-			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
-			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.normalID));
-			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.aoID));
-			resources.addImageLUTEntry(ImageLUTType::Global, ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.aoID));
+			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
+
+			fmt::print("[Material:{}] A:{} MR:{} N:{} AO:{} E:{}\n",
+				currentMat,
+				newMaterial.albedoID,
+				newMaterial.metalRoughnessID,
+				newMaterial.normalID,
+				newMaterial.aoID,
+				newMaterial.emissiveID);
 
 			// Store in scene-local and global staging
 			scene.runtime.materials.push_back(newMaterial);
 			materialUploadList.push_back(newMaterial);
+
+			currentMat++;
 		}
 
 		queue->push(context);
@@ -364,6 +410,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 	memcpy(materialStaging.info.pMappedData, materialUploadList.data(), totalMatBufSize);
 
+	// Material ssbo
 	AllocatedBuffer materialBuffer = BufferUtils::createGPUAddressBuffer(
 		AddressBufferType::Material,
 		resources.getAddressTable(),
@@ -406,6 +453,9 @@ void AssetManager::processMeshes(
 
 	auto& resourceStats = Engine::getState().getGPUResources().stats;
 
+	uint32_t totalMaterials = 0;
+	uint32_t matOffset = 0;
+
 	for (auto& context : gltfJobs) {
 		if (!context->isJobComplete(GLTFJobType::ProcessMaterials)) continue;
 
@@ -413,6 +463,7 @@ void AssetManager::processMeshes(
 		auto& scene = *context->scene;
 
 		scene.runtime.bakedInstances.clear();
+		uint32_t sceneMatCount = static_cast<uint32_t>(scene.runtime.materials.size());
 
 		// Iterate over nodes that reference a mesh
 		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
@@ -507,11 +558,11 @@ void AssetManager::processMeshes(
 
 				if (p.materialIndex.has_value()) {
 					auto matID = p.materialIndex.value();
-					inst->instance.materialID = static_cast<uint32_t>(matID);
+					inst->instance.materialID = static_cast<uint32_t>(matID) + matOffset;
 					inst->passType = static_cast<MaterialPass>(scene.runtime.materials[static_cast<uint32_t>(matID)].passType);
 				}
 				else {
-					inst->instance.materialID = 0;
+					inst->instance.materialID = 0 + matOffset;
 					inst->passType = MaterialPass::Opaque;
 				}
 				ASSERT(inst->instance.materialID <= resourceStats.totalMaterialCount && "MaterialID out of range");
@@ -534,6 +585,9 @@ void AssetManager::processMeshes(
 				scene.runtime.bakedInstances.push_back(inst);
 			}
 		}
+
+		totalMaterials += sceneMatCount;
+		matOffset += totalMaterials;
 
 		resourceStats.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
 		resourceStats.totalVertexCount = static_cast<uint32_t>(vertices.size());
