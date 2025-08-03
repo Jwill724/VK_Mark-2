@@ -1,0 +1,294 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src" />
+    <Filter Include="src\file" />
+    <Filter Include="src\input" />
+    <Filter Include="src\common" />
+    <Filter Include="src\core" />
+    <Filter Include="src\profiler" />
+    <Filter Include="src\renderer" />
+    <Filter Include="src\renderer\gpu_types" />
+    <Filter Include="src\vulkan" />
+    <Filter Include="src\utils" />
+    <Filter Include="res\shaders" />
+    <Filter Include="res\shaders\environment" />
+    <Filter Include="res\shaders\visibility" />
+    <Filter Include="res\shaders\meshes" />
+    <Filter Include="res\shaders\debug" />
+    <Filter Include="res\shaders\post_process" />
+    <Filter Include="res\shaders\include" />
+    <Filter Include="res" />
+    <Filter Include="res\assets" />
+    <Filter Include="vendor" />
+    <Filter Include="src\core\types" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Engine.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp">
+      <Filter>src\input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\input\UserInput.cpp">
+      <Filter>src\input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\gpu_types\CommandBuffer.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\gpu_types\Descriptor.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\gpu_types\PipelineManager.cpp">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\Renderer.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\RenderGraph.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vulkan\Backend.cpp">
+      <Filter>src\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vulkan\BackendTools.cpp">
+      <Filter>src\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vulkan\Pipeline.cpp">
+      <Filter>src\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="src\vulkan\Window.cpp">
+      <Filter>src\vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\VulkanUtils.cpp">
+      <Filter>src\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\BufferUtils.cpp">
+      <Filter>src\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\utils\RendererUtils.cpp">
+      <Filter>src\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="src\file\File.cpp">
+      <Filter>src\file</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\Environment.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\JobSystem.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\common\pch.cpp">
+      <Filter>src\common</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\RenderScene.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\Visibility.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp">
+      <Filter>src\input</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\EngineState.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\ResourceManager.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\profiler\EditorImgui.cpp">
+      <Filter>src\profiler</Filter>
+    </ClCompile>
+    <ClCompile Include="src\profiler\Profiler.cpp">
+      <Filter>src\profiler</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\stb_image\stb_image.cpp" />
+    <ClCompile Include="vendor\Vulkan\include\vma\vma.cpp" />
+    <ClCompile Include="vendor\enkiTS\TaskScheduler.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui_impl_vulkan.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui_impl_glfw.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui_draw.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui_widgets.cpp" />
+    <ClCompile Include="vendor\im_gui\imgui_tables.cpp" />
+    <ClCompile Include="vendor\fastgltf\fastgltf.cpp" />
+    <ClCompile Include="vendor\fastgltf\base64.cpp" />
+    <ClCompile Include="vendor\fastgltf\io.cpp" />
+    <ClCompile Include="vendor\simdjson\simdjson.cpp" />
+    <ClCompile Include="vendor\fmt\format.cc" />
+    <ClCompile Include="src\renderer\SceneGraph.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\DrawPreparation.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\types\Texture.cpp">
+      <Filter>src\core\types</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\AssetManager.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\common\pch.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\UserInput.h">
+      <Filter>src\input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\Camera.h">
+      <Filter>src\input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Engine.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ErrorChecking.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\Vk_Types.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\Renderer.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\gpu_types\CommandBuffer.h">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\gpu_types\Descriptor.h">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\gpu_types\PipelineManager.h">
+      <Filter>src\renderer\gpu_types</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vulkan\Backend.h">
+      <Filter>src\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vulkan\BackendTools.h">
+      <Filter>src\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vulkan\Pipeline.h">
+      <Filter>src\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="src\vulkan\Window.h">
+      <Filter>src\vulkan</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\VulkanUtils.h">
+      <Filter>src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\BufferUtils.h">
+      <Filter>src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\utils\RendererUtils.h">
+      <Filter>src\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="src\file\File.h">
+      <Filter>src\file</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\AssetManager.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\Environment.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\JobSystem.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\profiler\EditorImgui.h">
+      <Filter>src\profiler</Filter>
+    </ClInclude>
+    <ClInclude Include="src\profiler\Profiler.h">
+      <Filter>src\profiler</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\RenderScene.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\Visibility.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\Camera.h">
+      <Filter>src\input</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\EngineState.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\ResourceManager.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\input\UserInput.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\SceneGraph.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\DrawPreparation.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\RenderGraph.h">
+      <Filter>src\renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\EngineTypes.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\ResourceTypes.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\EngineConstants.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\types\Texture.h">
+      <Filter>src\core\types</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\shaders\compile_shaders.bat">
+      <Filter>res\shaders</Filter>
+    </None>
+    <None Include="res\shaders\meshes\mesh_vert.vert">
+      <Filter>res\shaders\meshes</Filter>
+    </None>
+    <None Include="res\shaders\meshes\mesh_frag.frag">
+      <Filter>res\shaders\meshes</Filter>
+    </None>
+    <None Include="res\shaders\environment\hdr2cubemap_comp.comp">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\post_process\color_correction_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\debug\aabb_frag.frag">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\debug\aabb_vert.vert">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\environment\skybox_frag.frag">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\environment\skybox_vert.vert">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\environment\specular_prefilter_comp.comp">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\environment\diffuse_irradiance_comp.comp">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\environment\brdf_lut_comp.comp">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\include\set_bindings.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\pbr.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\gpu_scene_structures.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\visibility\visibility_comp.comp">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+  </ItemGroup>
+</Project>
