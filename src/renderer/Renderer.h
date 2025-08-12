@@ -13,7 +13,7 @@ constexpr size_t TRANSFORM_LIST_SIZE_BYTES = MAX_VISIBLE_TRANSFORMS * sizeof(glm
 struct FrameContext {
 	uint32_t frameIndex = 0;
 
-	VkResult swapchainResult;
+	VkResult swapchainResult = VK_RESULT_MAX_ENUM;
 	uint32_t swapchainImageIndex = 0;
 
 	VkCommandBuffer commandBuffer = VK_NULL_HANDLE; // primary graphics command
@@ -44,14 +44,16 @@ struct FrameContext {
 	AllocatedBuffer transparentIndirectCmdBuffer;
 
 	struct alignas(16) DrawPushConstants {
-		uint32_t opaqueDrawCount;
-		uint32_t transparentDrawCount;
+		uint32_t drawPassType; // opaque = 0, transparent = 1
 		uint32_t totalVertexCount;
 		uint32_t totalIndexCount;
 		uint32_t totalMeshCount;
 		uint32_t totalMaterialCount;
-		uint32_t pad0[2]{};
-	} drawData{};
+		uint32_t pad0[3]{};
+	} drawDataPC{};
+
+	uint32_t opaqueDrawCount = 0;
+	uint32_t transparentDrawCount = 0;
 
 	void clearRenderData() {
 		opaqueInstances.clear();
@@ -61,9 +63,8 @@ struct FrameContext {
 		transformsList.clear();
 		opaqueVisibleCount = 0;
 		transparentVisibleCount = 0;
-
-		drawData.opaqueDrawCount = 0;
-		drawData.transparentDrawCount = 0;
+		opaqueDrawCount = 0;
+		transparentDrawCount = 0;
 	}
 
 	AllocatedBuffer combinedGPUStaging;
@@ -92,7 +93,7 @@ struct FrameContext {
 	std::atomic<bool> refreshGlobalTransformList = true; // Set to false to indicate static transforms
 
 	// Descriptor use
-	GPUAddressTable addressTable;
+	GPUAddressTable addressTable{};
 	std::atomic<bool> addressTableDirty = false; // Always set to true when frame address table is updated
 	AllocatedBuffer addressTableBuffer;
 	AllocatedBuffer addressTableStaging;

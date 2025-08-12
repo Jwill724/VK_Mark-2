@@ -1,7 +1,6 @@
 #version 450
 
 #extension GL_ARB_shader_draw_parameters : require
-#extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_ARB_gpu_shader_int64 : require
 #extension GL_GOOGLE_include_directive : require
@@ -18,71 +17,56 @@ layout(location = 3) out vec3 outWorldPos;
 layout(location = 4) flat out uint outMaterialID;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
-    GPUAddressTable globalAddressTable;
+	GPUAddressTable globalAddressTable;
 };
 
 layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-    GPUAddressTable frameAddressTable;
+	GPUAddressTable frameAddressTable;
 };
 
 layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-    SceneData scene;
+	SceneData scene;
 };
 
 layout(push_constant) uniform DrawPushConstants {
-	uint opaqueDrawCount;
-	uint transparentDrawCount;
+	uint drawPassType;
 	uint totalVertexCount;
 	uint totalIndexCount;
 	uint totalMeshCount;
 	uint totalMaterialCount;
-	uint pad0[2];
-} drawData;
+	uint pad0[3];
+} drawDataPC;
 
-void main() {
-    uint drawID = gl_DrawIDARB;
+void main()
+{
+	uint instanceID = gl_BaseInstanceARB + gl_InstanceIndex;
 
-    IndirectDrawCmd drawCmd;
-    Instance inst;
+	Instance inst;
+	if (drawDataPC.drawPassType == 0u) {
+		OpaqueInstances ib = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
+		inst = ib.opaqueInstances[instanceID];
+	} else {
+		TransparentInstances ib = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
+		inst = ib.transparentInstances[instanceID];
+	}
 
-    uint instanceID;
-    if (drawID < drawData.opaqueDrawCount) {
-        // opaque
-        OpaqueIndirectDraws cmdBuf = OpaqueIndirectDraws(frameAddressTable.addrs[ABT_OpaqueIndirectDraws]);
-        OpaqueInstances instBuf = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
+	outMaterialID = inst.materialID;
 
-        drawCmd     = cmdBuf.opaqueIndirect[drawID];
-        instanceID  = drawCmd.firstInstance + gl_InstanceIndex;
-        inst        = instBuf.opaqueInstances[instanceID];
-    } else {
-        // transparent
-        uint tIndex = drawID - drawData.opaqueDrawCount;
-        if (tIndex >= drawData.transparentDrawCount) return;
+	uint vertIdx = gl_VertexIndex;
+	if (vertIdx >= drawDataPC.totalVertexCount) return;
 
-        TransparentIndirectDraws cmdBuf = TransparentIndirectDraws(frameAddressTable.addrs[ABT_TransparentIndirectDraws]);
-        TransparentInstances instBuf = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
+	// fetch vertex
+	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[vertIdx];
 
-        drawCmd     = cmdBuf.transparentIndirect[tIndex];
-        instanceID  = drawCmd.firstInstance + gl_InstanceIndex;
-        inst        = instBuf.transparentInstances[instanceID];
-    }
+	// fetch transform
+	mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
-    uint vertIdx = gl_VertexIndex;
-    if (vertIdx >= drawData.totalVertexCount) return;
+	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
+	outWorldPos  = worldPos4.xyz;
+	gl_Position = scene.viewproj * worldPos4;
 
-    // fetch vertex
-    Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[vertIdx];
-
-    // fetch transform
-    mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
-
-    vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-    outWorldPos  = worldPos4.xyz;
-    gl_Position = scene.viewproj * worldPos4;
-
-    mat3 normalMatrix = transpose(inverse(mat3(model)));
-    outNormal = normalize(normalMatrix * vtx.normal);
-    outColor = vtx.color.xyz;
-    outUV = vtx.uv;
-    outMaterialID = inst.materialID;
+	mat3 normalMatrix = transpose(inverse(mat3(model)));
+	outNormal = normalize(normalMatrix * vtx.normal);
+	outColor = vtx.color.xyz;
+	outUV = vtx.uv;
 }

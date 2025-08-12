@@ -9,7 +9,7 @@
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_SAMPLER_CUBE) uniform samplerCube envMaps[]; // skybox image view cube map
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba32f) writeonly uniform image2DArray storageImages[]; // diffuse irradiance storage view
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba16f) writeonly uniform image2DArray storageImages[]; // diffuse irradiance storage view
 
 const float PI = 3.14159265359;
 

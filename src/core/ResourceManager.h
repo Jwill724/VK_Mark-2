@@ -53,7 +53,7 @@ public:
 	void cleanup(VkDevice device);
 
 private:
-	GPUAddressTable gpuAddresses;
+	GPUAddressTable gpuAddresses{};
 	AllocatedBuffer addressTableBuffer; // descriptor written buffer, mapped from gpuaddresses
 	AllocatedBuffer addressTableStagingBuffer;
 	mutable std::mutex addressTableMutex;
@@ -65,9 +65,9 @@ private:
 		addressTableDirty = true;
 	}
 
-	ImageLUTManager lutManager;
+	ImageLUTManager lutManager{};
 
-	std::vector<GPUDrawRange> drawRanges;
+	std::vector<GPUDrawRange> drawRanges{};
 
 	std::unordered_map<AddressBufferType, AllocatedBuffer> gpuBuffers{};
 

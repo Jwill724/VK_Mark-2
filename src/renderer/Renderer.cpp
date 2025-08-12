@@ -78,10 +78,10 @@ void Renderer::initFrameContexts(
 			VMA_MEMORY_USAGE_GPU_ONLY,
 			allocator);
 
-		frame->drawData.totalVertexCount = stats.totalVertexCount;
-		frame->drawData.totalIndexCount = stats.totalIndexCount;
-		frame->drawData.totalMeshCount = stats.totalMeshCount;
-		frame->drawData.totalMaterialCount = stats.totalMaterialCount;
+		frame->drawDataPC.totalVertexCount = stats.totalVertexCount;
+		frame->drawDataPC.totalIndexCount = stats.totalIndexCount;
+		frame->drawDataPC.totalMeshCount = stats.totalMeshCount;
+		frame->drawDataPC.totalMaterialCount = stats.totalMaterialCount;
 
 		if (isAssetsLoaded) {
 			frame->addressTableStaging = BufferUtils::createBuffer(
@@ -136,9 +136,23 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		device,
 		swapDef.swapchain,
 		UINT64_MAX,
-		swapDef.presentSemaphores[frameCtx.frameIndex],
+		swapDef.imageAvailableSemaphores[frameCtx.frameIndex],
 		VK_NULL_HANDLE,
 		&imageIndex);
+
+	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
+		Backend::getGraphicsQueue().waitIdle();
+		Backend::resizeSwapchain();
+		return;
+	}
+	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
+
+	frameCtx.swapchainImageIndex = imageIndex;
+
+	// Mark image as in use
+	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
+
+	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
 
 	if (!frameCtx.transferCmds.empty()) {
 		vkFreeCommandBuffers(device, frameCtx.transferPool,
@@ -156,20 +170,6 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		frameCtx.computeDeletion.process(device);
 	}
 
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
-		Backend::getGraphicsQueue().waitIdle();
-		Backend::resizeSwapchain();
-		return;
-	}
-	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
-
-	frameCtx.swapchainImageIndex = imageIndex;
-
-	// Mark image as in use
-	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
-
-	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
-
 	frameCtx.cpuDeletion.flush();
 }
 
@@ -177,7 +177,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	auto& swapDef = Backend::getSwapchainDef();
 	uint32_t imageIndex = frameCtx.swapchainImageIndex;
 
-	VkSemaphore presentSem = swapDef.presentSemaphores[frameCtx.frameIndex];
+	VkSemaphore presentSem = swapDef.imageAvailableSemaphores[frameCtx.frameIndex];
 
 	// Use image-indexed render finished semaphore and fence
 	VkSemaphore renderSem = swapDef.renderFinishedSemaphores[imageIndex];
@@ -257,20 +257,14 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 
 void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	auto device = Backend::getDevice();
-	Backend::getTransferQueue().waitTimelineValue(
-		device,
-		_transferSync.semaphore,
-		frameCtx.transferWaitValue
-	);
-
 	auto& swp = Backend::getSwapchainDef();
 	auto& draw = ResourceManager::getDrawImage();
 	auto& msaa = ResourceManager::getMSAAImage();
 	auto& depth = ResourceManager::getDepthImage();
 	auto& toneMap = ResourceManager::getToneMappingImage();
 
-	_drawExtent.width = static_cast<uint32_t>(std::min(swp.extent.width, draw.imageExtent.width));
-	_drawExtent.height = static_cast<uint32_t>(std::min(swp.extent.height, draw.imageExtent.height));
+	_drawExtent.width = std::min(swp.extent.width, draw.imageExtent.width);
+	_drawExtent.height = std::min(swp.extent.height, draw.imageExtent.height);
 
 	const VkDescriptorSet sets[2] {
 		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
@@ -336,77 +330,36 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// color, depth and msaa transitions
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		draw.image,
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		frameCtx.commandBuffer, draw.image, draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	if (MSAA_ENABLED) {
 		RendererUtils::transitionImage(
-			frameCtx.commandBuffer,
-			msaa.image,
-			msaa.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			frameCtx.commandBuffer, msaa.image, msaa.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		depth.image,
-		depth.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+		frameCtx.commandBuffer, depth.image, depth.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx, profiler);
 
-	// ToneMapImage transition and copy
+	// ToneMapImage transition
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		draw.image,
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		toneMap.image,
-		toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-	RendererUtils::copyImageToImage(
-		frameCtx.commandBuffer,
-		draw.image,
-		toneMap.image,
-		{ _drawExtent.width, _drawExtent.height },
-		{ _drawExtent.width, _drawExtent.height }
-	);
+		frameCtx.commandBuffer, draw.image, draw.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		draw.image,
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_IMAGE_LAYOUT_GENERAL);
-	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		toneMap.image,
-		toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_GENERAL);
+		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	colorCorrectPass(frameCtx, ResourceManager::toneMappingData);
 
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		toneMap.image,
-		toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_GENERAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	RendererUtils::transitionImage(
-		frameCtx.commandBuffer,
-		swp.images[frameCtx.swapchainImageIndex],
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	RendererUtils::copyImageToImage(
 		frameCtx.commandBuffer,
@@ -420,28 +373,19 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	if (debug.enableSettings || debug.enableStats) {
 		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
 		RendererUtils::transitionImage(
-			frameCtx.commandBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
-			draw.imageFormat,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		EditorImgui::drawImgui(frameCtx.commandBuffer, swp.imageViews[frameCtx.swapchainImageIndex], false);
 
 		RendererUtils::transitionImage(
-			frameCtx.commandBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
-			draw.imageFormat,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	else {
 		RendererUtils::transitionImage(
-			frameCtx.commandBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
-			draw.imageFormat,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 
 	VK_CHECK(vkEndCommandBuffer(frameCtx.commandBuffer));
@@ -449,43 +393,44 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 // draw[0], msaa[1], depth[2]
 void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler) {
-	VkRenderingAttachmentInfo colorAttachment {
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.pNext = nullptr,
-		.imageView = !MSAA_ENABLED ? imageViews[0] : imageViews[1],
-		.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.resolveMode = !MSAA_ENABLED ? VK_RESOLVE_MODE_NONE : VK_RESOLVE_MODE_AVERAGE_BIT,
-		.resolveImageView = !MSAA_ENABLED ? VK_NULL_HANDLE : imageViews[0],
-		.resolveImageLayout = !MSAA_ENABLED ? VK_IMAGE_LAYOUT_UNDEFINED : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
-	};
+	VkRenderingAttachmentInfo colorAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
-	VkRenderingAttachmentInfo depthAttachment {
-		.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-		.pNext = nullptr,
-		.imageView = imageViews[2],
-		.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-		.resolveMode = VK_RESOLVE_MODE_NONE,
-		.resolveImageView = VK_NULL_HANDLE,
-		.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE
-	};
+	// MSAA branch
+	if (MSAA_ENABLED) {
+		colorAttachment.imageView = imageViews[1];
+		colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		colorAttachment.resolveImageView = imageViews[0];
+		colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	}
+	else {
+		colorAttachment.imageView = imageViews[0];
+		colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+		colorAttachment.resolveImageView = VK_NULL_HANDLE;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+
+	VkRenderingAttachmentInfo depthAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
+	depthAttachment.imageView = imageViews[2];
+	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
+	depthAttachment.resolveImageView = VK_NULL_HANDLE;
+	depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	depthAttachment.clearValue.depthStencil.depth = 1.0f;
 
-	VkRenderingInfo renderInfo {
-		.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-		.pNext = nullptr,
-		.flags = 0,
-		.renderArea = { { 0, 0 }, { _drawExtent.width, _drawExtent.height } },
-		.layerCount = 1,
-		.viewMask = 0,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &colorAttachment,
-		.pDepthAttachment = &depthAttachment,
-		.pStencilAttachment = nullptr
-	};
+	VkRenderingInfo renderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
+	renderInfo.flags = 0,
+	renderInfo.renderArea = { { 0, 0 }, { _drawExtent.width, _drawExtent.height } },
+	renderInfo.layerCount = 1,
+	renderInfo.viewMask = 0,
+	renderInfo.colorAttachmentCount = 1,
+	renderInfo.pColorAttachments = &colorAttachment,
+	renderInfo.pDepthAttachment = &depthAttachment,
 
 	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
 	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { _drawExtent.width, _drawExtent.height });

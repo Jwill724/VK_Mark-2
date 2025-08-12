@@ -12,7 +12,7 @@ struct SwapchainDef {
 	VkExtent2D extent{};
 	uint32_t imageCount = UINT32_MAX;
 
-	std::vector<VkSemaphore> presentSemaphores;
+	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;
 	std::vector<VkFence> inFlightFences;
 	std::vector<uint32_t> imageInFlightFrame;

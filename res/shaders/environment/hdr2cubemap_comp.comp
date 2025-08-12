@@ -8,7 +8,7 @@
 
 layout (local_size_x = 16, local_size_y = 16) in;
 
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba32f) writeonly uniform image2DArray storageImages[]; // skybox storage view
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba16f) writeonly uniform image2DArray storageImages[]; // skybox storage view
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[]; // equirect source image
 
 const float PI = 3.14159265359;

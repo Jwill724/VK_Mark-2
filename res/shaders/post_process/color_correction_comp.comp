@@ -8,7 +8,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rgba16f) uniform writeonly image2D storageImages[];
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE) uniform writeonly image2D storageImages[];
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
 
 layout(push_constant) uniform PC {
@@ -20,22 +20,6 @@ layout(push_constant) uniform PC {
     uint sampledViewIdx;
     uint pad1[2];
 } pc;
-
-vec3 toneMapFilmicUnreal(vec3 x) {
-    const float A = 0.15;
-    const float B = 0.50;
-    const float C = 0.10;
-    const float D = 0.20;
-    const float E = 0.02;
-    const float F = 0.30;
-    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F)) - E/F;
-}
-
-vec3 toneMap(vec3 color) {
-    color = toneMapFilmicUnreal(color * pc.brightness);
-    color = clamp(color / toneMapFilmicUnreal(vec3(11.2)), 0.0, 1.0);
-    return color;
-}
 
 void main() {
     uvec2 texelCoord = gl_GlobalInvocationID.xy;
@@ -55,8 +39,6 @@ void main() {
     color.rgb = mix(vec3(gray), color.rgb, pc.saturation);
 
     color.rgb = (color.rgb - 0.5) * pc.contrast + 0.5;
-
-    //color.rgb = toneMap(color.rgb);
 
     imageStore(storageImages[nonuniformEXT(pc.sampledViewIdx)], ivec2(texelCoord), color);
 }

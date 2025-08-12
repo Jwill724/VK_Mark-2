@@ -4,14 +4,14 @@
 #include "profiler/Profiler.h"
 
 struct Camera {
-	glm::vec3 _velocity;
-	glm::vec3 _position;
+	glm::vec3 _velocity = glm::vec3(0.0f);
+	glm::vec3 _position = glm::vec3(0.0f);
 	// vertical rotation
 	float _pitch{ 0.0f };
 	// horizontal rotation
 	float _yaw{ 0.0f };
 
-	glm::vec3 _currentView;
+	glm::vec3 _currentView = glm::vec3(0.0f);
 
 	glm::mat4 getViewMatrix() const;
 	glm::mat4 getRotationMatrix() const;

@@ -8,7 +8,7 @@
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rg32f) uniform writeonly image2DArray storageImages[];
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rg16f) uniform writeonly image2D storageImages[];
 
 const float PI = 3.14159265359;
 
@@ -16,7 +16,7 @@ layout(push_constant) uniform PushConstants {
     uint mipLevelCount;
 	uint brdfViewIdx;
 	uint pad0[2];
-} pushConstants;
+} pc;
 
 
 float RadicalInverse_VdC(uint bits)
@@ -90,7 +90,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
     vec3 N = vec3(0.0, 0.0, 1.0);
 
-    const uint SAMPLE_COUNT = pushConstants.mipLevelCount;
+    const uint SAMPLE_COUNT = pc.mipLevelCount;
     for(uint i = 0u; i < SAMPLE_COUNT; ++i)
     {
         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
@@ -118,14 +118,13 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
 void main()
 {
-    ivec3 id = ivec3(gl_GlobalInvocationID.xy, 0);
-    ivec3 imgSize = imageSize(storageImages[nonuniformEXT(pushConstants.brdfViewIdx)]);
-    ivec2 im = imgSize.xy;
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imgSize = imageSize(storageImages[nonuniformEXT(pc.brdfViewIdx)]);
 
-    if (id.x >= im.x || id.y >= im.y) return;
+    if (id.x >= imgSize.x || id.y >= imgSize.y) return;
 
-	vec2 TexCoords = (vec2(id) + vec2(0.5f)) / vec2(im);
+	vec2 TexCoords = (vec2(id) + vec2(0.5)) / vec2(imgSize);
     vec2 integratedBRDF = IntegrateBRDF(TexCoords.x, TexCoords.y);
 
-    imageStore(storageImages[nonuniformEXT(pushConstants.brdfViewIdx)], id, vec4(integratedBRDF, 0.0, 0.0));
+    imageStore(storageImages[nonuniformEXT(pc.brdfViewIdx)], id, vec4(integratedBRDF, 0.0, 0.0));
 }

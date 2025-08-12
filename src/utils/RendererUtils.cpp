@@ -125,9 +125,8 @@ void RendererUtils::createTextureImage(
 
 // TODO: Rework image system to handle new additions to AllocatedImage struct,
 // this should scale toward a render pass and graph system.
-
 void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
-	VkSampleCountFlagBits samples, DeletionQueue& queue, const VmaAllocator allocator, bool skipQueueUsage) {
+	VkSampleCountFlagBits samples, DeletionQueue& dq, const VmaAllocator alloc, bool skipDQ) {
 	static std::mutex imageMutex;
 
 	auto device = Backend::getDevice();
@@ -167,15 +166,15 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		renderImage.arrayLayers = 1;
 	}
 
-	VmaAllocationCreateInfo imgAllocInfo = {};
+	VmaAllocationCreateInfo imgAllocInfo{};
 	imgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	imgAllocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 	{
 		std::scoped_lock lock(imageMutex);
-		VK_CHECK(vmaCreateImage(allocator, &imgInfo, &imgAllocInfo, &renderImage.image, &renderImage.allocation, nullptr));
+		VK_CHECK(vmaCreateImage(alloc, &imgInfo, &imgAllocInfo, &renderImage.image, &renderImage.allocation, nullptr));
 
-		// full mip chain sampled view
+		// sampled view creation
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = renderImage.image;
@@ -190,8 +189,12 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 
 		VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 
-		if (usage & VK_IMAGE_USAGE_STORAGE_BIT) {
-			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		// storage view creation
+		if (usage & VK_IMAGE_USAGE_STORAGE_BIT && samples == VK_SAMPLE_COUNT_1_BIT) {
+			viewInfo.viewType = (imgInfo.arrayLayers > 1 || renderImage.isCubeMap)
+				? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+				: VK_IMAGE_VIEW_TYPE_2D;
+
 			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.storageView));
 
 			if (imgInfo.mipLevels > 1 && renderImage.isCubeMap && renderImage.perMipStorageViews) {
@@ -202,7 +205,6 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 					mipViewInfo.subresourceRange.baseMipLevel = mip;
 					mipViewInfo.subresourceRange.layerCount = 6;
 					mipViewInfo.subresourceRange.levelCount = 1;
-					mipViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 
 					VK_CHECK(vkCreateImageView(device, &mipViewInfo, nullptr, &renderImage.storageViews[mip]));
 				}
@@ -210,17 +212,15 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 		}
 	}
 
-	// gltf textures are graph controlled,
-	// transfers threads won't add images into their deletion queues
-	if (!skipQueueUsage) {
+	if (!skipDQ) {
 		auto image = renderImage.image;
-		auto alloc = renderImage.allocation;
+		auto imgAlloc = renderImage.allocation;
 		auto imgView = renderImage.imageView;
 		auto& v_storageViews = renderImage.storageViews;
 		auto storageView = renderImage.storageView;
 
 		// the deletion queue needs copies don't try to add destroyImage since it takes it by reference
-		queue.push_function([device, image, alloc, imgView, storageView, v_storageViews, allocator] {
+		dq.push_function([device, image, alloc, imgView, storageView, v_storageViews, imgAlloc] {
 			if (imgView != VK_NULL_HANDLE)
 				vkDestroyImageView(device, imgView, nullptr);
 			if (storageView != VK_NULL_HANDLE)
@@ -232,7 +232,7 @@ void RendererUtils::createRenderImage(AllocatedImage& renderImage, VkImageUsageF
 			}
 
 			if (image != VK_NULL_HANDLE)
-				vmaDestroyImage(allocator, image, alloc);
+				vmaDestroyImage(alloc, image, imgAlloc);
 		});
 	}
 }
@@ -256,98 +256,111 @@ void RendererUtils::destroyImage(VkDevice device, AllocatedImage& img, const Vma
 }
 
 
-void RendererUtils::transitionImage(VkCommandBuffer cmd, VkImage image, VkFormat format, VkImageLayout currentLayout, VkImageLayout newLayout) {
-	VkImageMemoryBarrier2 imageBarrier{};
-	imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-	imageBarrier.pNext = nullptr;
+void RendererUtils::transitionImage(
+	VkCommandBuffer cmd, VkImage image, VkFormat format,
+	VkImageLayout oldLayout, VkImageLayout newLayout,
+	VkPipelineStageFlags2 dstStageOverride,
+	VkAccessFlags2        dstAccessOverride)
+{
+	VkImageMemoryBarrier2 b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
+	b.oldLayout = oldLayout;
+	b.newLayout = newLayout;
+	b.image = image;
 
-	imageBarrier.oldLayout = currentLayout;
-	imageBarrier.newLayout = newLayout;
-	imageBarrier.image = image;
-
-	// Handle depth/stencil formats properly
-	VkImageAspectFlags aspectMask = 0;
-	if (newLayout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL ||
-		newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) {
-
-		aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-		if (VulkanUtils::hasStencilComponent(format)) {
-			aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-		}
+	VkImageAspectFlags aspect = 0;
+	if (format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
+		format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_S8_UINT ||
+		format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
+		if (VulkanUtils::hasStencilComponent(format)) aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
 	}
 	else {
-		aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	}
+	b.subresourceRange = { aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS };
 
-	imageBarrier.subresourceRange.aspectMask = aspectMask;
-	imageBarrier.subresourceRange.baseMipLevel = 0;
-	imageBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
-	imageBarrier.subresourceRange.baseArrayLayer = 0;
-	imageBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
-
-	// Select the correct pipeline stages and access masks based on layouts
-	switch (currentLayout) {
+	// src (based on oldLayout)
+	switch (oldLayout) {
 	case VK_IMAGE_LAYOUT_UNDEFINED:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-		imageBarrier.srcAccessMask = 0; // No dependencies
+		b.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+		b.srcAccessMask = 0;
 		break;
 	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		b.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		b.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		b.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+		// Fix 2: correct producer for depth
+		b.srcStageMask = VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+		b.srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_GENERAL:
+		// typical producer is compute
+		b.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+		b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT;
 		break;
 	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+		b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		b.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
 		break;
 	default:
-		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+		b.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		b.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
 		break;
 	}
 
-	switch (newLayout) {
-	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-		break;
-	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-		break;
-	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-		break;
-	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-		break;
-	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_NONE; // No need for shader access
-		break;
-	default:
-		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-		break;
+	// dst (based on newLayout) — allow override for compute/fragment
+	if (dstStageOverride) { // explicit control
+		b.dstStageMask = dstStageOverride;
+		b.dstAccessMask = dstAccessOverride;
+	}
+	else {
+		switch (newLayout) {
+		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+			b.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+			b.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+			b.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+				VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+			b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_GENERAL:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+			b.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+			break;
+		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+			b.dstAccessMask = VK_ACCESS_2_NONE;
+			break;
+		default:
+			b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			b.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+			break;
+		}
 	}
 
-	VkDependencyInfo depInfo{};
-	depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-	depInfo.pNext = nullptr;
-	depInfo.imageMemoryBarrierCount = 1;
-	depInfo.pImageMemoryBarriers = &imageBarrier;
-
-	vkCmdPipelineBarrier2(cmd, &depInfo);
+	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	dep.imageMemoryBarrierCount = 1;
+	dep.pImageMemoryBarriers = &b;
+	vkCmdPipelineBarrier2(cmd, &dep);
 }
 
 void RendererUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize) {

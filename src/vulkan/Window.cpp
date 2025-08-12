@@ -12,9 +12,9 @@ bool WindowIsOpen(GLFWwindow* window) {
 	return !(glfwWindowShouldClose(window));
 }
 
-bool Window::throttleIfWindowUnfocused(int sleepMs) const {
+bool Window::throttleIfWindowUnfocused(double sleepMs) const {
 	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {\
-		std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+		glfwWaitEventsTimeout(sleepMs);
 		return true;
 	}
 	return false;
@@ -28,13 +28,15 @@ void Window::updateWindowSize() const {
 		glfwWaitEvents();
 	}
 
+	auto& mainWindow = Engine::getWindowExtent();
+
 	// Ensures global window extent is up to date
-	Engine::getWindowExtent().width = static_cast<uint32_t>(width);
-	Engine::getWindowExtent().height = static_cast<uint32_t>(height);
+	mainWindow.width = static_cast<uint32_t>(width);
+	mainWindow.height = static_cast<uint32_t>(height);
 
 	VkExtent3D newDrawExtent {
-		Engine::getWindowExtent().width,
-		Engine::getWindowExtent().height,
+		mainWindow.width,
+		mainWindow.height,
 		1
 	};
 
@@ -42,7 +44,6 @@ void Window::updateWindowSize() const {
 }
 
 void Window::initWindow(const uint32_t width, const uint32_t height) {
-
 	int glfwResult = glfwInit();
 	if (!glfwResult) {
 		ASSERT(glfwResult && "Failed to initialize GLFW!");

@@ -156,7 +156,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 				ImGui::TreePop();
 			}
 
-			ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.0f, 10.0f);
+			ImGui::SliderFloat("Sunlight Intensity", &lightIntensity, 0.0f, 5.0f);
 			ImGui::SliderFloat3("Light Direction", glm::value_ptr(lightDir), -1.0f, 1.0f);
 
 			// Update actual scene data
