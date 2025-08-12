@@ -12,7 +12,7 @@ namespace Engine {
 	// just returns the whole window struct for its use
 	Window& windowModMode() { return *_window; }
 
-	VkExtent2D _windowExtent { 1200, 1000 };
+	VkExtent2D _windowExtent { 1280, 960 };
 	VkExtent2D& getWindowExtent() { return _windowExtent; }
 
 	Profiler _engineProfiler;
@@ -66,7 +66,7 @@ void Engine::run() {
 	while (WindowIsOpen(_window->window)) {
 		glfwPollEvents();
 
-		if (_window->throttleIfWindowUnfocused(33)) continue;
+		if (_window->throttleIfWindowUnfocused(0.033)) continue;
 
 		_engineProfiler.beginFrame();
 

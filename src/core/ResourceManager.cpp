@@ -151,6 +151,7 @@ void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferTy
 }
 
 void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator, const VkExtent3D drawExtent) {
+	//_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_drawImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_drawImage.imageExtent = drawExtent;
 
@@ -169,18 +170,17 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 		queue,
 		allocator);
 
-	// post process image
+	// tone mapping post process image
 	_toneMappingImage.imageFormat = _drawImage.imageFormat;
 	_toneMappingImage.imageExtent = drawExtent;
 
-	VkImageUsageFlags postUsages{};
-	postUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
-	postUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // to copy to swapchain
-	postUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
+	VkImageUsageFlags toneMapUsages{};
+	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // to copy to swapchain
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
 
-	// compute draw image for post processing
 	RendererUtils::createRenderImage(_toneMappingImage,
-		postUsages,
+		toneMapUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		queue,
 		allocator);
@@ -224,7 +224,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-	VkFormat environmentFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+	VkFormat environmentFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	// SKYBOX
 	_skyboxImage.imageExtent = Environment::CUBEMAP_EXTENTS;
@@ -261,7 +261,6 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 	_irradianceImage.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
 	_irradianceImage.imageFormat = environmentFormat;
 	_irradianceImage.isCubeMap = true;
-	_irradianceImage.mipLevelCount = Environment::DIFFUSE_IRRADIANCE_MIP_LEVELS;
 
 	RendererUtils::createRenderImage(_irradianceImage,
 		usage,
@@ -274,7 +273,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 
 
 	_brdfLutImage.imageExtent = Environment::LUT_IMAGE_EXTENT;
-	_brdfLutImage.imageFormat = VK_FORMAT_R32G32_SFLOAT;
+	_brdfLutImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
 
 	RendererUtils::createRenderImage(_brdfLutImage,
 		VK_IMAGE_USAGE_STORAGE_BIT |
@@ -336,13 +335,13 @@ void ResourceManager::initTextures(
 	_metalRoughImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_metalRoughImage.mipmapped = true;
 
-	uint8_t rgPixelData[4] {
+	uint8_t mrPixelData[4] {
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(0.5f * 255), // roughness
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(1.0f * 255)
 	};
-	RendererUtils::createTextureImage(cmdPool, (void*)&rgPixelData, _metalRoughImage, usage, samples, imageQueue, bufferQueue, allocator);
+	RendererUtils::createTextureImage(cmdPool, (void*)&mrPixelData, _metalRoughImage, usage, samples, imageQueue, bufferQueue, allocator);
 
 
 	_whiteImage.imageExtent = texExtent;

@@ -41,7 +41,7 @@ void RenderScene::setScene() {
 	_mainCamera._yaw = -90.0f;
 
 	_sceneData.ambientColor = glm::vec4(0.03f, 0.03f, 0.03f, 1.0f);
-	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 5.0f);
+	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f);
 	_sceneData.sunlightDirection = glm::normalize(glm::vec4(1.0f, 1.0f, -0.787f, 0.0f));
 }
 
@@ -408,29 +408,24 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 	if (frameCtx.opaqueVisibleCount > 0) {
-		frameCtx.drawData.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
-		frameCtx.drawData.transparentDrawCount = 0;
-
-		//for (const auto& draw : frameCtx.opaqueIndirectDraws) {
-		//	fmt::print("DrawCommand: indexCount={}, firstIndex={}, vertexOffset={}, instanceCount={}, opaqueDrawCount={}\n",
-		//		draw.indexCount, draw.firstIndex, draw.vertexOffset, draw.instanceCount, frameCtx.drawData.opaqueDrawCount);
-		//}
+		frameCtx.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
+		frameCtx.drawDataPC.drawPassType = 0u;
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
 			pLayout.pcRange.stageFlags,
 			pLayout.pcRange.offset,
 			pLayout.pcRange.size,
-			&frameCtx.drawData);
+			&frameCtx.drawDataPC);
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.opaqueIndirectCmdBuffer.buffer,
 			0,
-			frameCtx.drawData.opaqueDrawCount,
+			frameCtx.opaqueDrawCount,
 			drawCmdSize
 		);
 
-		for (uint32_t i = 0; i < frameCtx.drawData.opaqueDrawCount; ++i) {
+		for (uint32_t i = 0; i < frameCtx.opaqueDrawCount; ++i) {
 			const auto& draw = frameCtx.opaqueIndirectDraws[i];
 			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
 			profiler.addDrawCall(triangleCount);
@@ -442,27 +437,27 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::transparentPipeline.pipeline);
 		}
 
-		frameCtx.drawData.opaqueDrawCount = 0;
-		frameCtx.drawData.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
+		frameCtx.drawDataPC.drawPassType = 1u;
+		frameCtx.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
 			pLayout.pcRange.stageFlags,
 			pLayout.pcRange.offset,
 			pLayout.pcRange.size,
-			&frameCtx.drawData);
+			&frameCtx.drawDataPC);
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.transparentIndirectCmdBuffer.buffer,
 			0,
-			frameCtx.drawData.transparentDrawCount,
+			frameCtx.transparentDrawCount,
 			drawCmdSize
 		);
 
 		const auto& ranges = resources.getDrawRanges();
 		const auto& meshes = resources.getResgisteredMeshes().meshData;
 
-		for (uint32_t i = 0; i < frameCtx.drawData.transparentDrawCount; ++i) {
+		for (uint32_t i = 0; i < frameCtx.transparentDrawCount; ++i) {
 			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];
 			uint32_t triangleCount = ranges[meshID.drawRangeID].indexCount / 3;
 			profiler.addDrawCall(triangleCount);

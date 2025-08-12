@@ -331,9 +331,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	auto& toneMapImg = ResourceManager::getToneMappingImage();
 	auto& drawImg = ResourceManager::getDrawImage();
-	toneMapImg.lutEntry.storageImageIndex = globalImgManager.addStorageImage(toneMapImg.imageView);
-	drawImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(drawImg.imageView,
-		ResourceManager::getDefaultSamplerLinear());
+	toneMapImg.lutEntry.storageImageIndex = globalImgManager.addStorageImage(toneMapImg.storageView);
+	drawImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(drawImg.imageView, ResourceManager::getDefaultSamplerLinear());
 	_resources.addImageLUTEntry(toneMapImg.lutEntry);
 	_resources.addImageLUTEntry(drawImg.lutEntry);
 
@@ -368,7 +367,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	tempEnvMapIdx.push_back(specImg.lutEntry);
 	_resources.addImageLUTEntry(specImg.lutEntry);
 
-	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.storageView, brdfSmpl);
+	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.imageView, brdfSmpl);
 	tempEnvMapIdx.push_back(brdfImg.lutEntry);
 	_resources.addImageLUTEntry(brdfImg.lutEntry);
 
@@ -404,8 +403,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, mainAllocator);
 
 	GPUEnvMapIndexArray* envMapIndices = reinterpret_cast<GPUEnvMapIndexArray*>(_resources.envMapIndexBuffer.mapped);
-	vmaFlushAllocation(mainAllocator, _resources.envMapIndexBuffer.allocation, 0, VK_WHOLE_SIZE);
 	*envMapIndices = ResourceManager::_envMapIdxArray;
+	vmaFlushAllocation(mainAllocator, _resources.envMapIndexBuffer.allocation, 0, VK_WHOLE_SIZE);
 
 	// Global descriptor writing and update
 	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;

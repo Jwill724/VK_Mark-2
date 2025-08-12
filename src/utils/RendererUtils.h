@@ -25,11 +25,15 @@ namespace RendererUtils {
 		const VmaAllocator allocator,
 		bool skipQueueUsage = false);
 	void createRenderImage(AllocatedImage& renderImage, VkImageUsageFlags usage,
-		VkSampleCountFlagBits samples, DeletionQueue& queue, const VmaAllocator allocator, bool skipQueueUsage = false);
+		VkSampleCountFlagBits samples, DeletionQueue& dq, const VmaAllocator alloc, bool skipDQ = false);
 
 	void destroyImage(VkDevice device, AllocatedImage& img, const VmaAllocator allocator);
 
-	void transitionImage(VkCommandBuffer cmd, VkImage image, VkFormat format, VkImageLayout currentLayout, VkImageLayout newLayout);
+	void transitionImage(
+		VkCommandBuffer cmd, VkImage image, VkFormat format,
+		VkImageLayout currentLayout, VkImageLayout newLayout,
+		VkPipelineStageFlags2 dstStageOverride  = 0,
+		VkAccessFlags2        dstAccessOverride = 0);
 	void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);
 
 	uint32_t calculateMipLevels(AllocatedImage& img, uint32_t maxMipCap = UINT32_MAX);

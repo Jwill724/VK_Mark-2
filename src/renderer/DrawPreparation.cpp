@@ -11,7 +11,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	const std::vector<GPUDrawRange>& drawRanges,
 	const std::vector<GPUMeshData>& meshes)
 {
-	//=== BATCH OPAQUE INSTANCES ===
+	// === BATCH OPAQUE INSTANCES ===
 	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
 
 	for (uint32_t i = 0; i < frameCtx.opaqueInstances.size(); ++i) {
@@ -29,9 +29,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		const GPUMeshData& mesh = meshes[key.meshID];
 		const GPUDrawRange& range = drawRanges[mesh.drawRangeID];
 
-		ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
+		ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawDataPC.totalIndexCount &&
 			"[DrawPrep] Opaque batch would read past end of index buffer.");
-		ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
+		ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawDataPC.totalVertexCount &&
 			"[DrawPrep] Opaque batch would read past end of vertex buffer.");
 
 		VkDrawIndexedIndirectCommand cmd {
@@ -69,9 +69,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			const GPUMeshData& mesh = meshes[inst.meshID];
 			const auto& range = drawRanges[mesh.drawRangeID];
 
-			ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawData.totalIndexCount &&
+			ASSERT(range.firstIndex + range.indexCount <= frameCtx.drawDataPC.totalIndexCount &&
 				"[DrawPrep] Transparent batch would read past end of index buffer.");
-			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawData.totalVertexCount &&
+			ASSERT(range.vertexOffset + range.vertexCount <= frameCtx.drawDataPC.totalVertexCount &&
 				"[DrawPrep] Transparent batch would read past end of vertex buffer.");
 
 			VkDrawIndexedIndirectCommand cmd {
@@ -291,6 +291,11 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	}
 
 	frameCtx.transferWaitValue = transferSync.signalValue++;
+
+	transferQueue.waitTimelineValue(
+		Backend::getDevice(),
+		transferSync.semaphore,
+		frameCtx.transferWaitValue);
 }
 
 

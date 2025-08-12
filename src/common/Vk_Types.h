@@ -149,7 +149,7 @@ struct alignas(16) ColorData {
 	float pad0 = 0.0f;
 	uint32_t cmbViewIdx = 0;
 	uint32_t storageViewIdx = 0;
-	uint32_t pad1[2];
+	uint32_t pad1[2]{};
 };
 
 template<typename T>

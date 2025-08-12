@@ -27,7 +27,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
 	queue->push(damagedHelmetFile.value());
 
-	//std::string dragonPath { "res/assets/DragonAttenuation.glb" };
+	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
 	//ASSERT(dragonFile.has_value());
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
@@ -39,13 +39,13 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	//queue->push(sponza1File.value());
 
-	//std::string cubePath { "res/assets/basic_cube/Cube.gltf" };
+	//std::string cubePath{ "res/assets/basic_cube/Cube.gltf" };
 	//auto cubeFile = loadGltfFiles(cubePath);
 	//ASSERT(cubeFile.has_value());
 	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
 	//queue->push(cubeFile.value());
 
-	//std::string spheresPath { "res/assets/MetalRoughSpheres.glb" };
+	//std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
 	//auto spheresFile = loadGltfFiles(spheresPath);
 	//ASSERT(spheresFile.has_value());
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);

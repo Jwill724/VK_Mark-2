@@ -52,7 +52,6 @@ namespace Backend {
 	void createLogicalDevice();
 	void createSwapchain();
 	void cleanupSwapchain();
-	void createImageViews();
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 }
 
@@ -63,7 +62,6 @@ void Backend::initVulkanCore() {
 	pickPhysicalDevice();
 	createLogicalDevice();
 	createSwapchain();
-	createImageViews();
 }
 
 void Backend::createInstance() {
@@ -185,24 +183,25 @@ void Backend::createLogicalDevice() {
 	VkPhysicalDeviceFeatures2 baseFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	baseFeatures.features.fillModeNonSolid = VK_TRUE;
 	baseFeatures.features.samplerAnisotropy = VK_TRUE;
-	baseFeatures.features.multiDrawIndirect = VK_TRUE; // indirect draws enabled
-	baseFeatures.features.shaderInt64 = VK_TRUE; // 64-bit addressing
+	baseFeatures.features.multiDrawIndirect = VK_TRUE;                 // indirect draws enabled
+	baseFeatures.features.shaderInt64 = VK_TRUE;                       // 64-bit addressing
 	baseFeatures.features.tessellationShader = VK_TRUE;
 	baseFeatures.features.depthBiasClamp = VK_TRUE;
 	baseFeatures.features.drawIndirectFirstInstance = VK_TRUE;
 	baseFeatures.features.imageCubeArray = VK_TRUE;
 	baseFeatures.features.occlusionQueryPrecise = VK_TRUE;
+	baseFeatures.features.shaderStorageImageExtendedFormats = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
-	features11.shaderDrawParameters = VK_TRUE; // InstanceIndex
+	features11.shaderDrawParameters = VK_TRUE;                         // InstanceIndex
 	features11.variablePointers = VK_TRUE;
 	features11.variablePointersStorageBuffer = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
-	features12.bufferDeviceAddress = VK_TRUE; // GPU pointers
-	features12.descriptorIndexing = VK_TRUE; // Enables all indexing stuff
-	features12.timelineSemaphore = VK_TRUE; // Timeline sync (async GPU workloads)
-	features12.scalarBlockLayout = VK_TRUE; // No descriptor padding
+	features12.bufferDeviceAddress = VK_TRUE;                          // GPU pointers
+	features12.descriptorIndexing = VK_TRUE;                           // Enables all indexing stuff
+	features12.timelineSemaphore = VK_TRUE;                            // Timeline sync (async GPU workloads)
+	features12.scalarBlockLayout = VK_TRUE;                            // No descriptor padding
 	features12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
 	features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
 	features12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
@@ -284,12 +283,11 @@ void Backend::createSwapchain() {
 	VkPresentModeKHR VSYNC = VK_PRESENT_MODE_FIFO_KHR;
 	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-	uint32_t minImageCount = swapChainSupport.capabilities.minImageCount;
-	uint32_t maxImageCount = swapChainSupport.capabilities.maxImageCount;
-	uint32_t imageCount = minImageCount + 1;
-
-	const uint32_t maxFramesInFlight = std::min(MAX_FRAMES_IN_FLIGHT, maxImageCount > 0 ? maxImageCount : UINT32_MAX);
-	imageCount = std::clamp(minImageCount + 1, minImageCount, maxFramesInFlight);
+	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+	if (swapChainSupport.capabilities.maxImageCount > 0 &&
+		imageCount > swapChainSupport.capabilities.maxImageCount) {
+		imageCount = swapChainSupport.capabilities.maxImageCount;
+	}
 
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -334,21 +332,30 @@ void Backend::createSwapchain() {
 
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, nullptr);
 	_swapchainDef.images.resize(imageCount);
+	_swapchainDef.imageViews.resize(imageCount);
 	_swapchainDef.imageCount = imageCount;
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, _swapchainDef.images.data());
 
 	_swapchainDef.imageFormat = surfaceFormat.format;
 	_swapchainDef.extent = extent;
 
-	_swapchainDef.presentSemaphores.resize(imageCount);
+	_swapchainDef.imageAvailableSemaphores.resize(imageCount);
 	_swapchainDef.renderFinishedSemaphores.resize(imageCount);
 	_swapchainDef.inFlightFences.resize(imageCount);
 	_swapchainDef.imageInFlightFrame.resize(imageCount, UINT32_MAX);
 
 	for (uint32_t i = 0; i < imageCount; ++i) {
-		_swapchainDef.presentSemaphores[i] = RendererUtils::createSemaphore();
+		_swapchainDef.imageAvailableSemaphores[i] = RendererUtils::createSemaphore();
 		_swapchainDef.renderFinishedSemaphores[i] = RendererUtils::createSemaphore();
 		_swapchainDef.inFlightFences[i] = RendererUtils::createFence();
+
+		_swapchainDef.imageViews[i] = RendererUtils::createImageView(
+			_device,
+			_swapchainDef.images[i],
+			_swapchainDef.imageFormat,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			1
+		);
 	}
 }
 
@@ -358,39 +365,33 @@ void Backend::resizeSwapchain() {
 	Engine::windowModMode().updateWindowSize();
 
 	createSwapchain();
-	createImageViews();
 }
 
 void Backend::cleanupSwapchain() {
-	// do not ever touch this in any way or it breaks
 	if (_swapchainDef.swapchain != VK_NULL_HANDLE) {
 		vkDestroySwapchainKHR(_device, _swapchainDef.swapchain, nullptr);
 		_swapchainDef.swapchain = VK_NULL_HANDLE;
 	}
 
-	for (size_t i = 0; i < _swapchainDef.imageViews.size(); ++i) {
-		vkDestroyImageView(_device, _swapchainDef.imageViews[i], nullptr);
+	for (uint32_t i = 0; i < _swapchainDef.imageCount; ++i) {
+		VkImageView imgView = _swapchainDef.imageViews[i];
+		if (imgView != VK_NULL_HANDLE)
+			vkDestroyImageView(_device, imgView, nullptr);
+
+		VkFence fence = _swapchainDef.inFlightFences[i];
+		if (fence != VK_NULL_HANDLE)
+			vkDestroyFence(_device, fence, nullptr);
+
+		VkSemaphore imgSem = _swapchainDef.imageAvailableSemaphores[i];
+		if (imgSem != VK_NULL_HANDLE)
+			vkDestroySemaphore(_device, imgSem, nullptr);
+
+		VkSemaphore renderSem = _swapchainDef.renderFinishedSemaphores[i];
+		if (renderSem != VK_NULL_HANDLE)
+			vkDestroySemaphore(_device, renderSem, nullptr);
 	}
 
 	_swapchainDef.imageInFlightFrame.clear();
-
-	for (auto fence : _swapchainDef.inFlightFences) {
-		if (fence != VK_NULL_HANDLE)
-			vkDestroyFence(_device, fence, nullptr);
-	}
-	_swapchainDef.inFlightFences.clear();
-
-	for (auto sem : _swapchainDef.presentSemaphores) {
-		if (sem != VK_NULL_HANDLE)
-			vkDestroySemaphore(_device, sem, nullptr);
-	}
-	_swapchainDef.presentSemaphores.clear();
-
-	for (auto sem : _swapchainDef.renderFinishedSemaphores) {
-		if (sem != VK_NULL_HANDLE)
-			vkDestroySemaphore(_device, sem, nullptr);
-	}
-	_swapchainDef.renderFinishedSemaphores.clear();
 }
 
 VkExtent2D Backend::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
@@ -409,20 +410,6 @@ VkExtent2D Backend::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilitie
 		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
 		return actualExtent;
-	}
-}
-
-void Backend::createImageViews() {
-	_swapchainDef.imageViews.resize(_swapchainDef.images.size());
-
-	for (uint32_t i = 0; i < _swapchainDef.images.size(); ++i) {
-		_swapchainDef.imageViews[i] = RendererUtils::createImageView(
-			_device,
-			_swapchainDef.images[i],
-			_swapchainDef.imageFormat,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			1
-		);
 	}
 }
 

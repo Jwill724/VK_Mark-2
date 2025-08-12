@@ -321,7 +321,7 @@ void DescriptorWriter::writeBuffer(uint32_t binding, VkBuffer buffer, size_t siz
 	bufferWrites.push_back({
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.dstSet = set,
-		.dstBinding = static_cast<uint32_t>(binding),
+		.dstBinding = binding,
 		.descriptorCount = 1,
 		.descriptorType = type,
 		.pBufferInfo = nullptr,
@@ -332,74 +332,60 @@ void DescriptorWriter::writeBuffer(uint32_t binding, VkBuffer buffer, size_t siz
 
 void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table) {
 	for (size_t i = 0; i < lut.size(); ++i) {
-		const auto& entry = lut[i];
+		const auto& e = lut[i];
 
-		// Sampler Cube
-		if (entry.samplerCubeIndex != UINT32_MAX && entry.samplerCubeIndex < table.samplerCubeViews.size()) {
-			const auto& info = table.samplerCubeViews[entry.samplerCubeIndex];
+		if (e.samplerCubeIndex != UINT32_MAX && e.samplerCubeIndex < table.samplerCubeViews.size()) {
+			const auto& info = table.samplerCubeViews[e.samplerCubeIndex];
 			fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
 				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
-			samplerCubeDescriptors.push_back(info);
+			samplerCubeDescriptors.push_back({ e.samplerCubeIndex, info });
 		}
 		else {
-			fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, entry.samplerCubeIndex);
+			fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
 		}
 
-		// Storage Image
-		if (entry.storageImageIndex != UINT32_MAX && entry.storageImageIndex < table.storageViews.size()) {
-			const auto& info = table.storageViews[entry.storageImageIndex];
+		if (e.storageImageIndex != UINT32_MAX && e.storageImageIndex < table.storageViews.size()) {
+			const auto& info = table.storageViews[e.storageImageIndex];
 			fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
 				i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
-			storageDescriptors.push_back(info);
+			storageDescriptors.push_back({ e.storageImageIndex, info });
 		}
 		else {
-			fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, entry.storageImageIndex);
+			fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
 		}
 
-		// Combined Image
-		if (entry.combinedImageIndex != UINT32_MAX && entry.combinedImageIndex < table.combinedViews.size()) {
-			const auto& info = table.combinedViews[entry.combinedImageIndex];
+		if (e.combinedImageIndex != UINT32_MAX && e.combinedImageIndex < table.combinedViews.size()) {
+			const auto& info = table.combinedViews[e.combinedImageIndex];
 			fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
-				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
-			combinedDescriptors.push_back(info);
+				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>((uint32_t)info.imageLayout));
+			combinedDescriptors.push_back({ e.combinedImageIndex, info });
 		}
 		else {
-			fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, entry.combinedImageIndex);
+			fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
 		}
 	}
 }
 
 void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, VkDescriptorSet set) {
-	const std::vector<VkDescriptorImageInfo>* selected = nullptr;
+	const std::vector<IndexedImage>* selected = nullptr;
 	VkDescriptorType vkType;
 
 	switch (type) {
-	case DescriptorImageType::SamplerCube:
-		selected = &samplerCubeDescriptors;
-		vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		break;
-	case DescriptorImageType::StorageImage:
-		selected = &storageDescriptors;
-		vkType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		break;
-	case DescriptorImageType::CombinedSampler:
-		selected = &combinedDescriptors;
-		vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		break;
-	default:
-		ASSERT(false && "Invalid DescriptorImageType provided to writeImages()");
-		return;
+	case DescriptorImageType::SamplerCube:    selected = &samplerCubeDescriptors;  vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; break;
+	case DescriptorImageType::StorageImage:   selected = &storageDescriptors;      vkType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;          break;
+	case DescriptorImageType::CombinedSampler:selected = &combinedDescriptors;     vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; break;
+	default: ASSERT(false && "Invalid DescriptorImageType"); return;
 	}
-
 	if (!selected || selected->empty()) return;
 
-	imageWriteGroups.push_back({
-		.binding = binding,
-		.type = vkType,
-		.dstSet = set,
-		.imageInfos = *selected
-	});
+	DescriptorWriteGroup g{};
+	g.binding = binding;
+	g.type = vkType;
+	g.dstSet = set;
+	g.images = *selected;
+	imageWriteGroups.push_back(std::move(g));
 }
+
 
 void DescriptorWriter::clear() {
 	imageWriteGroups.clear();
@@ -416,19 +402,21 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 
 	uint32_t totalImageCount = 0;
 	for (const auto& group : imageWriteGroups) {
-		if (group.imageInfos.empty()) continue;
+		if (group.images.empty()) continue;
 
-		VkWriteDescriptorSet write{};
-		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		write.dstSet = group.dstSet;
-		write.dstBinding = group.binding;
-		write.descriptorCount = static_cast<uint32_t>(group.imageInfos.size());
-		write.descriptorType = group.type;
-		write.pImageInfo = group.imageInfos.data();
+		totalImageCount += static_cast<uint32_t>(group.images.size());
 
-		totalImageCount += static_cast<uint32_t>(group.imageInfos.size());
-
-		writes.push_back(write);
+		for (const auto& img : group.images) {
+			VkWriteDescriptorSet w{};
+			w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			w.dstSet = group.dstSet;
+			w.dstBinding = group.binding;
+			w.dstArrayElement = img.index;
+			w.descriptorCount = 1;
+			w.descriptorType = group.type;
+			w.pImageInfo = &img.info;
+			writes.push_back(w);
+		}
 	}
 
 	if (!writes.empty()) {

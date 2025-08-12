@@ -9,7 +9,7 @@ namespace Environment {
 	constexpr VkExtent3D DIFFUSE_IRRADIANCE_BASE_EXTENTS{ 32, 32, 1 };
 	constexpr float DIFFUSE_SAMPLE_DELTA{ 0.025f };
 	constexpr uint32_t PREFILTER_SAMPLE_COUNT{ 1024 };
-	constexpr uint32_t DIFFUSE_IRRADIANCE_MIP_LEVELS{ 2 };
+	constexpr uint32_t DIFFUSE_IRRADIANCE_MIP_LEVELS{ 1 };
 	constexpr VkExtent3D LUT_IMAGE_EXTENT{ 512, 512, 1 };
 
 	void dispatchEnvironmentMaps(GPUResources& resources, ImageTableManager& globalImgTable);
