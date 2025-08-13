@@ -107,9 +107,8 @@ void main()
 	vec3 direct = (diff + spec) * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL;
 
 	// IBL ambient
-	vec3 F_ibl  = F_SchlickRoughness(F0, NdotV, rough);      // roughness-aware Fresnel for ambient
-	vec3 kS_ibl = F_ibl;
-	vec3 kD_ibl = (1.0 - kS_ibl) * (1.0 - metal);            // no diffuse for metals
+	vec3 F_ibl  = F_SchlickRoughness(F0, NdotV, rough);     // roughness-aware Fresnel for ambient
+	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);            // no diffuse for metals
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
