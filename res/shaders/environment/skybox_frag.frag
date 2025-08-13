@@ -20,7 +20,7 @@ void main() {
     vec3 dir = normalize(fragPos);
     dir.y = -dir.y;
 
-    uint skyboxIdx = uint(envMapSet.indices[0].w);
+    uint skyboxIdx = envMapSet.indices[0].w;
 
     // fetch the HDR/RGB color
     vec3 skyColor = texture(envMaps[nonuniformEXT(skyboxIdx)], dir).rgb;

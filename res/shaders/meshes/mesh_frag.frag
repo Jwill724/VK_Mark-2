@@ -30,6 +30,7 @@ layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_ENV_INDEX) uniform EnvMapData 
 };
 
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_SAMPLER_CUBE) uniform samplerCube envMaps[];
+
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
 
 layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
@@ -41,23 +42,19 @@ const bool FLIP_ENV_Y = true;
 // === IBL sampling ===
 vec3 sampleIrradiance(vec3 N, uint irrIdx)
 {
-	vec3 d = normalize(N);
-	if (FLIP_ENV_Y) d.y = -d.y;
+	if (FLIP_ENV_Y) N.y = -N.y;
 	// cosine-convolved cube: single mip
-	return textureLod(envMaps[nonuniformEXT(irrIdx)], d, 0.0).rgb;
+	return textureLod(envMaps[nonuniformEXT(irrIdx)], N, 0.0).rgb;
 }
 
-vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, uint specIdx, uint brdfIdx)
+vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint specIdx)
 {
-	vec3 R = reflect(-V, normalize(N));
+	vec3 R = reflect(-V, N);
 	if (FLIP_ENV_Y) R.y = -R.y;
 
 	int levels = textureQueryLevels(envMaps[nonuniformEXT(specIdx)]);
 	float lod  = clamp(roughness * float(levels - 1), 0.0, float(levels - 1));
 	vec3 prefiltered = textureLod(envMaps[nonuniformEXT(specIdx)], R, lod).rgb;
-
-	float NdotV = max(dot(normalize(N), normalize(V)), 0.0);
-	vec2 brdf  = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, roughness)).rg;
 
 	// split-sum approx
 	return prefiltered * (F0 * brdf.x + brdf.y);
@@ -85,9 +82,9 @@ void main()
 	vec3 L = normalize(scene.sunlightDirection.xyz);
 	vec3 H = normalize(V + L);
 
-	float NdotV = max(dot(N,V), 0.0);
-	float NdotL = max(dot(N,L), 0.0);
-	float LdotH = max(dot(L, normalize(V + L)), 0.0);
+	float NdotV = max(dot(N, V), 0.0);
+	float NdotL = max(dot(N, L), 0.0);
+	float LdotH = max(dot(L, H), 0.0);
 
 	// material colors (linear)
 	vec3 albedo = inColor * base.rgb;
@@ -97,15 +94,15 @@ void main()
 	rough = SpecularAA(rough, N);
 	vec3 F0 = mix(vec3(0.04), albedo, metal);  // conductor/metallic model
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
-	vec3 spec = BRDF_Specular(N, V, L, F0, rough);
+	vec3 spec = BRDF_Specular(N, V, L, H, F0, rough);
 
 	// multi-scatter energy compensation for direct spec
 	uint irrIdx  = envMapSet.indices[0].x;
 	uint specIdx = envMapSet.indices[0].y;
 	uint brdfIdx = envMapSet.indices[0].z;
 
-	vec2 dfg = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, rough)).rg;
-	spec *= MultiScatterEnergyComp(F0, dfg);
+	vec2 brdf = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, rough)).rg;
+	spec *= MultiScatterEnergyComp(F0, brdf);
 
 	vec3 direct = (diff + spec) * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL;
 
@@ -115,7 +112,7 @@ void main()
 	vec3 kD_ibl = (1.0 - kS_ibl) * (1.0 - metal);            // no diffuse for metals
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
-	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, specIdx, brdfIdx);
+	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
 	iblSpec *= 0.55; // darken specular on image
 
 	float specAO = SpecAO_Conservative(ao, NdotV, rough);
