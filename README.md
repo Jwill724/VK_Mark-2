@@ -16,12 +16,12 @@
 -SSAO
 -Cascaded shadow mapping
 -Improved tone mapping
--SDL2 integration
+-Render graph
+-SDL2 integration and platform layer
 -Push descriptors
 -Better asset management (dynamic asset loading, resource handling)
 -KTX texture format
 -Proper multithreading (texture loading, cmd recording)
--Render graph
 -Occlusion culling (Hi-Z/HZB)
 -GPU frustum culling
 -GPU batching and sorting
