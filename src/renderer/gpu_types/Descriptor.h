@@ -9,17 +9,12 @@ struct PoolSizeRatio {
 	float ratio = 0.0f;
 };
 
-struct IndexedImage {
-	uint32_t index = UINT32_MAX;
-	VkDescriptorImageInfo info;
-};
-
 struct DescriptorWriteGroup {
 	uint32_t binding = UINT32_MAX;
 	VkDescriptorType type{};
 	VkDescriptorSet dstSet = VK_NULL_HANDLE;
 
-	std::vector<IndexedImage> images;
+	std::vector<VkDescriptorImageInfo> imageInfos;
 };
 
 enum class DescriptorImageType {
@@ -36,9 +31,9 @@ struct DescriptorWriter {
 	std::vector<VkWriteDescriptorSet> bufferWrites;
 	std::vector<size_t> writeBufferIndices;
 
-	std::vector<IndexedImage> samplerCubeDescriptors;
-	std::vector<IndexedImage> storageDescriptors;
-	std::vector<IndexedImage> combinedDescriptors;
+	std::vector<VkDescriptorImageInfo> samplerCubeDescriptors;
+	std::vector<VkDescriptorImageInfo> storageDescriptors;
+	std::vector<VkDescriptorImageInfo> combinedDescriptors;
 
 	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
 
