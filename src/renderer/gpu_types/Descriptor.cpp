@@ -338,7 +338,7 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 			const auto& info = table.samplerCubeViews[e.samplerCubeIndex];
 			fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
 				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
-			samplerCubeDescriptors.push_back({ e.samplerCubeIndex, info });
+			samplerCubeDescriptors.push_back(info);
 		}
 		else {
 			fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
@@ -348,7 +348,7 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 			const auto& info = table.storageViews[e.storageImageIndex];
 			fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
 				i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
-			storageDescriptors.push_back({ e.storageImageIndex, info });
+			storageDescriptors.push_back(info);
 		}
 		else {
 			fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
@@ -358,7 +358,7 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 			const auto& info = table.combinedViews[e.combinedImageIndex];
 			fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
 				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>((uint32_t)info.imageLayout));
-			combinedDescriptors.push_back({ e.combinedImageIndex, info });
+			combinedDescriptors.push_back(info);
 		}
 		else {
 			fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
@@ -367,7 +367,7 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 }
 
 void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, VkDescriptorSet set) {
-	const std::vector<IndexedImage>* selected = nullptr;
+	const std::vector<VkDescriptorImageInfo>* selected = nullptr;
 	VkDescriptorType vkType;
 
 	switch (type) {
@@ -378,12 +378,12 @@ void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, V
 	}
 	if (!selected || selected->empty()) return;
 
-	DescriptorWriteGroup g{};
-	g.binding = binding;
-	g.type = vkType;
-	g.dstSet = set;
-	g.images = *selected;
-	imageWriteGroups.push_back(std::move(g));
+	imageWriteGroups.push_back({
+		.binding = binding,
+		.type = vkType,
+		.dstSet = set,
+		.imageInfos = *selected
+	});
 }
 
 
@@ -402,21 +402,18 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 
 	uint32_t totalImageCount = 0;
 	for (const auto& group : imageWriteGroups) {
-		if (group.images.empty()) continue;
+		if (group.imageInfos.empty()) continue;
 
-		totalImageCount += static_cast<uint32_t>(group.images.size());
+		VkWriteDescriptorSet write{};
+		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		write.dstSet = group.dstSet;
+		write.dstBinding = group.binding;
+		write.descriptorCount = static_cast<uint32_t>(group.imageInfos.size());
+		write.descriptorType = group.type;
+		write.pImageInfo = group.imageInfos.data();
+		totalImageCount += static_cast<uint32_t>(group.imageInfos.size());
 
-		for (const auto& img : group.images) {
-			VkWriteDescriptorSet w{};
-			w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			w.dstSet = group.dstSet;
-			w.dstBinding = group.binding;
-			w.dstArrayElement = img.index;
-			w.descriptorCount = 1;
-			w.descriptorType = group.type;
-			w.pImageInfo = &img.info;
-			writes.push_back(w);
-		}
+		writes.push_back(write);
 	}
 
 	if (!writes.empty()) {
