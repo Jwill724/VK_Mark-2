@@ -22,7 +22,7 @@ float D_GGX(vec3 N, vec3 H, float roughness)
 float V_SmithGGXCorrelated(float NdotV, float NdotL, float roughness)
 {
 	float a = linearRough(roughness);
-	float a2 = a*a;
+	float a2 = a * a;
 
 	float gv = NdotL * sqrt(a2 + (1.0 - a2) * NdotV * NdotV);
 	float gl = NdotV * sqrt(a2 + (1.0 - a2) * NdotL * NdotL);
@@ -68,9 +68,8 @@ float SpecularAA(float roughness, vec3 N)
 }
 
 // full microfacet spec term for direct lights
-vec3 BRDF_Specular(vec3 N, vec3 V, vec3 L, vec3 F0, float roughness)
+vec3 BRDF_Specular(vec3 N, vec3 V, vec3 L, vec3 H, vec3 F0, float roughness)
 {
-	vec3 H = normalize(V + L);
 	float NdotV = saturate(dot(N,V));
 	float NdotL = saturate(dot(N,L));
 	float D = D_GGX(N, H, roughness);
@@ -97,10 +96,10 @@ float SpecAO_Conservative(float ao, float NdotV, float rough)
 }
 
 // Multi-scatter energy compensation (UE/Frostbite style)
-vec3 MultiScatterEnergyComp(vec3 F0, vec2 dfg)
+vec3 MultiScatterEnergyComp(vec3 F0, vec2 brdf)
 {
-	// E_ss = single-scatter energy from DFG; keep metals from over-darkening
-	vec3 E_ss  = F0 * dfg.x + dfg.y;
+	// E_ss = single-scatter energy from brdf; keep metals from over-darkening
+	vec3 E_ss  = F0 * brdf.x + brdf.y;
 	vec3 F_avg = F0 + (1.0 - F0) * 0.047619;
 	return 1.0 + F_avg * (1.0 - E_ss) / max(E_ss, 1e-3);
 }
