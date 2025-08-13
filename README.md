@@ -1,9 +1,9 @@
 ## Features
-- Vulkan 1.4 GPU-Driven renderer
+- Vulkan 1.4 Hybrid CPU/GPU-Driven renderer
 - GPUAddress table enables a 100% bindless indirect buffer system
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
 - Descriptor indexing (bindless rendering)
-- Multithreaded asset & command preparation (EnkiTS)
+- Multithreading (EnkiTS)
 - Transfer and compute async capable
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
 - GLTF asset pipeline

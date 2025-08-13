@@ -56,6 +56,8 @@ vec3 DisneyDiffuse(vec3 albedo, float linearRoughness, float NdotV, float NdotL,
 vec3 Lambert(vec3 kD, vec3 albedo) { return kD * albedo / PI; }
 
 // Specular AA
+// Reduce sparkling/aliasing of specular highlights caused by
+// high-frequency normal variation
 float SpecularAA(float roughness, vec3 N)
 {
 	vec3 dndx = dFdx(N);
@@ -75,14 +77,6 @@ vec3 BRDF_Specular(vec3 N, vec3 V, vec3 L, vec3 F0, float roughness)
 	float Vv = V_SmithGGXCorrelated(NdotV, NdotL, roughness);
 	vec3 F = F_SCHLICK(V, H, F0);
 	return (D * Vv) * F; // already includes the 1/(4 NdotV NdotL) via V
-}
-
-// Scalar Schlick (handy for clearcoat or when F0 is scalar)
-float F_SchlickScalar(float F0, float cosTheta)
-{
-	// same fast pow form as your vector version
-	float x = (-5.55473 * cosTheta - 6.98316) * cosTheta;
-	return F0 + (1.0 - F0) * exp2(x);
 }
 
 // Schlick with roughness for IBL (keeps rough metals from going too dark)
