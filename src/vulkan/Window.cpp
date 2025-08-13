@@ -13,7 +13,7 @@ bool WindowIsOpen(GLFWwindow* window) {
 }
 
 bool Window::throttleIfWindowUnfocused(double sleepMs) const {
-	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {\
+	if (!glfwGetWindowAttrib(window, GLFW_VISIBLE) || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
 		glfwWaitEventsTimeout(sleepMs);
 		return true;
 	}
@@ -56,6 +56,14 @@ void Window::initWindow(const uint32_t width, const uint32_t height) {
 	if (!window) {
 		ASSERT(window && "Failed to initialize GLFW window!");
 	}
+
+	GLFWmonitor* mon = glfwGetPrimaryMonitor();
+	const GLFWvidmode* vm = glfwGetVideoMode(mon);
+	int mx = 0, my = 0;
+	glfwGetMonitorPos(mon, &mx, &my);
+	int x = mx + (vm->width - (int)width) / 2;
+	int y = my + (vm->height - (int)height) / 2;
+	glfwSetWindowPos(window, x, y);
 
 	glfwSetWindowUserPointer(window, this);
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);

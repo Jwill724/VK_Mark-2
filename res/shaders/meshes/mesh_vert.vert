@@ -39,24 +39,24 @@ layout(push_constant) uniform DrawPushConstants {
 
 void main()
 {
-	uint instanceID = gl_BaseInstanceARB + gl_InstanceIndex;
-
 	Instance inst;
 	if (drawDataPC.drawPassType == 0u) {
 		OpaqueInstances ib = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
-		inst = ib.opaqueInstances[instanceID];
+		inst = ib.opaqueInstances[gl_InstanceIndex];
 	} else {
 		TransparentInstances ib = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
-		inst = ib.transparentInstances[instanceID];
+		inst = ib.transparentInstances[gl_InstanceIndex];
 	}
 
 	outMaterialID = inst.materialID;
 
-	uint vertIdx = gl_VertexIndex;
-	if (vertIdx >= drawDataPC.totalVertexCount) return;
+	if (gl_VertexIndex >= drawDataPC.totalVertexCount) {
+		gl_Position = vec4(2e9, 2e9, 2e9, 1.0); // push off-screen
+		return;
+	}
 
 	// fetch vertex
-	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[vertIdx];
+	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
 
 	// fetch transform
 	mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];

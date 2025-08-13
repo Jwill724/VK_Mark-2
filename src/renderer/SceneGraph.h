@@ -57,6 +57,8 @@ struct Node : public IRenderable {
 				.transformID = static_cast<uint32_t>(outFrameTransformsList.size() - 1)
 			};
 
+			outVisibleOpaqueInstances.push_back(gpuInst);
+
 			if (inst->passType == MaterialPass::Transparent)
 				outVisibleTransparentInstances.push_back(gpuInst);
 			else

@@ -279,8 +279,7 @@ void Backend::createLogicalDevice() {
 void Backend::createSwapchain() {
 	BackendTools::SwapChainSupportDetails swapChainSupport = BackendTools::querySwapChainSupport(_physicalDevice, _surface);
 	VkSurfaceFormatKHR surfaceFormat = BackendTools::chooseSwapSurfaceFormat(swapChainSupport.formats);
-	//VkPresentModeKHR presentMode = BackendTools::chooseSwapSurfacePresentMode(swapChainSupport.presentModes);
-	VkPresentModeKHR VSYNC = VK_PRESENT_MODE_FIFO_KHR;
+	VkPresentModeKHR presentMode = BackendTools::chooseSwapSurfacePresentMode(swapChainSupport.presentModes);
 	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
 	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
@@ -300,7 +299,8 @@ void Backend::createSwapchain() {
 	createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	createInfo.presentMode = VSYNC;
+	createInfo.presentMode = presentMode;
+	//createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	createInfo.clipped = VK_TRUE;
 
 	uint32_t qFamIndices[] {

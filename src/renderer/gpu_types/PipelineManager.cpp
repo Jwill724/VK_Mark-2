@@ -444,8 +444,8 @@ void PipelineConfigs::multisamplingConfig(VkPipelineMultisampleStateCreateInfo& 
 	multisampling.sampleShadingEnable = sampleShadingEnabled;
 	multisampling.minSampleShading = 1.0f;
 	multisampling.pSampleMask = nullptr;
-	// no alpha to coverage either
-	multisampling.alphaToCoverageEnable = VK_FALSE;
+
+	multisampling.alphaToCoverageEnable = VK_TRUE;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
 

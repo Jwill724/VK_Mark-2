@@ -37,7 +37,7 @@ void SceneGraph::buildSceneGraph(
 
 			std::visit(fastgltf::visitor{
 				[&](const fastgltf::math::fmat4x4& matrix) {
-					memcpy(&node->localTransform, matrix.data(), sizeof(matrix));
+					node->localTransform = glm::make_mat4x4(matrix.data());
 				},
 				[&](const fastgltf::TRS& transform) {
 					glm::vec3 tl(transform.translation[0], transform.translation[1], transform.translation[2]);

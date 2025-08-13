@@ -6,6 +6,8 @@
 void Profiler::enablePlatformTimerPrecision() {
 	timeBeginPeriod(1);
 	QueryPerformanceFrequency(&_qpcFreq);
+	_qpcFreqLL = _qpcFreq.QuadPart;
+	_qpcInv = 1.0 / static_cast<double>(_qpcFreqLL);
 }
 
 Profiler::Profiler() {
@@ -21,55 +23,83 @@ Profiler::~Profiler() {
 }
 
 void Profiler::beginFrame() {
-	_frameStartTime = [&]() {
-		LARGE_INTEGER now;
-		QueryPerformanceCounter(&now);
-		return static_cast<double>(now.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
-	}();
+	if (_stats.capFramerate && _stats.targetFrameRate > 0.0f) {
+		_periodLL = llround(static_cast<double>(_qpcFreqLL) / static_cast<double>(_stats.targetFrameRate));
+		if (_nextTickLL == 0) {
+			LARGE_INTEGER now;
+			QueryPerformanceCounter(&now);
+			_nextTickLL = now.QuadPart + _periodLL;
+		}
+	}
 
-	double now = _frameStartTime;
-	double delta = now - _lastDeltaTime;
-	_lastDeltaTime = now;
+	LARGE_INTEGER now;
+	QueryPerformanceCounter(&now);
+	_frameStartTime = static_cast<double>(now.QuadPart * _qpcInv);
 
-	float dt = std::min(static_cast<float>(delta), 0.1f);
-	_stats.deltaTime = dt;
+	double delta = _frameStartTime - _lastDeltaTime;
+	_lastDeltaTime = _frameStartTime;
 
-	// Stall detection
-	constexpr float stallThreshold = 0.05f; // 50ms
-	rendererWasStalled = (delta > stallThreshold);
+	_stats.deltaTime = static_cast<float>(std::min(delta, 0.1));
+	rendererWasStalled = (delta > 0.05); // 50ms stall
 }
 
 void Profiler::endFrame() {
-	LARGE_INTEGER nowQPC;
-	QueryPerformanceCounter(&nowQPC);
-	double endTime = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
+	const bool capOn = (_stats.capFramerate && _stats.targetFrameRate > 0.0f);
+
+	// schedule-based limiter in integer QPC ticks
+	if (capOn) {
+		LARGE_INTEGER tq;
+		QueryPerformanceCounter(&tq);
+		long long now = tq.QuadPart;
+
+		// coarse sleep if early by > ~2 ms
+		const long long twoMs = _qpcFreqLL / 500; // 2 ms worth of ticks
+		long long earlyTicks = _nextTickLL - now;
+		if (earlyTicks > twoMs) {
+			const long long leave = _qpcFreqLL / 1000; // wake ~1 ms early
+			long long sleepTicks = earlyTicks - leave;
+			if (sleepTicks > 0) {
+				DWORD ms = DWORD((sleepTicks * 1000) / _qpcFreqLL);
+				if (ms) Sleep(ms);
+				QueryPerformanceCounter(&tq);
+				now = tq.QuadPart;
+			}
+		}
+
+		if (now >= _nextTickLL) {
+			// missed (or exactly hit) this tick: schedule the next one
+			_nextTickLL = now + _periodLL;
+		}
+		else {
+			// short spin to the tick
+			do {
+				_mm_pause();
+				QueryPerformanceCounter(&tq);
+				now = tq.QuadPart;
+			} while (now < _nextTickLL);
+			_nextTickLL += _periodLL;
+		}
+	}
+
+	// frame timing readout (seconds)
+	LARGE_INTEGER endQ;
+	QueryPerformanceCounter(&endQ);
+	double endTime = static_cast<double>(endQ.QuadPart) * _qpcInv;
 	float elapsed = static_cast<float>(endTime - _frameStartTime);
 
-	if (_stats.capFramerate && _stats.targetFrameRate > 0.0f) {
-		const float targetFrameTime = 1.0f / _stats.targetFrameRate;
-		float timeLeft = targetFrameTime - elapsed;
-
-		if (timeLeft > 0.002f) {
-			Sleep(static_cast<DWORD>((timeLeft - 0.001f) * 1000.0f));
+	// ui fps cap
+	if (capOn) {
+		const double targetDt = 1.0 / double(_stats.targetFrameRate);
+		if (elapsed < static_cast<float>(targetDt * 0.999)) {
+			elapsed = static_cast<float>(targetDt);
 		}
-
-		while (true) {
-			QueryPerformanceCounter(&nowQPC);
-			double current = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
-			if ((current - _frameStartTime) >= targetFrameTime)
-				break;
-			_mm_pause();
-		}
-
-		QueryPerformanceCounter(&nowQPC);
-		endTime = static_cast<double>(nowQPC.QuadPart) / static_cast<double>(_qpcFreq.QuadPart);
-		elapsed = static_cast<float>(endTime - _frameStartTime);
 	}
 
 	_stats.frameTime = elapsed * 1000.0f;
 	_stats.fps = 1.0f / std::max(elapsed, 0.00001f);
 	_stats.deltaTime = elapsed;
 }
+
 
 void Profiler::startTimer() {
 	QueryPerformanceCounter(&_startTimer);
@@ -79,7 +109,7 @@ float Profiler::endTimer() const {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	auto elapsedTicks = now.QuadPart - _startTimer.QuadPart;
-	return static_cast<float>(elapsedTicks) / static_cast<float>(_qpcFreq.QuadPart);
+	return static_cast<float>(elapsedTicks / _qpcFreq.QuadPart);
 }
 
 VkPipeline Profiler::getPipelineByType(PipelineType type) const {

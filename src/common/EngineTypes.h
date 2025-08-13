@@ -226,7 +226,7 @@ struct GPUQueue {
 	std::mutex submitMutex;
 	FencePool fencePool;
 
-	uint32_t familyIndex = 0;
+	uint32_t familyIndex = UINT32_MAX;
 
 	// when a timelinesubmit is done, set to true
 	// on upcoming queue uses check bool to see if a wait is needed or not

@@ -1,29 +1,37 @@
-# Background
-
 ## Features
-
 - Vulkan 1.4 GPU-Driven renderer
 - GPUAddress table enables a 100% bindless indirect buffer system
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
-- Multithreaded asset & command preparation (EnkiTS)
 - Descriptor indexing (bindless rendering)
-- Transfer and compute async enabled
+- Multithreaded asset & command preparation (EnkiTS)
+- Transfer and compute async capable
 - PBR shading (Cook-Torrance BRDF, GGX, Schlick-GGX, Unreal Fresnel)
 - Full IBL support (irradiance map + specular prefilter + BRDF LUT)
-- GLTF loading (with AABB bounds generation)
+- GLTF asset pipeline
 - AABB frustum culling
 - Transparent depth sorting
 - ImGui debugging tools
 - MSAA (up to 8x), mipmapping, dynamic pipeline swapping
 
 ## Future
+-SSAO
+-Cascade shadow mapping
+-Improved tone mapping
+-SDL2 integration
+-Utilize push descriptors
+-Better asset management (e.g dynamic asset loading)
+-KTX texture format
+-Proper multithreading (e.g texture loading, cmd recording)
+-Render graph
+-Occlusion culling
 -GPU frustum culling
 -GPU batching and sorting
--Cascade shadow mapping
 -Clustered shading
 
 ## Screenshots
-
+![Sponza](res/screenshots/sponza.png)
+![Helmet](res/screenshots/helmet.png)
+![Material test](res/screenshots/mrspheres.png)
 
 ## Controls
 - `W A S D` ‐ Move forward, left, back, right  
@@ -38,12 +46,8 @@
 ## Requirements for build
 - Windows 10+
 - Vulkan SDK (1.4+)
-- CMake 3.20+
 - Visual Studio 2022
 
 ## Build steps
-```bash
-mkdir build
-cd build
-cmake .. -G "Visual Studio 17 2022" -A x64
-cmake --build . --config Release/Debug
+Open project file in visual studio 2022
+Cmake to be utilized in future, doesn't currently work

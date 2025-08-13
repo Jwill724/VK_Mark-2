@@ -90,6 +90,10 @@ private:
 	FrameStats _stats;
 
 	LARGE_INTEGER _qpcFreq{};
+	long long _qpcFreqLL = 0;
+	long long _periodLL = 0; // ticks per frame
+	long long _nextTickLL = 0; // next target tick
+	double _qpcInv = 0.0; // seconds per tick
 	double _frameStartTime = 0.0;
 	double _lastDeltaTime = 0.0;
 	LARGE_INTEGER _startTimer{};
