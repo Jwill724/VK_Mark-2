@@ -62,7 +62,7 @@ void main()
 	mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-	outWorldPos  = worldPos4.xyz;
+	outWorldPos = worldPos4.xyz;
 	gl_Position = scene.viewproj * worldPos4;
 
 	mat3 normalMatrix = transpose(inverse(mat3(model)));
