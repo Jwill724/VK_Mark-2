@@ -5,28 +5,27 @@
 - Descriptor indexing (bindless rendering)
 - Multithreaded asset & command preparation (EnkiTS)
 - Transfer and compute async capable
-- PBR shading (Cook-Torrance BRDF, GGX, Schlick-GGX, Unreal Fresnel)
-- Full IBL support (irradiance map + specular prefilter + BRDF LUT)
+- PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
 - GLTF asset pipeline
-- AABB frustum culling
+- AABB visual debug and culling
 - Transparent depth sorting
 - ImGui debugging tools
 - MSAA (up to 8x), mipmapping, dynamic pipeline swapping
 
 ## Future
 -SSAO
--Cascade shadow mapping
+-Cascaded shadow mapping
 -Improved tone mapping
 -SDL2 integration
--Utilize push descriptors
--Better asset management (e.g dynamic asset loading)
+-Push descriptors
+-Better asset management (dynamic asset loading, resource handling)
 -KTX texture format
--Proper multithreading (e.g texture loading, cmd recording)
+-Proper multithreading (texture loading, cmd recording)
 -Render graph
--Occlusion culling
+-Occlusion culling (Hi-Z/HZB)
 -GPU frustum culling
 -GPU batching and sorting
--Clustered shading
+-Clustered/Forward+ shading
 
 ## Screenshots
 ![Sponza](res/screenshots/sponza.png)
