@@ -15,29 +15,34 @@ namespace AssetManager {
 	std::optional<std::shared_ptr<GLTFJobContext>> loadGltfFiles(std::string_view filePath);
 }
 
+// TODO: dynamic loading and non hard coded models
+
 bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	ASSERT(damagedHelmetFile.has_value());
-	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	queue->push(damagedHelmetFile.value());
+	// all rendering bugs currently are related to transforms, geometry is perfect via aabb visuals
 
+	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	//ASSERT(damagedHelmetFile.has_value());
+	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	//queue->push(damagedHelmetFile.value());
+
+	std::string sponza1Path{ "res/assets/sponza.glb" };
+	auto sponza1File = loadGltfFiles(sponza1Path);
+	ASSERT(sponza1File.has_value());
+	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	queue->push(sponza1File.value());
+
+	// FIXME: Dragon transform is busted, probably in the nodes
 	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
 	//ASSERT(dragonFile.has_value());
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
-
-	//std::string sponza1Path{ "res/assets/sponza.glb" };
-	//auto sponza1File = loadGltfFiles(sponza1Path);
-	//ASSERT(sponza1File.has_value());
-	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	//queue->push(sponza1File.value());
 
 	//std::string cubePath{ "res/assets/basic_cube/Cube.gltf" };
 	//auto cubeFile = loadGltfFiles(cubePath);
@@ -50,6 +55,8 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//ASSERT(spheresFile.has_value());
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
 	//queue->push(spheresFile.value());
+
+	// FIXME: Structure.glb is busted, transparency doesnt work and cpu bottle neck due to draw building
 
 	if (!queue->empty()) {
 		return true;
@@ -453,7 +460,6 @@ void AssetManager::processMeshes(
 
 	auto& resourceStats = Engine::getState().getGPUResources().stats;
 
-	uint32_t totalMaterials = 0;
 	uint32_t matOffset = 0;
 
 	for (auto& context : gltfJobs) {
@@ -565,7 +571,7 @@ void AssetManager::processMeshes(
 					inst->instance.materialID = 0 + matOffset;
 					inst->passType = MaterialPass::Opaque;
 				}
-				ASSERT(inst->instance.materialID <= resourceStats.totalMaterialCount && "MaterialID out of range");
+				ASSERT(inst->instance.materialID < resourceStats.totalMaterialCount && "MaterialID out of range");
 
 				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
@@ -586,8 +592,7 @@ void AssetManager::processMeshes(
 			}
 		}
 
-		totalMaterials += sceneMatCount;
-		matOffset += totalMaterials;
+		matOffset += sceneMatCount;
 
 		resourceStats.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
 		resourceStats.totalVertexCount = static_cast<uint32_t>(vertices.size());

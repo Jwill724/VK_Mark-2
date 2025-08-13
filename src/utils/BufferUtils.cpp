@@ -3,7 +3,13 @@
 #include "utils/BufferUtils.h"
 #include "vulkan/Backend.h"
 
-AllocatedBuffer BufferUtils::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage, const VmaAllocator allocator) {
+AllocatedBuffer BufferUtils::createBuffer(
+	size_t allocSize,
+	VkBufferUsageFlags usage,
+	VmaMemoryUsage memoryUsage,
+	const VmaAllocator allocator,
+	bool concurrentSharingOn)
+{
 	static std::mutex mutex;
 	std::scoped_lock lock(mutex);
 
@@ -19,6 +25,38 @@ AllocatedBuffer BufferUtils::createBuffer(size_t allocSize, VkBufferUsageFlags u
 	bufferInfo.size = allocSize;
 	bufferInfo.usage = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	// buffer to be shared across different queues
+	std::array<uint32_t, 3> qFamilies{};
+	uint32_t qFamCount = 0;
+	uint8_t mask = 0;
+
+	if (concurrentSharingOn) {
+		const uint32_t g = Backend::getGraphicsQueue().familyIndex;
+		const uint32_t t = Backend::getTransferQueue().familyIndex;
+		const uint32_t c = Backend::getComputeQueue().familyIndex;
+
+		auto pushUnique = [&](uint32_t fam, uint8_t bit) {
+			for (uint32_t i = 0; i < qFamCount; ++i) {
+				if (qFamilies[i] == fam) return; // already present
+			}
+			qFamilies[qFamCount++] = fam;
+			mask |= bit;
+		};
+
+		pushUnique(g, 0x1);
+		pushUnique(t, 0x2);
+		pushUnique(c, 0x4);
+
+		if (qFamCount > 1) {
+			bufferInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+			bufferInfo.queueFamilyIndexCount = qFamCount;
+			bufferInfo.pQueueFamilyIndices = qFamilies.data();
+		}
+	}
+
+	newBuffer.isConcurrent = (qFamCount > 1);
+	newBuffer.qmask = mask;
 
 	VmaAllocationCreateInfo vmaallocInfo{};
 	vmaallocInfo.usage = memoryUsage;
@@ -96,7 +134,8 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		size,
 		usage,
 		VMA_MEMORY_USAGE_GPU_ONLY,
-		allocator
+		allocator,
+		true
 	);
 
 	addressTable.setAddress(addressBufferType, buffer.address);

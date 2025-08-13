@@ -189,14 +189,18 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	// Wait on image acquired semaphore
 	VkSemaphoreSubmitInfo waitImageAvailable{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 	waitImageAvailable.semaphore = presentSem;
-	waitImageAvailable.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+	waitImageAvailable.stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
 	waitInfos.push_back(waitImageAvailable);
 
+	// Wait on transfer timeline only up to the first buffer consumers
 	if (frameCtx.transferWaitValue <= _transferSync.signalValue - 1) {
 		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 		waitTransfer.semaphore = _transferSync.semaphore;
-		waitTransfer.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 		waitTransfer.value = frameCtx.transferWaitValue;
+		waitTransfer.stageMask =
+			VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
+			VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
+			VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT; // earliest consumers of uploaded data
 		waitInfos.push_back(waitTransfer);
 	}
 
@@ -204,8 +208,10 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 		if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
 			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 			waitCompute.semaphore = _computeSync.semaphore;
-			waitCompute.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 			waitCompute.value = frameCtx.computeWaitValue;
+			waitCompute.stageMask =
+				VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
+				VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
 			waitInfos.push_back(waitCompute);
 		}
 	}
@@ -278,17 +284,17 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
 	if (!frameCtx.transferCmds.empty()) {
-		if (frameCtx.opaqueVisibleCount > 0) {
-			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer.buffer);
+		if (frameCtx.opaqueVisibleCount) {
+			RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer);
+			RendererUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer);
 		}
-		if (frameCtx.transparentVisibleCount > 0) {
-			RendererUtils::insertIndirectDrawBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer.buffer);
-			RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer.buffer);
+		if (frameCtx.transparentVisibleCount) {
+			RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer);
+			RendererUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer);
 		}
 
-		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.transformsListBuffer.buffer);
-		RendererUtils::insertTransferToGraphicsBufferBarrier(frameCtx.commandBuffer, frameCtx.addressTableBuffer.buffer);
+		RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transformsListBuffer);
+		RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
 	}
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
@@ -346,7 +352,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// ToneMapImage transition
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer, draw.image, draw.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 
 	RendererUtils::transitionImage(
 		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,

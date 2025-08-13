@@ -238,23 +238,35 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 		vkCmdCopyBuffer(cmd, frameCtx.addressTableStaging.buffer, frameCtx.addressTableBuffer.buffer, 1, &addressCpy);
 		frameCtx.addressTableDirty = true;
 
-		if (GPU_ACCELERATION_ENABLED) {
-			// GPU draw building next
-			// compute must wait for transfer to complete
-			VkMemoryBarrier2 memoryBarrier {
-				.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-				.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-				.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-				.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
-			};
-			VkDependencyInfo dependencyInfo{
-				.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-				.memoryBarrierCount = 1,
-				.pMemoryBarriers = &memoryBarrier,
-			};
-			vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+		//if (GPU_ACCELERATION_ENABLED) {
+		//	// GPU draw building next
+		//	// compute must wait for transfer to complete
+		//	VkMemoryBarrier2 memoryBarrier {
+		//		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+		//		.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+		//		.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+		//		.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+		//		.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+		//	};
+		//	VkDependencyInfo dependencyInfo{
+		//		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+		//		.memoryBarrierCount = 1,
+		//		.pMemoryBarriers = &memoryBarrier,
+		//	};
+		//	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+		//}
+
+		if (isOpaqueVisible) {
+			RendererUtils::releaseTransferToShaderReadQ(cmd, frameCtx.opaqueInstanceBuffer);
+			RendererUtils::releaseTransferToIndirectQ(cmd, frameCtx.opaqueIndirectCmdBuffer);
 		}
+		if (isTransparentVisible) {
+			RendererUtils::releaseTransferToShaderReadQ(cmd, frameCtx.transparentInstanceBuffer);
+			RendererUtils::releaseTransferToIndirectQ(cmd, frameCtx.transparentIndirectCmdBuffer);
+		}
+
+		RendererUtils::releaseTransferToShaderReadQ(cmd, frameCtx.transformsListBuffer);
+		RendererUtils::releaseTransferToShaderReadQ(cmd, frameCtx.addressTableBuffer);
 
 	}, frameCtx.transferPool, QueueType::Transfer);
 
@@ -291,11 +303,6 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	}
 
 	frameCtx.transferWaitValue = transferSync.signalValue++;
-
-	transferQueue.waitTimelineValue(
-		Backend::getDevice(),
-		transferSync.semaphore,
-		frameCtx.transferWaitValue);
 }
 
 

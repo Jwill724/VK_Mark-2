@@ -13,6 +13,7 @@
 #include "utils/BufferUtils.h"
 #include "core/ResourceManager.h"
 #include "profiler/Profiler.h"
+#include "Engine.h"
 
 namespace RenderScene {
 	GPUSceneData _sceneData;
@@ -171,8 +172,8 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	// === CULLING PASS ===
 
-	// gpu culling
-	if (GPU_ACCELERATION_ENABLED) {
+	// gpu culling, doesn't work
+	/*if (GPU_ACCELERATION_ENABLED) {
 		VkDescriptorSet sets[] = {
 			DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
 			frameCtx.set
@@ -211,19 +212,18 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		memcpy(&frameCtx.visibleCount, frameCtx.stagingVisibleCountBuffer.mapped, sizeof(uint32_t));
 		frameCtx.visibleMeshIDs.resize(frameCtx.visibleCount);
 		memcpy(frameCtx.visibleMeshIDs.data(), frameCtx.stagingVisibleMeshIDsBuffer.mapped, sizeof(uint32_t) * frameCtx.visibleCount);
-	}
+	}*/
+
 	// CPU CULLING
-	else {
-		frameCtx.visibleMeshIDs.clear();
-		for (const auto id : _currentSceneMeshIDs) {
-			const GPUMeshData& mesh = meshes.meshData[id];
+	frameCtx.visibleMeshIDs.clear();
+	for (const auto id : _currentSceneMeshIDs) {
+		const GPUMeshData& mesh = meshes.meshData[id];
 
-			ASSERT(id < frameCtx.cullingPCData.meshCount && "id out of range in culling pass");
+		ASSERT(id < frameCtx.cullingPCData.meshCount && "id out of range in culling pass");
 
-			bool visible = Visibility::isVisible(mesh.worldAABB, _currentFrustum);
-			if (visible) {
-				frameCtx.visibleMeshIDs.push_back(id);
-			}
+		bool visible = Visibility::isVisible(mesh.worldAABB, _currentFrustum);
+		if (visible) {
+			frameCtx.visibleMeshIDs.push_back(id);
 		}
 	}
 
@@ -289,6 +289,8 @@ void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator
 
 	GPUSceneData* sceneDataPtr = reinterpret_cast<GPUSceneData*>(frameCtx.sceneDataBuffer.mapped);
 	*sceneDataPtr = _sceneData;
+
+	vmaFlushAllocation(allocator, frameCtx.sceneDataBuffer.allocation, 0, sizeof(GPUSceneData));
 }
 
 void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {

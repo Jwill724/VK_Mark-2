@@ -281,6 +281,10 @@ struct AllocatedBuffer {
 	VmaAllocation allocation{};
 	VmaAllocationInfo info{};
 	void* mapped = nullptr;
+
+	// buffer sharing
+	bool isConcurrent = false;
+	uint8_t qmask = 0; // bit0=graphics, bit1=transfer, bit2=compute
 };
 
 struct alignas(16) CullingPushConstantsAddrs {

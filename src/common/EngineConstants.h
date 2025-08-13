@@ -8,14 +8,13 @@ constexpr uint32_t MAX_TRANSPARENT_DRAWS = 16384;
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_OPAQUE_DRAWS + MAX_TRANSPARENT_DRAWS;
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
-// Compute work sizes
 static constexpr uint32_t LOCAL_SIZE_X = 64;
 constexpr unsigned int MAX_THREADS = 12;
 constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256;
-constexpr float TARGET_FRAME_RATE_60 = 60.0f;
-constexpr float TARGET_FRAME_RATE_120 = 120.0f;
-constexpr float TARGET_FRAME_RATE_144 = 144.0f;
-constexpr float TARGET_FRAME_RATE_240 = 240.0f;
+constexpr float TARGET_FRAME_RATE_60 = 59.94f;
+constexpr float TARGET_FRAME_RATE_120 = 119.88f;
+constexpr float TARGET_FRAME_RATE_144 = 143.856f;
+constexpr float TARGET_FRAME_RATE_240 = 239.76f;
 
 // Image / Texture Limits
 constexpr float ANISOTROPY_LEVEL = 16.0f;

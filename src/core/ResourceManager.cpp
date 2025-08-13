@@ -3,6 +3,8 @@
 #include "ResourceManager.h"
 #include "utils/RendererUtils.h"
 #include "utils/BufferUtils.h"
+#include "utils/VulkanUtils.h"
+#include "vulkan/Backend.h"
 #include "core/types/Texture.h"
 #include "Environment.h"
 #include "renderer/gpu_types/CommandBuffer.h"

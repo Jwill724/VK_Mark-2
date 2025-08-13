@@ -45,12 +45,6 @@ struct Material {
     vec4 colorFactor;
     vec2 metalRoughFactors;
 
-    uint albedoID;
-    uint metalRoughnessID;
-    uint normalID;
-    uint aoID;
-    uint emissiveID;
-
     vec3 emissiveColor;
     float emissiveStrength;
 
@@ -58,6 +52,12 @@ struct Material {
     float normalScale;
     float alphaCutoff;
     uint passType;
+
+    uint albedoID;
+    uint metalRoughnessID;
+    uint normalID;
+    uint aoID;
+    uint emissiveID;
 };
 
 struct Mesh {
