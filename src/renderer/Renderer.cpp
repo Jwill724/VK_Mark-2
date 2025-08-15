@@ -1,129 +1,45 @@
 #include "pch.h"
 
 #include "Renderer.h"
-#include "profiler/EditorImgui.h"
-#include "vulkan/Backend.h"
-#include "RenderScene.h"
-#include "SceneGraph.h"
-#include "utils/RendererUtils.h"
+#include "engine/platform/profiler/EditorImgui.h"
+#include "scene/RenderScene.h"
 #include "utils/BufferUtils.h"
 #include "core/AssetManager.h"
-#include "gpu_types/PipelineManager.h"
-#include "gpu_types/CommandBuffer.h"
+#include "utils/SyncUtils.h"
 
 namespace Renderer {
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
 
-	void colorCorrectPass(FrameContext& frame, ColorData& toneMappingData);
-	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler);
+	void colorCorrectPass(FrameCtx& frame, ColorData& toneMappingData);
+	void geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& frameCtx, Profiler& profiler);
 }
 
-void Renderer::initFrameContexts(
-	VkDevice device,
+void Renderer::initRenderer(
+	const VkDevice device,
 	const VkDescriptorSetLayout frameLayout,
 	GPUResources& gpuResouces,
 	bool isAssetsLoaded)
 {
-	auto& swapDef = Backend::getSwapchainDef();
-	framesInFlight = swapDef.imageCount;
-
-	_frameContexts.resize(framesInFlight);
-
-	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
-	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
-	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
-
-	RendererUtils::createTimelineSemaphore(_transferSync);
+	SyncUtils::createTimelineSemaphore(_transferSync, device);
 
 	if (GPU_ACCELERATION_ENABLED) {
-		RendererUtils::createTimelineSemaphore(_computeSync);
+		SyncUtils::createTimelineSemaphore(_computeSync, device);
 	}
 
-	size_t totalGPUStagingSize = 0;
-	if (isAssetsLoaded) {
-		totalGPUStagingSize =
-			OPAQUE_INSTANCE_SIZE_BYTES +
-			OPAQUE_INDIRECT_SIZE_BYTES +
-			TRANSPARENT_INSTANCE_SIZE_BYTES +
-			TRANSPARENT_INDIRECT_SIZE_BYTES +
-			TRANSFORM_LIST_SIZE_BYTES;
-	}
-
-	const auto allocator = gpuResouces.getAllocator();
-	const auto stats = gpuResouces.stats;
-
-	fmt::print("Frames in flight:[{}]\n", framesInFlight);
-
-	for (uint32_t i = 0; i < framesInFlight; ++i) {
-		auto frame = std::make_unique<FrameContext>();
-		frame->frameIndex = i;
-
-		frame->graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
-		frame->transferPool = CommandBuffer::createCommandPool(device, transferIndex);
-		frame->commandBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
-		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, frameLayout);
-		frame->transferDeletion.semaphore = _transferSync.semaphore;
-
-		if (GPU_ACCELERATION_ENABLED) {
-			frame->computePool = CommandBuffer::createCommandPool(device, computeIndex);
-			frame->computeDeletion.semaphore = _computeSync.semaphore;
-		}
-
-		frame->addressTableBuffer = BufferUtils::createBuffer(
-			sizeof(GPUAddressTable),
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-			VMA_MEMORY_USAGE_GPU_ONLY,
-			allocator);
-
-		frame->drawDataPC.totalVertexCount = stats.totalVertexCount;
-		frame->drawDataPC.totalIndexCount = stats.totalIndexCount;
-		frame->drawDataPC.totalMeshCount = stats.totalMeshCount;
-		frame->drawDataPC.totalMaterialCount = stats.totalMaterialCount;
-
-		if (isAssetsLoaded) {
-			frame->addressTableStaging = BufferUtils::createBuffer(
-				sizeof(GPUAddressTable),
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-				allocator);
-			ASSERT(frame->addressTableStaging.info.pMappedData);
-
-			frame->combinedGPUStaging = BufferUtils::createBuffer(
-				totalGPUStagingSize,
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-				allocator);
-			ASSERT(frame->combinedGPUStaging.info.pMappedData);
-
-			frame->opaqueInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::OpaqueIntances, frame->addressTable, OPAQUE_INSTANCE_SIZE_BYTES, allocator);
-			frame->persistentGPUBuffers.push_back(frame->opaqueInstanceBuffer);
-
-			frame->opaqueIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::OpaqueIndirectDraws, frame->addressTable, OPAQUE_INDIRECT_SIZE_BYTES, allocator);
-			frame->persistentGPUBuffers.push_back(frame->opaqueIndirectCmdBuffer);
-
-			frame->transparentInstanceBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::TransparentInstances, frame->addressTable, TRANSPARENT_INSTANCE_SIZE_BYTES, allocator);
-			frame->persistentGPUBuffers.push_back(frame->transparentInstanceBuffer);
-
-			frame->transparentIndirectCmdBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::TransparentIndirectDraws, frame->addressTable, TRANSPARENT_INDIRECT_SIZE_BYTES, allocator);
-			frame->persistentGPUBuffers.push_back(frame->transparentIndirectCmdBuffer);
-
-			frame->transformsListBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Transforms, frame->addressTable, TRANSFORM_LIST_SIZE_BYTES, allocator);
-			frame->persistentGPUBuffers.push_back(frame->transformsListBuffer);
-		}
-
-		_frameContexts[i] = std::move(frame);
-	}
+	_frameContexts = initFrameContexts(
+		device,
+		frameLayout,
+		gpuResouces.getAllocator(),
+		gpuResouces.stats,
+		_transferSync,
+		_computeSync,
+		framesInFlight,
+		isAssetsLoaded
+	);
 }
 
-void Renderer::prepareFrameContext(FrameContext& frameCtx) {
+void Renderer::prepareFrameContext(FrameCtx& frameCtx) {
 	auto device = Backend::getDevice();
 	auto& swapDef = Backend::getSwapchainDef();
 
@@ -173,7 +89,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	frameCtx.cpuDeletion.flush();
 }
 
-void Renderer::submitFrame(FrameContext& frameCtx) {
+void Renderer::submitFrame(FrameCtx& frameCtx) {
 	auto& swapDef = Backend::getSwapchainDef();
 	uint32_t imageIndex = frameCtx.swapchainImageIndex;
 
@@ -261,7 +177,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	_frameNumber++;
 }
 
-void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
+void Renderer::recordRenderCommand(FrameCtx& frameCtx, Profiler& profiler) {
 	auto device = Backend::getDevice();
 	auto& swp = Backend::getSwapchainDef();
 	auto& draw = ResourceManager::getDrawImage();
@@ -285,16 +201,16 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	if (!frameCtx.transferCmds.empty()) {
 		if (frameCtx.opaqueVisibleCount) {
-			RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer);
-			RendererUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer);
+			BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer);
+			BarrierUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer);
 		}
 		if (frameCtx.transparentVisibleCount) {
-			RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer);
-			RendererUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer);
+			BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer);
+			BarrierUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer);
 		}
 
-		RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transformsListBuffer);
-		RendererUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
+		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transformsListBuffer);
+		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
 	}
 
 	// Depending on if theres visibles, this could be the first and only write for the storage buffer
@@ -335,39 +251,39 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
 	// color, depth and msaa transitions
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, draw.image, draw.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	if (MSAA_ENABLED) {
-		RendererUtils::transitionImage(
+		ImageUtils::transitionImage(
 			frameCtx.commandBuffer, msaa.image, msaa.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, depth.image, depth.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx, profiler);
 
 	// ToneMapImage transition
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, draw.image, draw.imageFormat,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
 	colorCorrectPass(frameCtx, ResourceManager::toneMappingData);
 
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-	RendererUtils::transitionImage(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	RendererUtils::copyImageToImage(
+	ImageUtils::copyImageToImage(
 		frameCtx.commandBuffer,
 		toneMap.image,
 		swp.images[frameCtx.swapchainImageIndex],
@@ -378,18 +294,22 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	const auto& debug = profiler.debugToggles;
 	if (debug.enableSettings || debug.enableStats) {
 		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
-		RendererUtils::transitionImage(
+		ImageUtils::transitionImage(
 			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-		EditorImgui::drawImgui(frameCtx.commandBuffer, swp.imageViews[frameCtx.swapchainImageIndex], false);
+		EditorImgui::drawImgui(
+			frameCtx.commandBuffer,
+			swp.imageViews[frameCtx.swapchainImageIndex],
+			swp.extent,
+			false);
 
-		RendererUtils::transitionImage(
+		ImageUtils::transitionImage(
 			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	else {
-		RendererUtils::transitionImage(
+		ImageUtils::transitionImage(
 			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
@@ -398,7 +318,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 }
 
 // draw[0], msaa[1], depth[2]
-void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler) {
+void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& frameCtx, Profiler& profiler) {
 	VkRenderingAttachmentInfo colorAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -445,7 +365,7 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext&
 }
 
 // TODO: Make this better, like gltf viewer tonemapper slider
-void Renderer::colorCorrectPass(FrameContext& frame, ColorData& toneMappingData) {
+void Renderer::colorCorrectPass(FrameCtx& frame, ColorData& toneMappingData) {
 	vkCmdBindPipeline(frame.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::postProcessPipeline.pipeline);
 
 	vkCmdPushConstants(frame.commandBuffer,
@@ -461,63 +381,13 @@ void Renderer::colorCorrectPass(FrameContext& frame, ColorData& toneMappingData)
 	vkCmdDispatch(frame.commandBuffer, xDispatch, yDispatch, 1);
 }
 
-// cleans up frame contexts
-void Renderer::cleanup() {
-	auto device = Backend::getDevice();
-	auto allocator = Engine::getState().getGPUResources().getAllocator();
 
-	for (auto& framePtr : _frameContexts) {
-		if (!framePtr) continue;
-
-		auto& frame = *framePtr;
-
-		frame.cpuDeletion.flush();
-
-		for (auto& buf : frame.persistentGPUBuffers)
-			BufferUtils::destroyAllocatedBuffer(buf, allocator);
-
-		frame.transferCmds.clear();
-		frame.transferDeletion.process(device);
-
-		frame.computeCmds.clear();
-		frame.computeDeletion.process(device);
-
-		if (frame.graphicsPool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);
-
-		if (frame.transferPool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.transferPool, nullptr);
-
-		if (frame.computePool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.computePool, nullptr);
-
-		if (frame.stagingVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.stagingVisibleMeshIDsBuffer, allocator);
-
-		if (frame.stagingVisibleCountBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.stagingVisibleCountBuffer, allocator);
-
-		if (frame.gpuVisibleCountBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.gpuVisibleCountBuffer, allocator);
-
-		if (frame.gpuVisibleMeshIDsBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.gpuVisibleMeshIDsBuffer, allocator);
-
-		if (frame.combinedGPUStaging.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.combinedGPUStaging, allocator);
-
-		if (frame.addressTableStaging.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.addressTableStaging, allocator);
-
-		if (frame.addressTableBuffer.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.addressTableBuffer, allocator);
-	}
+void Renderer::cleanupRenderer(const VkDevice device, const VmaAllocator alloc) {
+	cleanupFrameContexts(_frameContexts, device, alloc);
 
 	if (_transferSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _transferSync.semaphore, nullptr);
 
 	if (_computeSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _computeSync.semaphore, nullptr);
-
-	_frameContexts.clear();
 }

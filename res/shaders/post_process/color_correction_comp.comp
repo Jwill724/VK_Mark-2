@@ -12,33 +12,33 @@ layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE) uniform writeon
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
 
 layout(push_constant) uniform PC {
-    float brightness;
-    float saturation;
-    float contrast;
-    float pad0;
-    uint cmbViewIdx;
-    uint sampledViewIdx;
-    uint pad1[2];
+	float brightness;
+	float saturation;
+	float contrast;
+	float pad0;
+	uint cmbViewIdx;
+	uint sampledViewIdx;
+	uint pad1[2];
 } pc;
 
 void main() {
-    uvec2 texelCoord = gl_GlobalInvocationID.xy;
+	uvec2 texelCoord = gl_GlobalInvocationID.xy;
 
-    ivec2 size = imageSize(storageImages[nonuniformEXT(pc.sampledViewIdx)]);
-    if (texelCoord.x >= uint(size.x) || texelCoord.y >= uint(size.y)) return;
+	ivec2 size = imageSize(storageImages[nonuniformEXT(pc.sampledViewIdx)]);
+	if (texelCoord.x >= uint(size.x) || texelCoord.y >= uint(size.y)) return;
 
-    vec2 uv = vec2(texelCoord) / vec2(size);
+	vec2 uv = vec2(texelCoord) / vec2(size);
 
-    vec4 color = texture(combinedSamplers[nonuniformEXT(pc.cmbViewIdx)], uv);
+	vec4 color = texture(combinedSamplers[nonuniformEXT(pc.cmbViewIdx)], uv);
 
-    color.rgb *= pc.brightness;
-    color.rgb = clamp(color.rgb, 0.0, 1.0);
-    color.rgb = pow(color.rgb, vec3(0.8)); // Adjust tone
+	color.rgb *= pc.brightness;
+	color.rgb = clamp(color.rgb, 0.0, 1.0);
+	color.rgb = pow(color.rgb, vec3(0.8)); // Adjust tone
 
-    float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-    color.rgb = mix(vec3(gray), color.rgb, pc.saturation);
+	float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+	color.rgb = mix(vec3(gray), color.rgb, pc.saturation);
 
-    color.rgb = (color.rgb - 0.5) * pc.contrast + 0.5;
+	color.rgb = (color.rgb - 0.5) * pc.contrast + 0.5;
 
-    imageStore(storageImages[nonuniformEXT(pc.sampledViewIdx)], ivec2(texelCoord), color);
+	imageStore(storageImages[nonuniformEXT(pc.sampledViewIdx)], ivec2(texelCoord), color);
 }

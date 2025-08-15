@@ -1,10 +1,9 @@
 #pragma once
 
-#include <core/types/Texture.h>
-#include "common/ResourceTypes.h"
-#include "renderer/SceneGraph.h"
+#include <core/loader/TextureLoader.h>
+#include "renderer/scene/SceneGraph.h"
 
-struct ModelAsset : public IRenderable {
+struct ModelAsset : public SceneGraph::IRenderable {
 	struct GPUData {
 		std::vector<std::shared_ptr<BakedInstance>> bakedInstances;
 		std::vector<AllocatedImage> images;
@@ -12,11 +11,11 @@ struct ModelAsset : public IRenderable {
 		std::vector<GPUMaterial> materials;
 	} runtime;
 
-	struct SceneGraph {
-		std::vector<std::shared_ptr<Node>> nodes;
+	struct SceneGraphNodes {
+		std::vector<std::shared_ptr<SceneGraph::Node>> nodes;
 		// nodes that don't have a parent, for iterating through the file in tree order
-		std::vector<std::shared_ptr<Node>> topNodes;
-	} scene;
+		std::vector<std::shared_ptr<SceneGraph::Node>> topNodes;
+	} sceneNodes;
 
 	std::string sceneName;
 	std::filesystem::path basePath;
@@ -78,9 +77,13 @@ static const std::unordered_map<SceneID, std::string> SceneNames = {
 
 namespace AssetManager {
 	bool loadGltf(ThreadContext& threadCtx);
-	void decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue);
+	void decodeImages(
+		ThreadContext& threadCtx,
+		VmaAllocator allocator,
+		DeletionQueue& bufferQueue,
+		const VkDevice device);
 	void buildSamplers(ThreadContext& threadCtx);
-	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator);
+	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator, const VkDevice device);
 	void processMeshes(
 		ThreadContext& threadCtx,
 		std::vector<GPUDrawRange>& drawRanges,

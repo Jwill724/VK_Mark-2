@@ -43,8 +43,7 @@
 #include "imgui_impl_vulkan.h"
 
 // Project
-#include "ErrorChecking.h"
-#include "file/File.h"
+#include "common/ErrorChecking.h"
 #include "common/glm_common.hpp"
 
 #include "enkiTS/TaskScheduler.h"

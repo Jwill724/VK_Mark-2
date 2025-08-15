@@ -1,13 +1,10 @@
 #include "pch.h"
 
 #include "ResourceManager.h"
-#include "utils/RendererUtils.h"
 #include "utils/BufferUtils.h"
 #include "utils/VulkanUtils.h"
-#include "vulkan/Backend.h"
-#include "core/types/Texture.h"
+#include "renderer/Renderer.h"
 #include "Environment.h"
-#include "renderer/gpu_types/CommandBuffer.h"
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
@@ -111,7 +108,7 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 		VkBufferCopy copyRegion{};
 		copyRegion.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.buffer, addressTableBuffer.buffer, 1, &copyRegion);
-	}, transferCommandPool, QueueType::Transfer);
+	}, transferCommandPool, QueueType::Transfer, Backend::getDevice());
 
 	addressTableDirty = false;
 }
@@ -152,7 +149,12 @@ void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferTy
 	markAddressTableDirty();
 }
 
-void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator allocator, const VkExtent3D drawExtent) {
+void ResourceManager::initRenderImages(
+	const VkDevice device,
+	DeletionQueue& queue,
+	const VmaAllocator allocator,
+	const VkExtent3D drawExtent)
+{
 	//_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_drawImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_drawImage.imageExtent = drawExtent;
@@ -166,7 +168,9 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 
 	// non sampled image
 	// primary draw image color target
-	RendererUtils::createRenderImage(_drawImage,
+	ImageUtils::createRenderImage(
+		device,
+		_drawImage,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		queue,
@@ -181,7 +185,9 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // to copy to swapchain
 	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
 
-	RendererUtils::createRenderImage(_toneMappingImage,
+	ImageUtils::createRenderImage(
+		device,
+		_toneMappingImage,
 		toneMapUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		queue,
@@ -197,7 +203,9 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 	msaaImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 
 	// msaa color attachment to the draw image
-	RendererUtils::createRenderImage(_msaaImage,
+	ImageUtils::createRenderImage(
+		device,
+		_msaaImage,
 		msaaImageUsages,
 		sampleCount,
 		queue,
@@ -210,14 +218,20 @@ void ResourceManager::initRenderImages(DeletionQueue& queue, const VmaAllocator 
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 
-	RendererUtils::createRenderImage(_depthImage,
+	ImageUtils::createRenderImage(
+		device,
+		_depthImage,
 		depthImageUsages,
 		sampleCount,
 		queue,
 		allocator);
 }
 
-void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAllocator allocator) {
+void ResourceManager::initEnvironmentImages(
+	const VkDevice device,
+	DeletionQueue& queue,
+	const VmaAllocator allocator)
+{
 	auto maxAnisotropy = Backend::getDeviceLimits().maxSamplerAnisotropy;
 
 	VkImageUsageFlags usage =
@@ -234,14 +248,21 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 	_skyboxImage.isCubeMap = true;
 	_skyboxImage.mipmapped = true;
 
-	RendererUtils::createRenderImage(_skyboxImage,
+	ImageUtils::createRenderImage(
+		device,
+		_skyboxImage,
 		usage,
 		samples,
 		queue,
 		allocator);
 
-	_skyBoxSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		0.0f, maxAnisotropy, VK_TRUE);
+	_skyBoxSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		maxAnisotropy,
+		VK_TRUE);
 
 	_specularPrefilterImage.imageExtent = Environment::CUBEMAP_EXTENTS;
 	_specularPrefilterImage.imageFormat = environmentFormat;
@@ -250,34 +271,50 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 	_specularPrefilterImage.perMipStorageViews = true;
 	_specularPrefilterImage.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
 
-	RendererUtils::createRenderImage(_specularPrefilterImage,
+	ImageUtils::createRenderImage(
+		device,
+		_specularPrefilterImage,
 		usage,
 		samples,
 		queue,
 		allocator);
 
-	_specularPrefilterSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		static_cast<float>(_specularPrefilterImage.mipLevelCount - 1), maxAnisotropy, VK_TRUE);
+	_specularPrefilterSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		static_cast<float>(_specularPrefilterImage.mipLevelCount - 1),
+		maxAnisotropy,
+		VK_TRUE);
 
 
 	_irradianceImage.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
 	_irradianceImage.imageFormat = environmentFormat;
 	_irradianceImage.isCubeMap = true;
 
-	RendererUtils::createRenderImage(_irradianceImage,
+	ImageUtils::createRenderImage(
+		device,
+		_irradianceImage,
 		usage,
 		samples,
 		queue,
 		allocator);
 
-	_irradianceSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_LOD_CLAMP_NONE, 0.0f, VK_FALSE);
+	_irradianceSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		VK_LOD_CLAMP_NONE,
+		0.0f,
+		VK_FALSE);
 
 
 	_brdfLutImage.imageExtent = Environment::LUT_IMAGE_EXTENT;
 	_brdfLutImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
 
-	RendererUtils::createRenderImage(_brdfLutImage,
+	ImageUtils::createRenderImage(
+		device,
+		_brdfLutImage,
 		VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -285,10 +322,15 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 		queue,
 		allocator);
 
-	_brdfSampler = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		VK_LOD_CLAMP_NONE, 0.0f, VK_FALSE);
+	_brdfSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		VK_LOD_CLAMP_NONE,
+		0.0f,
+		VK_FALSE);
 
-	auto device = Backend::getDevice();
+	// sampler deletion, should just place the queue into the creation function
 	queue.push_function([&, device] {
 		vkDestroySampler(device, _skyBoxSampler, nullptr);
 		vkDestroySampler(device, _irradianceSampler, nullptr);
@@ -298,6 +340,7 @@ void ResourceManager::initEnvironmentImages(DeletionQueue& queue, const VmaAlloc
 }
 
 void ResourceManager::initTextures(
+	const VkDevice device,
 	VkCommandPool cmdPool,
 	DeletionQueue& imageQueue,
 	DeletionQueue& bufferQueue,
@@ -316,14 +359,32 @@ void ResourceManager::initTextures(
 	_aoImage.mipmapped = true;
 
 	uint8_t aoPixel = static_cast<uint8_t>(1.0f * 255); // full ambient lighting
-	RendererUtils::createTextureImage(cmdPool, (void*)&aoPixel, _aoImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&aoPixel,
+		_aoImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
 	_normalImage.imageExtent = texExtent;
 	_normalImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_normalImage.mipmapped = true;
 
 	uint32_t flatNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)); // X = 128, Y = 128, Z = 255, A = 255
-	RendererUtils::createTextureImage(cmdPool, (void*)&flatNormal, _normalImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&flatNormal,
+		_normalImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
 
 	_emissiveImage.imageExtent = texExtent;
@@ -331,7 +392,16 @@ void ResourceManager::initTextures(
 	_emissiveImage.mipmapped = true;
 
 	uint32_t blackEmissive = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1)); // No emission
-	RendererUtils::createTextureImage(cmdPool, (void*)&blackEmissive, _emissiveImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&blackEmissive,
+		_emissiveImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
 	_metalRoughImage.imageExtent = texExtent;
 	_metalRoughImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
@@ -343,7 +413,16 @@ void ResourceManager::initTextures(
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(1.0f * 255)
 	};
-	RendererUtils::createTextureImage(cmdPool, (void*)&mrPixelData, _metalRoughImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&mrPixelData,
+		_metalRoughImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
 
 	_whiteImage.imageExtent = texExtent;
@@ -351,7 +430,16 @@ void ResourceManager::initTextures(
 	_whiteImage.mipmapped = true;
 
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	RendererUtils::createTextureImage(cmdPool, (void*)&white, _whiteImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&white,
+		_whiteImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
 	// checkerboard image
 	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
@@ -367,15 +455,33 @@ void ResourceManager::initTextures(
 	_errorCheckerboardImage.imageExtent = checkerboardedImageExtent;
 	_errorCheckerboardImage.imageFormat = format;
 	_errorCheckerboardImage.mipmapped = true;
-	RendererUtils::createTextureImage(cmdPool, pixels.data(), _errorCheckerboardImage, usage, samples, imageQueue, bufferQueue, allocator);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		pixels.data(),
+		_errorCheckerboardImage,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
 
-	_defaultSamplerLinear = Textures::createSampler(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX, Backend::getDeviceLimits().maxSamplerAnisotropy, VK_TRUE);
+	_defaultSamplerLinear = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		FLT_MAX,
+		Backend::getDeviceLimits().maxSamplerAnisotropy,
+		VK_TRUE);
 
-	_defaultSamplerNearest = Textures::createSampler(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX, 1.0f, VK_FALSE);
+	_defaultSamplerNearest = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		FLT_MAX,
+		1.0f,
+		VK_FALSE);
 
-	auto device = Backend::getDevice();
 	imageQueue.push_function([&, device]() {
 		vkDestroySampler(device, _defaultSamplerNearest, nullptr);
 		vkDestroySampler(device, _defaultSamplerLinear, nullptr);

@@ -4,6 +4,9 @@
 #include "common/ResourceTypes.h"
 #include "common/EngineConstants.h"
 
+// TODO: Find a better place for this.
+// All systems that need msaa counts are
+// image creation in here, pipeline setup, and during rendering
 static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
 static bool MSAA_ENABLED = true;
 
@@ -92,7 +95,11 @@ namespace ResourceManager {
 	AllocatedImage& getToneMappingImage();
 	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
-	void initRenderImages(DeletionQueue& queue, const VmaAllocator allocator, const VkExtent3D drawExtent);
+	void initRenderImages(
+		const VkDevice device,
+		DeletionQueue& queue,
+		const VmaAllocator allocator,
+		const VkExtent3D drawExtent);
 
 	AllocatedImage& getMetalRoughImage();
 	AllocatedImage& getWhiteImage();
@@ -102,7 +109,12 @@ namespace ResourceManager {
 	AllocatedImage& getCheckboardTex();
 	VkSampler getDefaultSamplerLinear();
 	VkSampler getDefaultSamplerNearest();
-	void initTextures(VkCommandPool cmdPool, DeletionQueue& imageQueue, DeletionQueue& bufferQueue, const VmaAllocator allocator);
+	void initTextures(
+		const VkDevice device,
+		VkCommandPool cmdPool,
+		DeletionQueue& imageQueue,
+		DeletionQueue& bufferQueue,
+		const VmaAllocator allocator);
 
 
 	AllocatedImage& getSkyBoxImage();
@@ -113,5 +125,8 @@ namespace ResourceManager {
 	VkSampler& getSpecularPrefilterSampler();
 	VkSampler& getIrradianceSampler();
 	VkSampler& getSkyBoxSampler();
-	void initEnvironmentImages(DeletionQueue& queue, const VmaAllocator allocator);
+	void initEnvironmentImages(
+		const VkDevice device,
+		DeletionQueue& queue, const
+		VmaAllocator allocator);
 }
