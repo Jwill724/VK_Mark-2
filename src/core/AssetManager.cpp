@@ -1,14 +1,10 @@
 #include "pch.h"
 
 #include "AssetManager.h"
-#include "Engine.h"
-#include "vulkan/Backend.h"
-#include "utils/BufferUtils.h"
-#include "renderer/gpu_types/CommandBuffer.h"
-#include "renderer/gpu_types/Descriptor.h"
-#include "ResourceManager.h"
-#include "renderer/RenderScene.h"
+#include "engine/Engine.h"
+#include "renderer/Renderer.h"
 #include "utils/VulkanUtils.h"
+#include "utils/BufferUtils.h"
 
 namespace AssetManager {
 	bool isValidMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf);
@@ -23,8 +19,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
-	// all rendering bugs currently are related to transforms, geometry is perfect via aabb visuals
-
 	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
 	//ASSERT(damagedHelmetFile.has_value());
@@ -37,7 +31,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
 
-	// FIXME: Dragon transform is busted, probably in the nodes
 	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
 	//ASSERT(dragonFile.has_value());
@@ -122,7 +115,11 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 
 // TODO: Multithread the shit out of this
 // Largest bottle neck in the asset loading pipeline
-void AssetManager::decodeImages(ThreadContext& threadCtx, const VmaAllocator allocator, DeletionQueue& bufferQueue) {
+void AssetManager::decodeImages(
+	ThreadContext& threadCtx,
+	const VmaAllocator allocator,
+	DeletionQueue& bufferQueue,
+	const VkDevice device) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -149,7 +146,8 @@ void AssetManager::decodeImages(ThreadContext& threadCtx, const VmaAllocator all
 
 			VkFormat format = isSRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
-			std::optional<AllocatedImage> img = Textures::loadImage(gltf, image, format, threadCtx, scene.basePath, allocator, bufferQueue);
+			std::optional<AllocatedImage> img = TextureLoader::loadImage(
+				gltf, image, format, threadCtx, scene.basePath, allocator, bufferQueue, device);
 
 			if (img.has_value()) {
 				scene.runtime.images.push_back(*img);
@@ -184,10 +182,10 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 			sampl.maxLod = VK_LOD_CLAMP_NONE;
 			sampl.minLod = 0.0f;
 
-			sampl.magFilter = Textures::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
-			sampl.minFilter = Textures::extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+			sampl.magFilter = TextureLoader::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
+			sampl.minFilter = TextureLoader::extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
-			sampl.mipmapMode = Textures::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+			sampl.mipmapMode = TextureLoader::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
 			sampl.anisotropyEnable = VK_TRUE;
 			sampl.maxAnisotropy = Backend::getDeviceLimits().maxSamplerAnisotropy;
@@ -208,7 +206,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 	}
 }
 
-void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator) {
+void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator, const VkDevice device) {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto& imageManager = ResourceManager::_globalImageManager;
@@ -430,7 +428,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		VkBufferCopy copyRegion{};
 		copyRegion.size = totalMatBufSize;
 		vkCmdCopyBuffer(cmd, materialStaging.buffer, materialBuffer.buffer, 1, &copyRegion);
-	}, threadCtx.cmdPool, QueueType::Transfer);
+	}, threadCtx.cmdPool, QueueType::Transfer, device);
 
 	resources.updateAddressTableMapped(threadCtx.cmdPool);
 
@@ -636,7 +634,7 @@ void ModelAsset::FindVisibleInstances(
 	std::vector<glm::mat4>& outFrameTransformsList,
 	const std::unordered_set<uint32_t> visibleMeshIDSet)
 {
-	for (const auto& root : scene.topNodes) {
+	for (const auto& root : sceneNodes.topNodes) {
 		if (root) {
 			root->FindVisibleInstances(
 				outVisibleOpaqueInstances,
@@ -665,7 +663,7 @@ void ModelAsset::clearAll() {
 			continue;
 		}
 
-		RendererUtils::destroyImage(device, img, allocator);
+		ImageUtils::destroyImage(device, img, allocator);
 	}
 
 	for (auto& sampler : runtime.samplers) {

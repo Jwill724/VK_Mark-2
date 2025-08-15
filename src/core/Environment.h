@@ -11,5 +11,5 @@ namespace Environment {
 	constexpr uint32_t PREFILTER_SAMPLE_COUNT{ 1024 };
 	constexpr VkExtent3D LUT_IMAGE_EXTENT{ 512, 512, 1 };
 
-	void dispatchEnvironmentMaps(GPUResources& resources, ImageTableManager& globalImgTable);
+	void dispatchEnvironmentMaps(const VkDevice device, GPUResources& resources, ImageTableManager& globalImgTable);
 }

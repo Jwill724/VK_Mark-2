@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Vk_Types.h"
-#include "ErrorChecking.h"
+#include "common/ErrorChecking.h"
 
 // General use cpu side
 // Device getters are required for this to work, call into an auto
@@ -53,6 +53,7 @@ struct TimelineDeletionQueue {
 		}
 	}
 };
+
 
 enum EngineStage : uint32_t {
 	ENGINE_STAGE_NONE = 0, // No dependencies

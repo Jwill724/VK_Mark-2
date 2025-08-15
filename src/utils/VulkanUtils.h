@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common/Vk_Types.h"
 #include "common/ResourceTypes.h"
 
 struct QueueFamilyIndices {

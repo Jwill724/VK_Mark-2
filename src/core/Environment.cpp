@@ -1,17 +1,9 @@
 #include "pch.h"
 
 #include "Environment.h"
+#include "engine/Engine.h"
 #include "AssetManager.h"
 #include "renderer/Renderer.h"
-#include "vulkan/Backend.h"
-#include "renderer/gpu_types/PipelineManager.h"
-#include "core/types/Texture.h"
-#include "vulkan/Pipeline.h"
-#include "renderer/gpu_types/CommandBuffer.h"
-#include "utils/RendererUtils.h"
-#include "renderer/RenderScene.h"
-#include "Engine.h"
-#include "renderer/gpu_types/Descriptor.h"
 
 struct alignas(16) SpecularPC {
 	float roughness;
@@ -39,12 +31,23 @@ namespace Environment {
 		PipelineObj& pipeline,
 		PipelineLayoutConst layout);
 
-	AllocatedImage loadHDR(const char* hdrPath, VkCommandPool cmdPool, DeletionQueue& imageQueue, DeletionQueue& bufferQueue,
-		const VmaAllocator allocator);
+	AllocatedImage loadHDR(
+		const char* hdrPath,
+		VkCommandPool cmdPool,
+		DeletionQueue& imageQueue,
+		DeletionQueue& bufferQueue,
+		const VmaAllocator allocator,
+		const VkDevice device);
 }
 
-AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, DeletionQueue& imageQueue, DeletionQueue& bufferQueue,
-	const VmaAllocator allocator) {
+AllocatedImage Environment::loadHDR(
+	const char* hdrPath,
+	VkCommandPool cmdPool,
+	DeletionQueue& imageQueue,
+	DeletionQueue& bufferQueue,
+	const VmaAllocator allocator,
+	const VkDevice device)
+{
 
 	int w, h, channels;
 	float* hdrData = stbi_loadf(hdrPath, &w, &h, &channels, 4);
@@ -58,7 +61,9 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 	equirect.imageExtent = { uint32_t(w), uint32_t(h), 1 };
 	equirect.imageFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
 
-	RendererUtils::createTextureImage(cmdPool,
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
 		hdrData,
 		equirect,
 		VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -72,15 +77,35 @@ AllocatedImage Environment::loadHDR(const char* hdrPath, VkCommandPool cmdPool, 
 	return equirect;
 }
 
-void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableManager& globalImgTable) {
+void Environment::dispatchEnvironmentMaps(
+	const VkDevice device,
+	GPUResources& resources,
+	ImageTableManager& globalImgTable)
+{
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
-	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+	// resources.getGraphicsPool(),
+	// resources.getTempDeletionQueue(),
+	// resources.getTempDeletionQueue(),
+	// resources.getAllocator()
+	// device);
 	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
-		resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+		resources.getGraphicsPool(),
+		resources.getTempDeletionQueue(),
+		resources.getTempDeletionQueue(),
+		resources.getAllocator(),
+		device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
-	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+	// resources.getGraphicsPool(),
+	// resources.getTempDeletionQueue(),
+	// resources.getTempDeletionQueue(),
+	// resources.getAllocator()
+	// device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/rogland_clear_night_4k.hdr",
-	//	resources.getGraphicsPool(), resources.getTempDeletionQueue(), resources.getTempDeletionQueue(), resources.getAllocator());
+	// resources.getGraphicsPool(),
+	// resources.getTempDeletionQueue(),
+	// resources.getTempDeletionQueue(),
+	// resources.getAllocator()
+	// device);
 
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
 	auto& skyboxSmpl = ResourceManager::getSkyBoxSampler();
@@ -146,37 +171,35 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 		specularPushConstants.push_back(pc);
 	}
 
-
 	auto& graphicsPool = resources.getGraphicsPool();
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			equirect.image,
 			equirect.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			skyboxImg.image,
 			skyboxImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			specImg.image,
 			specImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			diffuseImg.image,
 			diffuseImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-	}, graphicsPool, QueueType::Graphics);
+	}, graphicsPool, QueueType::Graphics, device);
 
-	auto device = Backend::getDevice();
 	auto& graphicsQ = Backend::getGraphicsQueue();
 
 	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
@@ -196,18 +219,18 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, GLOBAL_SET, 1, &set, 0, nullptr);
 
 		dispatchHDRToCubemap(cmd, tempEntryEquirect, Pipelines::hdr2cubemapPipeline, Pipelines::_globalLayout);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			skyboxImg.image,
 			skyboxImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		RendererUtils::generateCubemapMiplevels(cmd, skyboxImg);
+		ImageUtils::generateCubemapMiplevels(cmd, skyboxImg);
 
 
 		// DIFFUSE IRRADIANCE
 		dispatchDiffuseIrradiance(cmd, tempEntryDiffuse, Pipelines::diffuseIrradiancePipeline, Pipelines::_globalLayout);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			diffuseImg.image,
 			diffuseImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
@@ -216,7 +239,7 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 
 		// SPECULAR PREFILTER
 		dispatchPrefilterEnvmap(cmd, specularPushConstants, Pipelines::specularPrefilterPipeline, Pipelines::_globalLayout);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			specImg.image,
 			specImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
@@ -225,13 +248,13 @@ void Environment::dispatchEnvironmentMaps(GPUResources& resources, ImageTableMan
 
 		// BRDF
 		dispatchBRDFLUT(cmd, tempEntryBRDF, Pipelines::brdfLutPipeline, Pipelines::_globalLayout);
-		RendererUtils::transitionImage(cmd,
+		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	}, graphicsPool, QueueType::Graphics);
+	}, graphicsPool, QueueType::Graphics, device);
 
 	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
 	waitAndRecycleLastFence(resources.getLastSubmittedFence(), graphicsQ, device);

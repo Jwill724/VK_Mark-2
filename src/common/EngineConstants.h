@@ -8,6 +8,9 @@ constexpr uint32_t MAX_TRANSPARENT_DRAWS = 16384;
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_OPAQUE_DRAWS + MAX_TRANSPARENT_DRAWS;
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
+// Default spawn with loading
+constexpr glm::vec3 SPAWNPOINT(1, 1, 1);
+
 static constexpr uint32_t LOCAL_SIZE_X = 64;
 constexpr unsigned int MAX_THREADS = 12;
 constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256;
