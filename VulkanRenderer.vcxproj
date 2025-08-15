@@ -277,7 +277,7 @@
     <None Include="res\shaders\environment\skybox_frag.frag" />
     <None Include="res\shaders\environment\specular_prefilter_comp.comp" />
     <None Include="res\shaders\environment\diffuse_irradiance_comp.comp" />
-    <None Include="res\shaders\post_process\color_correction_comp.comp" />
+    <None Include="res\shaders\post_process\tone_map_comp.comp" />
     <None Include="res\shaders\debug\aabb_vert.vert" />
     <None Include="res\shaders\debug\aabb_frag.frag" />
     <None Include="res\shaders\visibility\visibility_comp.comp" />

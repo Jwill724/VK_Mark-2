@@ -112,15 +112,6 @@ float Profiler::endTimer() const {
 	return static_cast<float>(elapsedTicks / _qpcFreq.QuadPart);
 }
 
-VkPipeline Profiler::getPipelineByType(PipelineType type) const {
-	switch (type) {
-	case PipelineType::Opaque: return Pipelines::opaquePipeline.pipeline;
-	case PipelineType::Transparent: return Pipelines::transparentPipeline.pipeline;
-	case PipelineType::Wireframe: return Pipelines::wireframePipeline.pipeline;
-	default: return nullptr;
-	}
-}
-
 VkDeviceSize Profiler::GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator) {
 	VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
 	vmaGetHeapBudgets(allocator, budgets);

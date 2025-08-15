@@ -102,7 +102,7 @@ struct alignas(16) GPUEnvMapIndexArray {
 static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 
 // GPU only buffers
-enum class AddressBufferType : uint32_t {
+enum class AddressBufferType : uint8_t {
 	OpaqueIntances,
 	OpaqueIndirectDraws,
 	TransparentInstances,
@@ -119,9 +119,9 @@ enum class AddressBufferType : uint32_t {
 };
 
 struct alignas(128) GPUAddressTable {
-	std::array<VkDeviceAddress, size_t(AddressBufferType::Count)> addrs;
+	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs;
 	void setAddress(AddressBufferType t, VkDeviceAddress addr) {
-		addrs[size_t(t)] = addr;
+		addrs[static_cast<size_t>(t)] = addr;
 	}
 };
 
@@ -130,16 +130,11 @@ struct TimelineSync {
 	uint64_t signalValue = UINT64_MAX;
 };
 
-enum class MaterialPass : uint32_t {
+enum class MaterialPass : uint8_t {
 	Opaque,
 	Transparent
 };
 
-enum class PipelineType : uint32_t {
-	Opaque,
-	Transparent,
-	Wireframe
-};
 
 // Push constant use
 struct alignas(16) ColorData {

@@ -393,7 +393,6 @@ void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, V
 	});
 }
 
-
 void DescriptorWriter::clear() {
 	imageWriteGroups.clear();
 	bufferWrites.clear();
