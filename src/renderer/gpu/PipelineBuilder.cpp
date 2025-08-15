@@ -16,7 +16,7 @@ void PipelineBuilder::initializePipelineSTypes() {
 	_renderInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 }
 
-void PipelineBuilder::createPipeline(PipelineObj& pipelineObj, const PipelinePresent& pipelineSettings, const VkDevice device) {
+void PipelineBuilder::createPipeline(PipelineHandle& pipelineObj, const PipelinePresent& pipelineSettings, const VkDevice device) {
 
 	if (pipelineSettings.shaderStages.empty()) {
 		fmt::print("[PipelineManager] No shader stages provided.\n");

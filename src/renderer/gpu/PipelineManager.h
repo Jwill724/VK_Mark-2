@@ -2,28 +2,42 @@
 
 #include "renderer/gpu/PipelineBuilder.h"
 
+enum class PipelineID : uint8_t {
+	Opaque,
+	Transparent,
+	Wireframe,
+	BoundingBox,
+	Skybox,
+	Visibility,
+	ToneMap,
+	HDRToCubemap,
+	SpecularPrefilter,
+	DiffuseIrradiance,
+	BRDFLUT,
+	Count
+};
+
 namespace Pipelines {
 	inline PipelineLayoutConst _globalLayout;
 
-	// === GRAPHICS PIPELINES ===
-	inline PipelineObj opaquePipeline;
-	inline PipelineObj transparentPipeline;
-	inline PipelineObj wireframePipeline;
-	inline PipelineObj boundingBoxPipeline;
-	inline PipelineObj skyboxPipeline;
-	//inline PipelineObj shadowPipeline;
+	inline std::array<PipelineHandle, static_cast<size_t>(PipelineID::Count)> _pipelineHandles;
 
-	// === COMPUTE PIPELINES ===
-	inline PipelineObj visibilityPipeline;	// Culls GPURenderObjects
-	//inline PipelineObj buildDrawsPipeline;
-	//inline PipelineObj sortDrawsPipeline;
+	inline VkPipeline getPipelineByID(PipelineID id) {
+		return _pipelineHandles[static_cast<size_t>(id)].pipeline;
+	}
+	inline PipelineHandle& getPipelineHandleByID(PipelineID id) {
+		return _pipelineHandles[static_cast<size_t>(id)];
+	}
 
-	inline PipelineObj postProcessPipeline;
-
-	inline PipelineObj hdr2cubemapPipeline;
-	inline PipelineObj specularPrefilterPipeline;
-	inline PipelineObj diffuseIrradiancePipeline;
-	inline PipelineObj brdfLutPipeline;
+	inline std::vector<std::pair<PipelineID, PipelineHandle&>> getSwappablePipelines() {
+		std::vector<std::pair<PipelineID, PipelineHandle&>> swappables;
+		for (size_t i = 0; i < _pipelineHandles.size(); ++i) {
+			if (_pipelineHandles[i].swappable) {
+				swappables.emplace_back(static_cast<PipelineID>(i), _pipelineHandles[i]);
+			}
+		}
+		return swappables;
+	}
 }
 
 namespace PipelineManager {

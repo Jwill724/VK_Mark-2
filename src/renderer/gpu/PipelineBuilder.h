@@ -5,11 +5,6 @@
 
 // pipeline is now a creation tool
 struct PipelineBuilder {
-
-	PipelineBuilder() {
-		initializePipelineSTypes();
-	}
-
 	VkPipelineLayout _pipelineLayout = VK_NULL_HANDLE;
 
 	VkPipelineInputAssemblyStateCreateInfo _inputAssembly{};
@@ -20,7 +15,10 @@ struct PipelineBuilder {
 	VkPipelineRenderingCreateInfo _renderInfo{};
 	VkFormat _colorAttachmentformat{};
 
+	VkFormat colorFormat;
+	VkFormat depthFormat;
+
 	void initializePipelineSTypes();
 
-	void createPipeline(PipelineObj& pipelineObj, const PipelinePresent& pipelineSettings, const VkDevice device);
+	void createPipeline(PipelineHandle& pipelineObj, const PipelinePresent& pipelineSettings, const VkDevice device);
 };

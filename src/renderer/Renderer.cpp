@@ -11,7 +11,7 @@ namespace Renderer {
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
 
-	void colorCorrectPass(FrameCtx& frame, ColorData& toneMappingData);
+	void toneMapPass(FrameCtx& frame, ColorData& toneMappingData);
 	void geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& frameCtx, Profiler& profiler);
 }
 
@@ -274,7 +274,7 @@ void Renderer::recordRenderCommand(FrameCtx& frameCtx, Profiler& profiler) {
 		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
-	colorCorrectPass(frameCtx, ResourceManager::toneMappingData);
+	toneMapPass(frameCtx, ResourceManager::toneMappingData);
 
 	ImageUtils::transitionImage(
 		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
@@ -365,8 +365,11 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& fra
 }
 
 // TODO: Make this better, like gltf viewer tonemapper slider
-void Renderer::colorCorrectPass(FrameCtx& frame, ColorData& toneMappingData) {
-	vkCmdBindPipeline(frame.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::postProcessPipeline.pipeline);
+void Renderer::toneMapPass(FrameCtx& frame, ColorData& toneMappingData) {
+	vkCmdBindPipeline(
+		frame.commandBuffer,
+		VK_PIPELINE_BIND_POINT_COMPUTE,
+		Pipelines::getPipelineByID(PipelineID::ToneMap));
 
 	vkCmdPushConstants(frame.commandBuffer,
 		Pipelines::_globalLayout.layout,

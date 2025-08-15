@@ -26,7 +26,7 @@ struct FrameStats {
 };
 struct PipelineOverride {
 	bool enabled = false;
-	PipelineType selected = PipelineType::Wireframe;
+	PipelineID selectedID = PipelineID::Wireframe;
 };
 
 struct DebugToggles {
@@ -77,7 +77,6 @@ public:
 
 	DebugToggles debugToggles;
 	PipelineOverride pipeOverride;
-	VkPipeline getPipelineByType(PipelineType type) const;
 
 	VkDeviceSize GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 

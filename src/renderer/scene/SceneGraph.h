@@ -38,14 +38,14 @@ namespace SceneGraph {
 			std::vector<GPUInstance>& outVisibleTransparentInstances,
 			std::vector<glm::mat4>& outFrameTransformsList,
 			const std::unordered_set<uint32_t> visibleMeshIDSet
-		) override {
-
+		) override
+		{
 			for (const auto& inst : instances) {
 				if (!inst) continue;
 
 				const uint32_t meshID = inst->instance.meshID;
 
-				// Search for visible meshIDs
+				// Only process visible meshes
 				if (visibleMeshIDSet.find(meshID) == visibleMeshIDSet.end())
 					continue;
 
@@ -57,8 +57,6 @@ namespace SceneGraph {
 					.meshID = meshID,
 					.transformID = static_cast<uint32_t>(outFrameTransformsList.size() - 1)
 				};
-
-				outVisibleOpaqueInstances.push_back(gpuInst);
 
 				if (inst->passType == MaterialPass::Transparent)
 					outVisibleTransparentInstances.push_back(gpuInst);

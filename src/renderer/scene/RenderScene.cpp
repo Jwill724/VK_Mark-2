@@ -292,7 +292,10 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 
 	// === SKYBOX DRAW ===
 	{
-		vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::skyboxPipeline.pipeline);
+		vkCmdBindPipeline(
+			frameCtx.commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			Pipelines::_pipelineHandles[static_cast<size_t>(PipelineID::Skybox)].pipeline);
 
 		glm::mat4 view = glm::mat4(glm::mat3(_sceneData.view)); // strip translation
 
@@ -354,7 +357,10 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 				BufferUtils::destroyBuffer(aabbBuf, aabbAlloc, allocator);
 			});
 
-			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::boundingBoxPipeline.pipeline);
+			vkCmdBindPipeline(
+				frameCtx.commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				Pipelines::_pipelineHandles[static_cast<size_t>(PipelineID::BoundingBox)].pipeline);
 
 			const VkDeviceSize vtxOffset = 0;
 			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
@@ -393,9 +399,9 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 	// All pipelines use the same layout
 	VkPipeline pipeline{};
 	if (!profiler.pipeOverride.enabled)
-		pipeline = Pipelines::opaquePipeline.pipeline; // default pipeline
+		pipeline = Pipelines::getPipelineByID(PipelineID::Opaque); // default pipeline
 	else
-		pipeline = profiler.getPipelineByType(profiler.pipeOverride.selected);
+		pipeline = Pipelines::getPipelineByID(profiler.pipeOverride.selectedID);
 
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 
@@ -429,7 +435,10 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 
 	if (frameCtx.transparentVisibleCount > 0) {
 		if (!profiler.pipeOverride.enabled) {
-			vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Pipelines::transparentPipeline.pipeline);
+			vkCmdBindPipeline(
+				frameCtx.commandBuffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				Pipelines::getPipelineByID(PipelineID::Transparent));
 		}
 
 		frameCtx.drawDataPC.drawPassType = 1u;

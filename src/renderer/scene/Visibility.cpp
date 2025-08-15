@@ -70,7 +70,7 @@ void Visibility::performCulling(
 	vkCmdPipelineBarrier2(cmd, &depInfoPre);
 
 	// === Compute Dispatch ===
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::visibilityPipeline.pipeline);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::getPipelineByID(PipelineID::Visibility));
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 2, sets, 0, nullptr);
 	vkCmdPushConstants(cmd, layout, pcInfo.stageFlags, pcInfo.offset, pcInfo.size, &cullingData);
 

@@ -6,24 +6,10 @@
 #include "core/ResourceManager.h"
 
 namespace PipelinePresents {
-	PipelinePresent opaqueSettings;
-	PipelinePresent transparentSettings;
-	PipelinePresent wireframeSettings;
-	PipelinePresent boundingBoxSettings;
-	PipelinePresent skyboxPipelineSettings;
-//	PipelinePresent shadowPipelineSettings;
-
-	PipelinePresent visibilitySettings;
-//	PipelinePresent buildDrawsSettings;
-//	PipelinePresent sortDrawsSettings;
-
-	PipelinePresent colorCorrectionPipelineSettings;
-
-	// Environment stuff
-	PipelinePresent hdr2cubemapPipelineSettings;
-	PipelinePresent specularPrefilterPipelineSettings;
-	PipelinePresent diffuseIrradiancePipelineSettings;
-	PipelinePresent brdfLutPipelineSettings;
+	inline std::array<PipelinePresent, (size_t)PipelineID::Count> pipelinePresentBuilder;
+	static inline PipelinePresent& getPipelinePresentByID(PipelineID id) {
+		return pipelinePresentBuilder[static_cast<size_t>(id)];
+	}
 }
 
 void PipelineManager::initShaders(DeletionQueue& dq) {
@@ -42,14 +28,9 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	meshShaderStages.push_back(vertexStage);
 	meshShaderStages.push_back(fragmentStage);
 
-	PipelinePresents::opaqueSettings.shaderStagesInfo = meshShaderStages;
-	PipelinePresents::transparentSettings.shaderStagesInfo = meshShaderStages;
-	PipelinePresents::wireframeSettings.shaderStagesInfo = meshShaderStages;
-
-	setupShaders(PipelinePresents::opaqueSettings, dq);
-	setupShaders(PipelinePresents::transparentSettings, dq);
-	setupShaders(PipelinePresents::wireframeSettings, dq);
-
+	PipelinePresents::getPipelinePresentByID(PipelineID::Opaque).shaderStagesInfo = meshShaderStages;
+	PipelinePresents::getPipelinePresentByID(PipelineID::Transparent).shaderStagesInfo = meshShaderStages;
+	PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe).shaderStagesInfo = meshShaderStages;
 
 	// separate shaders needed for bounding boxes
 	ShaderStageInfo bbVertStage {
@@ -60,9 +41,8 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/debug/aabb_frag.spv"
 	};
-	PipelinePresents::boundingBoxSettings.shaderStagesInfo.push_back(bbVertStage);
-	PipelinePresents::boundingBoxSettings.shaderStagesInfo.push_back(bbFragStage);
-	setupShaders(PipelinePresents::boundingBoxSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::BoundingBox).shaderStagesInfo.push_back(bbVertStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::BoundingBox).shaderStagesInfo.push_back(bbFragStage);
 
 
 	ShaderStageInfo skyboxVertStage {
@@ -73,19 +53,17 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.filePath = "res/shaders/environment/skybox_frag.spv"
 	};
-	PipelinePresents::skyboxPipelineSettings.shaderStagesInfo.push_back(skyboxVertStage);
-	PipelinePresents::skyboxPipelineSettings.shaderStagesInfo.push_back(skyboxFragStage);
-	setupShaders(PipelinePresents::skyboxPipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxVertStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxFragStage);
 
 	// === COMPUTE PIPELINES ===
 
-	// POST PROCESS
-	ShaderStageInfo colorCorrectShaderStage {
+	// TONE MAP
+	ShaderStageInfo toneMapShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/color_correction_comp.spv"
+		.filePath = "res/shaders/post_process/tone_map_comp.spv"
 	};
-	PipelinePresents::colorCorrectionPipelineSettings.shaderStagesInfo.push_back(colorCorrectShaderStage);
-	setupShaders(PipelinePresents::colorCorrectionPipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::ToneMap).shaderStagesInfo.push_back(toneMapShaderStage);
 
 
 	// ENVIRONMENTAL AND IBL
@@ -93,30 +71,26 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/hdr2cubemap_comp.spv"
 	};
-	PipelinePresents::hdr2cubemapPipelineSettings.shaderStagesInfo.push_back(cubemapShaderStage);
-	setupShaders(PipelinePresents::hdr2cubemapPipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::HDRToCubemap).shaderStagesInfo.push_back(cubemapShaderStage);
 
 	ShaderStageInfo prefilterShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/specular_prefilter_comp.spv"
 	};
 
-	PipelinePresents::specularPrefilterPipelineSettings.shaderStagesInfo.push_back(prefilterShaderStage);
-	setupShaders(PipelinePresents::specularPrefilterPipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::SpecularPrefilter).shaderStagesInfo.push_back(prefilterShaderStage);
 
 	ShaderStageInfo diffuseShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/diffuse_irradiance_comp.spv"
 	};
-	PipelinePresents::diffuseIrradiancePipelineSettings.shaderStagesInfo.push_back(diffuseShaderStage);
-	setupShaders(PipelinePresents::diffuseIrradiancePipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::DiffuseIrradiance).shaderStagesInfo.push_back(diffuseShaderStage);
 
 	ShaderStageInfo brdfLutShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/brdf_lut_comp.spv"
 	};
-	PipelinePresents::brdfLutPipelineSettings.shaderStagesInfo.push_back(brdfLutShaderStage);
-	setupShaders(PipelinePresents::brdfLutPipelineSettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::BRDFLUT).shaderStagesInfo.push_back(brdfLutShaderStage);
 
 
 	// gpu frustum culling
@@ -124,22 +98,13 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/visibility/visibility_comp.spv"
 	};
-	PipelinePresents::visibilitySettings.shaderStagesInfo.push_back(visibilityShaderStage);
-	setupShaders(PipelinePresents::visibilitySettings, dq);
+	PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
 
-	//ShaderStageInfo buildDrawsShaderStage {
-	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-	//	.filePath = "res/shaders/gpu_driven/build_draws_comp.spv"
-	//};
-	//PipelinePresents::buildDrawsSettings.shaderStagesInfo.push_back(buildDrawsShaderStage);
-	//setupShaders(PipelinePresents::buildDrawsSettings, dq);
 
-	//ShaderStageInfo sortDrawsShaderStage {
-	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-	//	.filePath = "res/shaders/gpu_driven/sort_draws_comp.spv"
-	//};
-	//PipelinePresents::sortDrawsSettings.shaderStagesInfo.push_back(sortDrawsShaderStage);
-	//setupShaders(PipelinePresents::sortDrawsSettings, dq);
+	// Pipeline shaders defined, good to setup
+	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
+		setupShaders(PipelinePresents::pipelinePresentBuilder[i], dq);
+	}
 }
 
 // defines push constants, descriptors, and pipeline layout
@@ -181,140 +146,83 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	const auto device = Backend::getDevice();
 
 	// graphic pipelines can share the same builder
-	PipelineBuilder pipeline_builder;
-	// reset back to default layout for the rest
-	pipeline_builder._pipelineLayout = Pipelines::_globalLayout.layout;
+	PipelineBuilder builder;
+	builder._pipelineLayout = Pipelines::_globalLayout.layout;
+
+	builder.colorFormat = ResourceManager::getDrawImage().imageFormat;
+	builder.depthFormat = ResourceManager::getDepthImage().imageFormat;
+
+	auto createPipeline = [&](PipelineID id, PipelineCategory type, std::string name, bool swappable = false) {
+		PipelinePresent& present = PipelinePresents::getPipelinePresentByID(id);
+		if (type == PipelineCategory::Raster) {
+			builder.initializePipelineSTypes();
+			// can overwrite the format if wanted
+			if (present.colorFormat == VK_FORMAT_UNDEFINED && present.depthFormat == VK_FORMAT_UNDEFINED) {
+				present.colorFormat = builder.colorFormat;
+				present.depthFormat = builder.depthFormat;
+			}
+			setupPipelineConfig(builder, present, MSAA_ENABLED);
+		}
+		PipelineHandle& pipeHdl = Pipelines::getPipelineHandleByID(id);
+		pipeHdl.name = name;
+		pipeHdl.type = type;
+		pipeHdl.swappable = swappable;
+
+		builder.createPipeline(pipeHdl, present, device);
+	};
 
 	// === OPAQUE PIPELINE ===
-	PipelinePresents::opaqueSettings.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	PipelinePresents::opaqueSettings.polygonMode = VK_POLYGON_MODE_FILL;
-	PipelinePresents::opaqueSettings.cullMode = VK_CULL_MODE_NONE;
-	PipelinePresents::opaqueSettings.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	PipelinePresents::opaqueSettings.enableBlending = false;
-	PipelinePresents::opaqueSettings.enableDepthTest = true;
-	PipelinePresents::opaqueSettings.enableDepthWrite = true;
-	PipelinePresents::opaqueSettings.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-	PipelinePresents::opaqueSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
-	PipelinePresents::opaqueSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
+	createPipeline(PipelineID::Opaque, PipelineCategory::Raster, "Opaque", true);
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::opaqueSettings, MSAA_ENABLED);
-	Pipelines::opaquePipeline.type = PipelineCategory::Raster;
-	pipeline_builder.createPipeline(Pipelines::opaquePipeline, PipelinePresents::opaqueSettings, device);
 
 	// === TRANSPARENT PIPELINE ===
-	pipeline_builder.initializePipelineSTypes();
-	PipelinePresents::transparentSettings.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	PipelinePresents::transparentSettings.polygonMode = VK_POLYGON_MODE_FILL;
-	PipelinePresents::transparentSettings.cullMode = VK_CULL_MODE_NONE;
-	PipelinePresents::transparentSettings.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	PipelinePresents::transparentSettings.enableBlending = true;
-	PipelinePresents::transparentSettings.enableDepthTest = true;
-	PipelinePresents::transparentSettings.enableDepthWrite = false;
-	PipelinePresents::transparentSettings.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-	PipelinePresents::transparentSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
-	PipelinePresents::transparentSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
-
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::transparentSettings, MSAA_ENABLED);
-	Pipelines::transparentPipeline.type = PipelineCategory::Raster;
-	pipeline_builder.createPipeline(Pipelines::transparentPipeline, PipelinePresents::transparentSettings, device);
+	PipelinePresent& transPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
+	transPresent.enableBlending = true;
+	transPresent.enableDepthWrite = false;
+	createPipeline(PipelineID::Transparent, PipelineCategory::Raster, "Transparent", true);
 
 
 	// === WIREFRAME PIPELINE ===
-	pipeline_builder.initializePipelineSTypes();
-	PipelinePresents::wireframeSettings.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	PipelinePresents::wireframeSettings.polygonMode = VK_POLYGON_MODE_LINE;
-	PipelinePresents::wireframeSettings.cullMode = VK_CULL_MODE_NONE;
-	PipelinePresents::wireframeSettings.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	PipelinePresents::wireframeSettings.enableBlending = false;
-	PipelinePresents::wireframeSettings.enableDepthTest = true;
-	PipelinePresents::wireframeSettings.enableDepthWrite = true;
-	PipelinePresents::wireframeSettings.depthCompareOp = VK_COMPARE_OP_LESS;
-	PipelinePresents::wireframeSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
-	PipelinePresents::wireframeSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
+	PipelinePresent& wirePresent = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
+	wirePresent.polygonMode = VK_POLYGON_MODE_LINE;
+	wirePresent.depthCompareOp = VK_COMPARE_OP_LESS;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::wireframeSettings, MSAA_ENABLED);
-	Pipelines::wireframePipeline.type = PipelineCategory::Raster;
-	pipeline_builder.createPipeline(Pipelines::wireframePipeline, PipelinePresents::wireframeSettings, device);
+	createPipeline(PipelineID::Wireframe, PipelineCategory::Raster, "Wireframe", true);
 
 	// === BOUNDINGBOX PIPELINE ===
-	pipeline_builder.initializePipelineSTypes();
-	PipelinePresents::boundingBoxSettings.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	PipelinePresents::boundingBoxSettings.polygonMode = VK_POLYGON_MODE_LINE;
-	PipelinePresents::boundingBoxSettings.cullMode = VK_CULL_MODE_NONE;
-	PipelinePresents::boundingBoxSettings.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	PipelinePresents::boundingBoxSettings.enableBlending = false;
-	PipelinePresents::boundingBoxSettings.enableDepthTest = true;
-	PipelinePresents::boundingBoxSettings.enableDepthWrite = false;
-	PipelinePresents::boundingBoxSettings.depthCompareOp = VK_COMPARE_OP_LESS;
-	PipelinePresents::boundingBoxSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
-	PipelinePresents::boundingBoxSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
+	PipelinePresent& bbPresent = PipelinePresents::getPipelinePresentByID(PipelineID::BoundingBox);
+	bbPresent.polygonMode = VK_POLYGON_MODE_LINE;
+	bbPresent.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	bbPresent.enableDepthWrite = false;
+	bbPresent.depthCompareOp = VK_COMPARE_OP_LESS;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::boundingBoxSettings, MSAA_ENABLED);
-	Pipelines::boundingBoxPipeline.type = PipelineCategory::Raster;
-	pipeline_builder.createPipeline(Pipelines::boundingBoxPipeline, PipelinePresents::boundingBoxSettings, device);
+	createPipeline(PipelineID::BoundingBox, PipelineCategory::Raster, "BoundingBox");
 
 	// === SKYBOX PIPELINE ===
-	pipeline_builder.initializePipelineSTypes();
-	PipelinePresents::skyboxPipelineSettings.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	PipelinePresents::skyboxPipelineSettings.polygonMode = VK_POLYGON_MODE_FILL;
-	PipelinePresents::skyboxPipelineSettings.cullMode = VK_CULL_MODE_NONE;
-	PipelinePresents::skyboxPipelineSettings.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	PipelinePresents::skyboxPipelineSettings.enableBlending = false;
-	PipelinePresents::skyboxPipelineSettings.enableDepthTest = true;
-	PipelinePresents::skyboxPipelineSettings.enableDepthWrite = false;
-	PipelinePresents::skyboxPipelineSettings.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
-	PipelinePresents::skyboxPipelineSettings.colorFormat = ResourceManager::getDrawImage().imageFormat;
-	PipelinePresents::skyboxPipelineSettings.depthFormat = ResourceManager::getDepthImage().imageFormat;
+	PipelinePresent& skyboxPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Skybox);
+	skyboxPresent.enableDepthWrite = false;
 
-	PipelineManager::setupPipelineConfig(pipeline_builder, PipelinePresents::skyboxPipelineSettings, MSAA_ENABLED);
-	Pipelines::skyboxPipeline.type = PipelineCategory::Raster;
-	pipeline_builder.createPipeline(Pipelines::skyboxPipeline, PipelinePresents::skyboxPipelineSettings, device);
+	createPipeline(PipelineID::Skybox, PipelineCategory::Raster, "Skybox");
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
-	// No need to reset sTypes for compute pipelines
 
-	Pipelines::visibilityPipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::visibilityPipeline, PipelinePresents::visibilitySettings, device);
-
-	//Pipelines::buildDrawsPipeline.type = PipelineCategory::Compute;
-	//pipeline_builder.createPipeline(Pipelines::buildDrawsPipeline, PipelinePresents::buildDrawsSettings, device);
-
-	//Pipelines::sortDrawsPipeline.type = PipelineCategory::Compute;
-	//pipeline_builder.createPipeline(Pipelines::sortDrawsPipeline, PipelinePresents::sortDrawsSettings, device);
-
-	Pipelines::postProcessPipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::postProcessPipeline, PipelinePresents::colorCorrectionPipelineSettings, device);
-
-	Pipelines::hdr2cubemapPipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::hdr2cubemapPipeline, PipelinePresents::hdr2cubemapPipelineSettings, device);
-
-	Pipelines::specularPrefilterPipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::specularPrefilterPipeline, PipelinePresents::specularPrefilterPipelineSettings, device);
-
-	Pipelines::diffuseIrradiancePipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::diffuseIrradiancePipeline, PipelinePresents::diffuseIrradiancePipelineSettings, device);
-
-	Pipelines::brdfLutPipeline.type = PipelineCategory::Compute;
-	pipeline_builder.createPipeline(Pipelines::brdfLutPipeline, PipelinePresents::brdfLutPipelineSettings, device);
+	createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
+	createPipeline(PipelineID::ToneMap, PipelineCategory::Compute, "ToneMap");
+	createPipeline(PipelineID::HDRToCubemap, PipelineCategory::Compute, "HDRToCubemap");
+	createPipeline(PipelineID::SpecularPrefilter, PipelineCategory::Compute, "SpecularPrefilter");
+	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
+	createPipeline(PipelineID::BRDFLUT, PipelineCategory::Compute, "BRDFLUT");
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 
+	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
+		queue.push_function([=] {
+			VkPipeline pipeline = Pipelines::getPipelineByID(static_cast<PipelineID>(i));
+			vkDestroyPipeline(device, pipeline, nullptr);
+		});
+	}
+
 	queue.push_function([=] {
-		vkDestroyPipeline(device, Pipelines::visibilityPipeline.pipeline, nullptr);
-		//vkDestroyPipeline(device, Pipelines::buildDrawsPipeline.pipeline, nullptr);
-		//vkDestroyPipeline(device, Pipelines::sortDrawsPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::postProcessPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::brdfLutPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::hdr2cubemapPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::specularPrefilterPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::diffuseIrradiancePipeline.pipeline, nullptr);
-
-		vkDestroyPipeline(device, Pipelines::skyboxPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::boundingBoxPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::transparentPipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::wireframePipeline.pipeline, nullptr);
-		vkDestroyPipeline(device, Pipelines::opaquePipeline.pipeline, nullptr);
-
 		vkDestroyPipelineLayout(device, Pipelines::_globalLayout.layout, nullptr);
 	});
 }

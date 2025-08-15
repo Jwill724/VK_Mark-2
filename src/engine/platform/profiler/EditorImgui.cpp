@@ -119,11 +119,17 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		if (ImGui::CollapsingHeader("Pipeline Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
 			ImGui::Checkbox("Pipeline Override", &profiler.pipeOverride.enabled);
 
-			static int selected = static_cast<int>(profiler.pipeOverride.selected);
-			const char* names[] = { "Opaque", "Transparent", "Wireframe" };
+			auto swappables = Pipelines::getSwappablePipelines();
 
-			if (ImGui::Combo("Force Pipeline", &selected, names, IM_ARRAYSIZE(names))) {
-				profiler.pipeOverride.selected = static_cast<PipelineType>(selected);
+			std::vector<const char*> names;
+			names.reserve(swappables.size());
+			for (auto& [id, handle] : swappables) {
+				names.push_back(handle.name.c_str());
+			}
+
+			static int selected = 0;
+			if (ImGui::Combo("Force Pipeline", &selected, names.data(), names.size())) {
+				profiler.pipeOverride.selectedID = swappables[selected].first;
 			}
 
 			if (ImGui::TreeNode("Debug Draw")) {
@@ -132,10 +138,10 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			}
 		}
 
-		// Background controls section (Compute shader/post process effects)
+		// "tone map", not a very good one
 		if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
 			auto& color = ResourceManager::toneMappingData;
-			ImGui::Text("Post process color correction");
+			ImGui::Text("Tone map color correction");
 			ImGui::SliderFloat("Brightness", &color.brightness, 0.0f, 2.0f);
 			ImGui::SliderFloat("Saturation", &color.saturation, 0.0f, 2.0f);
 			ImGui::SliderFloat("Contrast", &color.contrast, 0.0f, 2.0f);

@@ -251,28 +251,30 @@ enum class PipelineCategory {
 	Mesh     // Mesh shader-based
 };
 
-struct PipelineObj {
-	VkPipeline pipeline;
-	MaterialPass pass;
+struct PipelineHandle {
+	VkPipeline pipeline = VK_NULL_HANDLE;
 	PipelineCategory type;
+	std::string name;
+	bool swappable = false;
 };
 
 struct PipelinePresent {
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
+	// Default pipeline settings
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
+	VkCullModeFlagBits cullMode = VK_CULL_MODE_NONE;
+	VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	bool enableBlending = false;
 	bool enableDepthTest = true;
 	bool enableDepthWrite = true;
+	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 
-	VkPolygonMode polygonMode;
-	VkPrimitiveTopology topology;
-	VkCompareOp depthCompareOp;
-	VkCullModeFlagBits cullMode;
-	VkFrontFace frontFace;
+	VkFormat colorFormat = VK_FORMAT_UNDEFINED;
+	VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 
 	std::vector<ShaderStageInfo> shaderStagesInfo;
-	VkFormat colorFormat;
-	VkFormat depthFormat;
 };
 
 struct AllocatedBuffer {
