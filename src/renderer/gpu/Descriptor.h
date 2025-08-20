@@ -12,7 +12,6 @@ struct DescriptorManager {
 	uint32_t setsPerPool = 0;
 
 	VkDescriptorPool getPool(const VkDevice device);
-
 	void destroyPools(const VkDevice device);
 	VkDescriptorPool createDescriptorPool(const VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
 	VkDescriptorSetLayout createSetLayout(const VkDevice device);
@@ -21,6 +20,8 @@ struct DescriptorManager {
 	void clearPools(const VkDevice device);
 	void addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t count);
 	void clearBinding();
+
+	VkDescriptorSetLayout createPushSetLayout(const VkDevice device);
 
 	void init(const VkDevice device, uint32_t maxSets, std::span<PoolSizeRatio> poolRatios);
 };

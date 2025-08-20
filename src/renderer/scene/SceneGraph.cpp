@@ -5,24 +5,28 @@
 #include "renderer/Renderer.h"
 #include "core/AssetManager.h"
 #include "renderer/scene/Visibility.h"
+#include "engine/JobSystem.h"
+#include "RenderScene.h"
 
 void SceneGraph::buildSceneGraph(
 	ThreadContext& threadCtx,
-	std::vector<GPUMeshData>& meshes)
+	std::vector<GlobalInstance>& globalInstances,
+	std::vector<glm::mat4>& staticTransforms)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue);
 
 	auto gltfJobs = queue->collect();
+
+	uint32_t instanceCounter = 0;
+	uint32_t firstTransform = 0;
+
 	for (auto& context : gltfJobs) {
 		if (!context->isComplete()) continue;
 
 		auto& gltf = context->gltfAsset;
 		auto& modelAsset = *context->scene;
-
-		fmt::print("Processing GLTF scene: '{}'\n", modelAsset.sceneName);
-		fmt::print("GLTF has {} nodes\n", gltf.nodes.size());
 
 		// === Build all nodes ===
 		std::vector<std::shared_ptr<Node>> nodes;
@@ -46,7 +50,6 @@ void SceneGraph::buildSceneGraph(
 				}
 			}, srcNode.transform);
 
-			node->instances.clear();
 			nodes.push_back(node);
 		}
 
@@ -55,7 +58,6 @@ void SceneGraph::buildSceneGraph(
 			for (auto childIdx : gltf.nodes[i].children) {
 				nodes[i]->children.push_back(nodes[childIdx]);
 				nodes[childIdx]->parent = nodes[i];
-				fmt::print("  Parent {} -> Child {}\n", i, childIdx);
 			}
 		}
 
@@ -66,37 +68,44 @@ void SceneGraph::buildSceneGraph(
 				modelAsset.sceneNodes.topNodes.push_back(node);
 			}
 		}
-		fmt::print("Found {} root nodes.\n", modelAsset.sceneNodes.topNodes.size());
 
 		// === Compute world transforms ===
 		for (auto& node : modelAsset.sceneNodes.topNodes) {
 			node->refreshTransform(glm::mat4(1.0f));
 		}
 
-		for (size_t i = 0; i < nodes.size(); ++i) {
-			printMat4(nodes[i]->worldTransform);
-		}
-
 		modelAsset.sceneNodes.nodes = nodes;
 
-		// === Assign instances to nodes ===
-		uint32_t instanceCounter = 0;
-		for (auto& baked : modelAsset.runtime.bakedInstances) {
-			baked->instance.transformID = baked->nodeID;
-			baked->instance.instanceID = instanceCounter++;
-			uint32_t meshID = baked->instance.meshID;
+		// define model with a sceneID
+		SceneID sceneID = SceneIDs.at(modelAsset.sceneName);
+		modelAsset.sceneID = sceneID;
 
-			meshes[meshID].worldAABB = Visibility::transformAABB(
-				meshes[meshID].localAABB,
-				nodes[baked->nodeID]->worldTransform
-			);
+		// === Assign global instances ===
+		GlobalInstance gblInst{};
+		gblInst.sceneID = static_cast<uint8_t>(sceneID);
+		gblInst.instanceID = instanceCounter++;
 
-			nodes[baked->nodeID]->instances.push_back(baked);
+		// === Assign node transforms to global transform list ===
+		gblInst.firstTransform = firstTransform;
+		uint32_t localTransformCount = 0;
+		for (auto& inst : modelAsset.runtime.bakedInstances) {
+			// Bake transformIDs to the static list, this will then be used to define copies
+			staticTransforms.push_back(nodes[inst->transformID]->worldTransform);
+			localTransformCount++;
 		}
+		gblInst.transformCount = localTransformCount;
+		firstTransform += localTransformCount;
 
-		fmt::print("SceneGraph built: '{}'. Total bakedInstances = {}\n\n",
-			modelAsset.sceneName,
-			modelAsset.runtime.bakedInstances.size());
+		gblInst.perInstanceStride = static_cast<uint32_t>(modelAsset.runtime.bakedInstances.size());
+
+		globalInstances.push_back(gblInst);
+
+		JobSystem::log(threadCtx.threadID,
+			fmt::format("SceneGraph built: '{}'. Total bakedInstances = {}. Total materials = {}. Total nodes = {}\n",
+				modelAsset.sceneName,
+				modelAsset.runtime.bakedInstances.size(),
+				modelAsset.runtime.materials.size(),
+				nodes.size()));
 
 		queue->push(context);
 	}

@@ -41,6 +41,9 @@ struct Vertex {
     vec4 color;
 };
 
+const uint PASS_OPAQUE      = 0u;
+const uint PASS_TRANSPARENT = 1u;
+
 struct Material {
     vec4 colorFactor;
     vec2 metalRoughFactors;
@@ -62,42 +65,38 @@ struct Material {
 
 struct Mesh {
     AABB localAABB;
-    AABB worldAABB;
-    uint drawRangeID;
-};
-
-
-struct Instance {
-    uint instanceID;
-    uint materialID;
-    uint meshID;
-    uint transformID;
-};
-
-// Enum address buffer types
-const uint ABT_OpaqueInstances          = 0u; // frame
-const uint ABT_OpaqueIndirectDraws      = 1u; // frame
-const uint ABT_TransparentInstances     = 2u; // frame
-const uint ABT_TransparentIndirectDraws = 3u; // frame
-const uint ABT_Material                 = 4u; // global
-const uint ABT_Mesh                     = 5u; // global
-const uint ABT_DrawRange                = 6u; // global
-const uint ABT_Vertex                   = 7u; // global
-const uint ABT_Index                    = 8u; // global
-const uint ABT_Transforms               = 9u; // frame
-const uint ABT_VisibleCount             = 10u; // frame
-const uint ABT_VisibleMeshIDs           = 11u; // frame
-const uint ABT_Count                    = 12u;
-
-struct GPUAddressTable {
-    uint64_t addrs[ABT_Count];
-};
-
-struct GPUDrawRange {
     uint firstIndex;
     uint indexCount;
     uint vertexOffset;
     uint vertexCount;
+};
+
+// All defined as VkDrawIndexedIndirectCommand
+const uint DRAW_STATIC        = 0u;
+const uint DRAW_MULTI_STATIC  = 1u;
+const uint DRAW_DYNAMIC       = 2u;
+const uint DRAW_MULTI_DYNAMIC = 3u;
+
+struct Instance {
+    uint meshID;
+    uint materialID;
+    uint transformID;
+    uint drawType;
+    uint passType;
+};
+
+// Enum address buffer types
+const uint ABT_VisibleInstances  = 0u; // frame
+const uint ABT_IndirectDraws     = 1u; // frame
+const uint ABT_Transforms        = 2u; // global
+const uint ABT_Material          = 3u; // global
+const uint ABT_Mesh              = 4u; // global
+const uint ABT_Vertex            = 5u; // global
+const uint ABT_Index             = 6u; // global
+const uint ABT_Count             = 7u;
+
+struct GPUAddressTable {
+    uint64_t addrs[ABT_Count];
 };
 
 struct IndirectDrawCmd {
@@ -110,30 +109,16 @@ struct IndirectDrawCmd {
 
 // GPU-only buffers
 
-// Opaque and transparent data is a render time upload
-// Only visible data makes it through
-
-// Opaque
-layout(buffer_reference, scalar) readonly buffer OpaqueInstances {
-    Instance opaqueInstances[];
+// instances
+layout(buffer_reference, scalar) readonly buffer VisibleInstances {
+    Instance instances[];
 };
-layout(buffer_reference, scalar) readonly buffer OpaqueIndirectDraws {
-    IndirectDrawCmd opaqueIndirect[];
+// indirect draws
+layout(buffer_reference, scalar) readonly buffer IndirectDraws {
+    IndirectDrawCmd indirectDraws[];
 };
 
-// Transparent
-layout(buffer_reference, scalar) readonly buffer TransparentInstances {
-    Instance transparentInstances[];
-};
-layout(buffer_reference, scalar) readonly buffer TransparentIndirectDraws {
-    IndirectDrawCmd transparentIndirect[];
-};
-
-// ranges, materials, vertices, indices, all ready at render time and uploaded at end of asset loading
-layout(buffer_reference, scalar) readonly buffer DrawRangeBuffer {
-    GPUDrawRange ranges[];
-};
-
+// materials, vertices, indices, all ready at render time and uploaded at end of asset loading
 layout(buffer_reference, scalar) readonly buffer MaterialBuffer {
     Material materials[];
 };
@@ -146,24 +131,12 @@ layout(buffer_reference, scalar) readonly buffer IndexBuffer {
     uint indices[];
 };
 
-layout(buffer_reference, scalar) readonly buffer TransformsListBuffer {
+layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
     mat4 transforms[];
 };
 
-// In current cpu based setup, worldAABBs are done on cpu after main upload,
-// all thats present here currently is localAABB and drawRangeIndex
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {
     Mesh meshes[];
-};
-
-
-// Inactives
-layout(buffer_reference, scalar) writeonly buffer VisibleCountBuffer {
-    uint visibleCount;
-};
-
-layout(buffer_reference, scalar) writeonly buffer VisibleMeshIDBuffer {
-    uint visibleMeshIDs[];
 };
 
 #endif

@@ -22,6 +22,7 @@
 #include <functional>
 #include <deque>
 #include <cmath>
+#include <numeric>
 
 // Third-party
 #include "fmt/core.h"

@@ -12,6 +12,7 @@
 #include "renderer/Renderer.h"
 #include "renderer/scene/RenderScene.h"
 #include "platform/profiler/EditorImgui.h"
+#include "core/loader/MeshLoader.h"
 
 std::vector<ThreadContext>& allThreadContexts = getAllThreadContexts();
 
@@ -36,6 +37,7 @@ void EngineState::init() {
 		Backend::getInstance(),
 		Backend::getSwapchainDef().imageFormat,
 		dQueue);
+
 	DescriptorSetOverwatch::initDescriptors(device, dQueue);
 
 	auto& winExtent = Engine::getWindowExtent();
@@ -44,16 +46,6 @@ void EngineState::init() {
 	ResourceManager::initRenderImages(device, dQueue, mainAllocator, Renderer::getDrawExtent());
 	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDeletionQueue(), mainAllocator);
 	ResourceManager::initEnvironmentImages(device, dQueue, mainAllocator);
-
-	// main address table buffer
-	_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
-		sizeof(GPUAddressTable),
-		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VMA_MEMORY_USAGE_GPU_ONLY,
-		mainAllocator
-	);
 
 	RenderScene::setScene();
 
@@ -90,10 +82,21 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	const auto device = Backend::getDevice();
 
 	if (availableAssets) {
+		// main address table buffer
+		_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
+			sizeof(GPUAddressTable),
+			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+			VMA_MEMORY_USAGE_GPU_ONLY,
+			mainAllocator
+		);
+
 		fmt::print("\nAssets available for loading!\n");
 
 		engineProfiler.startTimer();
 
+		// === SAMPLER CREATION ===
 		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			AssetManager::buildSamplers(threadCtx);
@@ -104,6 +107,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		// temp queue needed for deferred buffer deletions for buffers used in commands
 		auto& tempQueue = _resources.getTempDeletionQueue();
+
+		// === TEXTURE LOADING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device, &tempQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Graphics);
@@ -120,6 +125,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::wait();
 
+		// === MATERIAL PROCESSING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
@@ -136,167 +142,47 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		});
 
 		JobSystem::wait();
-		// clear material staging buffer
-		_resources.getTempDeletionQueue().flush();
 
-		auto& drawRanges = _resources.getDrawRanges();
+		// === MESH PROCESS ===
 		auto& meshes = _resources.getResgisteredMeshes();
-
 		std::vector<Vertex> totalVertices;
 		std::vector<uint32_t> totalIndices;
 
-		JobSystem::submitJob([assetQueue, &drawRanges, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::processMeshes(threadCtx, drawRanges, meshes, totalVertices, totalIndices);
+			AssetManager::processMeshes(threadCtx, meshes, totalVertices, totalIndices);
 			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MESHES_READY);
 		});
 
 		JobSystem::wait();
 
-		// TODO: Turn this into a MeshLoader.cpp/h
-		// Mesh upload
-		JobSystem::submitJob([assetQueue, mainAllocator, device, &drawRanges, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
+		// Currently only scene graph and mesh upload are truly parallel
+
+		// === MESH UPLOAD ===
+		JobSystem::submitJob([assetQueue, mainAllocator, device, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue);
 
-			const size_t vertexBufferSize = totalVertices.size() * sizeof(Vertex);
-			const size_t indexBufferSize = totalIndices.size() * sizeof(uint32_t);
-			const size_t drawRangesSize = drawRanges.size() * sizeof(GPUDrawRange);
-			const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
-			const size_t totalStagingSize = vertexBufferSize + indexBufferSize + drawRangesSize + meshesSize;
+			MeshLoader::uploadMeshes(
+				threadCtx,
+				totalVertices,
+				totalIndices,
+				meshes,
+				mainAllocator,
+				device);
 
-			fmt::print("[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
-				vertexBufferSize, totalVertices.size());
-			fmt::print("[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",
-				indexBufferSize, totalIndices.size());
-			fmt::print("[MeshUpload] drawRangesSize     = {} bytes ({} ranges)\n",
-				drawRangesSize, drawRanges.size());
-			fmt::print("[MeshUpload] meshesSize         = {} bytes ({} meshes)\n",
-				meshesSize, meshes.meshData.size());
-			fmt::print("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize);
-
-			auto& resources = Engine::getState().getGPUResources();
-
-			// Create large GPU buffers for vertex and index
-			AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Vertex,
-				resources.getAddressTable(),
-				vertexBufferSize,
-				mainAllocator
-			);
-			resources.addGPUBufferToGlobalAddress(AddressBufferType::Vertex, vtxBuffer);
-
-			AllocatedBuffer idxBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Index,
-				resources.getAddressTable(),
-				indexBufferSize,
-				mainAllocator
-			);
-			resources.addGPUBufferToGlobalAddress(AddressBufferType::Index, idxBuffer);
-
-			// Draw range gpu buffer creation
-			AllocatedBuffer drawRangeBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::DrawRange,
-				resources.getAddressTable(),
-				drawRangesSize,
-				mainAllocator
-			);
-			resources.addGPUBufferToGlobalAddress(AddressBufferType::DrawRange, drawRangeBuffer);
-
-			// Mesh buffer creation
-			AllocatedBuffer meshBuffer = BufferUtils::createGPUAddressBuffer(
-				AddressBufferType::Mesh,
-				resources.getAddressTable(),
-				meshesSize,
-				mainAllocator
-			);
-			resources.addGPUBufferToGlobalAddress(AddressBufferType::Mesh, meshBuffer);
-
-			// Setup single staging buffer for transfer
-			AllocatedBuffer stagingBuffer = BufferUtils::createBuffer(
-				totalStagingSize,
-				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-				VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-				mainAllocator
-			);
-			ASSERT(stagingBuffer.info.size >= totalStagingSize);
-
-			auto stgBuf = stagingBuffer.buffer;
-			auto stgAlloc = stagingBuffer.allocation;
-			resources.getTempDeletionQueue().push_function([stgBuf, stgAlloc, mainAllocator]() mutable {
-				BufferUtils::destroyBuffer(stgBuf, stgAlloc, mainAllocator);
-			});
-
-			threadCtx.stagingMapped = stagingBuffer.info.pMappedData;
-			ASSERT(threadCtx.stagingMapped != nullptr);
-			uint8_t* stagingData = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
-
-			// Compute offsets
-			VkDeviceSize vertexWriteOffset = 0;
-			VkDeviceSize indexWriteOffset = vertexWriteOffset + vertexBufferSize;
-			VkDeviceSize drawRangesWriteOffset = indexWriteOffset + indexBufferSize;
-			VkDeviceSize meshesWriteOffset = drawRangesWriteOffset + drawRangesSize;
-
-			fmt::print("[MeshUpload] vertexWriteOffset     = {}\n", vertexWriteOffset);
-			fmt::print("[MeshUpload] indexWriteOffset      = {}\n", indexWriteOffset);
-			fmt::print("[MeshUpload] drawRangesWriteOffset = {}\n", drawRangesWriteOffset);
-			fmt::print("[MeshUpload] meshesWriteOffset     = {}\n", meshesWriteOffset);
-
-			// Copy into staging
-			memcpy(stagingData + vertexWriteOffset, totalVertices.data(), vertexBufferSize);
-			memcpy(stagingData + indexWriteOffset, totalIndices.data(), indexBufferSize);
-			memcpy(stagingData + drawRangesWriteOffset, drawRanges.data(), drawRangesSize);
-			memcpy(stagingData + meshesWriteOffset, meshes.meshData.data(), meshesSize);
-
-			CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-				VkBufferCopy vtxCopy{
-					.srcOffset = vertexWriteOffset,
-					.dstOffset = 0,
-					.size = vertexBufferSize
-				};
-				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
-
-				VkBufferCopy idxCopy{
-					.srcOffset = indexWriteOffset,
-					.dstOffset = 0,
-					.size = indexBufferSize
-				};
-				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
-
-				VkBufferCopy drawRangeCopy{
-					.srcOffset = drawRangesWriteOffset,
-					.dstOffset = 0,
-					.size = drawRangesSize
-				};
-				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, drawRangeBuffer.buffer, 1, &drawRangeCopy);
-
-				VkBufferCopy meshCopy{
-					.srcOffset = meshesWriteOffset,
-					.dstOffset = 0,
-					.size = meshesSize
-				};
-				vkCmdCopyBuffer(cmd, stagingBuffer.buffer, meshBuffer.buffer, 1, &meshCopy);
-
-			}, threadCtx.cmdPool, QueueType::Transfer, device);
-
-			resources.updateAddressTableMapped(threadCtx.cmdPool);
-
-			auto& tQueue = Backend::getTransferQueue();
-			threadCtx.lastSubmittedFence = Engine::getState().submitCommandBuffers(tQueue);
-			waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);
-			vkResetCommandPool(device, threadCtx.cmdPool, 0);
-			threadCtx.cmdPool = VK_NULL_HANDLE;
-			threadCtx.stagingMapped = nullptr;
+			EngineStages::SetGoal(ENGINE_STAGE_MESH_UPLOAD_READY, threadCtx.threadID);
 		});
 
-		JobSystem::wait();
-		_resources.getTempDeletionQueue().flush();
-
-		JobSystem::submitJob([assetQueue, &meshes](ThreadContext& threadCtx) {
+		// === SCENE GRAPH BUILD ===
+		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(threadCtx, meshes.meshData);
+			SceneGraph::buildSceneGraph(
+				threadCtx,
+				RenderScene::_globalInstances,
+				RenderScene::_globalTransforms);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");
@@ -306,27 +192,30 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			for (auto& context : gltfJobs) {
 				if (!context->isComplete()) continue;
 				auto& scene = *context->scene;
-				const std::string& name = scene.sceneName;
 
 				if (!context->hasRegisteredScene) {
-					RenderScene::_loadedScenes[name] = context->scene;
-					fmt::print("Registered scene '{}'\n", name);
+					RenderScene::_loadedScenes[static_cast<SceneID>(scene.sceneID)] = context->scene;
+					JobSystem::log(threadCtx.threadID, fmt::format("Registered scene '{}'\n", scene.sceneName));
 					context->hasRegisteredScene = true;
 				}
 			}
 
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_SCENE_GRAPH_READY);
+			EngineStages::SetGoal(ENGINE_STAGE_LOADING_SCENE_GRAPH_READY, threadCtx.threadID);
 		});
 
-		JobSystem::wait();
+		EngineStages::WaitUntilAll(ENGINE_STAGE_MESH_UPLOAD_READY | ENGINE_STAGE_LOADING_SCENE_GRAPH_READY);
+		JobSystem::flushLogs();
 		EngineStages::Clear(static_cast<EngineStage>(EngineStages::loadingStageFlags));
+
+		// flush any setup temp data like staging buffers
+		tempQueue.flush();
 
 		// Asset loading done
 		auto elapsed = engineProfiler.endTimer();
-		fmt::print("Asset loading completed in {:.3f} seconds.\n", elapsed);
+		fmt::print("Asset loading completed in {:.3f} seconds.\n\n", elapsed);
 	}
 	else {
-		fmt::print("No assets for loading... skipping\n");
+		fmt::print("No assets for loading... skipping\n\n");
 	}
 
 	engineProfiler.assetsLoaded = availableAssets;
@@ -414,13 +303,15 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// Global descriptor writing and update
 	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	DescriptorWriter mainWriter;
-	mainWriter.writeBuffer(
-		ADDRESS_TABLE_BINDING,
-		_resources.getAddressTableBuffer().buffer,
-		_resources.getAddressTableBuffer().info.size,
-		0,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		unifiedSet);
+	if (availableAssets) {
+		mainWriter.writeBuffer(
+			ADDRESS_TABLE_BINDING,
+			_resources.getAddressTableBuffer().buffer,
+			_resources.getAddressTableBuffer().info.size,
+			0,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			unifiedSet);
+	}
 	mainWriter.writeBuffer(
 		GLOBAL_BINDING_ENV_INDEX,
 		_resources.envMapIndexBuffer.buffer,
@@ -489,7 +380,7 @@ void EngineState::shutdown() {
 	JobSystem::shutdownScheduler();
 
 	if (!RenderScene::_loadedScenes.empty())
-		RenderScene::_loadedScenes.clear();
+		RenderScene::cleanScene();
 
 	JobSystem::getThreadPoolManager().cleanup(device);
 

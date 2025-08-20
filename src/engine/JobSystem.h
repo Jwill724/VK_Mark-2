@@ -73,6 +73,29 @@ struct ThreadCommandPoolManager {
 
 
 namespace JobSystem {
+	struct LogMessage {
+		uint32_t threadID;
+		std::string text;
+	};
+
+	inline std::vector<LogMessage> logMessages;
+	inline std::mutex logMutex;
+
+	// Log output from parallel jobs is not strictly ordered,
+	// messages may appear earlier or later depending on workload size.
+	inline void log(uint32_t threadID, const std::string& text) {
+		std::scoped_lock lock(logMutex);
+		logMessages.push_back({ threadID, text });
+	}
+
+	inline void flushLogs() {
+		std::scoped_lock lock(logMutex);
+		for (auto& msg : logMessages) {
+			fmt::print("[Thread {}] {}", msg.threadID, msg.text);
+		}
+		logMessages.clear();
+	}
+
 	void initScheduler();
 	void shutdownScheduler();
 	void submitJob(std::function<void(ThreadContext&)> taskFn);

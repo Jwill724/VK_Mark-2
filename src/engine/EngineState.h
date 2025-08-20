@@ -3,7 +3,9 @@
 #include "core/ResourceManager.h"
 #include <filesystem>
 #include "fmt/base.h"
+#include "fmt/format.h"
 #include "platform/profiler/Profiler.h"
+#include "engine/JobSystem.h"
 
 class Profiler;
 
@@ -30,17 +32,97 @@ private:
 // Multithreading needs staging but this can also function outside of threading
 namespace EngineStages {
 	inline std::atomic<uint32_t> currentFlags = ENGINE_STAGE_NONE;
+	inline std::mutex stageMutex;
+	inline std::condition_variable stageCV;
+
+	inline const char* stageToString(EngineStage stage) {
+		switch (stage) {
+		case ENGINE_STAGE_NONE: return "NONE";
+		case ENGINE_STAGE_LOADING_START: return "LOADING_START";
+		case ENGINE_STAGE_LOADING_FILES_READY: return "LOADING_FILES_READY";
+		case ENGINE_STAGE_LOADING_SAMPLERS_READY: return "LOADING_SAMPLERS_READY";
+		case ENGINE_STAGE_LOADING_TEXTURES_READY: return "LOADING_TEXTURES_READY";
+		case ENGINE_STAGE_LOADING_MATERIALS_READY: return "LOADING_MATERIALS_READY";
+		case ENGINE_STAGE_LOADING_MESHES_READY: return "LOADING_MESHES_READY";
+		case ENGINE_STAGE_MESH_UPLOAD_READY: return "MESH_UPLOAD_READY";
+		case ENGINE_STAGE_LOADING_SCENE_GRAPH_READY: return "LOADING_SCENE_GRAPH_READY";
+
+		case ENGINE_STAGE_RENDER_PREPARING_FRAME: return "RENDER_PREPARING_FRAME";
+		case ENGINE_STAGE_RENDER_FRAME_CONTEXT_READY: return "RENDER_FRAME_CONTEXT_READY";
+		case ENGINE_STAGE_RENDER_CAMERA_READY: return "RENDER_CAMERA_READY";
+		case ENGINE_STAGE_RENDER_FRUSTUM_READY: return "RENDER_FRUSTUM_READY";
+		case ENGINE_STAGE_RENDER_SCENE_READY: return "RENDER_SCENE_READY";
+		case ENGINE_STAGE_RENDER_READY_TO_RENDER: return "RENDER_READY_TO_RENDER";
+		case ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT: return "RENDER_FRAME_IN_FLIGHT";
+
+		case ENGINE_STAGE_READY: return "READY";
+		case ENGINE_STAGE_SHUTDOWN: return "SHUTDOWN";
+		case ENGINE_STAGE_SHUTDOWN_COMPLETE: return "SHUTDOWN_COMPLETE";
+		default: return "UNKNOWN";
+		}
+	}
+
+	inline std::string flagsToString(uint32_t flags) {
+		std::string result;
+		auto append = [&](EngineStage s) {
+			if (flags & s) {
+				if (!result.empty()) result += " | ";
+				result += stageToString(s);
+			}
+		};
+
+		append(ENGINE_STAGE_LOADING_START);
+		append(ENGINE_STAGE_LOADING_FILES_READY);
+		append(ENGINE_STAGE_LOADING_SAMPLERS_READY);
+		append(ENGINE_STAGE_LOADING_TEXTURES_READY);
+		append(ENGINE_STAGE_LOADING_MATERIALS_READY);
+		append(ENGINE_STAGE_LOADING_MESHES_READY);
+		append(ENGINE_STAGE_MESH_UPLOAD_READY);
+		append(ENGINE_STAGE_LOADING_SCENE_GRAPH_READY);
+
+		append(ENGINE_STAGE_RENDER_PREPARING_FRAME);
+		append(ENGINE_STAGE_RENDER_FRAME_CONTEXT_READY);
+		append(ENGINE_STAGE_RENDER_CAMERA_READY);
+		append(ENGINE_STAGE_RENDER_FRUSTUM_READY);
+		append(ENGINE_STAGE_RENDER_SCENE_READY);
+		append(ENGINE_STAGE_RENDER_READY_TO_RENDER);
+		append(ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT);
+
+		append(ENGINE_STAGE_READY);
+		append(ENGINE_STAGE_SHUTDOWN);
+		append(ENGINE_STAGE_SHUTDOWN_COMPLETE);
+
+		if (result.empty()) result = "NONE";
+		return result;
+	}
 
 	// The next stage to progress
-	inline void SetGoal(EngineStage stage) {
-		currentFlags.fetch_or(stage);
-		fmt::print("[EngineStage] Set: {:032b}\n", static_cast<uint32_t>(stage));
+	inline void SetGoal(EngineStage stage, uint32_t threadID = UINT32_MAX) {
+		{
+			std::lock_guard<std::mutex> lock(stageMutex);
+			currentFlags.fetch_or(stage);
+		}
+		stageCV.notify_all();
+		if (threadID == UINT32_MAX) {
+			fmt::print("[EngineStage] Set: {} ({:032b})\n",
+				flagsToString(currentFlags.load()),
+				currentFlags.load());
+		}
+		else {
+			JobSystem::log(threadID,
+				fmt::format("[EngineStage] Set: {} ({:032b})\n",
+				flagsToString(currentFlags.load()),
+				currentFlags.load()));
+		}
 	}
 
 	// deletes a stage
 	// reset staging mid frame
 	inline void Clear(EngineStage stage) {
-		currentFlags.fetch_and(~stage);
+		{
+			std::lock_guard<std::mutex> lock(stageMutex);
+			currentFlags.fetch_and(~stage);
+		}
 	}
 
 	// useful conditional outside of submission
@@ -56,18 +138,15 @@ namespace EngineStages {
 
 	// Won't start until a current stage is done
 	inline void WaitUntil(EngineStage stage) {
-		while (!IsSet(stage)) {
-			fmt::print("[EngineStage] Waiting for: {:032b}\n", static_cast<uint32_t>(stage));
-			std::this_thread::yield();
-		}
+		std::unique_lock<std::mutex> lock(stageMutex);
+		stageCV.wait(lock, [&] { return IsSet(stage); });
 	}
 	// For more than one stage
 	inline void WaitUntilAll(uint32_t flags) {
-		while (!AllSet(flags)) {
-			fmt::print("[EngineStage] Waiting for: {:032b}\n", static_cast<uint32_t>(flags));
-			std::this_thread::yield();
-		}
+		std::unique_lock<std::mutex> lock(stageMutex);
+		stageCV.wait(lock, [&] { return AllSet(flags); });
 	}
+
 
 	constexpr uint32_t loadingStageFlags =
 		ENGINE_STAGE_LOADING_START |

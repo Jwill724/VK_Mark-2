@@ -12,19 +12,23 @@ namespace RenderScene {
 	GPUSceneData _sceneData;
 	GPUSceneData& getCurrentSceneData() { return _sceneData; }
 
-	std::vector<MeshID> _currentSceneMeshIDs;
+	std::vector<GlobalInstance> _globalInstances;
+	std::vector<glm::mat4> _globalTransforms;
 
-	std::vector<glm::mat4> _globalTransformsList;
+	static Visibility::VisibilityState _visState;
+	static std::vector<AABB> _visibleWorldAABBs;
 
 	Camera _mainCamera;
-	glm::mat4 _curCamView;
-	glm::mat4 _curCamProj;
+	static glm::mat4 _curCamView;
+	static glm::mat4 _curCamProj;
+
+	const Camera getCamera() { return _mainCamera; }
 
 	// Only wanna extract a new frustum if viewproj changes
-	glm::mat4 _lastViewProj;
+	static glm::mat4 _lastViewProj;
 	bool _isFirstViewProj = true;
 
-	Frustum _currentFrustum;
+	static Frustum _currentFrustum;
 }
 
 void RenderScene::setScene() {
@@ -39,8 +43,9 @@ void RenderScene::setScene() {
 	_sceneData.sunlightDirection = glm::normalize(glm::vec4(1.0f, 1.0f, -0.787f, 0.0f));
 }
 
+
 void RenderScene::updateCamera() {
-	auto extent = Renderer::getDrawExtent();
+	const auto extent = Renderer::getDrawExtent();
 	float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
 
 	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler());
@@ -59,10 +64,9 @@ void RenderScene::updateCamera() {
 	_sceneData.cameraPosition = glm::vec4(_mainCamera._position, 0.0f);
 }
 
-
 // Draw preparation work
 // Temporary, need a place to center ideas
-void RenderScene::updateScene(FrameCtx& frameCtx, GPUResources& resources) {
+void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 	// === Update and draw scene ===
 
 	updateCamera();
@@ -84,192 +88,51 @@ void RenderScene::updateScene(FrameCtx& frameCtx, GPUResources& resources) {
 	const auto allocator = resources.getAllocator();
 	allocateSceneBuffer(frameCtx, allocator);
 
-	const auto device = Backend::getDevice();
-
 	// No scene loaded in
-	if (_loadedScenes.empty()) {
-		frameCtx.descriptorWriter.clear();
-
-		// Fully empty storage buffer writing
-		// Only update ssbo once if no scene is loaded
-		if (!frameCtx.addressTableDirty) {
-			frameCtx.descriptorWriter.writeBuffer(
-				0,
-				frameCtx.addressTableBuffer.buffer,
-				frameCtx.addressTableBuffer.info.size,
-				0,
-				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				frameCtx.set
-			);
-
-			frameCtx.addressTableDirty = true;
-		}
-
-		// The one write needed for scene uniform
-		frameCtx.descriptorWriter.writeBuffer(
-			1,
-			frameCtx.sceneDataBuffer.buffer,
-			sizeof(GPUSceneData),
-			0,
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			frameCtx.set
-		);
-
-		frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
-
-		return;
-	}
+	if (_loadedScenes.empty()) return;
 
 	auto& tQueue = Backend::getTransferQueue();
-	auto& meshes = resources.getResgisteredMeshes();
+	auto& meshes = resources.getResgisteredMeshes().meshData;
 
-	if (frameCtx.refreshGlobalTransformList) {
-		frameCtx.cullingPCData.meshCount = static_cast<uint32_t>(meshes.meshData.size());
-		//transformSceneNodes();
-		frameCtx.refreshGlobalTransformList = false; // baked until new transforms applied
-	}
+	DrawPreparation::syncGlobalInstancesAndTransforms(
+		frameCtx,
+		resources,
+		_sceneProfiles,
+		_globalInstances,
+		_globalTransforms,
+		tQueue);
 
-	// Initial frame contexts will define all buffers needed until either new meshes or transforms
-	// After data is defined it'll only need to update frustum each frame
-	if (!frameCtx.meshDataSet && !frameCtx.refreshGlobalTransformList) {
-		if (GPU_ACCELERATION_ENABLED) {
-			// Prepare buffers where visibles will go, meshIDs
-			DrawPreparation::meshDataAndTransformsListUpload(
-				frameCtx,
-				meshes,
-				_globalTransformsList,
-				tQueue,
-				allocator,
-				GPU_ACCELERATION_ENABLED // Should 100% move this check if going full gpu only
-			);
+	frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
+		_visState,
+		_globalInstances,
+		_loadedScenes,
+		meshes,
+		_globalTransforms);
 
-			frameCtx.meshDataSet = true;
-
-			frameCtx.descriptorWriter.clear();
-			frameCtx.descriptorWriter.writeBuffer(
-				0,
-				frameCtx.addressTableBuffer.buffer,
-				frameCtx.addressTableBuffer.info.size,
-				0,
-				VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-				frameCtx.set
-			);
-			frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
-		}
-		else {
-			_currentSceneMeshIDs = meshes.extractAllMeshIDs();
-			//fmt::print("mesh id sizes: {}\n", static_cast<uint32_t>(_currentSceneMeshIDs.size()));
-			frameCtx.meshDataSet = true;
-		}
-	}
-
-	// === CULLING PASS ===
-
-	// gpu culling, doesn't work
-	/*if (GPU_ACCELERATION_ENABLED) {
-		VkDescriptorSet sets[] = {
-			DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
-			frameCtx.set
-		};
-
-		auto& computeSync = Renderer::_computeSync;
-
-		auto& computeQueue = Backend::getComputeQueue();
-
-		if (Backend::getTransferQueue().wasUsed) {
-			computeQueue.waitTimelineValue(device, Renderer::_transferSync.semaphore, frameCtx.transferWaitValue);
-		}
-
-		CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-			Visibility::performCulling(
-				cmd,
-				frameCtx.cullingPCData,
-				frameCtx.stagingVisibleCountBuffer.buffer,
-				frameCtx.stagingVisibleMeshIDsBuffer.buffer,
-				frameCtx.gpuVisibleCountBuffer.buffer,
-				frameCtx.gpuVisibleMeshIDsBuffer.buffer,
-				sets);
-			}, frameCtx.computePool, QueueType::Compute, device);
-
-		frameCtx.computeCmds = DeferredCmdSubmitQueue::collectCompute();
-
-		computeQueue.submitWithTimelineSync(
-			frameCtx.computeCmds,
-			computeSync.semaphore,
-			computeSync.signalValue
-		);
-
-		frameCtx.computeWaitValue = computeSync.signalValue++;
-		computeQueue.waitTimelineValue(device, computeSync.semaphore, frameCtx.computeWaitValue);
-
-		memcpy(&frameCtx.visibleCount, frameCtx.stagingVisibleCountBuffer.mapped, sizeof(uint32_t));
-		frameCtx.visibleMeshIDs.resize(frameCtx.visibleCount);
-		memcpy(frameCtx.visibleMeshIDs.data(), frameCtx.stagingVisibleMeshIDsBuffer.mapped, sizeof(uint32_t) * frameCtx.visibleCount);
-	}*/
+	Visibility::applySyncResult(
+		_visState,
+		frameCtx.visSyncResult,
+		meshes,
+		_globalTransforms);
 
 	// CPU CULLING
-	frameCtx.visibleMeshIDs.clear();
-	for (const auto id : _currentSceneMeshIDs) {
-		const GPUMeshData& mesh = meshes.meshData[id];
-
-		ASSERT(id < frameCtx.cullingPCData.meshCount && "id out of range in culling pass");
-
-		bool visible = Visibility::isVisible(mesh.worldAABB, _currentFrustum);
-		if (visible) {
-			frameCtx.visibleMeshIDs.push_back(id);
-		}
-	}
-
 	frameCtx.clearRenderData();
+	Visibility::cullBVHCollect(
+		_visState,
+		_currentFrustum,
+		frameCtx.visibleInstances,
+		_visibleWorldAABBs);
 
-	if (!frameCtx.visibleMeshIDs.empty()) {
-		//fmt::print("Visible meshIDs this frame:\n");
-		//for (auto id : frameCtx.visibleMeshIDs)
-		//	fmt::print("  meshID {}\n", id);
+	if (!frameCtx.visibleInstances.empty()) {
+		frameCtx.visibleCount = static_cast<uint32_t>(frameCtx.visibleInstances.size());
 
-		// Using the visible meshIds in culling, find all instances and define data
-		updateVisiblesInstances(frameCtx);
-
-		DrawPreparation::buildAndSortIndirectDraws(frameCtx, resources.getDrawRanges(), meshes.meshData, _sceneData.cameraPosition);
+		DrawPreparation::buildAndSortIndirectDraws(frameCtx, meshes, _visibleWorldAABBs, _sceneData.cameraPosition);
 
 		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue);
 	}
 }
 
-
-void RenderScene::transformSceneNodes() {
-	for (auto& [name, scene] : _loadedScenes) {
-		if (!scene) continue;
-
-		for (auto& node : scene->sceneNodes.topNodes) {
-			if (node) {
-				node->refreshTransform(glm::mat4(1.0f));
-			}
-		}
-	}
-}
-
-void RenderScene::updateVisiblesInstances(FrameCtx& frameCtx) {
-	// Convert visible mesh ID list to set
-	const std::unordered_set<uint32_t> visibleMeshIDSet {
-		frameCtx.visibleMeshIDs.begin(),
-		frameCtx.visibleMeshIDs.end()
-	};
-
-	frameCtx.transformsList.reserve(visibleMeshIDSet.size());
-
-	for (auto& [name, scene] : _loadedScenes) {
-		if (!scene) continue;
-
-		scene->FindVisibleInstances(
-			frameCtx.opaqueInstances,
-			frameCtx.transparentInstances,
-			frameCtx.transformsList,
-			visibleMeshIDSet);
-	}
-}
-
-void RenderScene::allocateSceneBuffer(FrameCtx& frameCtx, const VmaAllocator allocator) {
+void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator) {
 	frameCtx.sceneDataBuffer = BufferUtils::createBuffer(sizeof(GPUSceneData),
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 
@@ -286,7 +149,7 @@ void RenderScene::allocateSceneBuffer(FrameCtx& frameCtx, const VmaAllocator all
 	vmaFlushAllocation(allocator, frameCtx.sceneDataBuffer.allocation, 0, sizeof(GPUSceneData));
 }
 
-void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
+void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 	// all pipelines share push constant and descriptor setup
 	auto defaultPC = Pipelines::_globalLayout.pcRange;
 
@@ -295,7 +158,7 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 		vkCmdBindPipeline(
 			frameCtx.commandBuffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			Pipelines::_pipelineHandles[static_cast<size_t>(PipelineID::Skybox)].pipeline);
+			Pipelines::getPipelineByID(PipelineID::Skybox));
 
 		glm::mat4 view = glm::mat4(glm::mat3(_sceneData.view)); // strip translation
 
@@ -315,7 +178,7 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 		profiler.addDrawCall(1);
 	}
 
-	if (frameCtx.visibleMeshIDs.empty()) return;
+	if (frameCtx.visibleCount == 0) return;
 
 	auto& resources = Engine::getState().getGPUResources();
 
@@ -327,21 +190,17 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 			std::vector<glm::vec3> allVerts;
 			std::vector<uint32_t> drawOffsets;
 
-			const auto& meshes = resources.getResgisteredMeshes().meshData;
-
-			auto emitAABBVerts = [&](const GPUInstance& inst) {
-				const auto& aabb = meshes[inst.meshID].worldAABB;
-				auto verts = Visibility::GetAABBVertices(aabb);
+			auto emitAABBVerts = [&](const AABB& worldAABB) {
+				auto verts = Visibility::GetAABBVertices(worldAABB);
 				uint32_t offset = static_cast<uint32_t>(allVerts.size());
 				drawOffsets.push_back(offset);
 				allVerts.insert(allVerts.end(), verts.begin(), verts.end());
 			};
-			for (const auto& inst : frameCtx.opaqueInstances) emitAABBVerts(inst);
-			for (const auto& inst : frameCtx.transparentInstances) emitAABBVerts(inst);
+			for (const auto& aabb : _visibleWorldAABBs) emitAABBVerts(aabb);
 
 			const auto allocator = resources.getAllocator();
 
-			const size_t totalSize = sizeof(glm::vec3) * allVerts.size();
+			const size_t totalSize = allVerts.size() * sizeof(glm::vec3);
 
 			AllocatedBuffer aabbVBO = BufferUtils::createBuffer(
 				totalSize,
@@ -360,7 +219,7 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 			vkCmdBindPipeline(
 				frameCtx.commandBuffer,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				Pipelines::_pipelineHandles[static_cast<size_t>(PipelineID::BoundingBox)].pipeline);
+				Pipelines::getPipelineByID(PipelineID::BoundingBox));
 
 			const VkDeviceSize vtxOffset = 0;
 			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
@@ -391,7 +250,7 @@ void RenderScene::renderGeometry(FrameCtx& frameCtx, Profiler& profiler) {
 	}
 }
 
-void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resources, Profiler& profiler) {
+void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler) {
 	auto pLayout = Pipelines::_globalLayout;
 
 	const auto& idxBuffer = resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
@@ -408,9 +267,7 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-	if (frameCtx.opaqueVisibleCount > 0) {
-		frameCtx.opaqueDrawCount = static_cast<uint32_t>(frameCtx.opaqueIndirectDraws.size());
-		frameCtx.drawDataPC.drawPassType = 0u;
+	if (frameCtx.opaqueRange.visibleCount > 0) {
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
@@ -420,20 +277,20 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 			&frameCtx.drawDataPC);
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
-			frameCtx.opaqueIndirectCmdBuffer.buffer,
-			0,
-			frameCtx.opaqueDrawCount,
+			frameCtx.indirectDrawsBuffer.buffer,
+			frameCtx.opaqueRange.first,
+			frameCtx.opaqueRange.visibleCount,
 			drawCmdSize
 		);
 
-		for (uint32_t i = 0; i < frameCtx.opaqueDrawCount; ++i) {
-			const auto& draw = frameCtx.opaqueIndirectDraws[i];
+		for (uint32_t i = 0; i < frameCtx.opaqueRange.visibleCount; ++i) {
+			const auto& draw = frameCtx.indirectDraws[static_cast<size_t>(frameCtx.opaqueRange.first + i)];
 			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
 			profiler.addDrawCall(triangleCount);
 		}
 	}
 
-	if (frameCtx.transparentVisibleCount > 0) {
+	if (frameCtx.transparentRange.visibleCount > 0) {
 		if (!profiler.pipeOverride.enabled) {
 			vkCmdBindPipeline(
 				frameCtx.commandBuffer,
@@ -441,9 +298,6 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 				Pipelines::getPipelineByID(PipelineID::Transparent));
 		}
 
-		frameCtx.drawDataPC.drawPassType = 1u;
-		frameCtx.transparentDrawCount = static_cast<uint32_t>(frameCtx.transparentIndirectDraws.size());
-
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
 			pLayout.pcRange.stageFlags,
@@ -452,18 +306,18 @@ void RenderScene::drawIndirectCommands(FrameCtx& frameCtx, GPUResources& resourc
 			&frameCtx.drawDataPC);
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
-			frameCtx.transparentIndirectCmdBuffer.buffer,
-			0,
-			frameCtx.transparentDrawCount,
+			frameCtx.indirectDrawsBuffer.buffer,
+			frameCtx.transparentRange.first,
+			frameCtx.transparentRange.visibleCount,
 			drawCmdSize
 		);
 
-		const auto& ranges = resources.getDrawRanges();
 		const auto& meshes = resources.getResgisteredMeshes().meshData;
 
-		for (uint32_t i = 0; i < frameCtx.transparentDrawCount; ++i) {
-			auto& meshID = meshes[frameCtx.transparentInstances[i].meshID];
-			uint32_t triangleCount = ranges[meshID.drawRangeID].indexCount / 3;
+		for (uint32_t i = 0; i < frameCtx.transparentRange.visibleCount; ++i) {
+			const uint32_t meshID = frameCtx.visibleInstances[static_cast<size_t>(frameCtx.transparentRange.first + i)].meshID;
+			auto& mesh = meshes[meshID];
+			uint32_t triangleCount = mesh.indexCount / 3;
 			profiler.addDrawCall(triangleCount);
 		}
 	}
@@ -483,4 +337,9 @@ void RenderScene::copyFrustumToFrame(CullingPushConstantsAddrs& frustumData) {
 		std::end(_currentFrustum.points),
 		std::begin(frustumData.frusPoints)
 	);
+}
+
+void RenderScene::cleanScene() {
+	_loadedScenes.clear();
+	_visState.cleanup();
 }
