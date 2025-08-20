@@ -35,6 +35,8 @@ struct AABB {
 	float sphereRadius;
 };
 
+
+// SSBOs
 struct Vertex {
 	glm::vec3 position;
 	glm::vec3 normal;
@@ -43,24 +45,21 @@ struct Vertex {
 };
 
 struct GPUInstance {
-	uint32_t instanceID = UINT32_MAX;
-	uint32_t materialID = UINT32_MAX;
-	uint32_t meshID = UINT32_MAX;
-	uint32_t transformID = UINT32_MAX;
+	uint32_t meshID = UINT32_MAX; // global meshBuffer
+	uint32_t materialID = UINT32_MAX; // global material buffer
+	uint32_t transformID = UINT32_MAX; // can index into the global list or dynamic per frame
+	uint32_t drawType = UINT32_MAX; // static/dynamic and multi draws
+	uint32_t passType = UINT32_MAX; // opaque/transparent
 };
 
-// Draw ranges, meshes, materials all gpu ready at render
-struct GPUDrawRange {
+// Meshes, materials all gpu ready at render
+
+struct GPUMeshData {
+	AABB localAABB;
 	uint32_t firstIndex = UINT32_MAX;
 	uint32_t indexCount = UINT32_MAX;
 	uint32_t vertexOffset = UINT32_MAX;
 	uint32_t vertexCount = UINT32_MAX;
-};
-
-struct GPUMeshData {
-	AABB localAABB;
-	AABB worldAABB;
-	uint32_t drawRangeID = UINT32_MAX;
 };
 
 struct GPUMaterial {
@@ -82,7 +81,28 @@ struct GPUMaterial {
 	uint32_t emissiveID = UINT32_MAX;
 };
 
-// Uniforms
+// GPU only buffers
+enum class AddressBufferType : uint8_t {
+	VisibleInstances, // frame
+	IndirectDraws,    // frame
+	Transforms,       // global
+	Material,         // global
+	Mesh,             // global
+	Vertex,           // global
+	Index,            // global
+	Count
+};
+
+// 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
+// Buffers stored in this table, the barrier sync can be fully handled by this main address table buffer (globalFrame).
+struct alignas(16) GPUAddressTable {
+	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs;
+	void setAddress(AddressBufferType t, VkDeviceAddress addr) {
+		addrs[static_cast<size_t>(t)] = addr;
+	}
+};
+
+// UNIFORMS
 
 struct alignas(16) GPUSceneData {
 	glm::mat4 view;
@@ -101,40 +121,24 @@ struct alignas(16) GPUEnvMapIndexArray {
 };
 static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 
-// GPU only buffers
-enum class AddressBufferType : uint8_t {
-	OpaqueIntances,
-	OpaqueIndirectDraws,
-	TransparentInstances,
-	TransparentIndirectDraws,
-	Material,
-	Mesh,
-	DrawRange,
-	Vertex,
-	Index,
-	Transforms,
-	VisibleCount,
-	VisibleMeshIDs,
-	Count
-};
 
-struct alignas(128) GPUAddressTable {
-	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs;
-	void setAddress(AddressBufferType t, VkDeviceAddress addr) {
-		addrs[static_cast<size_t>(t)] = addr;
-	}
-};
 
 struct TimelineSync {
 	VkSemaphore semaphore = VK_NULL_HANDLE;
 	uint64_t signalValue = UINT64_MAX;
 };
 
-enum class MaterialPass : uint8_t {
+enum class MaterialPass : uint32_t {
 	Opaque,
 	Transparent
 };
 
+enum class DrawType : uint32_t {
+	DrawStatic,      // single baked instance
+	DrawMultiStatic, // many baked instances
+	DrawDynamic,     // single instance, dynamic transform
+	DrawMultiDynamic // many instances, dynamic transforms
+};
 
 // Push constant use
 struct alignas(16) ColorData {

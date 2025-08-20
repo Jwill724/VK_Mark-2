@@ -3,9 +3,8 @@
 #include <functional>
 
 // General Engine Limits
-constexpr uint32_t MAX_OPAQUE_DRAWS = 65536;
-constexpr uint32_t MAX_TRANSPARENT_DRAWS = 16384;
-constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_OPAQUE_DRAWS + MAX_TRANSPARENT_DRAWS;
+constexpr uint32_t MAX_DRAWS = 65536;
+constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_DRAWS;
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 // Default spawn with loading

@@ -167,7 +167,6 @@ VkDescriptorPool DescriptorManager::createDescriptorPool(const VkDevice device, 
 }
 
 void DescriptorManager::clearPools(const VkDevice device) {
-
 	for (auto& p : readyPools) {
 		vkResetDescriptorPool(device, p, 0);
 	}
@@ -347,9 +346,9 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
 			samplerCubeDescriptors.push_back(info);
 		}
-		else {
-			fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
-		}
+		//else {
+		//	fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
+		//}
 
 		if (e.storageImageIndex != UINT32_MAX && e.storageImageIndex < table.storageViews.size()) {
 			const auto& info = table.storageViews[e.storageImageIndex];
@@ -357,9 +356,9 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 				i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
 			storageDescriptors.push_back(info);
 		}
-		else {
-			fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
-		}
+		//else {
+		//	fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
+		//}
 
 		if (e.combinedImageIndex != UINT32_MAX && e.combinedImageIndex < table.combinedViews.size()) {
 			const auto& info = table.combinedViews[e.combinedImageIndex];
@@ -367,9 +366,9 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>((uint32_t)info.imageLayout));
 			combinedDescriptors.push_back(info);
 		}
-		else {
-			fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
-		}
+		//else {
+		//	fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
+		//}
 	}
 }
 
@@ -423,7 +422,7 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	}
 
 	if (!writes.empty()) {
-		fmt::print("Total image write count: {}\n", totalImageCount);
+		fmt::print("Total image write count: {}\n\n", totalImageCount);
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 	}
 
@@ -434,4 +433,20 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 		}
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(bufferWrites.size()), bufferWrites.data(), 0, nullptr);
 	}
+}
+
+// Push descriptors
+VkDescriptorSetLayout DescriptorManager::createPushSetLayout(const VkDevice device) {
+	std::sort(_bindings.begin(), _bindings.end(), [](auto& a, auto& b) { return a.binding < b.binding; });
+
+	VkDescriptorSetLayoutCreateInfo info{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
+		.bindingCount = static_cast<uint32_t>(_bindings.size()),
+		.pBindings = _bindings.data()
+	};
+
+	VkDescriptorSetLayout set{};
+	VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
+	return set;
 }

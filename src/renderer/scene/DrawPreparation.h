@@ -2,6 +2,7 @@
 
 #include "common/EngineTypes.h"
 #include "renderer/Renderer.h"
+#include "SceneGraph.h"
 
 struct OpaqueBatchKey {
 	uint32_t meshID;
@@ -21,20 +22,19 @@ struct OpaqueBatchKeyHash {
 };
 
 namespace DrawPreparation {
-	void uploadGPUBuffersForFrame(FrameCtx& frameCtx, GPUQueue& transferQueue);
-
-	void meshDataAndTransformsListUpload(
-		FrameCtx& frameCtx,
-		MeshRegistry& meshes,
-		const std::vector<glm::mat4>& transformsList,
-		GPUQueue& transferQueue,
-		const VmaAllocator allocator,
-		bool uploadTransforms = false);
-
+	void uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue);
 
 	void buildAndSortIndirectDraws(
-		FrameCtx& frameCtx,
-		const std::vector<GPUDrawRange>& drawRanges,
+		FrameContext& frameCtx,
 		const std::vector<GPUMeshData>& meshes,
+		const std::vector<AABB>& worldAABBs,
 		const glm::vec4 cameraPos);
+
+	void syncGlobalInstancesAndTransforms(
+		FrameContext& frameCtx,
+		GPUResources& gpuResources,
+		std::unordered_map<SceneID, SceneProfileEntry>& sceneProfiles,
+		std::vector<GlobalInstance>& globalInstances,
+		std::vector<glm::mat4>& globalTransforms,
+		GPUQueue& transferQueue);
 }

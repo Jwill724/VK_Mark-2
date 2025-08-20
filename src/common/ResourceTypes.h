@@ -300,41 +300,69 @@ struct alignas(16) CullingPushConstantsAddrs {
 };
 static_assert(sizeof(CullingPushConstantsAddrs) == 256);
 
-struct BakedInstance {
-	GPUInstance instance;
-	uint32_t gltfMeshIndex = UINT32_MAX;
-	uint32_t gltfPrimitiveIndex = UINT32_MAX;
-	MaterialPass passType = MaterialPass::Opaque;
-	uint32_t nodeID = UINT32_MAX;
+// Opaque and transparent distinction in shared instance/indirectcmd buffers
+struct PassRange {
+	uint32_t first = 0;
+	uint32_t visibleCount = 0;
 };
 
-// Per model
+// TODO: Make this range shit clearer
+// world aabb rows within VisibilityState
+struct DirtyRange { uint32_t offset; uint32_t count; };
+
+// === Per-frame sync ===
+// Compares current GlobalInstance.usedCopies/firstTransform to visState.slabs and decides:
+//  - grow: appendSceneCopies + buildBVH()
+//  - shrink: shrinkSceneCopiesLazy + buildBVH()
+//  - relocate-only: rewriteSceneSlice + refitBVH()
+//  - no change: do nothing
+// Returns whether topology changed or a refit-only is needed, plus any transform upload ranges.
+struct VisibilitySyncResult {
+	bool topologyChanged = false;   // grew/shrank -> call buildBVH()
+	bool refitOnly = false;         // only transforms changed -> call refitBVH()
+	std::vector<DirtyRange> dirtyTransformRanges; // for GPU uploads
+};
+
+// Virtual control over instances, enables true instancing with unique transforms
+struct GlobalInstance {
+	uint32_t instanceID = UINT32_MAX; // flat list
+	uint8_t sceneID = UINT8_MAX;      // unordered map id
+	DrawType drawType = DrawType::DrawStatic;
+
+	uint32_t firstTransform = 0;    // slab start in the global list
+	uint32_t transformCount = 0;
+	uint32_t perInstanceStride = 0; // bakedInstances.size()
+	uint32_t usedCopies = 1;        // realized copies in this slab
+	uint32_t capacityCopies = 1;    // reserved copies in this slab
+};
+
+// In mesh setup all model vertices/indices are collected
+// to be batched in one upload
 struct UploadMeshContext {
 	std::vector<uint32_t> globalIndices;
 	std::vector<Vertex> globalVertices;
 };
 
-using MeshID = uint32_t;
 struct MeshRegistry {
 	std::vector<GPUMeshData> meshData;
 
 	// holds a linear list of meshIDs for gpu access
 	AllocatedBuffer meshIDBuffer;
 
-	inline std::vector<MeshID> extractAllMeshIDs() const {
-		std::vector<MeshID> ids;
+	inline std::vector<uint32_t> extractAllMeshIDs() const {
+		std::vector<uint32_t> ids;
 		ids.reserve(meshData.size());
 
-		for (MeshID id = 0; id < meshData.size(); ++id) {
+		for (uint32_t id = 0; id < meshData.size(); ++id) {
 			ids.push_back(id);
 		}
 
 		return ids;
 	}
 
-	inline MeshID registerMesh(const GPUMeshData& data) {
-		MeshID id = static_cast<MeshID>(meshData.size());
-		ASSERT(id != std::numeric_limits<MeshID>::max() && "MeshRegistry: MeshID overflow!");
+	inline uint32_t registerMesh(const GPUMeshData& data) {
+		uint32_t id = static_cast<uint32_t>(meshData.size());
+		ASSERT(id != std::numeric_limits<uint32_t>::max() && "MeshRegistry: MeshID overflow!");
 
 		meshData.push_back(data);
 		return id;

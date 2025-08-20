@@ -55,7 +55,7 @@ struct TimelineDeletionQueue {
 };
 
 
-enum EngineStage : uint32_t {
+enum EngineStage {
 	ENGINE_STAGE_NONE = 0, // No dependencies
 
 	// Asset loading
@@ -65,25 +65,26 @@ enum EngineStage : uint32_t {
 	ENGINE_STAGE_LOADING_TEXTURES_READY = 1 << 4,
 	ENGINE_STAGE_LOADING_MATERIALS_READY = 1 << 5,
 	ENGINE_STAGE_LOADING_MESHES_READY = 1 << 6,
-	ENGINE_STAGE_LOADING_SCENE_GRAPH_READY = 1 << 7,
+	ENGINE_STAGE_MESH_UPLOAD_READY = 1 << 7,
+	ENGINE_STAGE_LOADING_SCENE_GRAPH_READY = 1 << 8,
 
 
 	// === Render stages ===
-	ENGINE_STAGE_RENDER_PREPARING_FRAME = 1 << 8,
-	ENGINE_STAGE_RENDER_FRAME_CONTEXT_READY = 1 << 9,
-	ENGINE_STAGE_RENDER_CAMERA_READY = 1 << 10,
-	ENGINE_STAGE_RENDER_FRUSTUM_READY = 1 << 11,
-	ENGINE_STAGE_RENDER_SCENE_READY = 1 << 12,
-	ENGINE_STAGE_RENDER_READY_TO_RENDER = 1 << 13,
-	ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT = 1 << 14,
+	ENGINE_STAGE_RENDER_PREPARING_FRAME = 1 << 9,
+	ENGINE_STAGE_RENDER_FRAME_CONTEXT_READY = 1 << 10,
+	ENGINE_STAGE_RENDER_CAMERA_READY = 1 << 11,
+	ENGINE_STAGE_RENDER_FRUSTUM_READY = 1 << 12,
+	ENGINE_STAGE_RENDER_SCENE_READY = 1 << 13,
+	ENGINE_STAGE_RENDER_READY_TO_RENDER = 1 << 14,
+	ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT = 1 << 15,
 
 	// === Global usages ===
-	ENGINE_STAGE_READY = 1 << 15,
-	ENGINE_STAGE_SHUTDOWN = 1 << 16,
-	ENGINE_STAGE_SHUTDOWN_COMPLETE = 1 << 17
+	ENGINE_STAGE_READY = 1 << 16,
+	ENGINE_STAGE_SHUTDOWN = 1 << 17,
+	ENGINE_STAGE_SHUTDOWN_COMPLETE = 1 << 18
 };
 
-enum class GLTFJobType {
+enum class GLTFJobType : uint8_t {
 	DecodeImages,
 	BuildSamplers,
 	ProcessMaterials,
@@ -93,8 +94,8 @@ enum class GLTFJobType {
 enum class QueueType : uint8_t {
 	Graphics,
 	Transfer,
-	Present,
 	Compute,
+	Present,
 	Generic
 };
 
@@ -144,7 +145,7 @@ struct TypedWorkQueue : BaseWorkQueue {
 };
 
 struct ThreadContext {
-	int threadID = 0;
+	uint32_t threadID = 0;
 	QueueType queueType = QueueType::Generic;
 	VkCommandPool cmdPool = VK_NULL_HANDLE;
 	DeletionQueue deletionQueue{};
@@ -168,6 +169,7 @@ struct ScopedWorkQueue {
 	}
 };
 
+// === FENCES AND QUEUES ===
 struct FencePool {
 	std::vector<VkFence> availableFences;
 	std::vector<VkFence> inFlightFences;

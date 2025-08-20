@@ -3,28 +3,49 @@
 #include "common/ResourceTypes.h"
 #include "common/EngineTypes.h"
 
+enum class SceneID : uint8_t {
+	Sponza,
+	MRSpheres,
+	Cube,
+	DamagedHelmet,
+	DragonAttenuation,
+	Count
+};
+
+// User view and control over scene instance data
+struct SceneProfileEntry {
+	std::string name;
+	DrawType drawType;
+	uint32_t instanceCount;   // total active instances
+	uint32_t reservedCopies;  // capacity
+	uint32_t usedCopies;      // currently realized
+};
+
+// Defines node transforms for each gltf model
 namespace SceneGraph {
+	static const std::unordered_map<SceneID, std::string> SceneNames {
+		{ SceneID::Sponza, "Sponza" },
+		{ SceneID::MRSpheres, "MRSpheres" },
+		{ SceneID::Cube, "Cube" },
+		{ SceneID::DamagedHelmet, "DamagedHelmet" },
+		{ SceneID::DragonAttenuation, "Dragon" },
+	};
 
-	class IRenderable {
-	public:
-		virtual void FindVisibleInstances(
-			std::vector<GPUInstance>& outVisibleOpaqueInstances,
-			std::vector<GPUInstance>& outVisibleTransparentInstances,
-			std::vector<glm::mat4>& outFrameTransformsList,
-			const std::unordered_set<uint32_t> visibleMeshIDSet) = 0;
-
-		virtual ~IRenderable() = default;
+	static const std::unordered_map<std::string, SceneID> SceneIDs {
+		{ "Sponza", SceneID::Sponza },
+		{ "MRSpheres", SceneID::MRSpheres },
+		{ "Cube", SceneID::Cube },
+		{ "DamagedHelmet", SceneID::DamagedHelmet },
+		{ "Dragon", SceneID::DragonAttenuation },
 	};
 
 	// ====== Scene Graph Node Base ======
-	struct Node : public IRenderable {
+	struct Node {
 		std::weak_ptr<Node> parent;
 		std::vector<std::shared_ptr<Node>> children;
 
 		glm::mat4 localTransform{ 1.0f };
 		glm::mat4 worldTransform{ 1.0f };
-
-		std::vector<std::shared_ptr<BakedInstance>> instances;
 
 		void refreshTransform(const glm::mat4& parentMatrix) {
 			worldTransform = parentMatrix * localTransform;
@@ -32,47 +53,10 @@ namespace SceneGraph {
 				if (c) c->refreshTransform(worldTransform);
 			}
 		}
-
-		virtual void FindVisibleInstances(
-			std::vector<GPUInstance>& outVisibleOpaqueInstances,
-			std::vector<GPUInstance>& outVisibleTransparentInstances,
-			std::vector<glm::mat4>& outFrameTransformsList,
-			const std::unordered_set<uint32_t> visibleMeshIDSet
-		) override
-		{
-			for (const auto& inst : instances) {
-				if (!inst) continue;
-
-				const uint32_t meshID = inst->instance.meshID;
-
-				// Only process visible meshes
-				if (visibleMeshIDSet.find(meshID) == visibleMeshIDSet.end())
-					continue;
-
-				outFrameTransformsList.push_back(worldTransform);
-
-				GPUInstance gpuInst{
-					.instanceID = inst->instance.instanceID,
-					.materialID = inst->instance.materialID,
-					.meshID = meshID,
-					.transformID = static_cast<uint32_t>(outFrameTransformsList.size() - 1)
-				};
-
-				if (inst->passType == MaterialPass::Transparent)
-					outVisibleTransparentInstances.push_back(gpuInst);
-				else
-					outVisibleOpaqueInstances.push_back(gpuInst);
-			}
-
-			for (const auto& c : children) {
-				if (c) c->FindVisibleInstances(
-					outVisibleOpaqueInstances,
-					outVisibleTransparentInstances,
-					outFrameTransformsList,
-					visibleMeshIDSet);
-			}
-		}
 	};
 
-	void buildSceneGraph(ThreadContext& threadCtx, std::vector<GPUMeshData>& meshes);
+	void buildSceneGraph(
+		ThreadContext& threadCtx,
+		std::vector<GlobalInstance>& globalInstances,
+		std::vector<glm::mat4>& transformList);
 }

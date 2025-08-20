@@ -76,7 +76,7 @@ namespace ResourceManager {
 }
 
 
-void GPUResources::init(VkDevice device) {
+void GPUResources::init(const VkDevice device) {
 	allocator = VulkanUtils::createAllocator(Backend::getPhysicalDevice(), device, Backend::getInstance());
 	graphicsPool = CommandBuffer::createCommandPool(device, Backend::getGraphicsQueue().familyIndex);
 	transferPool = CommandBuffer::createCommandPool(device, Backend::getTransferQueue().familyIndex);

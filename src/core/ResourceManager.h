@@ -19,12 +19,16 @@ public:
 	VkCommandPool& getTransferPool() { return transferPool; }
 	VkCommandPool& getComputePool() { return computePool; }
 	VkFence& getLastSubmittedFence() { return lastSubmittedFence; }
-	void init(VkDevice device);
+	void init(const VkDevice device);
 
 	GPUAddressTable& getAddressTable() { return gpuAddresses; }
 	AllocatedBuffer& getAddressTableBuffer() { return addressTableBuffer; }
 
 	AllocatedBuffer& getGPUAddrsBuffer(AddressBufferType type) { return gpuBuffers.at(type); }
+	bool containsGPUBuffer(AddressBufferType type) const {
+		auto it = gpuBuffers.find(type);
+		return it != gpuBuffers.end() && it->second.buffer != VK_NULL_HANDLE;
+	}
 	void addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
 	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
 
@@ -35,7 +39,6 @@ public:
 
 	// All submesh access
 	// Maps meshes to their vertex/index buffer regions for indirect drawing
-	std::vector<GPUDrawRange>& getDrawRanges() { return drawRanges; }
 	MeshRegistry& getResgisteredMeshes() { return registeredMeshes; }
 
 	ImageLUTManager& getLUTManager() { return lutManager; }
@@ -69,8 +72,6 @@ private:
 	}
 
 	ImageLUTManager lutManager{};
-
-	std::vector<GPUDrawRange> drawRanges{};
 
 	std::unordered_map<AddressBufferType, AllocatedBuffer> gpuBuffers{};
 

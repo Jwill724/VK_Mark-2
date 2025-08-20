@@ -19,6 +19,8 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[loadGltf] queue broken.");
 
+	using namespace SceneGraph;
+
 	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
 	//ASSERT(damagedHelmetFile.has_value());
@@ -439,12 +441,11 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	});
 }
 
-// Define Instances for models, meshIDs and materialIDs are setup here.
+// Define Instances for models, meshID, materialID, transformID are setup here.
 // A global meshes registry holds the mesh vector that'll be uploaded.
-// DrawRangeID is the key to index and vertex buffers, meshbuffer owns this ID.
+// meshbuffer holds each localaabb and the range data into vertex and index buffers,
 void AssetManager::processMeshes(
 	ThreadContext& threadCtx,
-	std::vector<GPUDrawRange>& drawRanges,
 	MeshRegistry& meshes,
 	std::vector<Vertex>& vertices,
 	std::vector<uint32_t>& indices)
@@ -479,11 +480,6 @@ void AssetManager::processMeshes(
 
 			for (uint32_t primIdx = 0; primIdx < mesh.primitives.size(); ++primIdx) {
 				const auto& p = mesh.primitives[primIdx];
-
-				auto inst = std::make_shared<BakedInstance>();
-				inst->nodeID = nodeIdx;
-				inst->gltfMeshIndex = meshIdx;
-				inst->gltfPrimitiveIndex = primIdx; // Does nothing currently, one day...
 
 				const uint32_t globalVertexOffset = static_cast<uint32_t>(vertices.size());
 				const uint32_t globalIndexOffset = static_cast<uint32_t>(indices.size());
@@ -542,34 +538,33 @@ void AssetManager::processMeshes(
 				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
-				GPUDrawRange range {
+				GPUMeshData newMesh {
 					.firstIndex = globalIndexOffset,
 					.indexCount = indexCount,
 					.vertexOffset = globalVertexOffset,
 					.vertexCount = vertexCount
 				};
 
-				ASSERT(vertices.size() >= range.vertexOffset + range.vertexCount &&
+				ASSERT(vertices.size() >= newMesh.vertexOffset + newMesh.vertexCount &&
 					"Vertex buffer too small for range!");
 
-				ASSERT(indices.size() >= range.firstIndex + range.indexCount &&
+				ASSERT(indices.size() >= newMesh.firstIndex + newMesh.indexCount &&
 					"Index buffer too small for range!");
 
-				GPUMeshData newMesh{};
-				newMesh.drawRangeID = static_cast<uint32_t>(drawRanges.size());
-
-				drawRanges.push_back(range);
+				// Define baked instance in model
+				auto inst = std::make_shared<GPUInstance>();
+				inst->transformID = nodeIdx;
 
 				if (p.materialIndex.has_value()) {
 					auto matID = p.materialIndex.value();
-					inst->instance.materialID = static_cast<uint32_t>(matID) + matOffset;
-					inst->passType = static_cast<MaterialPass>(scene.runtime.materials[static_cast<uint32_t>(matID)].passType);
+					inst->materialID = static_cast<uint32_t>(matID) + matOffset;
+					inst->passType = scene.runtime.materials[static_cast<uint32_t>(matID)].passType;
 				}
 				else {
-					inst->instance.materialID = 0 + matOffset;
-					inst->passType = MaterialPass::Opaque;
+					inst->materialID = 0 + matOffset;
+					inst->passType = static_cast<uint32_t>(MaterialPass::Opaque);
 				}
-				ASSERT(inst->instance.materialID < resourceStats.totalMaterialCount && "MaterialID out of range");
+				ASSERT(inst->materialID < resourceStats.totalMaterialCount && "MaterialID out of range");
 
 				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
@@ -585,7 +580,7 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.extent = (vmax - vmin) * 0.5f;
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
-				inst->instance.meshID = meshes.registerMesh(newMesh);
+				inst->meshID = meshes.registerMesh(newMesh);
 				scene.runtime.bakedInstances.push_back(inst);
 			}
 		}
@@ -596,14 +591,13 @@ void AssetManager::processMeshes(
 		resourceStats.totalVertexCount = static_cast<uint32_t>(vertices.size());
 		resourceStats.totalIndexCount = static_cast<uint32_t>(indices.size());
 
-		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}, ranges={}\n",
+		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
 			resourceStats.totalMeshCount,
 			resourceStats.totalVertexCount,
-			resourceStats.totalIndexCount,
-			drawRanges.size());
+			resourceStats.totalIndexCount);
 
-		ASSERT(!drawRanges.empty() && !vertices.empty() && !indices.empty() &&
-			"Invalid draw range or empty mesh data");
+		ASSERT(resourceStats.totalMeshCount > 0 && resourceStats.totalVertexCount > 0 && resourceStats.totalIndexCount > 0 &&
+			"Invalid draw ranges.");
 
 		queue->push(context);
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
@@ -626,24 +620,6 @@ bool AssetManager::isValidMaterial(const fastgltf::Material& mat, const fastgltf
 	return true;
 }
 
-
-
-void ModelAsset::FindVisibleInstances(
-	std::vector<GPUInstance>& outVisibleOpaqueInstances,
-	std::vector<GPUInstance>& outVisibleTransparentInstances,
-	std::vector<glm::mat4>& outFrameTransformsList,
-	const std::unordered_set<uint32_t> visibleMeshIDSet)
-{
-	for (const auto& root : sceneNodes.topNodes) {
-		if (root) {
-			root->FindVisibleInstances(
-				outVisibleOpaqueInstances,
-				outVisibleTransparentInstances,
-				outFrameTransformsList,
-				visibleMeshIDSet);
-		}
-	}
-}
 
 void ModelAsset::clearAll() {
 	auto device = Backend::getDevice();

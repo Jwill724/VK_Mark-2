@@ -8,6 +8,10 @@
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 
+// 8/18/2025: This will all be redesigned
+// Use of push descriptors to get all culling data in and define frame instances
+// Occulsion culling as well, will need a depth pre pass too
+
 layout(local_size_x = 64) in;
 
 layout(push_constant) uniform CullingPushConstantsAddrs {
@@ -38,34 +42,34 @@ bool boxInFrustum(AABB box);
 AABB transformAABB(AABB localBox, mat4 transform);
 
 void main() {
-    uint index = gl_GlobalInvocationID.x;
-    if (index >= pc.meshCount)
-        return;
-
-    MeshIDBuffer meshIDBuffer = MeshIDBuffer(pc.meshIDBufferAddr);
-    uint meshIndex = meshIDBuffer.meshIDs[index];
-
-    MeshBuffer meshBuffer = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]);
-    Mesh mesh = meshBuffer.meshes[meshIndex];
-
-    // Set to 0 at first run if transforms aren't uploaded to gpu
-    if (pc.rebuildTransforms == 1) {
-        TransformsListBuffer transformsBuffer = TransformsListBuffer(globalAddressTable.addrs[ABT_Transforms]);
-        mat4 transform = transformsBuffer.transforms[meshIndex];
-        AABB worldAABB = transformAABB(mesh.localAABB, transform);
-        meshBuffer.meshes[meshIndex].worldAABB = worldAABB;
-    }
-
-    AABB aabbToTest = meshBuffer.meshes[meshIndex].worldAABB;
-
-    if (!boxInFrustum(aabbToTest))
-        return;
-
-    VisibleCountBuffer vcBuffer = VisibleCountBuffer(pc.visibleCountBufferAddr);
-    uint outputIndex = atomicAdd(vcBuffer.visibleCount, 1);
-
-    VisibleMeshIDBuffer visibleBuf = VisibleMeshIDBuffer(pc.visibleMeshOutBufferAddr);
-    visibleBuf.visibleMeshIDs[outputIndex] = meshIndex;
+//    uint index = gl_GlobalInvocationID.x;
+//    if (index >= pc.meshCount)
+//        return;
+//
+//    MeshIDBuffer meshIDBuffer = MeshIDBuffer(pc.meshIDBufferAddr);
+//    uint meshIndex = meshIDBuffer.meshIDs[index];
+//
+//    MeshBuffer meshBuffer = MeshBuffer(globalAddressTable.addrs[ABT_Mesh]);
+//    Mesh mesh = meshBuffer.meshes[meshIndex];
+//
+//    // Set to 0 at first run if transforms aren't uploaded to gpu
+//    if (pc.rebuildTransforms == 1) {
+//        TransformsListBuffer transformsBuffer = TransformsListBuffer(globalAddressTable.addrs[ABT_Transforms]);
+//        mat4 transform = transformsBuffer.transforms[meshIndex];
+//        AABB worldAABB = transformAABB(mesh.localAABB, transform);
+//        meshBuffer.meshes[meshIndex].worldAABB = worldAABB;
+//    }
+//
+//    AABB aabbToTest = meshBuffer.meshes[meshIndex].worldAABB;
+//
+//    if (!boxInFrustum(aabbToTest))
+//        return;
+//
+//    VisibleCountBuffer vcBuffer = VisibleCountBuffer(pc.visibleCountBufferAddr);
+//    uint outputIndex = atomicAdd(vcBuffer.visibleCount, 1);
+//
+//    VisibleMeshIDBuffer visibleBuf = VisibleMeshIDBuffer(pc.visibleMeshOutBufferAddr);
+//    visibleBuf.visibleMeshIDs[outputIndex] = meshIndex;
 }
 
 bool boxInFrustum(AABB box) {

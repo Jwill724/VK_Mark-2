@@ -111,8 +111,7 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
-	if (AddressBufferType::OpaqueIndirectDraws == addressBufferType ||
-		AddressBufferType::TransparentIndirectDraws == addressBufferType) {
+	if (AddressBufferType::IndirectDraws == addressBufferType) {
 		usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	}
 
@@ -124,8 +123,8 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
 
-	if (AddressBufferType::VisibleCount == addressBufferType ||
-		AddressBufferType::VisibleMeshIDs == addressBufferType)
+	// Instances can be written to in compute shader
+	if (AddressBufferType::VisibleInstances == addressBufferType)
 	{
 		usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	}
@@ -135,7 +134,7 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		usage,
 		VMA_MEMORY_USAGE_GPU_ONLY,
 		allocator,
-		true
+		true // gpu buffers will be shared among queues
 	);
 
 	addressTable.setAddress(addressBufferType, buffer.address);
@@ -147,14 +146,12 @@ void BufferUtils::destroyBuffer(VkBuffer buffer, VmaAllocation allocation, const
 	static std::mutex mutex;
 	std::scoped_lock lock(mutex);
 	vmaDestroyBuffer(allocator, buffer, allocation);
-	//fmt::print("[DestroyBuffer] Buffer = {}, Memory = {}\n", (void*)buffer, (void*)allocation);
 }
 
 void BufferUtils::destroyAllocatedBuffer(AllocatedBuffer& buffer, const VmaAllocator allocator) {
 	static std::mutex mutex;
 	std::scoped_lock lock(mutex);
 	vmaDestroyBuffer(allocator, buffer.buffer, buffer.allocation);
-	//fmt::print("[DestroyAllocatedBuffer] Buffer = {}, Memory = {}\n", (void*)buffer.buffer, (void*)buffer.allocation);
 
 	buffer.buffer = VK_NULL_HANDLE;
 	buffer.allocation = nullptr;

@@ -3,123 +3,476 @@
 #include "Visibility.h"
 #include "renderer/gpu/PipelineManager.h"
 
-// GPU culling
-// This doesn't work right now, due to how buffers are handled and syncing compute queue
-void Visibility::performCulling(
-	VkCommandBuffer cmd,
-	CullingPushConstantsAddrs& cullingData,
-	VkBuffer visibleCountStaging,
-	VkBuffer visibleMeshIDsStaging,
-	VkBuffer gpuVisibleCountBuffer,
-	VkBuffer gpuVisibleMeshIDsBuffer,
-	VkDescriptorSet sets[2]) {
-	auto pcInfo = Pipelines::_globalLayout.pcRange;
-	auto layout = Pipelines::_globalLayout.layout;
+namespace Visibility {
+	// === HELPERS ===
+	static glm::vec3 centerOf(const AABB& a) { return a.origin; }
+	static glm::vec3 extentOf(const AABB& a) { return a.extent; }
+	static void grow(AABB& dst, const AABB& src) {
+		dst.vmin = glm::min(dst.vmin, src.vmin);
+		dst.vmax = glm::max(dst.vmax, src.vmax);
+		dst.origin = 0.5f * (dst.vmin + dst.vmax);
+		dst.extent = 0.5f * (dst.vmax - dst.vmin);
+	}
 
-	// === Reset write-only output buffers ===
-	VkDeviceSize countSize = sizeof(uint32_t);
-	VkDeviceSize meshIDsSize = static_cast<VkDeviceSize>(cullingData.meshCount * sizeof(uint32_t));
+	static inline uint32_t transformIDFor(const GlobalInstance& gi,
+		uint32_t copy, uint32_t local) {
+		return gi.firstTransform + copy * gi.perInstanceStride + local;
+	}
 
-	vkCmdFillBuffer(cmd, visibleMeshIDsStaging, 0, meshIDsSize, 0);
+	// Build a GPUInstance row from the model's baked template
+	static inline GPUInstance makeRow(const GPUInstance& baked,
+		uint32_t transformID,
+		DrawType drawType) {
+		GPUInstance r{};
+		r.meshID = baked.meshID;
+		r.materialID = baked.materialID;
+		r.transformID = transformID;
+		r.drawType = static_cast<uint32_t>(drawType);
+		r.passType = baked.passType;
+		return r;
+	}
 
-	vkCmdFillBuffer(cmd, visibleCountStaging, 0, countSize, 0);
+	// === CORE FUNCTIONS ===
+	static uint32_t buildMedianBVHRecursive(
+		const std::vector<AABB>& world,
+		std::vector<uint32_t>& leafIndex,
+		std::vector<BVHNode>& nodes,
+		uint32_t first,
+		uint32_t count,
+		uint32_t maxLeaf = 8);
 
-	VkBufferMemoryBarrier2 resetBarriers[] = {
-		{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-			.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-			.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-			.buffer = visibleCountStaging,
-			.offset = 0,
-			.size = countSize,
-		},
-		{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-			.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-			.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-			.buffer = visibleMeshIDsStaging,
-			.offset = 0,
-			.size = meshIDsSize,
+	static void refitBVH(
+		const std::vector<AABB>& world,
+		const std::vector<uint32_t>& leafIndex,
+		std::vector<BVHNode>& nodes,
+		uint32_t nIdx = 0);
+
+	void buildBVH(VisibilityState& vs) {
+		vs.leafIndex = vs.active; // copy active indices (will be permuted by builder)
+		vs.bvh.clear();
+		if (!vs.leafIndex.empty())
+			buildMedianBVHRecursive(
+				vs.worldAABBs,
+				vs.leafIndex,
+				vs.bvh,
+				0u,
+				static_cast<uint32_t>(vs.leafIndex.size()));
+	}
+
+	void refitBVH(VisibilityState& vs) {
+		if (!vs.bvh.empty())
+			refitBVH(vs.worldAABBs, vs.leafIndex, vs.bvh);
+	}
+
+	// === Visibility state creation, management and bvh setup. ===
+
+	// Base bake (per scene)
+	// Creates the initial rows (mesh X copies) for one scene and fills worldAABB.
+	// Returns the slice [outFirst, outFirst + outCount) it wrote.
+	static void bakeCoreSceneMeshes(
+		VisibilityState& vs,
+		const GlobalInstance& gi,
+		const ModelAsset& asset,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms,
+		uint32_t& outFirst,
+		uint32_t& outCount);
+
+	// Recompute world AABBs for a contiguous slice
+	void recomputeWorldRanges(
+		VisibilityState& vs,
+		const std::vector<DirtyRange>& ranges,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms);
+
+	// Append ONLY newly-realized copies for a scene (multi draw slider increased).
+	// Fills core rows, transformIDs, worldAABBs for the new range and activates them.
+	// Returns the appended slice [outFirst, outFirst + outCount).
+	static void appendSceneCopies(
+		VisibilityState& vs,
+		const GlobalInstance& gi,
+		uint32_t oldCopies,
+		const ModelAsset& asset,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms,
+		uint32_t& outFirst,
+		uint32_t& outCount);
+
+	// Lazy shrink (slider decreased). No memory reclamation; just reduce usedCopies
+	// and rebuild the 'active' list. Call buildBVH() after this (topology changed).
+	static void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
+
+	// Transform slab moved (firstTransform changed) but copy count is the same.
+	// Rewrites the scene’s slice with new transformIDs and worldAABBs. Then refitBVH().
+	static void rewriteSceneSlice(
+		VisibilityState& vs,
+		const GlobalInstance& gi,
+		const ModelAsset& asset,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms);
+
+	static void rebuildActive(VisibilityState& vs);
+}
+
+void Visibility::bakeCoreSceneMeshes(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	const ModelAsset& asset,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms,
+	uint32_t& outFirst,
+	uint32_t& outCount)
+{
+	const uint32_t stride = gi.perInstanceStride;          // == bakedInstances.size()
+	const uint32_t copies = gi.usedCopies;                 // includes base
+	ASSERT(stride == asset.runtime.bakedInstances.size());
+	ASSERT(copies >= 1);
+
+	outFirst = static_cast<uint32_t>(vs.instances.size());
+	outCount = copies * stride;
+
+	const size_t newSize = static_cast<size_t>(outFirst + outCount);
+	vs.instances.resize(newSize);
+	vs.transformIDs.resize(newSize);
+	vs.worldAABBs.resize(newSize);
+
+	uint32_t w = outFirst;
+	for (uint32_t c = 0; c < copies; ++c) {
+		for (uint32_t local = 0; local < stride; ++local, ++w) {
+			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+			const uint32_t tid = transformIDFor(gi, c, local);
+
+			vs.instances[w] = makeRow(baked, tid, gi.drawType);
+			vs.transformIDs[w] = tid;
+
+			const uint32_t meshID = baked.meshID;
+			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+
+			vs.active.push_back(w); // immediately considered for visibility
 		}
+	}
+
+	vs.slabs[static_cast<SceneID>(gi.sceneID)] = { outFirst, stride, copies };
+}
+
+uint32_t Visibility::buildMedianBVHRecursive(
+	const std::vector<AABB>& world,
+	std::vector<uint32_t>& leafIndex,
+	std::vector<BVHNode>& nodes,
+	uint32_t first,
+	uint32_t count,
+	uint32_t maxLeaf)
+{
+	BVHNode node{};
+	// compute bounds and centroid bounds for [first, first+count)
+	AABB nodeB{};
+	nodeB.vmin = glm::vec3(1e30f);
+	nodeB.vmax = glm::vec3(-1e30f);
+	glm::vec3 cmin(1e30f), cmax(-1e30f);
+	for (uint32_t i = 0; i < count; ++i) {
+		const AABB& a = world[leafIndex[first + i]];
+		if (i == 0) {
+			nodeB = a;
+			cmin = cmax = centerOf(a);
+		}
+		else {
+			grow(nodeB, a);
+			cmin = glm::min(cmin, centerOf(a));
+			cmax = glm::max(cmax, centerOf(a));
+		}
+	}
+
+	const uint32_t idx = static_cast<uint32_t>(nodes.size());
+	nodes.push_back(node);
+	nodes[idx].minW = nodeB.vmin;
+	nodes[idx].maxW = nodeB.vmax;
+
+	// make a leaf
+	if (count <= maxLeaf || glm::all(glm::lessThanEqual(cmax - cmin, glm::vec3(1e-6f)))) {
+		nodes[idx].first = first;
+		nodes[idx].count = static_cast<uint16_t>(count);
+		return idx;
+	}
+
+	// choose split axis by largest centroid extent
+	glm::vec3 cExt = cmax - cmin;
+	int axis = (cExt.x > cExt.y && cExt.x > cExt.z) ? 0 : (cExt.y > cExt.z ? 1 : 2);
+
+	// partition around median of chosen axis
+	const uint32_t mid = first + count / 2;
+	std::nth_element(leafIndex.begin() + first, leafIndex.begin() + mid, leafIndex.begin() + first + count,
+		[&](uint32_t ia, uint32_t ib) {
+			return centerOf(world[ia])[axis] < centerOf(world[ib])[axis];
+		});
+
+	// recurse
+	uint32_t L = buildMedianBVHRecursive(world, leafIndex, nodes, first, mid - first, maxLeaf);
+	uint32_t R = buildMedianBVHRecursive(world, leafIndex, nodes, mid, first + count - mid, maxLeaf);
+
+	nodes[idx].left = (int)L;
+	nodes[idx].right = (int)R;
+	return idx;
+}
+
+void Visibility::refitBVH(
+	const std::vector<AABB>& world,
+	const std::vector<uint32_t>& leafIndex,
+	std::vector<BVHNode>& nodes,
+	uint32_t nIdx)
+{
+	BVHNode& n = nodes[nIdx];
+	if (n.count) {
+		// leaf bounds = union of its leaves
+		AABB b = world[leafIndex[n.first]];
+		for (uint32_t i = 1; i < n.count; ++i) grow(b, world[leafIndex[n.first + i]]);
+		n.minW = b.vmin; n.maxW = b.vmax;
+		return;
+	}
+	refitBVH(world, leafIndex, nodes, static_cast<uint32_t>(n.left));
+	refitBVH(world, leafIndex, nodes, static_cast<uint32_t>(n.right));
+	const BVHNode& L = nodes[n.left];
+	const BVHNode& R = nodes[n.right];
+	n.minW = glm::min(L.minW, R.minW);
+	n.maxW = glm::max(L.maxW, R.maxW);
+}
+
+void Visibility::rebuildActive(VisibilityState& vs) {
+	vs.active.clear();
+	for (auto& [sid, slab] : vs.slabs) {
+		const uint32_t stride = slab.stride;
+		for (uint32_t c = 0; c < slab.usedCopies; ++c) {
+			for (uint32_t local = 0; local < stride; ++local) {
+				vs.active.push_back(slab.first + c * stride + local);
+			}
+		}
+	}
+}
+
+VisibilitySyncResult Visibility::syncFromGlobalInstances(
+	VisibilityState& vs,
+	const std::vector<GlobalInstance>& gis, // authoritative
+	const std::unordered_map<SceneID, std::shared_ptr<ModelAsset>>& loaded,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms)
+{
+	VisibilitySyncResult res{};
+	bool needRebuildActive = false;
+
+	for (const GlobalInstance& gi : gis) {
+		// only care about static/multi-static for this path
+		if (gi.drawType != DrawType::DrawStatic && gi.drawType != DrawType::DrawMultiStatic)
+			continue;
+
+		const SceneID sid = static_cast<SceneID>(gi.sceneID);
+		const auto assetIt = loaded.find(sid);
+		if (assetIt == loaded.end()) continue;
+		const ModelAsset& asset = *assetIt->second;
+		const uint32_t stride = gi.perInstanceStride;
+		ASSERT(stride == asset.runtime.bakedInstances.size());
+
+		auto slabIt = vs.slabs.find(sid);
+
+		// First-time bake for this scene
+		if (slabIt == vs.slabs.end()) {
+			uint32_t f = 0, c = 0;
+			bakeCoreSceneMeshes(vs, gi, asset, meshData, transforms, f, c);
+			needRebuildActive = true;
+			res.topologyChanged = true;
+			res.dirtyTransformRanges.push_back({ f, c }); // rows that were just wrote
+			continue;
+		}
+
+		CoreSlab& slab = slabIt->second;
+		// Copies changed?
+		if (gi.usedCopies > slab.usedCopies) {
+			const uint32_t oldCopies = slab.usedCopies;
+			uint32_t f = 0, c = 0;
+			appendSceneCopies(vs, gi, oldCopies, asset, meshData, transforms, f, c);
+			needRebuildActive = true;
+			res.topologyChanged = true;
+			res.dirtyTransformRanges.push_back({ f, c });
+			continue;
+		}
+		if (gi.usedCopies < slab.usedCopies) {
+			shrinkSceneCopiesLazy(vs, sid, gi.usedCopies);
+			needRebuildActive = false; // already rebuilt inside shrink
+			res.topologyChanged = true;
+			continue;
+		}
+
+		// Same copy count, check transform slab relocation
+		if (slab.usedCopies > 0) {
+			const uint32_t expectedFirstTID = gi.firstTransform; // first copy, local = 0
+			const uint32_t haveFirstTID = vs.instances[slab.first].transformID;
+			if (haveFirstTID != expectedFirstTID) {
+				rewriteSceneSlice(vs, gi, asset, meshData, transforms);
+				res.refitOnly = true;
+				// whole slice’s transforms were rewritten -> mark rows dirty
+				res.dirtyTransformRanges.push_back({ slab.first, slab.usedCopies * slab.stride });
+			}
+		}
+	}
+
+	if (needRebuildActive) rebuildActive(vs);
+	return res;
+}
+
+void Visibility::appendSceneCopies(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	uint32_t oldCopies,
+	const ModelAsset& asset,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms,
+	uint32_t& outFirst,
+	uint32_t& outCount)
+{
+	const uint32_t stride = gi.perInstanceStride;
+	const uint32_t newCopies = gi.usedCopies;
+	if (newCopies <= oldCopies) { outFirst = outCount = 0; return; }
+
+	ASSERT(stride == asset.runtime.bakedInstances.size());
+
+	outFirst = static_cast<uint32_t>(vs.instances.size());
+	outCount = (newCopies - oldCopies) * stride;
+
+	const size_t newSize = static_cast<size_t>(outFirst + outCount);
+	vs.instances.resize(newSize);
+	vs.transformIDs.resize(newSize);
+	vs.worldAABBs.resize(newSize);
+
+	uint32_t w = outFirst;
+	for (uint32_t c = oldCopies; c < newCopies; ++c) {
+		for (uint32_t local = 0; local < stride; ++local, ++w) {
+			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+			const uint32_t tid = transformIDFor(gi, c, local);
+
+			vs.instances[w] = makeRow(baked, tid, gi.drawType);
+			vs.transformIDs[w] = tid;
+
+			const uint32_t meshID = baked.meshID;
+			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+
+			vs.active.push_back(w);
+		}
+	}
+
+	auto& slab = vs.slabs.at(static_cast<SceneID>(gi.sceneID));
+	slab.usedCopies = newCopies;
+	slab.stride = stride;
+}
+
+void Visibility::shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies) {
+	auto it = vs.slabs.find(sid);
+	if (it == vs.slabs.end()) return;
+	it->second.usedCopies = newCopies; // keep memory; we just rebuild 'active'
+	vs.active.clear();
+	for (auto& [sid2, slab] : vs.slabs) {
+		for (uint32_t c = 0; c < slab.usedCopies; ++c)
+			for (uint32_t local = 0; local < slab.stride; ++local)
+				vs.active.push_back(slab.first + c * slab.stride + local);
+	}
+}
+
+void Visibility::rewriteSceneSlice(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	const ModelAsset& asset,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms)
+{
+	auto it = vs.slabs.find(static_cast<SceneID>(gi.sceneID));
+	if (it == vs.slabs.end()) return;
+	const CoreSlab& slab = it->second;
+
+	uint32_t w = slab.first;
+	for (uint32_t c = 0; c < slab.usedCopies; ++c) {
+		for (uint32_t local = 0; local < slab.stride; ++local, ++w) {
+			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+			const uint32_t tid = transformIDFor(gi, c, local);
+
+			vs.instances[w].transformID = tid; // keep mesh/material/pass as baked
+			vs.transformIDs[w] = tid;
+
+			const uint32_t meshID = baked.meshID;
+			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+		}
+	}
+}
+
+void Visibility::recomputeWorldRanges(
+	VisibilityState& vs,
+	const std::vector<DirtyRange>& ranges,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms)
+{
+	for (const auto& r : ranges) {
+		ASSERT(r.offset + r.count <= vs.instances.size());
+		for (uint32_t i = 0; i < r.count; ++i) {
+			const uint32_t idx = r.offset + i;
+			const uint32_t meshID = vs.instances[idx].meshID;
+			const uint32_t tid = vs.instances[idx].transformID;
+			vs.worldAABBs[idx] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+		}
+	}
+}
+
+// Walk the BVH, cull and emit visible rows.
+void Visibility::cullBVHCollect(
+	const VisibilityState& vs,
+	const Frustum& frus,
+	std::vector<GPUInstance>& visibleInstances,
+	std::vector<AABB>& visibleWorldAABBs)
+{
+	visibleInstances.clear();
+	visibleWorldAABBs.clear();
+	if (vs.bvh.empty()) return;
+
+	// Upper bound = all active rows could be visible
+	visibleInstances.reserve(vs.active.size());
+	visibleWorldAABBs.reserve(vs.active.size());
+
+	auto nodeAABB = [](const BVHNode& n) {
+		AABB b{};
+		b.vmin = n.minW;
+		b.vmax = n.maxW;
+		b.origin = 0.5f * (b.vmin + b.vmax);
+		b.extent = 0.5f * (b.vmax - b.vmin);
+		b.sphereRadius = glm::length(b.extent);
+		return b;
 	};
 
-	VkDependencyInfo resetDepInfo{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.bufferMemoryBarrierCount = 2,
-		.pBufferMemoryBarriers = resetBarriers,
-	};
+	std::vector<uint32_t> stack;
+	stack.reserve(128);
+	stack.push_back(0u); // root
 
-	vkCmdPipelineBarrier2(cmd, &resetDepInfo);
+	while (!stack.empty()) {
+		const uint32_t ni = stack.back();
+		stack.pop_back();
+		const BVHNode& node = vs.bvh[ni];
 
-	VkMemoryBarrier2 barrierPre{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-		.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-		.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
-	};
-	VkDependencyInfo depInfoPre{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.memoryBarrierCount = 1,
-		.pMemoryBarriers = &barrierPre,
-	};
-	vkCmdPipelineBarrier2(cmd, &depInfoPre);
+		// Node vs frustum using your function
+		if (!boxInFrustum(nodeAABB(node), frus))
+			continue;
 
-	// === Compute Dispatch ===
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::getPipelineByID(PipelineID::Visibility));
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, layout, 0, 2, sets, 0, nullptr);
-	vkCmdPushConstants(cmd, layout, pcInfo.stageFlags, pcInfo.offset, pcInfo.size, &cullingData);
+		if (node.count) {
+			// Leaf: test primitives in this node
+			const uint32_t first = node.first;
+			const uint32_t last = first + node.count;
+			for (uint32_t i = first; i < last; ++i) {
+				const uint32_t idx = vs.leafIndex[i];   // maps into vs.instances/worldAABBs
+				const AABB& wb = vs.worldAABBs[idx];
+				if (!boxInFrustum(wb, frus)) continue;
 
-	uint32_t groupCountX = (cullingData.meshCount + LOCAL_SIZE_X - 1) / LOCAL_SIZE_X;
-	vkCmdDispatch(cmd, groupCountX, 1, 1);
-
-	VkMemoryBarrier2 barrierPost{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-		.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-		.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT,
-		.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT,
-	};
-	VkDependencyInfo depInfoPost{
-		.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-		.memoryBarrierCount = 1,
-		.pMemoryBarriers = &barrierPost,
-	};
-	vkCmdPipelineBarrier2(cmd, &depInfoPost);
-
-
-	VkBufferCopy countCopy = {
-		.srcOffset = 0,
-		.dstOffset = 0,
-		.size = countSize
-	};
-	vkCmdCopyBuffer(
-		cmd,
-		gpuVisibleCountBuffer,
-		visibleCountStaging,
-		1,
-		&countCopy
-	);
-
-	VkBufferCopy meshIDsCopy = {
-		.srcOffset = 0,
-		.dstOffset = 0,
-		.size = meshIDsSize
-	};
-	vkCmdCopyBuffer(
-		cmd,
-		gpuVisibleMeshIDsBuffer,
-		visibleMeshIDsStaging,
-		1,
-		&meshIDsCopy
-	);
-
-	if (cullingData.rebuildTransforms == 1) {
-		cullingData.rebuildTransforms = 0;
+				visibleWorldAABBs.push_back(wb);
+				visibleInstances.push_back(vs.instances[idx]);
+			}
+		}
+		else {
+			// Internal: visit children
+			stack.push_back(static_cast<uint32_t>(node.left));
+			stack.push_back(static_cast<uint32_t>(node.right));
+		}
 	}
 }
 

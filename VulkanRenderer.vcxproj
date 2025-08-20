@@ -163,6 +163,9 @@
     <ClCompile Include="src\core\loader\TextureLoader.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\core\loader\MeshLoader.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\core\Environment.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -241,6 +244,7 @@
     <ClInclude Include="src\core\ResourceManager.h" />
     <ClInclude Include="src\core\Environment.h" />
     <ClInclude Include="src\core\loader\TextureLoader.h" />
+    <ClInclude Include="src\core\loader\MeshLoader.h" />
     <!-- renderer -->
     <ClInclude Include="src\renderer\Renderer.h" />
     <!-- renderer / gpu -->

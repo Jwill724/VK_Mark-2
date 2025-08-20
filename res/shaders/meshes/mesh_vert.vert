@@ -29,25 +29,18 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 };
 
 layout(push_constant) uniform DrawPushConstants {
-	uint drawPassType;
 	uint totalVertexCount;
 	uint totalIndexCount;
 	uint totalMeshCount;
 	uint totalMaterialCount;
-	uint pad0[3];
 } drawDataPC;
 
 void main()
 {
-	Instance inst;
-	if (drawDataPC.drawPassType == 0u) {
-		OpaqueInstances ib = OpaqueInstances(frameAddressTable.addrs[ABT_OpaqueInstances]);
-		inst = ib.opaqueInstances[gl_InstanceIndex];
-	} else {
-		TransparentInstances ib = TransparentInstances(frameAddressTable.addrs[ABT_TransparentInstances]);
-		inst = ib.transparentInstances[gl_InstanceIndex];
-	}
+	// fetch instance
+	Instance inst = VisibleInstances(frameAddressTable.addrs[ABT_VisibleInstances]).instances[gl_InstanceIndex];
 
+	// pass over to the frag shader
 	outMaterialID = inst.materialID;
 
 	if (gl_VertexIndex >= drawDataPC.totalVertexCount) {
@@ -58,8 +51,14 @@ void main()
 	// fetch vertex
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
 
-	// fetch transform
-	mat4 model = TransformsListBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
+	// fetch transform between static and dynamic paths
+	mat4 model;
+	if (inst.drawType == DRAW_STATIC || inst.drawType == DRAW_MULTI_STATIC) {
+		model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
+	}
+	else {
+		// Add dynamic transform functions here.
+	}
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	outWorldPos = worldPos4.xyz;

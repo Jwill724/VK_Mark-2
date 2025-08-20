@@ -8,11 +8,33 @@
 #include "utils/SyncUtils.h"
 
 namespace Renderer {
+	VkExtent3D _drawExtent;
+	std::mutex _drawExtentMutex;
+
+	const VkExtent3D getDrawExtent() {
+		std::scoped_lock lock(_drawExtentMutex);
+		return _drawExtent;
+	}
+	void setDrawExtent(VkExtent3D extent) {
+		std::scoped_lock lock(_drawExtentMutex);
+		_drawExtent = extent;
+	}
+
+	uint32_t _frameNumber{ 0 };
+	uint32_t _framesInFlight{ 0 };
+
+	std::mutex _frameAccessMutex;
+
+	FrameContext& getCurrentFrame() {
+		std::scoped_lock lock(_frameAccessMutex);
+		return *_frameContexts[_frameNumber % _framesInFlight];
+	}
+
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
 
-	void toneMapPass(FrameCtx& frame, ColorData& toneMappingData);
-	void geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& frameCtx, Profiler& profiler);
+	void toneMapPass(FrameContext& frame, ColorData& toneMappingData);
+	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler);
 }
 
 void Renderer::initRenderer(
@@ -32,14 +54,12 @@ void Renderer::initRenderer(
 		frameLayout,
 		gpuResouces.getAllocator(),
 		gpuResouces.stats,
-		_transferSync,
-		_computeSync,
-		framesInFlight,
+		_framesInFlight,
 		isAssetsLoaded
 	);
 }
 
-void Renderer::prepareFrameContext(FrameCtx& frameCtx) {
+void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	auto device = Backend::getDevice();
 	auto& swapDef = Backend::getSwapchainDef();
 
@@ -70,26 +90,12 @@ void Renderer::prepareFrameContext(FrameCtx& frameCtx) {
 
 	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
 
-	if (!frameCtx.transferCmds.empty()) {
-		vkFreeCommandBuffers(device, frameCtx.transferPool,
-			static_cast<uint32_t>(frameCtx.transferCmds.size()),
-			frameCtx.transferCmds.data());
-		frameCtx.transferCmds.clear();
-		frameCtx.transferDeletion.process(device);
-	}
-
-	if (!frameCtx.computeCmds.empty()) {
-		vkFreeCommandBuffers(device, frameCtx.computePool,
-			static_cast<uint32_t>(frameCtx.computeCmds.size()),
-			frameCtx.computeCmds.data());
-		frameCtx.computeCmds.clear();
-		frameCtx.computeDeletion.process(device);
-	}
+	frameCtx.freeStashedCmds(device);
 
 	frameCtx.cpuDeletion.flush();
 }
 
-void Renderer::submitFrame(FrameCtx& frameCtx) {
+void Renderer::submitFrame(FrameContext& frameCtx) {
 	auto& swapDef = Backend::getSwapchainDef();
 	uint32_t imageIndex = frameCtx.swapchainImageIndex;
 
@@ -177,7 +183,7 @@ void Renderer::submitFrame(FrameCtx& frameCtx) {
 	_frameNumber++;
 }
 
-void Renderer::recordRenderCommand(FrameCtx& frameCtx, Profiler& profiler) {
+void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	auto device = Backend::getDevice();
 	auto& swp = Backend::getSwapchainDef();
 	auto& draw = ResourceManager::getDrawImage();
@@ -199,50 +205,18 @@ void Renderer::recordRenderCommand(FrameCtx& frameCtx, Profiler& profiler) {
 
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
-	if (!frameCtx.transferCmds.empty()) {
-		if (frameCtx.opaqueVisibleCount) {
-			BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.opaqueInstanceBuffer);
-			BarrierUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.opaqueIndirectCmdBuffer);
-		}
-		if (frameCtx.transparentVisibleCount) {
-			BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transparentInstanceBuffer);
-			BarrierUtils::acquireIndirectQ(frameCtx.commandBuffer, frameCtx.transparentIndirectCmdBuffer);
-		}
+	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
+	if (frameCtx.staticTransformsUploadNeeded) {
+		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer,
+			Engine::getState().getGPUResources().getAddressTableBuffer());
+		frameCtx.staticTransformsUploadNeeded = false;
+	}
 
-		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.transformsListBuffer);
+	if (frameCtx.visibleCount > 0) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
 	}
 
-	// Depending on if theres visibles, this could be the first and only write for the storage buffer
-	// If no visibles are present, early outs upload and table isn't marked dirty
-	bool descriptorWriteNeeded = false;
-	if (frameCtx.addressTableDirty) {
-		frameCtx.descriptorWriter.clear();
-		frameCtx.descriptorWriter.writeBuffer(
-			ADDRESS_TABLE_BINDING,
-			frameCtx.addressTableBuffer.buffer,
-			frameCtx.addressTableBuffer.info.size,
-			0,
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			frameCtx.set
-		);
-		descriptorWriteNeeded = true;
-		frameCtx.addressTableDirty = false;
-	}
-
-	if (!descriptorWriteNeeded) {
-		frameCtx.descriptorWriter.clear(); // Only clear if it wasn't already cleared
-	}
-
-	frameCtx.descriptorWriter.writeBuffer(
-		FRAME_BINDING_SCENE,
-		frameCtx.sceneDataBuffer.buffer,
-		sizeof(GPUSceneData),
-		0,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		frameCtx.set
-	);
-	frameCtx.descriptorWriter.updateSet(device, frameCtx.set);
+	frameCtx.writeFrameDescriptors(device);
 
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
@@ -318,7 +292,7 @@ void Renderer::recordRenderCommand(FrameCtx& frameCtx, Profiler& profiler) {
 }
 
 // draw[0], msaa[1], depth[2]
-void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& frameCtx, Profiler& profiler) {
+void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler) {
 	VkRenderingAttachmentInfo colorAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
 	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -365,7 +339,7 @@ void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameCtx& fra
 }
 
 // TODO: Make this better, like gltf viewer tonemapper slider
-void Renderer::toneMapPass(FrameCtx& frame, ColorData& toneMappingData) {
+void Renderer::toneMapPass(FrameContext& frame, ColorData& toneMappingData) {
 	vkCmdBindPipeline(
 		frame.commandBuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE,

@@ -131,6 +131,9 @@
     <ClCompile Include="src\core\loader\TextureLoader.cpp">
       <Filter>src\core\loader</Filter>
     </ClCompile>
+    <ClCompile Include="src\core\loader\MeshLoader.cpp">
+      <Filter>src\core\loader</Filter>
+    </ClCompile>
     <ClCompile Include="src\core\Environment.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
@@ -245,6 +248,9 @@
       <Filter>src\core</Filter>
     </ClInclude>
     <ClInclude Include="src\core\loader\TextureLoader.h">
+      <Filter>src\core\loader</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\loader\MeshLoader.h">
       <Filter>src\core\loader</Filter>
     </ClInclude>
     <!-- renderer (orchestrator) -->

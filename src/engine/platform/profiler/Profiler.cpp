@@ -109,7 +109,7 @@ float Profiler::endTimer() const {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	auto elapsedTicks = now.QuadPart - _startTimer.QuadPart;
-	return static_cast<float>(elapsedTicks / _qpcFreq.QuadPart);
+	return static_cast<float>(elapsedTicks) / static_cast<float>(_qpcFreq.QuadPart);
 }
 
 VkDeviceSize Profiler::GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator) {

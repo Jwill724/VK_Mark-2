@@ -94,10 +94,11 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 	const auto& debug = profiler.debugToggles;
 
 	if (debug.enableStats) {
+		const auto camera = RenderScene::getCamera();
 		ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
 		//	ImGui::SetNextWindowBgAlpha(1.0f);
 		ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
-		ImGui::Text("Camera Pos: %.2f %.2f %.2f", RenderScene::_mainCamera._position.x, RenderScene::_mainCamera._position.y, RenderScene::_mainCamera._position.z);
+		ImGui::Text("Camera Pos: %.2f %.2f %.2f", camera._position.x, camera._position.y, camera._position.z);
 		ImGui::Text("FPS: %.1f", stats.fps.load());
 		ImGui::Text("Frame Time: %f ms", stats.frameTime.load());
 		ImGui::Text("Draw Time: %f ms", stats.drawTime.load());
@@ -128,7 +129,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			}
 
 			static int selected = 0;
-			if (ImGui::Combo("Force Pipeline", &selected, names.data(), names.size())) {
+			if (ImGui::Combo("Force Pipeline", &selected, names.data(), static_cast<int>(names.size()))) {
 				profiler.pipeOverride.selectedID = swappables[selected].first;
 			}
 
