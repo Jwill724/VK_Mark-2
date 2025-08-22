@@ -51,14 +51,8 @@ void main()
 	// fetch vertex
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
 
-	// fetch transform between static and dynamic paths
-	mat4 model;
-	if (inst.drawType == DRAW_STATIC || inst.drawType == DRAW_MULTI_STATIC) {
-		model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
-	}
-	else {
-		// Add dynamic transform functions here.
-	}
+	// fetch transform
+	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	outWorldPos = worldPos4.xyz;

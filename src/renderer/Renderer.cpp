@@ -206,10 +206,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
-	if (frameCtx.staticTransformsUploadNeeded) {
+	if (frameCtx.transformsBufferUploadNeeded) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer,
 			Engine::getState().getGPUResources().getAddressTableBuffer());
-		frameCtx.staticTransformsUploadNeeded = false;
+		frameCtx.transformsBufferUploadNeeded = false;
 	}
 
 	if (frameCtx.visibleCount > 0) {

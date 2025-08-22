@@ -47,7 +47,7 @@ struct Vertex {
 struct GPUInstance {
 	uint32_t meshID = UINT32_MAX; // global meshBuffer
 	uint32_t materialID = UINT32_MAX; // global material buffer
-	uint32_t transformID = UINT32_MAX; // can index into the global list or dynamic per frame
+	uint32_t transformID = UINT32_MAX; // global transform buffer
 	uint32_t drawType = UINT32_MAX; // static/dynamic and multi draws
 	uint32_t passType = UINT32_MAX; // opaque/transparent
 };
@@ -120,7 +120,6 @@ struct alignas(16) GPUEnvMapIndexArray {
 	glm::uvec4 indices[MAX_ENV_SETS];
 };
 static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
-
 
 
 struct TimelineSync {

@@ -16,7 +16,7 @@ namespace RenderScene {
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Cube, { "Cube", DrawType::DrawMultiDynamic, 50, 0, 0 } },
 		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawMultiStatic, 100, 0, 0 } },
-		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawDynamic, 1, 0, 0 } }
+		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } }
 	};
 
 	extern std::vector<GlobalInstance> _globalInstances;
@@ -29,10 +29,6 @@ namespace RenderScene {
 	void copyFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
 	void cleanScene();
-
-	void transformSceneNodes();
-
-	void updateVisiblesInstances(FrameContext& frameCtx);
 
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
 	void updateScene(FrameContext& frameCtx, GPUResources& resources);

@@ -7,20 +7,20 @@ namespace Visibility {
 	struct CoreSlab { uint32_t first, stride, usedCopies; };
 
 	struct BVHNode {
-		glm::vec3 minW, maxW; // node bounds
-		int       left = -1;  // child indices; -1 => leaf
-		int       right = -1;
-		uint32_t  first = 0;  // start index into leafIndex[]
-		uint16_t  count = 0;  // leaf count (0 for internal)
+		AABB box; // node bounds
+		int left = -1; // child indices; -1 => leaf
+		int right = -1;
+		uint32_t first = 0; // start index into leafIndex[]
+		uint16_t count = 0; // leaf count (0 for internal)
 	};
 
 	// Instances in VisibilityState go into one row per cullable unit,
 	// that can be drawm = mesh x copy.
 	// Built when copies change (multi-static slider), not per-frame.
 	struct VisibilityState {
-		std::vector<GPUInstance>  instances;     // per mesh X copy
-		std::vector<AABB>         worldAABBs;    // parallel to coreStatic
-		std::vector<uint32_t>     transformIDs;  // parallel to coreStatic
+		std::vector<GPUInstance> instances; // per mesh X copy
+		std::vector<AABB> worldAABBs;       // parallel to coreStatic
+		std::vector<uint32_t> transformIDs; // parallel to coreStatic
 		std::unordered_map<SceneID, CoreSlab> slabs;
 
 		std::vector<uint32_t> active;    // live rows (indices into coreStatic)

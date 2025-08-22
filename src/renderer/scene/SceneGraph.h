@@ -58,5 +58,5 @@ namespace SceneGraph {
 	void buildSceneGraph(
 		ThreadContext& threadCtx,
 		std::vector<GlobalInstance>& globalInstances,
-		std::vector<glm::mat4>& transformList);
+		std::vector<glm::mat4>& globalTransforms);
 }

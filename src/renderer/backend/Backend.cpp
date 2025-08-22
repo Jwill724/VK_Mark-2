@@ -96,6 +96,9 @@ void Backend::createInstance() {
 		BackendTools::populateDebugMessengerCreateInfo(debugCreateInfo);
 
 		if (BackendTools::enableGPUValidationLayers) {
+			fmt::print("////GPU VALIDATION LAYERS ON////\n");
+			fmt::print("////MANUALLY ENABLED IN BackendTools.h////\n");
+
 			static VkValidationFeatureEnableEXT gpuEnableFeatures[] = {
 				VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT,
 				VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_RESERVE_BINDING_SLOT_EXT
