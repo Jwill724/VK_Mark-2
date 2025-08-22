@@ -31,7 +31,7 @@ namespace BackendTools {
 	inline const bool enableGPUValidationLayers = false;
 #else
 	inline const bool enableValidationLayers = true;
-	inline const bool enableGPUValidationLayers = true;
+	inline const bool enableGPUValidationLayers = false;
 #endif
 
 	// Swap chain controls how GPU renders images

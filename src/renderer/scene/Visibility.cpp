@@ -6,23 +6,30 @@
 namespace Visibility {
 	// === HELPERS ===
 	static glm::vec3 centerOf(const AABB& a) { return a.origin; }
-	static glm::vec3 extentOf(const AABB& a) { return a.extent; }
-	static void grow(AABB& dst, const AABB& src) {
+
+	// min/max-only union
+	static inline void growMinMax(AABB& dst, const AABB& src) {
 		dst.vmin = glm::min(dst.vmin, src.vmin);
 		dst.vmax = glm::max(dst.vmax, src.vmax);
-		dst.origin = 0.5f * (dst.vmin + dst.vmax);
-		dst.extent = 0.5f * (dst.vmax - dst.vmin);
 	}
 
-	static inline uint32_t transformIDFor(const GlobalInstance& gi,
-		uint32_t copy, uint32_t local) {
-		return gi.firstTransform + copy * gi.perInstanceStride + local;
+	// finalize origin/extent/sphere once, after unions
+	static inline void finalizeFromMinMax(AABB& b) {
+		b.origin = 0.5f * (b.vmin + b.vmax);
+		b.extent = 0.5f * (b.vmax - b.vmin);
+		b.sphereRadius = glm::length(b.extent);
+	}
+
+	static inline uint32_t transformIDFor(const GlobalInstance& gi, uint32_t copy, uint32_t localSlot) {
+		return gi.firstTransform + copy * gi.transformCount + localSlot;
 	}
 
 	// Build a GPUInstance row from the model's baked template
-	static inline GPUInstance makeRow(const GPUInstance& baked,
+	static inline GPUInstance makeRow(
+		const GPUInstance& baked,
 		uint32_t transformID,
-		DrawType drawType) {
+		DrawType drawType)
+	{
 		GPUInstance r{};
 		r.meshID = baked.meshID;
 		r.materialID = baked.materialID;
@@ -103,7 +110,7 @@ namespace Visibility {
 	static void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
 
 	// Transform slab moved (firstTransform changed) but copy count is the same.
-	// Rewrites the scene’s slice with new transformIDs and worldAABBs. Then refitBVH().
+	// Rewrites the scene's slice with new transformIDs and worldAABBs. Then refitBVH().
 	static void rewriteSceneSlice(
 		VisibilityState& vs,
 		const GlobalInstance& gi,
@@ -123,8 +130,8 @@ void Visibility::bakeCoreSceneMeshes(
 	uint32_t& outFirst,
 	uint32_t& outCount)
 {
-	const uint32_t stride = gi.perInstanceStride;          // == bakedInstances.size()
-	const uint32_t copies = gi.usedCopies;                 // includes base
+	const uint32_t stride = gi.perInstanceStride; // == bakedInstances.size()
+	const uint32_t copies = gi.usedCopies;        // includes base
 	ASSERT(stride == asset.runtime.bakedInstances.size());
 	ASSERT(copies >= 1);
 
@@ -140,15 +147,18 @@ void Visibility::bakeCoreSceneMeshes(
 	for (uint32_t c = 0; c < copies; ++c) {
 		for (uint32_t local = 0; local < stride; ++local, ++w) {
 			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
-			const uint32_t tid = transformIDFor(gi, c, local);
+
+			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
+			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
 
 			vs.instances[w] = makeRow(baked, tid, gi.drawType);
 			vs.transformIDs[w] = tid;
 
 			const uint32_t meshID = baked.meshID;
+			ASSERT(meshID < meshData.size());
+			ASSERT(tid < transforms.size());
+			ASSERT(tid >= gi.firstTransform && tid < gi.firstTransform + gi.transformCount * gi.usedCopies);
 			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
-
-			vs.active.push_back(w); // immediately considered for visibility
 		}
 	}
 
@@ -164,41 +174,42 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	uint32_t maxLeaf)
 {
 	BVHNode node{};
-	// compute bounds and centroid bounds for [first, first+count)
+	// bounds and centroid bounds
 	AABB nodeB{};
 	nodeB.vmin = glm::vec3(1e30f);
 	nodeB.vmax = glm::vec3(-1e30f);
+
 	glm::vec3 cmin(1e30f), cmax(-1e30f);
 	for (uint32_t i = 0; i < count; ++i) {
 		const AABB& a = world[leafIndex[first + i]];
 		if (i == 0) {
-			nodeB = a;
+			nodeB = a; // copies vmin/vmax/origin/extent/radius; fine
 			cmin = cmax = centerOf(a);
 		}
 		else {
-			grow(nodeB, a);
+			growMinMax(nodeB, a); // min/max only
 			cmin = glm::min(cmin, centerOf(a));
 			cmax = glm::max(cmax, centerOf(a));
 		}
 	}
+	finalizeFromMinMax(nodeB); // compute origin/extent/radius once
 
 	const uint32_t idx = static_cast<uint32_t>(nodes.size());
 	nodes.push_back(node);
-	nodes[idx].minW = nodeB.vmin;
-	nodes[idx].maxW = nodeB.vmax;
+	nodes[idx].box = nodeB;
 
-	// make a leaf
+	// leaf?
 	if (count <= maxLeaf || glm::all(glm::lessThanEqual(cmax - cmin, glm::vec3(1e-6f)))) {
 		nodes[idx].first = first;
 		nodes[idx].count = static_cast<uint16_t>(count);
 		return idx;
 	}
 
-	// choose split axis by largest centroid extent
+	// split axis by largest centroid extent
 	glm::vec3 cExt = cmax - cmin;
 	int axis = (cExt.x > cExt.y && cExt.x > cExt.z) ? 0 : (cExt.y > cExt.z ? 1 : 2);
 
-	// partition around median of chosen axis
+	// median partition on chosen axis
 	const uint32_t mid = first + count / 2;
 	std::nth_element(leafIndex.begin() + first, leafIndex.begin() + mid, leafIndex.begin() + first + count,
 		[&](uint32_t ia, uint32_t ib) {
@@ -209,8 +220,8 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	uint32_t L = buildMedianBVHRecursive(world, leafIndex, nodes, first, mid - first, maxLeaf);
 	uint32_t R = buildMedianBVHRecursive(world, leafIndex, nodes, mid, first + count - mid, maxLeaf);
 
-	nodes[idx].left = (int)L;
-	nodes[idx].right = (int)R;
+	nodes[idx].left = static_cast<int>(L);
+	nodes[idx].right = static_cast<int>(R);
 	return idx;
 }
 
@@ -222,18 +233,29 @@ void Visibility::refitBVH(
 {
 	BVHNode& n = nodes[nIdx];
 	if (n.count) {
-		// leaf bounds = union of its leaves
-		AABB b = world[leafIndex[n.first]];
-		for (uint32_t i = 1; i < n.count; ++i) grow(b, world[leafIndex[n.first + i]]);
-		n.minW = b.vmin; n.maxW = b.vmax;
+		AABB b{};
+		b.vmin = glm::vec3(1e30f);
+		b.vmax = glm::vec3(-1e30f);
+
+		for (uint32_t i = 0; i < n.count; ++i) {
+			const AABB& w = world[leafIndex[n.first + i]];
+			if (i == 0) b = w; else growMinMax(b, w);
+		}
+		finalizeFromMinMax(b);
+		n.box = b;
 		return;
 	}
 	refitBVH(world, leafIndex, nodes, static_cast<uint32_t>(n.left));
 	refitBVH(world, leafIndex, nodes, static_cast<uint32_t>(n.right));
+
 	const BVHNode& L = nodes[n.left];
 	const BVHNode& R = nodes[n.right];
-	n.minW = glm::min(L.minW, R.minW);
-	n.maxW = glm::max(L.maxW, R.maxW);
+
+	AABB b{};
+	b.vmin = glm::min(L.box.vmin, R.box.vmin);
+	b.vmax = glm::max(L.box.vmax, R.box.vmax);
+	finalizeFromMinMax(b);
+	n.box = b;
 }
 
 void Visibility::rebuildActive(VisibilityState& vs) {
@@ -248,9 +270,10 @@ void Visibility::rebuildActive(VisibilityState& vs) {
 	}
 }
 
+
 VisibilitySyncResult Visibility::syncFromGlobalInstances(
 	VisibilityState& vs,
-	const std::vector<GlobalInstance>& gis, // authoritative
+	const std::vector<GlobalInstance>& gis,
 	const std::unordered_map<SceneID, std::shared_ptr<ModelAsset>>& loaded,
 	const std::vector<GPUMeshData>& meshData,
 	const std::vector<glm::mat4>& transforms)
@@ -260,8 +283,7 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 
 	for (const GlobalInstance& gi : gis) {
 		// only care about static/multi-static for this path
-		if (gi.drawType != DrawType::DrawStatic && gi.drawType != DrawType::DrawMultiStatic)
-			continue;
+		if (gi.drawType != DrawType::DrawStatic && gi.drawType != DrawType::DrawMultiStatic) continue;
 
 		const SceneID sid = static_cast<SceneID>(gi.sceneID);
 		const auto assetIt = loaded.find(sid);
@@ -278,7 +300,7 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 			bakeCoreSceneMeshes(vs, gi, asset, meshData, transforms, f, c);
 			needRebuildActive = true;
 			res.topologyChanged = true;
-			res.dirtyTransformRanges.push_back({ f, c }); // rows that were just wrote
+			//res.dirtyTransformRanges.push_back({ f, c }); // rows that were just wrote
 			continue;
 		}
 
@@ -290,12 +312,12 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 			appendSceneCopies(vs, gi, oldCopies, asset, meshData, transforms, f, c);
 			needRebuildActive = true;
 			res.topologyChanged = true;
-			res.dirtyTransformRanges.push_back({ f, c });
+			//res.dirtyTransformRanges.push_back({ f, c });
 			continue;
 		}
 		if (gi.usedCopies < slab.usedCopies) {
 			shrinkSceneCopiesLazy(vs, sid, gi.usedCopies);
-			needRebuildActive = false; // already rebuilt inside shrink
+			//needRebuildActive = false; // already rebuilt inside shrink
 			res.topologyChanged = true;
 			continue;
 		}
@@ -307,13 +329,16 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 			if (haveFirstTID != expectedFirstTID) {
 				rewriteSceneSlice(vs, gi, asset, meshData, transforms);
 				res.refitOnly = true;
-				// whole slice’s transforms were rewritten -> mark rows dirty
-				res.dirtyTransformRanges.push_back({ slab.first, slab.usedCopies * slab.stride });
+				// whole slice's transforms were rewritten -> mark rows dirty
+				//res.dirtyTransformRanges.push_back({ slab.first, slab.usedCopies * slab.stride });
 			}
 		}
 	}
 
 	if (needRebuildActive) rebuildActive(vs);
+
+	if (res.topologyChanged) res.refitOnly = false;
+
 	return res;
 }
 
@@ -345,15 +370,14 @@ void Visibility::appendSceneCopies(
 	for (uint32_t c = oldCopies; c < newCopies; ++c) {
 		for (uint32_t local = 0; local < stride; ++local, ++w) {
 			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
-			const uint32_t tid = transformIDFor(gi, c, local);
+			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
+			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
 
 			vs.instances[w] = makeRow(baked, tid, gi.drawType);
 			vs.transformIDs[w] = tid;
 
 			const uint32_t meshID = baked.meshID;
 			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
-
-			vs.active.push_back(w);
 		}
 	}
 
@@ -389,7 +413,8 @@ void Visibility::rewriteSceneSlice(
 	for (uint32_t c = 0; c < slab.usedCopies; ++c) {
 		for (uint32_t local = 0; local < slab.stride; ++local, ++w) {
 			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
-			const uint32_t tid = transformIDFor(gi, c, local);
+			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
+			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
 
 			vs.instances[w].transformID = tid; // keep mesh/material/pass as baked
 			vs.transformIDs[w] = tid;
@@ -428,19 +453,8 @@ void Visibility::cullBVHCollect(
 	visibleWorldAABBs.clear();
 	if (vs.bvh.empty()) return;
 
-	// Upper bound = all active rows could be visible
 	visibleInstances.reserve(vs.active.size());
 	visibleWorldAABBs.reserve(vs.active.size());
-
-	auto nodeAABB = [](const BVHNode& n) {
-		AABB b{};
-		b.vmin = n.minW;
-		b.vmax = n.maxW;
-		b.origin = 0.5f * (b.vmin + b.vmax);
-		b.extent = 0.5f * (b.vmax - b.vmin);
-		b.sphereRadius = glm::length(b.extent);
-		return b;
-	};
 
 	std::vector<uint32_t> stack;
 	stack.reserve(128);
@@ -451,16 +465,13 @@ void Visibility::cullBVHCollect(
 		stack.pop_back();
 		const BVHNode& node = vs.bvh[ni];
 
-		// Node vs frustum using your function
-		if (!boxInFrustum(nodeAABB(node), frus))
-			continue;
+		if (!boxInFrustum(node.box, frus)) continue;
 
 		if (node.count) {
-			// Leaf: test primitives in this node
 			const uint32_t first = node.first;
 			const uint32_t last = first + node.count;
 			for (uint32_t i = first; i < last; ++i) {
-				const uint32_t idx = vs.leafIndex[i];   // maps into vs.instances/worldAABBs
+				const uint32_t idx = vs.leafIndex[i];
 				const AABB& wb = vs.worldAABBs[idx];
 				if (!boxInFrustum(wb, frus)) continue;
 
@@ -469,12 +480,12 @@ void Visibility::cullBVHCollect(
 			}
 		}
 		else {
-			// Internal: visit children
 			stack.push_back(static_cast<uint32_t>(node.left));
 			stack.push_back(static_cast<uint32_t>(node.right));
 		}
 	}
 }
+
 
 
 // CPU Sided culling
@@ -624,7 +635,7 @@ std::vector<glm::vec3> Visibility::GetAABBVertices(const AABB box) {
 	const glm::vec3 vmin = box.vmin;
 	const glm::vec3 vmax = box.vmax;
 
-	const glm::vec3 corners[8] = {
+	const glm::vec3 corners[8] {
 		glm::vec3(vmin.x, vmin.y, vmin.z),
 		glm::vec3(vmin.x, vmax.y, vmin.z),
 		glm::vec3(vmin.x, vmin.y, vmax.z),

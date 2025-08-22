@@ -9,6 +9,10 @@ struct ModelAsset {
 		std::vector<AllocatedImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
+
+		std::vector<uint32_t> bakedNodeIDs;    // nodes to search each inner transform tree
+		std::vector<uint32_t> uniqueNodeIDs;   // compact list of node indices that own a transform
+		std::vector<uint32_t> localToNodeSlot; // primitive i -> node slot in uniqueNodeIDs
 	} runtime;
 
 	struct SceneGraphNodes {

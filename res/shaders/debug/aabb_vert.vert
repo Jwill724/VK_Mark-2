@@ -13,7 +13,7 @@ layout(push_constant) uniform PushConstants
 {
     mat4 viewproj;
     VertexBuffer vertexBuffer;
-	uint pad0[2];
+    uint pad0[2];
 } pc;
 
 void main()

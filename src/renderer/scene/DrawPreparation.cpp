@@ -4,8 +4,6 @@
 #include "engine/Engine.h"
 #include "utils/BufferUtils.h"
 
-// TODO: Adjust this more, worldaabbs and transformsIDs are bad
-
 // All render data is reset prior to this each frame
 void DrawPreparation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
@@ -16,32 +14,27 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	// Partition visible instances, while remembering their original indices
 	std::vector<GPUInstance> opaqueInstances;
 	std::vector<GPUInstance> transparentInstances;
-	std::vector<uint32_t> opaqueVisIdx;
 	std::vector<uint32_t> transparentVisIdx;
 
 	opaqueInstances.reserve(frameCtx.visibleInstances.size());
 	transparentInstances.reserve(frameCtx.visibleInstances.size());
-	opaqueVisIdx.reserve(frameCtx.visibleInstances.size());
 	transparentVisIdx.reserve(frameCtx.visibleInstances.size());
 
+	// === BATCH OPAQUE INSTANCES ===
+	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
+
+	// Separate pass types
 	for (uint32_t i = 0; i < frameCtx.visibleInstances.size(); ++i) {
 		const auto& inst = frameCtx.visibleInstances[i];
 		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::Opaque) {
 			opaqueInstances.push_back(inst);
-			opaqueVisIdx.push_back(i);           // <-- keep index into worldAABBs
+			const OpaqueBatchKey key{ inst.meshID, inst.materialID };
+			opaqueBatches[key].push_back(i);
 		}
 		else {
 			transparentInstances.push_back(inst);
-			transparentVisIdx.push_back(i);      // <-- keep index into worldAABBs
+			transparentVisIdx.push_back(i); // Need index into worldaabbs for transparent depth sort
 		}
-	}
-
-	// === BATCH OPAQUE INSTANCES ===
-	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
-	for (uint32_t i = 0; i < opaqueInstances.size(); ++i) {
-		const GPUInstance& inst = opaqueInstances[i];
-		const OpaqueBatchKey key{ inst.meshID, inst.materialID };
-		opaqueBatches[key].push_back(i);
 	}
 
 	frameCtx.indirectDraws.reserve(opaqueBatches.size() + transparentInstances.size());
@@ -60,7 +53,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		ASSERT(mesh.vertexOffset + mesh.vertexCount <= frameCtx.drawDataPC.totalVertexCount &&
 			"[DrawPrep] Opaque draws would read past end of vertex buffer.");
 
-		VkDrawIndexedIndirectCommand cmd{
+		VkDrawIndexedIndirectCommand cmd {
 			.indexCount = mesh.indexCount,
 			.instanceCount = static_cast<uint32_t>(instanceIndices.size()),
 			.firstIndex = mesh.firstIndex,
@@ -75,7 +68,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		frameCtx.opaqueRange.visibleCount += cmd.instanceCount;
 	}
 
-	// TODO: get transparent sorting working, accessing worldaabbs directly isn't possible yet
 	// === SORT AND BUILD TRANSPARENT ===
 	if (!transparentInstances.empty()) {
 		frameCtx.transparentRange.first = frameCtx.opaqueRange.visibleCount;
@@ -120,8 +112,8 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
 		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 
-	size_t visInstBytes = frameCtx.visibleInstances.size() * sizeof(GPUInstance);
-	size_t indirectDrawBytes = frameCtx.indirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
+	const size_t visInstBytes = frameCtx.visibleInstances.size() * sizeof(GPUInstance);
+	const size_t indirectDrawBytes = frameCtx.indirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
 
 	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
 
@@ -227,16 +219,15 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 	bool firstTimeUpload = false;
 	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms)) {
 		firstTimeUpload = true; // first time creation
-		frameCtx.staticTransformsUploadNeeded = true; // enables the barrier on first frame graphics recording
+		frameCtx.transformsBufferUploadNeeded = true; // enables the barrier on first frame graphics recording
 	}
 
 	for (auto& inst : globalInstances) {
 		SceneID sid = static_cast<SceneID>(inst.sceneID);
 		SceneProfileEntry& profile = sceneProfiles.at(sid);
 
-		if (profile.drawType == DrawType::DrawStatic || profile.instanceCount < 2) {
+		if (profile.drawType == DrawType::DrawStatic || profile.instanceCount == 1) {
 			inst.drawType = DrawType::DrawStatic;
-			inst.transformCount = 1;
 			continue; // transforms already baked into static
 		}
 
@@ -269,16 +260,16 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			inst.capacityCopies = neededCopies;
 			inst.transformCount = profile.instanceCount;
 
-			frameCtx.staticTransformsUploadNeeded = true;
+			frameCtx.transformsBufferUploadNeeded = true;
 		}
 	}
 
-	if (!frameCtx.staticTransformsUploadNeeded || !firstTimeUpload) return;
+	if (!frameCtx.transformsBufferUploadNeeded || !firstTimeUpload) return;
 
 	auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
 	auto& globalAddrsTable = gpuResources.getAddressTable();
 
-	size_t transformsBytes = globalTransforms.size() * sizeof(glm::mat4);
+	const size_t transformsBytes = globalTransforms.size() * sizeof(glm::mat4);
 	fmt::print("[syncGI] sizes: xformsBytes={} addrTableBytes={}\n",
 		transformsBytes, globalAddrsTableBuf.info.size);
 
@@ -295,12 +286,12 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 		fmt::print("[syncGI] new buffer=0x{:x} size={}\n",
 			(uint64_t)newTransformBuf.buffer, newTransformBuf.info.size);
 	}
-	auto& staticTransformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
+	auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
 
 	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
 
 	const size_t transformOffset = 0;
-	const size_t addrsTableOffset = transformOffset + globalAddrsTableBuf.info.size;
+	const size_t addrsTableOffset = transformOffset + transformsBytes;
 
 	memcpy(mappedStagingPtr, globalTransforms.data(), transformsBytes);
 
@@ -318,7 +309,7 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 
 		vkCmdCopyBuffer(cmd,
 			frameCtx.combinedGPUStaging.buffer,
-			staticTransformsBuf.buffer,
+			transformsBuf.buffer,
 			1,
 			&staticTransformCpy);
 

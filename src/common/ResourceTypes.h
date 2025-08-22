@@ -330,8 +330,8 @@ struct GlobalInstance {
 	DrawType drawType = DrawType::DrawStatic;
 
 	uint32_t firstTransform = 0;    // slab start in the global list
-	uint32_t transformCount = 0;
-	uint32_t perInstanceStride = 0; // bakedInstances.size()
+	uint32_t transformCount = 0;   // unique transforms
+	uint32_t perInstanceStride = 0; // rows/primitives
 	uint32_t usedCopies = 1;        // realized copies in this slab
 	uint32_t capacityCopies = 1;    // reserved copies in this slab
 };

@@ -268,7 +268,6 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 	if (frameCtx.opaqueRange.visibleCount > 0) {
-
 		vkCmdPushConstants(frameCtx.commandBuffer,
 			pLayout.layout,
 			pLayout.pcRange.stageFlags,

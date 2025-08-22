@@ -441,7 +441,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	});
 }
 
-// Define Instances for models, meshID, materialID, transformID are setup here.
+// Define Instances for models, meshID, materialID are setup here.
 // A global meshes registry holds the mesh vector that'll be uploaded.
 // meshbuffer holds each localaabb and the range data into vertex and index buffers,
 void AssetManager::processMeshes(
@@ -468,11 +468,13 @@ void AssetManager::processMeshes(
 		auto& scene = *context->scene;
 
 		scene.runtime.bakedInstances.clear();
+		scene.runtime.bakedNodeIDs.clear();
 		uint32_t sceneMatCount = static_cast<uint32_t>(scene.runtime.materials.size());
 
 		// Iterate over nodes that reference a mesh
 		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
 			const auto& node = gltf.nodes[nodeIdx];
+
 			if (!node.meshIndex.has_value()) continue;
 
 			uint32_t meshIdx = static_cast<uint32_t>(*node.meshIndex);
@@ -553,7 +555,6 @@ void AssetManager::processMeshes(
 
 				// Define baked instance in model
 				auto inst = std::make_shared<GPUInstance>();
-				inst->transformID = nodeIdx;
 
 				if (p.materialIndex.has_value()) {
 					auto matID = p.materialIndex.value();
@@ -561,7 +562,7 @@ void AssetManager::processMeshes(
 					inst->passType = scene.runtime.materials[static_cast<uint32_t>(matID)].passType;
 				}
 				else {
-					inst->materialID = 0 + matOffset;
+					inst->materialID = matOffset;
 					inst->passType = static_cast<uint32_t>(MaterialPass::Opaque);
 				}
 				ASSERT(inst->materialID < resourceStats.totalMaterialCount && "MaterialID out of range");
@@ -582,6 +583,7 @@ void AssetManager::processMeshes(
 
 				inst->meshID = meshes.registerMesh(newMesh);
 				scene.runtime.bakedInstances.push_back(inst);
+				scene.runtime.bakedNodeIDs.push_back(nodeIdx);
 			}
 		}
 

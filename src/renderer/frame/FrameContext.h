@@ -71,8 +71,8 @@ struct FrameContext {
 	CullingPushConstantsAddrs cullingPCData{};
 	uint32_t visibleCount = 0;
 
-	// frames can update the global static transforms
-	bool staticTransformsUploadNeeded = false;
+	// frames can update the global transforms
+	bool transformsBufferUploadNeeded = false;
 
 	// Descriptor use
 	GPUAddressTable addressTable{};
