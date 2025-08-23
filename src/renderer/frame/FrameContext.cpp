@@ -88,7 +88,7 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 
 void FrameContext::collectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue) {
 	if (cmds.empty()) return;
-	const std::scoped_lock lk{ submitMutex };
+	std::scoped_lock lock(submitMutex);
 
 	auto& dstCmds = (queue == QueueType::Transfer) ? transferCmds
 		: (queue == QueueType::Compute) ? computeCmds
@@ -99,7 +99,7 @@ void FrameContext::collectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, Que
 }
 
 void FrameContext::stashSubmitted(QueueType queue) {
-	const std::scoped_lock lk{ submitMutex };
+	std::scoped_lock lock(submitMutex);
 
 	auto& srcCmds = (queue == QueueType::Transfer) ? transferCmds
 		: (queue == QueueType::Compute) ? computeCmds
@@ -142,7 +142,7 @@ void FrameContext::writeFrameDescriptors(const VkDevice device) {
 		descriptorWriter.writeBuffer(
 			ADDRESS_TABLE_BINDING,
 			addressTableBuffer.buffer,
-			addressTableBuffer.info.size,
+			sizeof(GPUAddressTable),
 			offset,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			set

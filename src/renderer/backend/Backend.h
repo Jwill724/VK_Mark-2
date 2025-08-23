@@ -6,6 +6,7 @@
 
 namespace Backend {
 	const VkPhysicalDeviceLimits getDeviceLimits();
+	const size_t getNonCoherentAtomSize();
 
 	VkInstance getInstance();
 	VkSurfaceKHR getSurface();

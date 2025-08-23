@@ -18,4 +18,12 @@ namespace BufferUtils {
 
 	// Temporary by value destruction when out of scope
 	void destroyBuffer(VkBuffer buffer, VmaAllocation allocation, const VmaAllocator allocator);
+
+
+	// Staging buffer helpers
+	size_t reserveStaging(size_t& stagingHead, size_t totalStagingSize, size_t stageBytes);
+	size_t alignUp(size_t x, size_t a);
+
+	// Flush a written host range
+	void flushStagingRange(const VmaAllocation bufAllocation, size_t offset, size_t bytes, const VmaAllocator allocator);
 }

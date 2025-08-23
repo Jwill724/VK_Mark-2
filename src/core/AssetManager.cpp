@@ -21,17 +21,17 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 
 	using namespace SceneGraph;
 
-	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	//ASSERT(damagedHelmetFile.has_value());
-	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	//queue->push(damagedHelmetFile.value());
+	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	ASSERT(damagedHelmetFile.has_value());
+	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	queue->push(damagedHelmetFile.value());
 
-	std::string sponza1Path{ "res/assets/sponza.glb" };
-	auto sponza1File = loadGltfFiles(sponza1Path);
-	ASSERT(sponza1File.has_value());
-	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	queue->push(sponza1File.value());
+	//std::string sponza1Path{ "res/assets/sponza.glb" };
+	//auto sponza1File = loadGltfFiles(sponza1Path);
+	//ASSERT(sponza1File.has_value());
+	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	//queue->push(sponza1File.value());
 
 	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);

@@ -15,7 +15,7 @@ namespace RenderScene {
 		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Cube, { "Cube", DrawType::DrawMultiDynamic, 50, 0, 0 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawMultiStatic, 100, 0, 0 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } }
 	};
 

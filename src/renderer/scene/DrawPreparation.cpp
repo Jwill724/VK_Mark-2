@@ -108,27 +108,41 @@ void DrawPreparation::buildAndSortIndirectDraws(
 }
 
 
-void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue) {
+void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator) {
 	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
 		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 
 	const size_t visInstBytes = frameCtx.visibleInstances.size() * sizeof(GPUInstance);
 	const size_t indirectDrawBytes = frameCtx.indirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
+	const size_t addrBytes = sizeof(GPUAddressTable);
 
-	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
+	uint8_t* const mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
+	const size_t stagingSize = frameCtx.combinedGPUStaging.info.size;
 
-	const size_t visInstOffset = 0;
-	const size_t indirectDrawOffset = visInstOffset + visInstBytes;
-	const size_t addrsTableOffset = indirectDrawOffset + indirectDrawBytes;
+	const size_t visInstOffset = BufferUtils::reserveStaging(
+		frameCtx.stagingHead,
+		stagingSize,
+		visInstBytes);
+	const size_t indirectDrawOffset = BufferUtils::reserveStaging(
+		frameCtx.stagingHead,
+		stagingSize,
+		indirectDrawBytes);
+	const size_t addrOffset = BufferUtils::reserveStaging(
+		frameCtx.stagingHead,
+		stagingSize,
+		addrBytes);
 
 	// visible instances buffer staging
-	memcpy(mappedStagingPtr, frameCtx.visibleInstances.data(), visInstBytes);
-
+	memcpy(mappedStagingPtr + visInstOffset, frameCtx.visibleInstances.data(), visInstBytes);
 	// indirect draws buffer staging
 	memcpy(mappedStagingPtr + indirectDrawOffset, frameCtx.indirectDraws.data(), indirectDrawBytes);
-
 	// frame address table staging
-	memcpy(mappedStagingPtr + addrsTableOffset, &frameCtx.addressTable, frameCtx.addressTableBuffer.info.size);
+	memcpy(mappedStagingPtr + addrOffset, &frameCtx.addressTable, addrBytes);
+
+	const auto bufAlloc = frameCtx.combinedGPUStaging.allocation;
+	BufferUtils::flushStagingRange(bufAlloc, visInstOffset, visInstBytes, allocator);
+	BufferUtils::flushStagingRange(bufAlloc, indirectDrawOffset, indirectDrawBytes, allocator);
+	BufferUtils::flushStagingRange(bufAlloc, addrOffset, addrBytes, allocator);
 
 	// Record big transfer copies for indirect, instance, and main frame address table buffers
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
@@ -157,9 +171,9 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 
 		// GPU address table copy
 		VkBufferCopy addressCpy{};
-		addressCpy.srcOffset = addrsTableOffset;
+		addressCpy.srcOffset = addrOffset;
 		addressCpy.dstOffset = 0;
-		addressCpy.size = frameCtx.addressTableBuffer.info.size;
+		addressCpy.size = addrBytes;
 		vkCmdCopyBuffer(cmd,
 			frameCtx.combinedGPUStaging.buffer,
 			frameCtx.addressTableBuffer.buffer,
@@ -175,27 +189,14 @@ void DrawPreparation::uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue&
 	frameCtx.collectAndAppendCmds(std::move(DeferredCmdSubmitQueue::collectTransfer()), QueueType::Transfer);
 
 	auto& transferSync = Renderer::_transferSync;
-	if (transferQueue.wasUsed) {
-		transferQueue.submitWithTimelineSync(
-			frameCtx.transferCmds,
-			transferSync.semaphore,
-			transferSync.signalValue,
-			transferSync.semaphore,
-			frameCtx.transferWaitValue
-		);
-		transferQueue.wasUsed = false;
-	}
-	else {
-		transferQueue.submitWithTimelineSync(
-			frameCtx.transferCmds,
-			transferSync.semaphore,
-			transferSync.signalValue
-		);
-	}
+	const uint64_t signalValue = transferQueue.submitWithTimelineSync(
+		frameCtx.transferCmds,
+		transferSync.semaphore,
+		++transferSync.signalValue
+	);
 
 	frameCtx.stashSubmitted(QueueType::Transfer);
-
-	frameCtx.transferWaitValue = transferSync.signalValue++;
+	frameCtx.transferWaitValue = signalValue;
 }
 
 static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing) {
@@ -207,7 +208,15 @@ static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing
 	return glm::translate(glm::mat4(1.0f), translation);
 }
 
-// Note: DrawStatic brings no errors but static multidraw type brings queue errors
+static glm::mat4 backAndForthX(float step = 0.03f, float minX = -2.0f, float maxX = 2.0f) {
+	static float x = 0.0f;
+	static float dir = 1.0f;
+	x += dir * step;
+	if (x >= maxX) { x = maxX; dir = -1.0f; }
+	if (x <= minX) { x = minX; dir = 1.0f; }
+	return glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.0f, 0.0f));
+}
+
 void DrawPreparation::syncGlobalInstancesAndTransforms(
 	FrameContext& frameCtx,
 	GPUResources& gpuResources,
@@ -216,11 +225,8 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 	std::vector<glm::mat4>& globalTransforms,
 	GPUQueue& transferQueue)
 {
-	bool firstTimeUpload = false;
-	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms)) {
-		firstTimeUpload = true; // first time creation
-		frameCtx.transformsBufferUploadNeeded = true; // enables the barrier on first frame graphics recording
-	}
+
+	bool anyTransformChanged = false;
 
 	for (auto& inst : globalInstances) {
 		SceneID sid = static_cast<SceneID>(inst.sceneID);
@@ -228,96 +234,115 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 
 		if (profile.drawType == DrawType::DrawStatic || profile.instanceCount == 1) {
 			inst.drawType = DrawType::DrawStatic;
+			glm::mat4& M = globalTransforms[inst.firstTransform];
+			M = glm::rotate(glm::mat4(1.0f), 0.007f, glm::vec3(0.0f, 1.0f, 0.0f)) * M;
+			//M = backAndForthX(0.02f, -1.5f, 1.5f) * M;
+
+			anyTransformChanged = true;
 			continue; // transforms already baked into static
 		}
 
 		// Defined from copy values append list or decrease list
 		// on first run this will always be an append
-		if (profile.drawType == DrawType::DrawMultiStatic || profile.instanceCount > 1) {
-			// If instance count didn't change, skip
-			if (inst.capacityCopies + 1 == profile.instanceCount) {
-				continue;
-			}
+		//if (profile.drawType == DrawType::DrawMultiStatic || profile.instanceCount > 1) {
+		//	// If instance count didn't change, skip
+		//	if (inst.capacityCopies + 1 == profile.instanceCount) {
+		//		continue;
+		//	}
 
-			inst.drawType = DrawType::DrawMultiStatic;
+		//	inst.drawType = DrawType::DrawMultiStatic;
 
-			glm::mat4 baseTransform = globalTransforms[inst.firstTransform];
-			uint32_t currentCopies = inst.capacityCopies;
-			uint32_t neededCopies = profile.instanceCount;
+		//	glm::mat4 baseTransform = globalTransforms[inst.firstTransform];
+		//	uint32_t currentCopies = inst.capacityCopies;
+		//	uint32_t neededCopies = profile.instanceCount;
 
-			fmt::print("[syncGI] multistatic: currentCopies={} neededCopies={} baseT={} staticTfSize(before)={}\n",
-				currentCopies, neededCopies, inst.firstTransform, globalTransforms.size());
+		//	fmt::print("[syncGI] multistatic: currentCopies={} neededCopies={} baseT={} staticTfSize(before)={}\n",
+		//		currentCopies, neededCopies, inst.firstTransform, globalTransforms.size());
 
-			if (neededCopies > currentCopies) {
-				// Append new transforms
-				for (uint32_t i = currentCopies; i < neededCopies; ++i) {
-					glm::mat4 offset = makeGridTransform(i, neededCopies, 2.0f);
-					globalTransforms.push_back(offset * baseTransform);
-				}
-				fmt::print("[syncGI] appended {} transforms, staticTfSize(after)={}\n",
-					neededCopies - currentCopies, globalTransforms.size());
-			}
-			inst.capacityCopies = neededCopies;
-			inst.transformCount = profile.instanceCount;
+		//	if (neededCopies > currentCopies) {
+		//		// Append new transforms
+		//		for (uint32_t i = currentCopies; i < neededCopies; ++i) {
+		//			glm::mat4 offset = makeGridTransform(i, neededCopies, 2.0f);
+		//			globalTransforms.push_back(offset * baseTransform);
+		//		}
+		//		fmt::print("[syncGI] appended {} transforms, staticTfSize(after)={}\n",
+		//			neededCopies - currentCopies, globalTransforms.size());
+		//	}
+		//	inst.capacityCopies = neededCopies;
+		//	inst.transformCount = profile.instanceCount;
 
-			frameCtx.transformsBufferUploadNeeded = true;
-		}
+		//	frameCtx.transformsBufferUploadNeeded = true;
+		//}
 	}
-
-	if (!frameCtx.transformsBufferUploadNeeded || !firstTimeUpload) return;
 
 	auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
 	auto& globalAddrsTable = gpuResources.getAddressTable();
+	const auto allocator = gpuResources.getAllocator();
 
 	const size_t transformsBytes = globalTransforms.size() * sizeof(glm::mat4);
-	fmt::print("[syncGI] sizes: xformsBytes={} addrTableBytes={}\n",
-		transformsBytes, globalAddrsTableBuf.info.size);
+	const size_t addrBytes = sizeof(GPUAddressTable);
 
-	// Need to create buffer for first time
-	if (firstTimeUpload) {
-		fmt::print("[syncGI] create Transforms GPU buffer\n");
+	// First time creation on frame 0
+	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms)) {
+		fmt::print("[syncGobalInstances] create Transforms GPU buffer\n");
 		AllocatedBuffer newTransformBuf = BufferUtils::createGPUAddressBuffer(
 			AddressBufferType::Transforms,
 			globalAddrsTable,
 			transformsBytes,
-			gpuResources.getAllocator());
+			allocator);
 		// Note: The current global address table gets marked dirty, only the internal upload function marks it back to false.
 		gpuResources.addGPUBufferToGlobalAddress(AddressBufferType::Transforms, newTransformBuf);
-		fmt::print("[syncGI] new buffer=0x{:x} size={}\n",
-			(uint64_t)newTransformBuf.buffer, newTransformBuf.info.size);
+		fmt::print("[syncGobalInstances] new buffer=0x{:x} size={}\n", (uint64_t)newTransformBuf.buffer, newTransformBuf.info.size);
+
+		frameCtx.transformsBufferUploadNeeded = true;
 	}
+
+	if (anyTransformChanged) {
+		frameCtx.transformsBufferUploadNeeded = true;
+	}
+
+	if (!frameCtx.transformsBufferUploadNeeded) return;
+
 	auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
 
-	uint8_t* mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
+	uint8_t* const mappedStagingPtr = static_cast<uint8_t*>(frameCtx.combinedGPUStaging.info.pMappedData);
+	const size_t stagingSize = frameCtx.combinedGPUStaging.info.size;
 
-	const size_t transformOffset = 0;
-	const size_t addrsTableOffset = transformOffset + transformsBytes;
+	const size_t transformOffset = BufferUtils::reserveStaging(
+		frameCtx.stagingHead,
+		stagingSize,
+		transformsBytes);
+	const size_t addrOffset = BufferUtils::reserveStaging(
+		frameCtx.stagingHead,
+		stagingSize,
+		addrBytes);
 
-	memcpy(mappedStagingPtr, globalTransforms.data(), transformsBytes);
+	memcpy(mappedStagingPtr + transformOffset, globalTransforms.data(), transformsBytes);
+	memcpy(mappedStagingPtr + addrOffset, &globalAddrsTable, addrBytes);
 
-	memcpy(mappedStagingPtr + addrsTableOffset, &globalAddrsTable, globalAddrsTableBuf.info.size);
+	const auto bufAlloc = frameCtx.combinedGPUStaging.allocation;
+	BufferUtils::flushStagingRange(bufAlloc, transformOffset, transformsBytes, allocator);
+	BufferUtils::flushStagingRange(bufAlloc, addrOffset, addrBytes, allocator);
 
 	const auto device = Backend::getDevice();
 
-	// Upload static transforms and update global address table
+	// Upload transforms and update global address table
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		// indirect draw commands
-		VkBufferCopy staticTransformCpy{};
-		staticTransformCpy.srcOffset = transformOffset;
-		staticTransformCpy.dstOffset = 0;
-		staticTransformCpy.size = transformsBytes;
-
+		VkBufferCopy transformsCpy{};
+		transformsCpy.srcOffset = transformOffset;
+		transformsCpy.dstOffset = 0;
+		transformsCpy.size = transformsBytes;
 		vkCmdCopyBuffer(cmd,
 			frameCtx.combinedGPUStaging.buffer,
 			transformsBuf.buffer,
 			1,
-			&staticTransformCpy);
+			&transformsCpy);
 
 		VkBufferCopy addressTableCpy{};
-		addressTableCpy.srcOffset = addrsTableOffset;
+		addressTableCpy.srcOffset = addrOffset;
 		addressTableCpy.dstOffset = 0;
-		addressTableCpy.size = globalAddrsTableBuf.info.size;
-
+		addressTableCpy.size = addrBytes;
 		vkCmdCopyBuffer(cmd,
 			frameCtx.combinedGPUStaging.buffer,
 			globalAddrsTableBuf.buffer,
@@ -325,42 +350,18 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			&addressTableCpy);
 
 		BarrierUtils::releaseTransferToShaderReadQ(cmd, globalAddrsTableBuf);
-		fmt::print("[syncGI] release -> shaderRead on addrTable\n");
 
 	}, frameCtx.transferPool, QueueType::Transfer, device);
 
 	frameCtx.collectAndAppendCmds(std::move(DeferredCmdSubmitQueue::collectTransfer()), QueueType::Transfer);
-	fmt::print("[syncGI] collected transfer cmdBufs -> {}\n", frameCtx.transferCmds.size());
 
 	auto& transferSync = Renderer::_transferSync;
-	transferQueue.submitWithTimelineSync(
+	const uint64_t signalValue = transferQueue.submitWithTimelineSync(
 		frameCtx.transferCmds,
 		transferSync.semaphore,
-		transferSync.signalValue,
-		nullptr,
-		0,
-		true // transfer queue waits ahead
+		++transferSync.signalValue
 	);
-	fmt::print("[syncGI] submit: signalValue={} waitValue={} count={}\n",
-		transferSync.signalValue, 0u, frameCtx.transferCmds.size());
 
 	frameCtx.stashSubmitted(QueueType::Transfer);
-	fmt::print("[syncGI] stashed submitted transfers for freeing later\n");
-
-	frameCtx.transferWaitValue = transferSync.signalValue++;
-	fmt::print("[syncGI] next signalValue={} (frameCtx.transferWaitValue={})\n",
-		transferSync.signalValue, frameCtx.transferWaitValue);
-
-	// Update the global set
-	frameCtx.descriptorWriter.clear();
-	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
-	frameCtx.descriptorWriter.writeBuffer(
-		ADDRESS_TABLE_BINDING,
-		globalAddrsTableBuf.buffer,
-		globalAddrsTableBuf.info.size,
-		0,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		unifiedSet);
-
-	frameCtx.descriptorWriter.updateSet(device, unifiedSet);
+	frameCtx.transferWaitValue = signalValue;
 }

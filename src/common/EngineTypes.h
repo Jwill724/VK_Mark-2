@@ -231,10 +231,6 @@ struct GPUQueue {
 
 	uint32_t familyIndex = UINT32_MAX;
 
-	// when a timelinesubmit is done, set to true
-	// on upcoming queue uses check bool to see if a wait is needed or not
-	std::atomic<bool> wasUsed = false;
-
 	QueueType qType = QueueType::Generic;
 
 	inline VkFence submit(const VkSubmitInfo& info) {
@@ -256,33 +252,38 @@ struct GPUQueue {
 		VK_CHECK(vkQueueWaitIdle(queue));
 	}
 
-	inline void submitWithTimelineSync(
+	inline uint64_t submitWithTimelineSync(
 		const std::vector<VkCommandBuffer>& cmdBuffers,
 		VkSemaphore timelineSemaphore,
 		uint64_t signalValue,
 		VkSemaphore waitSemaphore = VK_NULL_HANDLE,
 		uint64_t waitValue = 0,
-		bool waitUpAhead = false
+		VkPipelineStageFlags2 waitStages = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
 	) {
 		std::scoped_lock lock(submitMutex);
+
+		// Ensure to signal a strictly greater value than current.
+		ASSERT(fencePool.device != VK_NULL_HANDLE);
+		uint64_t current = 0;
+		VK_CHECK(vkGetSemaphoreCounterValue(fencePool.device, timelineSemaphore, &current));
+		if (signalValue <= current) signalValue = current + 1;
 
 		std::vector<VkSemaphoreSubmitInfo> waitInfos;
 		if (waitSemaphore != VK_NULL_HANDLE) {
 			VkSemaphoreSubmitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 			waitInfo.semaphore = waitSemaphore;
 			waitInfo.value = waitValue;
-			waitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+			waitInfo.stageMask = waitStages;
 			waitInfo.deviceIndex = 0;
 			waitInfos.push_back(waitInfo);
 		}
 
 		std::vector<VkCommandBufferSubmitInfo> cmdInfos;
 		cmdInfos.reserve(cmdBuffers.size());
-
-		for (const auto& cmd : cmdBuffers) {
+		for (VkCommandBuffer cmd : cmdBuffers) {
 			VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
 			cmdInfo.commandBuffer = cmd;
-			cmdInfo.deviceMask = 0;
+			cmdInfo.deviceMask = 1;
 			cmdInfos.push_back(cmdInfo);
 		}
 
@@ -293,19 +294,16 @@ struct GPUQueue {
 		signalInfo.deviceIndex = 0;
 
 		VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
+		submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
+		submitInfo.pWaitSemaphoreInfos = waitInfos.data();
 		submitInfo.commandBufferInfoCount = static_cast<uint32_t>(cmdInfos.size());
 		submitInfo.pCommandBufferInfos = cmdInfos.data();
 		submitInfo.signalSemaphoreInfoCount = 1;
 		submitInfo.pSignalSemaphoreInfos = &signalInfo;
-		if (!waitInfos.empty()) {
-			submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
-			submitInfo.pWaitSemaphoreInfos = waitInfos.data();
-		}
 
 		VK_CHECK(vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE));
 
-		if (waitUpAhead)
-			wasUsed = true;
+		return signalValue;
 	}
 
 	inline void waitTimelineValue(VkDevice device, VkSemaphore timelineSemaphore, uint64_t waitValue) {

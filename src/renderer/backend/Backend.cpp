@@ -17,6 +17,9 @@ namespace Backend {
 	const VkPhysicalDeviceLimits getDeviceLimits() {
 		return _deviceLimits;
 	}
+	const size_t getNonCoherentAtomSize() {
+		return _deviceLimits.nonCoherentAtomSize;
+	}
 
 	VkDebugUtilsMessengerEXT _debugMessenger = VK_NULL_HANDLE;
 
