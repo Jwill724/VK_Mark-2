@@ -128,7 +128,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 		DrawPreparation::buildAndSortIndirectDraws(frameCtx, meshes, _visibleWorldAABBs, _sceneData.cameraPosition);
 
-		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue);
+		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
 	}
 }
 

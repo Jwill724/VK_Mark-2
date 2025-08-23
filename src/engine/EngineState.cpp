@@ -307,7 +307,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		mainWriter.writeBuffer(
 			ADDRESS_TABLE_BINDING,
 			_resources.getAddressTableBuffer().buffer,
-			_resources.getAddressTableBuffer().info.size,
+			sizeof(GPUAddressTable),
 			0,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			unifiedSet);

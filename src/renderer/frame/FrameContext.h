@@ -65,6 +65,7 @@ struct FrameContext {
 		transparentRange = {};
 	}
 
+	size_t stagingHead = 0;
 	AllocatedBuffer combinedGPUStaging;
 
 	// Culling data

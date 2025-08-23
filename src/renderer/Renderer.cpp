@@ -91,6 +91,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	VK_CHECK(vkResetCommandBuffer(frameCtx.commandBuffer, 0));
 
 	frameCtx.freeStashedCmds(device);
+	frameCtx.stagingHead = 0;
 
 	frameCtx.cpuDeletion.flush();
 }
@@ -115,7 +116,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	waitInfos.push_back(waitImageAvailable);
 
 	// Wait on transfer timeline only up to the first buffer consumers
-	if (frameCtx.transferWaitValue <= _transferSync.signalValue - 1) {
+	if (_transferSync.signalValue) {
 		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 		waitTransfer.semaphore = _transferSync.semaphore;
 		waitTransfer.value = frameCtx.transferWaitValue;
@@ -127,7 +128,7 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	}
 
 	if (GPU_ACCELERATION_ENABLED) {
-		if (frameCtx.computeWaitValue <= _computeSync.signalValue - 1) {
+		if (_computeSync.signalValue) {
 			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 			waitCompute.semaphore = _computeSync.semaphore;
 			waitCompute.value = frameCtx.computeWaitValue;
@@ -194,8 +195,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	_drawExtent.width = std::min(swp.extent.width, draw.imageExtent.width);
 	_drawExtent.height = std::min(swp.extent.height, draw.imageExtent.height);
 
+	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
 	const VkDescriptorSet sets[2] {
-		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet,
+		unifiedSet,
 		frameCtx.set
 	};
 
@@ -207,9 +209,22 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
 	if (frameCtx.transformsBufferUploadNeeded) {
-		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer,
-			Engine::getState().getGPUResources().getAddressTableBuffer());
+		const auto& globalAddrsTableBuf = Engine::getState().getGPUResources().getAddressTableBuffer();
+
+		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, globalAddrsTableBuf);
 		frameCtx.transformsBufferUploadNeeded = false;
+
+		// Update the global set for transforms
+		frameCtx.descriptorWriter.clear();
+		frameCtx.descriptorWriter.writeBuffer(
+			ADDRESS_TABLE_BINDING,
+			globalAddrsTableBuf.buffer,
+			sizeof(GPUAddressTable),
+			0,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			unifiedSet);
+
+		frameCtx.descriptorWriter.updateSet(device, unifiedSet);
 	}
 
 	if (frameCtx.visibleCount > 0) {

@@ -20,7 +20,7 @@ AllocatedBuffer BufferUtils::createBuffer(
 		allocSize = 4;
 	}
 
-	VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	VkBufferCreateInfo bufferInfo{ VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	bufferInfo.pNext = nullptr;
 	bufferInfo.size = allocSize;
 	bufferInfo.usage = usage;
@@ -156,4 +156,25 @@ void BufferUtils::destroyAllocatedBuffer(AllocatedBuffer& buffer, const VmaAlloc
 	buffer.buffer = VK_NULL_HANDLE;
 	buffer.allocation = nullptr;
 	buffer.mapped = nullptr;
+}
+
+size_t BufferUtils::alignUp(size_t x, size_t a) { return (x + (a - 1)) & ~(a - 1); }
+
+size_t BufferUtils::reserveStaging(size_t& stagingHead, size_t totalStagingSize, size_t stageBytes) {
+	const size_t atom = Backend::getNonCoherentAtomSize();
+	const size_t alignment = (atom > 16) ? atom : 16; // 16-byte min alignment
+	ASSERT((alignment & (alignment - 1)) == 0 && "[staging] alignment must be pow2");
+	ASSERT((stageBytes % 4) == 0 && "[staging] require 4-byte size");
+
+	const size_t offset = alignUp(stagingHead, alignment);
+	ASSERT(offset + stageBytes <= totalStagingSize && "[staging] overflow");
+	stagingHead = offset + stageBytes;
+	return offset;
+}
+
+void BufferUtils::flushStagingRange(const VmaAllocation bufAllocation, size_t offset, size_t bytes, const VmaAllocator allocator) {
+	const size_t atom = Backend::getNonCoherentAtomSize();
+	const size_t begin = offset & ~(atom - 1);
+	const size_t end = alignUp(offset + bytes, atom);
+	vmaFlushAllocation(allocator, bufAllocation, begin, end - begin);
 }

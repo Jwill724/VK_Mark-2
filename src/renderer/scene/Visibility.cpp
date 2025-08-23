@@ -183,7 +183,7 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	for (uint32_t i = 0; i < count; ++i) {
 		const AABB& a = world[leafIndex[first + i]];
 		if (i == 0) {
-			nodeB = a; // copies vmin/vmax/origin/extent/radius; fine
+			nodeB = a; // copies vmin/vmax/origin/extent/radius;
 			cmin = cmax = centerOf(a);
 		}
 		else {
