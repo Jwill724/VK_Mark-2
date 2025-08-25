@@ -15,7 +15,6 @@ void MeshLoader::uploadMeshes(
 	const VmaAllocator alloc,
 	const VkDevice device)
 {
-
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
 	const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
@@ -45,11 +44,12 @@ void MeshLoader::uploadMeshes(
 	);
 
 	auto& resources = Engine::getState().getGPUResources();
+	auto& globalAddrTable = resources.getAddressTable();
 
 	// Create large GPU buffers for vertex and index
 	AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
 		AddressBufferType::Vertex,
-		resources.getAddressTable(),
+		globalAddrTable,
 		vertexBufferSize,
 		alloc
 	);
@@ -57,7 +57,7 @@ void MeshLoader::uploadMeshes(
 
 	AllocatedBuffer idxBuffer = BufferUtils::createGPUAddressBuffer(
 		AddressBufferType::Index,
-		resources.getAddressTable(),
+		globalAddrTable,
 		indexBufferSize,
 		alloc
 	);
@@ -66,7 +66,7 @@ void MeshLoader::uploadMeshes(
 	// Mesh buffer creation
 	AllocatedBuffer meshBuffer = BufferUtils::createGPUAddressBuffer(
 		AddressBufferType::Mesh,
-		resources.getAddressTable(),
+		globalAddrTable,
 		meshesSize,
 		alloc
 	);
@@ -89,12 +89,12 @@ void MeshLoader::uploadMeshes(
 
 	threadCtx.stagingMapped = stagingBuffer.info.pMappedData;
 	ASSERT(threadCtx.stagingMapped != nullptr);
-	uint8_t* stagingData = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
+	uint8_t* const mappedStagingPtr = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
 
 	// Compute offsets
-	VkDeviceSize vertexWriteOffset = 0;
-	VkDeviceSize indexWriteOffset = vertexWriteOffset + vertexBufferSize;
-	VkDeviceSize meshesWriteOffset = indexWriteOffset + indexBufferSize;
+	const size_t vertexWriteOffset = 0;
+	const size_t indexWriteOffset = vertexWriteOffset + vertexBufferSize;
+	const size_t meshesWriteOffset = indexWriteOffset + indexBufferSize;
 
 	JobSystem::log(
 		threadCtx.threadID,
@@ -107,9 +107,9 @@ void MeshLoader::uploadMeshes(
 		fmt::format("[MeshUpload] meshesWriteOffset     = {}\n", meshesWriteOffset));
 
 	// Copy into staging
-	memcpy(stagingData + vertexWriteOffset, vertices.data(), vertexBufferSize);
-	memcpy(stagingData + indexWriteOffset, indices.data(), indexBufferSize);
-	memcpy(stagingData + meshesWriteOffset, meshes.meshData.data(), meshesSize);
+	memcpy(mappedStagingPtr + vertexWriteOffset, vertices.data(), vertexBufferSize);
+	memcpy(mappedStagingPtr + indexWriteOffset, indices.data(), indexBufferSize);
+	memcpy(mappedStagingPtr + meshesWriteOffset, meshes.meshData.data(), meshesSize);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy vtxCopy{

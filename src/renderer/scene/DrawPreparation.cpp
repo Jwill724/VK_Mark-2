@@ -225,21 +225,26 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 	std::vector<glm::mat4>& globalTransforms,
 	GPUQueue& transferQueue)
 {
-
 	bool anyTransformChanged = false;
 
 	for (auto& inst : globalInstances) {
 		SceneID sid = static_cast<SceneID>(inst.sceneID);
 		SceneProfileEntry& profile = sceneProfiles.at(sid);
 
-		if (profile.drawType == DrawType::DrawStatic || profile.instanceCount == 1) {
-			inst.drawType = DrawType::DrawStatic;
-			glm::mat4& M = globalTransforms[inst.firstTransform];
-			M = glm::rotate(glm::mat4(1.0f), 0.007f, glm::vec3(0.0f, 1.0f, 0.0f)) * M;
-			//M = backAndForthX(0.02f, -1.5f, 1.5f) * M;
+		if (profile.instanceCount == 1) {
+			if (profile.drawType == DrawType::DrawStatic) {
+				inst.drawType = profile.drawType;
+				continue; // transforms already baked into static
+			}
+			if (profile.drawType == DrawType::DrawDynamic) {
+				inst.drawType = profile.drawType;
+				glm::mat4& M = globalTransforms[inst.firstTransform];
+				M = glm::rotate(glm::mat4(1.0f), 0.005f, glm::vec3(0.0f, 1.0f, 0.0f)) * M;
+				//M = backAndForthX(0.03f, -1.5f, 1.5f) * M;
 
-			anyTransformChanged = true;
-			continue; // transforms already baked into static
+				anyTransformChanged = true;
+				continue;
+			}
 		}
 
 		// Defined from copy values append list or decrease list

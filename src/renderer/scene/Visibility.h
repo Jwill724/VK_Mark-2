@@ -47,25 +47,22 @@ namespace Visibility {
 		const std::vector<glm::mat4>& transforms);
 
 	void buildBVH(VisibilityState& vs);
-	void refitBVH(VisibilityState& vs);
-	void recomputeWorldRanges(
-		VisibilityState& vs,
-		const std::vector<DirtyRange>& ranges,
-		const std::vector<GPUMeshData>& meshData,
-		const std::vector<glm::mat4>& transforms);
+	void refitBVH(const std::vector<AABB>& world,
+		const std::vector<uint32_t>& leafIndex,
+		std::vector<BVHNode>& nodes,
+		uint32_t nIdx = 0);
+	//void recomputeWorldRanges(
+	//	VisibilityState& vs,
+	//	const std::vector<DirtyRange>& ranges,
+	//	const std::vector<GPUMeshData>& meshData,
+	//	const std::vector<glm::mat4>& transforms);
 
 	inline void applySyncResult(
 		VisibilityState& vs,
-		const VisibilitySyncResult& sync,
-		const std::vector<GPUMeshData>& meshData,
-		const std::vector<glm::mat4>& transforms)
+		const VisibilitySyncResult& sync)
 	{
 		// Early out: nothing changed, BVH still valid
 		if (!sync.topologyChanged && !sync.refitOnly) return;
-
-		if (!sync.dirtyTransformRanges.empty()) {
-			recomputeWorldRanges(vs, sync.dirtyTransformRanges, meshData, transforms);
-		}
 
 		if (sync.topologyChanged) {
 			// BVH topology changed (new or fewer nodes) -> rebuild from scratch
@@ -73,7 +70,7 @@ namespace Visibility {
 		}
 		// Topology stable but transforms moved -> cheap refit
 		else if (sync.refitOnly) {
-			refitBVH(vs);
+			refitBVH(vs.worldAABBs, vs.leafIndex, vs.bvh);
 		}
 	}
 
@@ -83,9 +80,10 @@ namespace Visibility {
 		std::vector<GPUInstance>& visibleInstances,
 		std::vector<AABB>& visibleWorldAABBs);
 
-	bool isVisible(const AABB aabb, const Frustum frus);
-	bool boxInFrustum(const AABB aabb, const Frustum frus);
+	bool isVisible(const AABB& aabb, const Frustum& frus);
+	bool boxInFrustum(const AABB& aabb, const Frustum& frus);
 	AABB transformAABB(const AABB& localBox, const glm::mat4& transform);
-	Frustum extractFrustum(const glm::mat4 viewproj);
-	std::vector<glm::vec3> GetAABBVertices(const AABB box);
+	Frustum extractFrustum(const glm::mat4& viewproj);
+	std::vector<glm::vec3> GetAABBVertices(const AABB& box);
+	std::vector<glm::vec3> GetOBBVertices(const AABB& localBox, const glm::mat4& modelMatrix);
 }

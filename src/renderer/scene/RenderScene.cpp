@@ -111,9 +111,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	Visibility::applySyncResult(
 		_visState,
-		frameCtx.visSyncResult,
-		meshes,
-		_globalTransforms);
+		frameCtx.visSyncResult);
 
 	// CPU CULLING
 	frameCtx.clearRenderData();
@@ -133,7 +131,9 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 }
 
 void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator) {
-	frameCtx.sceneDataBuffer = BufferUtils::createBuffer(sizeof(GPUSceneData),
+	const size_t sceneDataBytes = sizeof(GPUSceneData);
+
+	frameCtx.sceneDataBuffer = BufferUtils::createBuffer(sceneDataBytes,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 
 	ASSERT(frameCtx.sceneDataBuffer.buffer != VK_NULL_HANDLE);
@@ -145,8 +145,7 @@ void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator
 
 	GPUSceneData* sceneDataPtr = reinterpret_cast<GPUSceneData*>(frameCtx.sceneDataBuffer.mapped);
 	*sceneDataPtr = _sceneData;
-
-	vmaFlushAllocation(allocator, frameCtx.sceneDataBuffer.allocation, 0, sizeof(GPUSceneData));
+	vmaFlushAllocation(allocator, frameCtx.sceneDataBuffer.allocation, 0, sceneDataBytes);
 }
 
 void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
@@ -184,19 +183,23 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 
 	drawIndirectCommands(frameCtx, resources, profiler);
 
-	// === VISIBLE AABB FOR OBJECTS ===
+	// === VISIBLE OBB FOR OBJECTS ===
 	{
-		if (profiler.debugToggles.showAABBs) {
+		if (profiler.debugToggles.showOBBs) {
 			std::vector<glm::vec3> allVerts;
 			std::vector<uint32_t> drawOffsets;
 
-			auto emitAABBVerts = [&](const AABB& worldAABB) {
-				auto verts = Visibility::GetAABBVertices(worldAABB);
+			const auto& meshes = resources.getResgisteredMeshes().meshData;
+
+			auto emitAABBVerts = [&](const GPUInstance& inst) {
+				const auto& aabb = meshes[inst.meshID].localAABB;
+				const auto& matrix = _globalTransforms[inst.transformID];
+				auto verts = Visibility::GetOBBVertices(aabb, matrix);
 				uint32_t offset = static_cast<uint32_t>(allVerts.size());
 				drawOffsets.push_back(offset);
 				allVerts.insert(allVerts.end(), verts.begin(), verts.end());
 			};
-			for (const auto& aabb : _visibleWorldAABBs) emitAABBVerts(aabb);
+			for (const auto& inst : frameCtx.visibleInstances) emitAABBVerts(inst);
 
 			const auto allocator = resources.getAllocator();
 

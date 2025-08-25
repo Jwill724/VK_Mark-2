@@ -18,6 +18,7 @@ enum class PipelineID : uint8_t {
 };
 
 namespace Pipelines {
+	// All pipelines shared the same layouts and push constant settings
 	inline PipelineLayoutConst _globalLayout;
 
 	inline std::array<PipelineHandle, static_cast<size_t>(PipelineID::Count)> _pipelineHandles;

@@ -134,7 +134,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			}
 
 			if (ImGui::TreeNode("Debug Draw")) {
-				ImGui::Checkbox("Draw AABB", &profiler.debugToggles.showAABBs);
+				ImGui::Checkbox("Draw OBB", &profiler.debugToggles.showOBBs);
 				ImGui::TreePop();
 			}
 		}

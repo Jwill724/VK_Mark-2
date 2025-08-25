@@ -30,7 +30,7 @@ struct PipelineOverride {
 };
 
 struct DebugToggles {
-	bool showAABBs = false;
+	bool showOBBs = false;
 	bool enableSettings = false;
 	bool enableStats = true;
 	//bool showNormals = false;
