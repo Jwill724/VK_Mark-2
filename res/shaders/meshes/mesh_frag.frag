@@ -121,7 +121,7 @@ void main()
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
-	iblSpec *= 0.55; // darken specular on image
+	iblSpec *= 0.5; // darken specular on image
 
 	float specAO = SpecAO_Conservative(ao, NdotV, rough);
 	vec3 ambient = kD_ibl * iblDiff * ao + iblSpec * specAO;

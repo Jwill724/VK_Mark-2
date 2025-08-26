@@ -22,17 +22,19 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
 	//queue->push(damagedHelmetFile.value());
 
-	//std::string sponza1Path{ "res/assets/sponza.glb" };
-	//auto sponza1File = loadGltfFiles(sponza1Path);
-	//ASSERT(sponza1File.has_value());
-	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	//queue->push(sponza1File.value());
+	std::string sponza1Path{ "res/assets/sponza.glb" };
+	auto sponza1File = loadGltfFiles(sponza1Path);
+	ASSERT(sponza1File.has_value());
+	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	queue->push(sponza1File.value());
 
-	std::string bistroPath{ "res/assets/Bistro.glb" };
-	auto bistroFile = loadGltfFiles(bistroPath);
-	ASSERT(bistroFile.has_value());
-	bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
-	queue->push(bistroFile.value());
+	// TODO: Use a script to download assets
+	// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
+	//std::string bistroPath{ "res/assets/Bistro.glb" };
+	//auto bistroFile = loadGltfFiles(bistroPath);
+	//ASSERT(bistroFile.has_value());
+	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
+	//queue->push(bistroFile.value());
 
 	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
@@ -51,8 +53,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//ASSERT(spheresFile.has_value());
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
 	//queue->push(spheresFile.value());
-
-	// FIXME: Structure.glb is busted, transparency doesnt work and cpu bottle neck due to draw building
 
 	if (!queue->empty()) {
 		return true;
