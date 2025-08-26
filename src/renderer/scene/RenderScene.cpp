@@ -253,6 +253,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 	}
 }
 
+// Draw counts are misleading, these would actually be sub-draws. It would be 1 indirect draw per pass, once per frame.
 void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler) {
 	auto pLayout = Pipelines::_globalLayout;
 
@@ -280,7 +281,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.indirectDrawsBuffer.buffer,
-			frameCtx.opaqueRange.first,
+			frameCtx.opaqueRange.first * drawCmdSize,
 			frameCtx.opaqueRange.visibleCount,
 			drawCmdSize
 		);
@@ -309,7 +310,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 			frameCtx.indirectDrawsBuffer.buffer,
-			frameCtx.transparentRange.first,
+			frameCtx.transparentRange.first * drawCmdSize,
 			frameCtx.transparentRange.visibleCount,
 			drawCmdSize
 		);
@@ -318,7 +319,7 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 
 		for (uint32_t i = 0; i < frameCtx.transparentRange.visibleCount; ++i) {
 			const uint32_t meshID = frameCtx.visibleInstances[static_cast<size_t>(frameCtx.transparentRange.first + i)].meshID;
-			auto& mesh = meshes[meshID];
+			const auto& mesh = meshes[meshID];
 			uint32_t triangleCount = mesh.indexCount / 3;
 			profiler.addDrawCall(triangleCount);
 		}

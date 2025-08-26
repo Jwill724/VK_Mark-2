@@ -6,11 +6,6 @@
 #include "utils/VulkanUtils.h"
 #include "utils/BufferUtils.h"
 
-namespace AssetManager {
-	bool isValidMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf);
-	std::optional<std::shared_ptr<GLTFJobContext>> loadGltfFiles(std::string_view filePath);
-}
-
 // TODO: dynamic loading and non hard coded models
 
 bool AssetManager::loadGltf(ThreadContext& threadCtx) {
@@ -21,17 +16,23 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 
 	using namespace SceneGraph;
 
-	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	ASSERT(damagedHelmetFile.has_value());
-	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	queue->push(damagedHelmetFile.value());
+	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	//ASSERT(damagedHelmetFile.has_value());
+	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	//queue->push(damagedHelmetFile.value());
 
 	//std::string sponza1Path{ "res/assets/sponza.glb" };
 	//auto sponza1File = loadGltfFiles(sponza1Path);
 	//ASSERT(sponza1File.has_value());
 	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	//queue->push(sponza1File.value());
+
+	std::string bistroPath{ "res/assets/Bistro.glb" };
+	auto bistroFile = loadGltfFiles(bistroPath);
+	ASSERT(bistroFile.has_value());
+	bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
+	queue->push(bistroFile.value());
 
 	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
 	//auto dragonFile = loadGltfFiles(dragonPath);
@@ -62,7 +63,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 }
 
 std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::string_view filePath) {
-	fmt::print("Loading GLTF: {}\n", filePath);
+	fmt::println("Loading GLTF: {}", filePath);
 
 	auto context = std::make_shared<GLTFJobContext>();
 	context->scene = std::make_shared<ModelAsset>();
@@ -75,7 +76,7 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 
 	auto data = fastgltf::GltfDataBuffer::FromPath(path);
 	if (!data || data.error() != fastgltf::Error::None) {
-		fmt::print("Failed to load file: error code {}\n", static_cast<int>(data.error()));
+		fmt::println("Failed to load file: error code {}", static_cast<int>(data.error()));
 		return std::nullopt;
 	}
 
@@ -92,7 +93,7 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 	case fastgltf::GltfType::glTF: {
 		auto result = parser.loadGltf(data.get(), path.parent_path(), gltfOptions);
 		if (!result || result.error() != fastgltf::Error::None) {
-			fmt::print("Failed to parse .gltf: error code {}\n", static_cast<int>(result.error()));
+			fmt::println("Failed to parse .gltf: error code {}", static_cast<int>(result.error()));
 			return std::nullopt;
 		}
 		context->gltfAsset = std::move(result.get());
@@ -101,14 +102,14 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 	case fastgltf::GltfType::GLB: {
 		auto result = parser.loadGltfBinary(data.get(), path.parent_path(), gltfOptions);
 		if (!result || result.error() != fastgltf::Error::None) {
-			fmt::print("Failed to parse .glb: error code {}\n", static_cast<int>(result.error()));
+			fmt::println("Failed to parse .glb: error code {}", static_cast<int>(result.error()));
 			return std::nullopt;
 		}
 		context->gltfAsset = std::move(result.get());
 		break;
 	}
 	default:
-		fmt::print("Unknown or unsupported glTF file type\n");
+		fmt::println("Unknown or unsupported glTF file type");
 		return std::nullopt;
 	}
 
@@ -287,11 +288,6 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 		uint32_t currentMat = 0;
 		for (fastgltf::Material& mat : gltf.materials) {
-			if (!isValidMaterial(mat, gltf)) {
-				fmt::print("Warning: Skipping invalid material\n");
-				continue;
-			}
-
 			auto getImageAndSampler = [&](const fastgltf::TextureInfo& texInfo, AllocatedImage& outImg, VkSampler& outSamp) {
 				const auto& texture = gltf.textures[texInfo.textureIndex];
 				if (texture.imageIndex.has_value())
@@ -376,6 +372,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			MaterialPass passType = MaterialPass::Opaque;
 			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
 				passType = MaterialPass::Transparent;
+				fmt::println("\ntransparent");
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
 
@@ -605,23 +602,6 @@ void AssetManager::processMeshes(
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
 	}
 }
-
-
-bool AssetManager::isValidMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf) {
-	if (mat.pbrData.baseColorTexture.has_value()) {
-		size_t texIndex = mat.pbrData.baseColorTexture.value().textureIndex;
-		if (texIndex >= gltf.textures.size())
-			return false;
-		if (!gltf.textures[texIndex].imageIndex.has_value() ||
-			gltf.textures[texIndex].imageIndex.value() >= gltf.images.size())
-			return false;
-		if (!gltf.textures[texIndex].samplerIndex.has_value() ||
-			gltf.textures[texIndex].samplerIndex.value() >= gltf.samplers.size())
-			return false;
-	}
-	return true;
-}
-
 
 void ModelAsset::clearAll() {
 	auto device = Backend::getDevice();

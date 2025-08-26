@@ -28,6 +28,7 @@
 -Clustered/Forward+ shading
 
 ## Screenshots
+![Bistro](res/screenshots/bistro.png)
 ![Sponza](res/screenshots/sponza.png)
 ![Helmet](res/screenshots/helmet.png)
 ![Material test](res/screenshots/mrspheres.png)

@@ -4,6 +4,11 @@
 #include "engine/Engine.h"
 #include "utils/BufferUtils.h"
 
+struct TransparentEntry {
+	GPUInstance instance;
+	AABB aabb; // Need index into worldaabbs for transparent depth sort
+};
+
 // All render data is reset prior to this each frame
 void DrawPreparation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
@@ -13,12 +18,10 @@ void DrawPreparation::buildAndSortIndirectDraws(
 {
 	// Partition visible instances, while remembering their original indices
 	std::vector<GPUInstance> opaqueInstances;
-	std::vector<GPUInstance> transparentInstances;
-	std::vector<uint32_t> transparentVisIdx;
+	std::vector<TransparentEntry> transparentEntries;
 
 	opaqueInstances.reserve(frameCtx.visibleInstances.size());
-	transparentInstances.reserve(frameCtx.visibleInstances.size());
-	transparentVisIdx.reserve(frameCtx.visibleInstances.size());
+	transparentEntries.reserve(frameCtx.visibleInstances.size());
 
 	// === BATCH OPAQUE INSTANCES ===
 	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
@@ -27,21 +30,21 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	for (uint32_t i = 0; i < frameCtx.visibleInstances.size(); ++i) {
 		const auto& inst = frameCtx.visibleInstances[i];
 		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::Opaque) {
+			uint32_t opaqueIndex = static_cast<uint32_t>(opaqueInstances.size());
 			opaqueInstances.push_back(inst);
 			const OpaqueBatchKey key{ inst.meshID, inst.materialID };
-			opaqueBatches[key].push_back(i);
+			opaqueBatches[key].push_back(opaqueIndex);
 		}
 		else {
-			transparentInstances.push_back(inst);
-			transparentVisIdx.push_back(i); // Need index into worldaabbs for transparent depth sort
+			transparentEntries.push_back({ inst, worldAABBs[i] });
 		}
 	}
 
-	frameCtx.indirectDraws.reserve(opaqueBatches.size() + transparentInstances.size());
+	frameCtx.indirectDraws.reserve(opaqueBatches.size() + transparentEntries.size());
 
 	// Rebuild instances in draw order
 	frameCtx.visibleInstances.clear();
-	frameCtx.visibleInstances.reserve(opaqueInstances.size() + transparentInstances.size());
+	frameCtx.visibleInstances.reserve(opaqueInstances.size() + transparentEntries.size());
 
 	// Opaque first
 	frameCtx.opaqueRange.first = 0;
@@ -69,24 +72,19 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	}
 
 	// === SORT AND BUILD TRANSPARENT ===
-	if (!transparentInstances.empty()) {
+	if (!transparentEntries.empty()) {
 		frameCtx.transparentRange.first = frameCtx.opaqueRange.visibleCount;
-		frameCtx.transparentRange.visibleCount = static_cast<uint32_t>(transparentInstances.size());
-
-		// Sort using AABBs aligned with the original visible list
-		std::vector<uint32_t> order(transparentInstances.size());
-		std::iota(order.begin(), order.end(), 0);
+		frameCtx.transparentRange.visibleCount = static_cast<uint32_t>(transparentEntries.size());
 
 		const glm::vec3 camPos = glm::vec3(cameraPos);
-		std::sort(order.begin(), order.end(), [&](uint32_t ia, uint32_t ib) {
-			const auto& aabbA = worldAABBs[transparentVisIdx[ia]];
-			const auto& aabbB = worldAABBs[transparentVisIdx[ib]];
-			return glm::length(aabbA.origin - camPos) > glm::length(aabbB.origin - camPos);
+		std::sort(transparentEntries.begin(), transparentEntries.end(),
+			[&](const TransparentEntry& a, const TransparentEntry& b) {
+				return glm::length(a.aabb.origin - camPos) > glm::length(b.aabb.origin - camPos);
 		});
 
-		for (uint32_t i = 0; i < order.size(); ++i) {
-			const GPUInstance& inst = transparentInstances[order[i]];
-			const GPUMeshData& mesh = meshes[inst.meshID];
+		for (uint32_t i = 0; i < transparentEntries.size(); ++i) {
+			const auto& entry = transparentEntries[i];
+			const GPUMeshData& mesh = meshes[entry.instance.meshID];
 
 			ASSERT(mesh.firstIndex + mesh.indexCount <= frameCtx.drawDataPC.totalIndexCount &&
 				"[DrawPrep] Transparent draws would read past end of index buffer.");
@@ -102,7 +100,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			};
 
 			frameCtx.indirectDraws.push_back(cmd);
-			frameCtx.visibleInstances.push_back(inst);
+			frameCtx.visibleInstances.push_back(entry.instance);
 		}
 	}
 }

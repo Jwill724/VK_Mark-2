@@ -13,9 +13,10 @@ namespace RenderScene {
 
 	inline static std::unordered_map<SceneID, SceneProfileEntry> _sceneProfiles {
 		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Cube, { "Cube", DrawType::DrawMultiDynamic, 50, 0, 0 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawDynamic, 1, 1, 1 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawDynamic, 1, 1, 1 } }
 	};
 

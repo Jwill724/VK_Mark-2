@@ -60,6 +60,7 @@ using GLTFAssetQueue = TypedWorkQueue<std::shared_ptr<GLTFJobContext>>;
 
 namespace AssetManager {
 	bool loadGltf(ThreadContext& threadCtx);
+	std::optional<std::shared_ptr<GLTFJobContext>> loadGltfFiles(std::string_view filePath);
 	void decodeImages(
 		ThreadContext& threadCtx,
 		VmaAllocator allocator,

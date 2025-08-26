@@ -5,6 +5,7 @@
 
 enum class SceneID : uint8_t {
 	Sponza,
+	Bistro,
 	MRSpheres,
 	Cube,
 	DamagedHelmet,
@@ -25,6 +26,7 @@ struct SceneProfileEntry {
 namespace SceneGraph {
 	static const std::unordered_map<SceneID, std::string> SceneNames {
 		{ SceneID::Sponza, "Sponza" },
+		{ SceneID::Bistro, "Bistro" },
 		{ SceneID::MRSpheres, "MRSpheres" },
 		{ SceneID::Cube, "Cube" },
 		{ SceneID::DamagedHelmet, "DamagedHelmet" },
@@ -33,6 +35,7 @@ namespace SceneGraph {
 
 	static const std::unordered_map<std::string, SceneID> SceneIDs {
 		{ "Sponza", SceneID::Sponza },
+		{ "Bistro", SceneID::Bistro },
 		{ "MRSpheres", SceneID::MRSpheres },
 		{ "Cube", SceneID::Cube },
 		{ "DamagedHelmet", SceneID::DamagedHelmet },

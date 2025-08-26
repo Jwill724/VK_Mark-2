@@ -60,8 +60,17 @@ vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint spe
 	return prefiltered * (F0 * brdf.x + brdf.y);
 }
 
+layout(push_constant) uniform DrawPushConstants {
+	uint totalVertexCount;
+	uint totalIndexCount;
+	uint totalMeshCount;
+	uint totalMaterialCount;
+} drawDataPC;
+
 void main()
 {
+	if (inMaterialID >= drawDataPC.totalMaterialCount) return;
+
 	// fetch material
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inMaterialID];
 
@@ -92,23 +101,23 @@ void main()
 
 	// Disney/Frostbite direct lighting
 	rough = SpecularAA(rough, N);
-	vec3 F0 = mix(vec3(0.04), albedo, metal);  // conductor/metallic model
+	vec3 F0 = mix(vec3(0.04), albedo, metal); // conductor/metallic model
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(N, V, L, H, F0, rough);
 
-	// multi-scatter energy compensation for direct spec
 	uint irrIdx  = envMapSet.indices[0].x;
 	uint specIdx = envMapSet.indices[0].y;
 	uint brdfIdx = envMapSet.indices[0].z;
 
+	// multi-scatter energy compensation for direct spec
 	vec2 brdf = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, rough)).rg;
 	spec *= MultiScatterEnergyComp(F0, brdf);
 
 	vec3 direct = (diff + spec) * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL;
 
 	// IBL ambient
-	vec3 F_ibl  = F_SchlickRoughness(F0, NdotV, rough);     // roughness-aware Fresnel for ambient
-	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);            // no diffuse for metals
+	vec3 F_ibl  = F_SchlickRoughness(F0, NdotV, rough); // roughness-aware Fresnel for ambient
+	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);        // no diffuse for metals
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);

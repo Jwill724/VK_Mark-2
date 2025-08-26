@@ -34,11 +34,14 @@ struct DebugToggles {
 	bool enableSettings = false;
 	bool enableStats = true;
 	//bool showNormals = false;
+	//bool showAlbedo = false;
+	//bool showEmissive = false;
+	//bool showAO = false;
 	//bool showSpecular = false;
 	//bool showDiffuse = false;
 	//bool showMetallic = false;
 	//bool showRoughness = false;
-	bool forceWireframe = false;
+	bool showWireframe = false;
 };
 
 class Profiler {

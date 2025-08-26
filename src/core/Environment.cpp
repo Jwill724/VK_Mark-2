@@ -88,29 +88,29 @@ void Environment::dispatchEnvironmentMaps(
 	GPUResources& resources,
 	ImageTableManager& globalImgTable)
 {
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
-	// resources.getGraphicsPool(),
-	// resources.getTempDeletionQueue(),
-	// resources.getTempDeletionQueue(),
-	// resources.getAllocator()
-	// device);
-	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
+	AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
 		resources.getGraphicsPool(),
 		resources.getTempDeletionQueue(),
 		resources.getTempDeletionQueue(),
 		resources.getAllocator(),
 		device);
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
+	//	resources.getGraphicsPool(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getAllocator(),
+	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
 	// resources.getGraphicsPool(),
 	// resources.getTempDeletionQueue(),
 	// resources.getTempDeletionQueue(),
-	// resources.getAllocator()
+	// resources.getAllocator(),
 	// device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/rogland_clear_night_4k.hdr",
 	// resources.getGraphicsPool(),
 	// resources.getTempDeletionQueue(),
 	// resources.getTempDeletionQueue(),
-	// resources.getAllocator()
+	// resources.getAllocator(),
 	// device);
 
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
