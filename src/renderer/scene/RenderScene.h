@@ -16,8 +16,11 @@ namespace RenderScene {
 		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Cube, { "Cube", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } }
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawDynamic, 1, 1, 1 } },
+		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::City, { "City", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1, 1, 1 } },
 	};
 
 	extern std::vector<GlobalInstance> _globalInstances;
@@ -32,7 +35,7 @@ namespace RenderScene {
 	void cleanScene();
 
 	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
-	void updateScene(FrameContext& frameCtx, GPUResources& resources);
+	void updateScene(FrameContext& frameCtx, GPUResources& gpuResources);
 	void renderGeometry(FrameContext& frameCtx, Profiler& profiler);
 	void drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler);
 }

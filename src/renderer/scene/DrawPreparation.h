@@ -22,7 +22,11 @@ struct OpaqueBatchKeyHash {
 };
 
 namespace DrawPreparation {
-	void uploadGPUBuffersForFrame(FrameContext& frameCtx, GPUQueue& transferQueue, const VmaAllocator allocator);
+	void uploadGPUBuffersForFrame(
+		FrameContext& frameCtx,
+		GPUResources& gpuResources,
+		const std::vector<glm::mat4>& transforms,
+		GPUQueue& transferQueue);
 
 	void buildAndSortIndirectDraws(
 		FrameContext& frameCtx,
@@ -35,6 +39,5 @@ namespace DrawPreparation {
 		GPUResources& gpuResources,
 		std::unordered_map<SceneID, SceneProfileEntry>& sceneProfiles,
 		std::vector<GlobalInstance>& globalInstances,
-		std::vector<glm::mat4>& globalTransforms,
-		GPUQueue& transferQueue);
+		std::vector<glm::mat4>& globalTransforms);
 }

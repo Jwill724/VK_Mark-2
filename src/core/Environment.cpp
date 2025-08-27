@@ -94,6 +94,12 @@ void Environment::dispatchEnvironmentMaps(
 		resources.getTempDeletionQueue(),
 		resources.getAllocator(),
 		device);
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_puresky_4k.hdr",
+	//	resources.getGraphicsPool(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getAllocator(),
+	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
 	//	resources.getGraphicsPool(),
 	//	resources.getTempDeletionQueue(),
@@ -101,17 +107,19 @@ void Environment::dispatchEnvironmentMaps(
 	//	resources.getAllocator(),
 	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
-	// resources.getGraphicsPool(),
-	// resources.getTempDeletionQueue(),
-	// resources.getTempDeletionQueue(),
-	// resources.getAllocator(),
-	// device);
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/rogland_clear_night_4k.hdr",
-	// resources.getGraphicsPool(),
-	// resources.getTempDeletionQueue(),
-	// resources.getTempDeletionQueue(),
-	// resources.getAllocator(),
-	// device);
+	//	resources.getGraphicsPool(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getAllocator(),
+	//	device);
+
+	// Diffuse sampling is terrible for this
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/san_giuseppe_bridge_4k.hdr",
+	//	resources.getGraphicsPool(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getAllocator(),
+	//	device);
 
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
 	auto& skyboxSmpl = ResourceManager::getSkyBoxSampler();
@@ -146,7 +154,7 @@ void Environment::dispatchEnvironmentMaps(
 
 	std::vector<SpecularPC> specularPushConstants;
 	for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
-		float roughness = float(mip) / float(specMipLevels - 1);
+		float roughness = static_cast<float>(mip) / static_cast<float>(specMipLevels - 1);
 
 		ImageLUTEntry tempEntrySpecular{};
 		tempEntrySpecular.samplerCubeIndex = skyboxIdx;

@@ -10,6 +10,9 @@ enum class SceneID : uint8_t {
 	Cube,
 	DamagedHelmet,
 	DragonAttenuation,
+	City,
+	Structure,
+	EmissiveTest,
 	Count
 };
 
@@ -31,6 +34,9 @@ namespace SceneGraph {
 		{ SceneID::Cube, "Cube" },
 		{ SceneID::DamagedHelmet, "DamagedHelmet" },
 		{ SceneID::DragonAttenuation, "Dragon" },
+		{ SceneID::City, "City" },
+		{ SceneID::Structure, "Structure" },
+		{ SceneID::EmissiveTest, "EmissiveTest" }
 	};
 
 	static const std::unordered_map<std::string, SceneID> SceneIDs {
@@ -40,6 +46,9 @@ namespace SceneGraph {
 		{ "Cube", SceneID::Cube },
 		{ "DamagedHelmet", SceneID::DamagedHelmet },
 		{ "Dragon", SceneID::DragonAttenuation },
+		{ "City", SceneID::City },
+		{ "Structure", SceneID::Structure },
+		{ "EmissiveTest", SceneID::EmissiveTest }
 	};
 
 	// ====== Scene Graph Node Base ======

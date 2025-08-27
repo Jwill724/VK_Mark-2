@@ -66,7 +66,7 @@ void RenderScene::updateCamera() {
 
 // Draw preparation work
 // Temporary, need a place to center ideas
-void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
+void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources) {
 	// === Update and draw scene ===
 
 	updateCamera();
@@ -85,22 +85,19 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 		//copyFrustumToFrame(frameCtx.cullingPCData);
 	}
 
-	const auto allocator = resources.getAllocator();
-	allocateSceneBuffer(frameCtx, allocator);
+	allocateSceneBuffer(frameCtx, gpuResources.getAllocator());
 
 	// No scene loaded in
 	if (_loadedScenes.empty()) return;
 
-	auto& tQueue = Backend::getTransferQueue();
-	auto& meshes = resources.getResgisteredMeshes().meshData;
+	auto& meshes = gpuResources.getResgisteredMeshes().meshData;
 
 	DrawPreparation::syncGlobalInstancesAndTransforms(
 		frameCtx,
-		resources,
+		gpuResources,
 		_sceneProfiles,
 		_globalInstances,
-		_globalTransforms,
-		tQueue);
+		_globalTransforms);
 
 	frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
 		_visState,
@@ -123,10 +120,9 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& resources) {
 
 	if (!frameCtx.visibleInstances.empty()) {
 		frameCtx.visibleCount = static_cast<uint32_t>(frameCtx.visibleInstances.size());
-
 		DrawPreparation::buildAndSortIndirectDraws(frameCtx, meshes, _visibleWorldAABBs, _sceneData.cameraPosition);
 
-		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, tQueue, allocator);
+		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, gpuResources, _globalTransforms, Backend::getTransferQueue());
 	}
 }
 

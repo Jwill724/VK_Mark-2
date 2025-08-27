@@ -54,6 +54,24 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
 	//queue->push(spheresFile.value());
 
+	//std::string cityPath{ "res/assets/city/town4new.glb" };
+	//auto cityFile = loadGltfFiles(cityPath);
+	//ASSERT(cityFile.has_value());
+	//cityFile.value()->scene->sceneName = SceneNames.at(SceneID::City);
+	//queue->push(cityFile.value());
+
+	//std::string structurePath{ "res/assets/structure.glb" };
+	//auto structureFile = loadGltfFiles(structurePath);
+	//ASSERT(structureFile.has_value());
+	//structureFile.value()->scene->sceneName = SceneNames.at(SceneID::Structure);
+	//queue->push(structureFile.value());
+
+	//std::string emissPath{ "res/assets/EmissiveStrengthTest.glb" };
+	//auto emissFile = loadGltfFiles(emissPath);
+	//ASSERT(emissFile.has_value());
+	//emissFile.value()->scene->sceneName = SceneNames.at(SceneID::EmissiveTest);
+	//queue->push(emissFile.value());
+
 	if (!queue->empty()) {
 		return true;
 	}

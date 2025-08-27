@@ -76,7 +76,9 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 		VK_NULL_HANDLE,
 		&imageIndex);
 
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
+	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR ||
+		frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR)
+	{
 		Backend::getGraphicsQueue().waitIdle();
 		Backend::resizeSwapchain();
 		return;
@@ -201,19 +203,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		frameCtx.set
 	};
 
-	VkCommandBufferBeginInfo cmdBeginInfo{};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	const auto& globalAddrsTableBuf = Engine::getState().getGPUResources().getAddressTableBuffer();
 
-	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
-
-	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
 	if (frameCtx.transformsBufferUploadNeeded) {
-		const auto& globalAddrsTableBuf = Engine::getState().getGPUResources().getAddressTableBuffer();
-
-		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, globalAddrsTableBuf);
-		frameCtx.transformsBufferUploadNeeded = false;
-
 		// Update the global set for transforms
 		frameCtx.descriptorWriter.clear();
 		frameCtx.descriptorWriter.writeBuffer(
@@ -227,11 +219,23 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		frameCtx.descriptorWriter.updateSet(device, unifiedSet);
 	}
 
+	frameCtx.writeFrameDescriptors(device);
+
+	VkCommandBufferBeginInfo cmdBeginInfo{};
+	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
+
+	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
+	if (frameCtx.transformsBufferUploadNeeded) {
+		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, globalAddrsTableBuf);
+		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
+	}
+
 	if (frameCtx.visibleCount > 0) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
 	}
-
-	frameCtx.writeFrameDescriptors(device);
 
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);

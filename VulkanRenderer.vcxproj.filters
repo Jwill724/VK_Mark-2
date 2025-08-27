@@ -15,7 +15,6 @@
     <Filter Include="src\renderer\gpu" />
     <Filter Include="src\renderer\frame" />
     <Filter Include="src\renderer\graph" />
-    <Filter Include="src\renderer\passes" />
     <Filter Include="src\renderer\scene" />
     <!-- core (assets/resources) -->
     <Filter Include="src\core" />

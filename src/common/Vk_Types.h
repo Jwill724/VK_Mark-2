@@ -132,6 +132,7 @@ enum class MaterialPass : uint32_t {
 	Transparent
 };
 
+// Instance drawing counts and transforms
 enum class DrawType : uint32_t {
 	DrawStatic,      // single baked instance
 	DrawMultiStatic, // many baked instances

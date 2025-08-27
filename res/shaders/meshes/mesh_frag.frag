@@ -74,11 +74,11 @@ void main()
 	// fetch material
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inMaterialID];
 
-	vec4  base   = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
-	float ao     = texture(combinedSamplers[nonuniformEXT(mat.aoID)],     inUV).r * mat.ambientOcclusion;
-	float rough  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).g * mat.metalRoughFactors.y;
-	float metal  = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).b * mat.metalRoughFactors.x;
-	vec3  emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
+	vec4 base   = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
+	float ao    = texture(combinedSamplers[nonuniformEXT(mat.aoID)],     inUV).r * mat.ambientOcclusion;
+	float rough = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).g * mat.metalRoughFactors.y;
+	float metal = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).b * mat.metalRoughFactors.x;
+	vec3 emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
 
 	if (base.a < mat.alphaCutoff) discard;
 
