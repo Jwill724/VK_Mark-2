@@ -61,7 +61,10 @@ public:
 	bool rendererWasStalled{ false };
 
 	void startTimer();
-	float endTimer() const;
+	float endTimerMS() const;
+	inline float endTimerSec() const {
+		return endTimerMS() / 1000.0f;
+	}
 
 	bool assetsLoaded{ false };
 

@@ -108,9 +108,9 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::Text("Camera: %.2f %.2f %.2f",
 				camera._position.x, camera._position.y, camera._position.z);
 			ImGui::Text("FPS: %.1f", stats.fps.load());
-			ImGui::Text("Frame: %f ms", stats.frameTime.load());
-			ImGui::Text("Draw:  %f ms", stats.drawTime.load());
-			ImGui::Text("Update:%f ms", stats.sceneUpdateTime.load());
+			ImGui::Text("Frame: %.3f ms", stats.frameTime.load());
+			ImGui::Text("Draw:  %.3f ms", stats.drawTime.load());
+			ImGui::Text("Scene: %.3f ms", stats.sceneUpdateTime.load());
 			ImGui::Text("Triangles: %llu",
 				(unsigned long long)stats.triangleCount.load());
 			ImGui::Text("VRAM: %llu MB",
@@ -119,7 +119,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::Separator();
 			ImGui::TextUnformatted("Draws");
 
-			// only API call counts ===
+			// only API call counts
 			const uint32_t indirectCmdsTotal =
 				stats.opaqueIndirect.commands.load() +
 				stats.transparentIndirect.commands.load();
@@ -127,7 +127,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::BeginTable("DrawPathsTop", 2,
 				ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg))
 			{
-				ImGui::TableSetupColumn("Api Calls");
+				ImGui::TableSetupColumn("API Calls");
 				ImGui::TableSetupColumn("Commands");
 				ImGui::TableHeadersRow();
 

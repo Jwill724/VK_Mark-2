@@ -88,24 +88,24 @@ void Environment::dispatchEnvironmentMaps(
 	GPUResources& resources,
 	ImageTableManager& globalImgTable)
 {
-	AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
-		resources.getGraphicsPool(),
-		resources.getTempDeletionQueue(),
-		resources.getTempDeletionQueue(),
-		resources.getAllocator(),
-		device);
+	//AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
+	//	resources.getGraphicsPool(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDeletionQueue(),
+	//	resources.getAllocator(),
+	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_puresky_4k.hdr",
 	//	resources.getGraphicsPool(),
 	//	resources.getTempDeletionQueue(),
 	//	resources.getTempDeletionQueue(),
 	//	resources.getAllocator(),
 	//	device);
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
-	//	resources.getGraphicsPool(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getAllocator(),
-	//	device);
+	AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
+		resources.getGraphicsPool(),
+		resources.getTempDeletionQueue(),
+		resources.getTempDeletionQueue(),
+		resources.getAllocator(),
+		device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
 	//	resources.getGraphicsPool(),
 	//	resources.getTempDeletionQueue(),

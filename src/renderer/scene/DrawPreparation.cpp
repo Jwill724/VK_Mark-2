@@ -265,15 +265,6 @@ static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing
 	return glm::translate(glm::mat4(1.0f), translation);
 }
 
-static glm::mat4 backAndForthX(float step = 0.03f, float minX = -2.0f, float maxX = 2.0f) {
-	static float x = 0.0f;
-	static float dir = 1.0f;
-	x += dir * step;
-	if (x >= maxX) { x = maxX; dir = -1.0f; }
-	if (x <= minX) { x = minX; dir = 1.0f; }
-	return glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.0f, 0.0f));
-}
-
 void DrawPreparation::syncGlobalInstancesAndTransforms(
 	FrameContext& frameCtx,
 	GPUResources& gpuResources,
@@ -295,8 +286,14 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			if (profile.drawType == DrawType::DrawDynamic) {
 				inst.drawType = profile.drawType;
 				glm::mat4& M = globalTransforms[inst.firstTransform];
-				M = glm::rotate(glm::mat4(1.0f), 0.005f, glm::vec3(0.0f, 1.0f, 0.0f)) * M;
-				//M = backAndForthX(0.03f, -1.5f, 1.5f) * M;
+
+				// Spin in place around local pivot
+				glm::vec3 pivot = glm::vec3(M[3]); // Extract world space position
+				glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot);
+				glm::mat4 R = glm::rotate(glm::mat4(1.0f), 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
+				glm::mat4 T_inv = glm::translate(glm::mat4(1.0f), -pivot);
+
+				M = T * R * T_inv * M;
 
 				anyTransformChanged = true;
 				continue;

@@ -39,7 +39,7 @@ void RenderScene::setScene() {
 	_mainCamera._yaw = -90.0f;
 
 	_sceneData.ambientColor = glm::vec4(0.03f, 0.03f, 0.03f, 1.0f);
-	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f);
+	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 1.0f);
 	_sceneData.sunlightDirection = glm::normalize(glm::vec4(1.0f, 1.0f, -0.787f, 0.0f));
 }
 

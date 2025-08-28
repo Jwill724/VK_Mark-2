@@ -105,11 +105,13 @@ void Profiler::startTimer() {
 	QueryPerformanceCounter(&_startTimer);
 }
 
-float Profiler::endTimer() const {
+float Profiler::endTimerMS() const {
 	LARGE_INTEGER now;
 	QueryPerformanceCounter(&now);
 	auto elapsedTicks = now.QuadPart - _startTimer.QuadPart;
-	return static_cast<float>(elapsedTicks) / static_cast<float>(_qpcFreq.QuadPart);
+
+	// convert to milliseconds
+	return (static_cast<float>(elapsedTicks) * 1000.0f) / static_cast<float>(_qpcFreq.QuadPart);
 }
 
 VkDeviceSize Profiler::GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator) {

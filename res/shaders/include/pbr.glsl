@@ -36,7 +36,8 @@ float FRESNEL_POWER_UNREAL(vec3 V, vec3 H) {
 }
 vec3 F_SCHLICK(vec3 V, vec3 H, vec3 F0)
 {
-	return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
+	//return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
+	return F0 + (1.0 - F0) * pow(1.0 - saturate(dot(V,H)), 5.0);
 }
 
 // Disney/Burley diffuse (what frostbite uses)

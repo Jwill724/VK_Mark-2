@@ -22,6 +22,10 @@ void SceneGraph::buildSceneGraph(
 	uint32_t instanceCounter = 0;
 	uint32_t firstTransform = 0;
 
+	int gridCols = 4;       // how many models per row
+	float spacingX = 50.0f; // horizontal spacing
+	float spacingZ = 50.0f; // depth spacing
+
 	for (auto& context : gltfJobs) {
 		if (!context->isComplete()) continue;
 
@@ -82,7 +86,6 @@ void SceneGraph::buildSceneGraph(
 		// === Assign global instances ===
 		GlobalInstance gblInst{};
 		gblInst.sceneID = static_cast<uint8_t>(sceneID);
-		gblInst.instanceID = instanceCounter++;
 
 		const auto& bakedInstances = modelAsset.runtime.bakedInstances;
 		const auto& bakedNodeIDs = modelAsset.runtime.bakedNodeIDs;
@@ -114,14 +117,26 @@ void SceneGraph::buildSceneGraph(
 		gblInst.perInstanceStride = static_cast<uint32_t>(bakedInstances.size());
 		gblInst.transformCount = static_cast<uint32_t>(modelAsset.runtime.uniqueNodeIDs.size());
 
+		int row = instanceCounter / gridCols;
+		int col = instanceCounter % gridCols;
+
+		gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
+
 		// === Push unique transforms into the global list ===
 		gblInst.firstTransform = firstTransform;
 		for (uint32_t i = 0; i < gblInst.transformCount; ++i) {
 			const uint32_t nodeIdx = modelAsset.runtime.uniqueNodeIDs[i];
-			globalTransforms.push_back(nodes[nodeIdx]->worldTransform);
+			glm::mat4 world = nodes[nodeIdx]->worldTransform;
+
+			// Shift model into its own grid cell
+			world = glm::translate(glm::mat4(1.0f), gblInst.modelOffset) * world;
+			globalTransforms.push_back(world);
 		}
 		firstTransform += gblInst.transformCount;
 
+		gblInst.instanceID = instanceCounter++;
+
+		fmt::println("Instance {}: {} transforms, firstTransform={}", gblInst.instanceID, gblInst.transformCount, gblInst.firstTransform);
 		globalInstances.push_back(gblInst);
 
 		JobSystem::log(threadCtx.threadID,

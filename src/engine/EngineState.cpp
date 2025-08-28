@@ -211,7 +211,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		tempQueue.flush();
 
 		// Asset loading done
-		auto elapsed = engineProfiler.endTimer();
+		auto elapsed = engineProfiler.endTimerSec();
 		fmt::print("Asset loading completed in {:.3f} seconds.\n\n", elapsed);
 	}
 	else {
@@ -363,12 +363,12 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 
 	engineProfiler.startTimer();
 	RenderScene::updateScene(frame, _resources);
-	auto elapsed = engineProfiler.endTimer();
+	auto elapsed = engineProfiler.endTimerMS();
 	engineProfiler.getStats().sceneUpdateTime = elapsed;
 
 	engineProfiler.startTimer();
 	Renderer::recordRenderCommand(frame, engineProfiler);
-	elapsed = engineProfiler.endTimer();
+	elapsed = engineProfiler.endTimerMS();
 	engineProfiler.getStats().drawTime = elapsed;
 
 	Renderer::submitFrame(frame);

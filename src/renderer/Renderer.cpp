@@ -205,7 +205,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	const auto& globalAddrsTableBuf = Engine::getState().getGPUResources().getAddressTableBuffer();
 
-	if (frameCtx.transformsBufferUploadNeeded) {
+	if (frameCtx.transformsBufferUploadNeeded && frameCtx.visibleCount > 0) {
 		// Update the global set for transforms
 		frameCtx.descriptorWriter.clear();
 		frameCtx.descriptorWriter.writeBuffer(
@@ -228,7 +228,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
-	if (frameCtx.transformsBufferUploadNeeded) {
+	if (frameCtx.transformsBufferUploadNeeded && frameCtx.visibleCount > 0) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, globalAddrsTableBuf);
 		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
 	}

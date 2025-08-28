@@ -16,17 +16,17 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 
 	using namespace SceneGraph;
 
-	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	//ASSERT(damagedHelmetFile.has_value());
-	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	//queue->push(damagedHelmetFile.value());
+	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	ASSERT(damagedHelmetFile.has_value());
+	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	queue->push(damagedHelmetFile.value());
 
-	std::string sponza1Path{ "res/assets/sponza.glb" };
-	auto sponza1File = loadGltfFiles(sponza1Path);
-	ASSERT(sponza1File.has_value());
-	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	queue->push(sponza1File.value());
+	std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
+	auto spheresFile = loadGltfFiles(spheresPath);
+	ASSERT(spheresFile.has_value());
+	spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
+	queue->push(spheresFile.value());
 
 	// TODO: Use a script to download assets
 	// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
@@ -36,23 +36,23 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
 	//queue->push(bistroFile.value());
 
-	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
-	//auto dragonFile = loadGltfFiles(dragonPath);
-	//ASSERT(dragonFile.has_value());
-	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
-	//queue->push(dragonFile.value());
+	std::string cubePath{ "res/assets/Duck.glb" };
+	auto cubeFile = loadGltfFiles(cubePath);
+	ASSERT(cubeFile.has_value());
+	cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	queue->push(cubeFile.value());
 
-	//std::string cubePath{ "res/assets/basic_cube/Cube.gltf" };
-	//auto cubeFile = loadGltfFiles(cubePath);
-	//ASSERT(cubeFile.has_value());
-	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Cube);
-	//queue->push(cubeFile.value());
+	std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
+	auto dragonFile = loadGltfFiles(dragonPath);
+	ASSERT(dragonFile.has_value());
+	dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
+	queue->push(dragonFile.value());
 
-	//std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
-	//auto spheresFile = loadGltfFiles(spheresPath);
-	//ASSERT(spheresFile.has_value());
-	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
-	//queue->push(spheresFile.value());
+	std::string sponza1Path{ "res/assets/sponza.glb" };
+	auto sponza1File = loadGltfFiles(sponza1Path);
+	ASSERT(sponza1File.has_value());
+	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	queue->push(sponza1File.value());
 
 	//std::string cityPath{ "res/assets/city/town4new.glb" };
 	//auto cityFile = loadGltfFiles(cityPath);
