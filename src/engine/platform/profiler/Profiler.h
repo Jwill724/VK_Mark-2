@@ -8,9 +8,14 @@
 #include <windows.h>
 #endif
 
+struct IndirectStats {
+	std::atomic<uint32_t> commands{ 0 };
+	std::atomic<uint32_t> subdraws{ 0 };
+};
+
+
 struct FrameStats {
-	std::atomic<uint32_t> drawCalls = 0;
-	std::atomic<uint32_t> triangleCount = 0;
+	std::atomic<uint64_t> triangleCount = 0;
 	std::atomic<float> deltaTime = 0.0f;
 	std::atomic<float> frameTime = 0.0f;
 	std::atomic<float> fps = 0.0f;
@@ -23,6 +28,10 @@ struct FrameStats {
 	// frame capping is fucking busted
 	bool capFramerate = false;
 	float targetFrameRate = 0.0f;
+
+	std::atomic<uint32_t> directDraws{ 0 };
+	IndirectStats opaqueIndirect;
+	IndirectStats transparentIndirect;
 };
 struct PipelineOverride {
 	bool enabled = false;
@@ -59,12 +68,29 @@ public:
 	FrameStats& getStats() { return _stats; }
 
 	void resetDrawCalls() {
-		_stats.drawCalls.store(0);
 		_stats.triangleCount.store(0);
+		_stats.directDraws.store(0);
+		_stats.opaqueIndirect.commands.store(0);
+		_stats.opaqueIndirect.subdraws.store(0);
+		_stats.transparentIndirect.commands.store(0);
+		_stats.transparentIndirect.subdraws.store(0);
 	}
 
-	void addDrawCall(uint32_t tris) {
-		_stats.drawCalls++;
+	inline void addDirect(uint32_t calls, uint64_t tris = 0) {
+		_stats.directDraws += calls;
+		_stats.triangleCount += tris;
+	}
+
+	// Support both material pass views
+
+	inline void addOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t tris = 0) {
+		_stats.opaqueIndirect.commands += commands;
+		_stats.opaqueIndirect.subdraws += subdraws;
+		_stats.triangleCount += tris;
+	}
+	inline void addTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t tris = 0) {
+		_stats.transparentIndirect.commands += commands;
+		_stats.transparentIndirect.subdraws += subdraws;
 		_stats.triangleCount += tris;
 	}
 
@@ -100,3 +126,45 @@ private:
 	double _lastDeltaTime = 0.0;
 	LARGE_INTEGER _startTimer{};
 };
+
+inline uint64_t trianglesFromNonIndexed(VkPrimitiveTopology topo, uint64_t vertexCount) {
+	switch (topo) {
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:  return vertexCount / 3u;
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP: return vertexCount >= 3 ? (vertexCount - 2u) : 0u;
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:   return vertexCount >= 3 ? (vertexCount - 2u) : 0u;
+	default:                                   return 0u; // points/lines/patches -> no triangles
+	}
+}
+
+inline uint64_t trianglesFromIndexed(VkPrimitiveTopology topo,
+	uint32_t indexCount,
+	uint32_t instanceCount)
+{
+	uint64_t base = 0;
+	switch (topo) {
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+		static_cast<uint64_t>(base = indexCount / 3u);
+		break;
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+		base = static_cast<uint64_t>(indexCount >= 3u) ? static_cast<uint64_t>(indexCount - 2u) : 0u; break;
+	default:
+		return 0; // points/lines/patches -> no triangles
+	}
+	return base * static_cast<uint64_t>(instanceCount);
+}
+
+
+inline uint64_t sumTrianglesIndirectRange(const std::vector<VkDrawIndexedIndirectCommand>& cmds,
+	uint32_t first,
+	uint32_t count,
+	VkPrimitiveTopology topo)
+{
+	uint64_t total = 0;
+	const size_t base = first;
+	for (uint32_t i = 0; i < count; ++i) {
+		const auto& d = cmds[base + i];
+		total += trianglesFromIndexed(topo, d.indexCount, d.instanceCount);
+	}
+	return total;
+}

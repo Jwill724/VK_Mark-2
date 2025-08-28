@@ -95,19 +95,78 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 
 	if (debug.enableStats) {
 		const auto camera = RenderScene::getCamera();
-		ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-		//	ImGui::SetNextWindowBgAlpha(1.0f);
-		ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize);
-		ImGui::Text("Camera Pos: %.2f %.2f %.2f", camera._position.x, camera._position.y, camera._position.z);
-		ImGui::Text("FPS: %.1f", stats.fps.load());
-		ImGui::Text("Frame Time: %f ms", stats.frameTime.load());
-		ImGui::Text("Draw Time: %f ms", stats.drawTime.load());
-		ImGui::Text("Scene Update Time: %f ms", stats.sceneUpdateTime.load());
-		ImGui::Text("Triangles: %i", stats.triangleCount.load());
-		ImGui::Text("Draws: %i", stats.drawCalls.load());
-		ImGui::Text("VRAM Used: %llu MB", stats.vramUsed.load() / (1024ull * 1024ull));
-		ImGui::End();
+		ImGui::SetNextWindowPos(
+			ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f),
+			ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+
+		if (ImGui::Begin("Stats", nullptr,
+			ImGuiWindowFlags_NoMove |
+			ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			// Top-line metrics
+			ImGui::Text("Camera: %.2f %.2f %.2f",
+				camera._position.x, camera._position.y, camera._position.z);
+			ImGui::Text("FPS: %.1f", stats.fps.load());
+			ImGui::Text("Frame: %f ms", stats.frameTime.load());
+			ImGui::Text("Draw:  %f ms", stats.drawTime.load());
+			ImGui::Text("Update:%f ms", stats.sceneUpdateTime.load());
+			ImGui::Text("Triangles: %llu",
+				(unsigned long long)stats.triangleCount.load());
+			ImGui::Text("VRAM: %llu MB",
+				(unsigned long long)(stats.vramUsed.load() / (1024ull * 1024ull)));
+
+			ImGui::Separator();
+			ImGui::TextUnformatted("Draws");
+
+			// only API call counts ===
+			const uint32_t indirectCmdsTotal =
+				stats.opaqueIndirect.commands.load() +
+				stats.transparentIndirect.commands.load();
+
+			if (ImGui::BeginTable("DrawPathsTop", 2,
+				ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg))
+			{
+				ImGui::TableSetupColumn("Api Calls");
+				ImGui::TableSetupColumn("Commands");
+				ImGui::TableHeadersRow();
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("vkCmdDraw");
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.directDraws.load());
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("vkCmdDrawIndirect");
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", indirectCmdsTotal);
+
+				ImGui::EndTable();
+			}
+
+			if (ImGui::BeginTable("IndirectBreakdown", 3,
+				ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg))
+			{
+				ImGui::TableSetupColumn("Pass");
+				ImGui::TableSetupColumn("Commands");
+				ImGui::TableSetupColumn("Subdraws");
+				ImGui::TableHeadersRow();
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Opaque");
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.opaqueIndirect.commands.load());
+				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.opaqueIndirect.subdraws.load());
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Transparent");
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.transparentIndirect.commands.load());
+				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.transparentIndirect.subdraws.load());
+
+				ImGui::EndTable();
+			}
+
+			ImGui::End();
+		}
 	}
+
 
 	if (debug.enableSettings) {
 		ImGui::SetNextWindowPos(ImVec2(10.f, 10.f), ImGuiCond_Always);

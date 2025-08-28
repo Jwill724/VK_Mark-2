@@ -362,7 +362,7 @@ void Renderer::toneMapPass(FrameContext& frame, ColorData& toneMappingData) {
 	vkCmdBindPipeline(
 		frame.commandBuffer,
 		VK_PIPELINE_BIND_POINT_COMPUTE,
-		Pipelines::getPipelineByID(PipelineID::ToneMap));
+		Pipelines::getPipeline(PipelineID::ToneMap));
 
 	vkCmdPushConstants(frame.commandBuffer,
 		Pipelines::_globalLayout.layout,

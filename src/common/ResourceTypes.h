@@ -256,6 +256,7 @@ struct PipelineHandle {
 	PipelineCategory type;
 	std::string name;
 	bool swappable = false;
+	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 };
 
 struct PipelinePresent {

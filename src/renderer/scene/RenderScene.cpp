@@ -153,7 +153,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 		vkCmdBindPipeline(
 			frameCtx.commandBuffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			Pipelines::getPipelineByID(PipelineID::Skybox));
+			Pipelines::getPipeline(PipelineID::Skybox));
 
 		glm::mat4 view = glm::mat4(glm::mat3(_sceneData.view)); // strip translation
 
@@ -170,14 +170,16 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 			&invVp);
 
 		vkCmdDraw(frameCtx.commandBuffer, 3, 1, 0, 0);
-		profiler.addDrawCall(1);
+
+		// Literally one triangle
+		profiler.addDirect(1, 1);
 	}
 
 	if (frameCtx.visibleCount == 0) return;
 
 	auto& resources = Engine::getState().getGPUResources();
 
-	drawIndirectCommands(frameCtx, resources, profiler);
+	drawIndirectCommands(frameCtx, resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer, profiler);
 
 	// === VISIBLE OBB FOR OBJECTS ===
 	{
@@ -218,7 +220,7 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 			vkCmdBindPipeline(
 				frameCtx.commandBuffer,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				Pipelines::getPipelineByID(PipelineID::BoundingBox));
+				Pipelines::getPipeline(PipelineID::BoundingBox));
 
 			const VkDeviceSize vtxOffset = 0;
 			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
@@ -240,32 +242,34 @@ void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
 			);
 
 			const uint32_t vertsPerAABB = 24;
+
+			const auto obbTopo = Pipelines::getTopology(PipelineID::BoundingBox);
+			const uint64_t trisPerDraw = trianglesFromNonIndexed(obbTopo, static_cast<uint64_t>(vertsPerAABB));
+
 			for (uint32_t i = 0; i < drawOffsets.size(); ++i) {
 				uint32_t vertexOffset = drawOffsets[i];
 				vkCmdDraw(frameCtx.commandBuffer, vertsPerAABB, 1, vertexOffset, 0);
-				profiler.addDrawCall(1);
+				profiler.addDirect(1, trisPerDraw);
 			}
 		}
 	}
 }
 
 // Draw counts are misleading, these would actually be sub-draws. It would be 1 indirect draw per pass, once per frame.
-void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& resources, Profiler& profiler) {
+void RenderScene::drawIndirectCommands(FrameContext& frameCtx, const VkBuffer& indexBuffer, Profiler& profiler) {
 	auto pLayout = Pipelines::_globalLayout;
 
-	const auto& idxBuffer = resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
-
 	// All pipelines use the same layout
-	VkPipeline pipeline{};
+	PipelineHandle pipeline{};
 	if (!profiler.pipeOverride.enabled)
-		pipeline = Pipelines::getPipelineByID(PipelineID::Opaque); // default pipeline
+		pipeline = Pipelines::getHandle(PipelineID::Opaque); // default pipeline
 	else
-		pipeline = Pipelines::getPipelineByID(profiler.pipeOverride.selectedID);
+		pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
 
 	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
 
-	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	vkCmdBindIndexBuffer(frameCtx.commandBuffer, idxBuffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
+	vkCmdBindIndexBuffer(frameCtx.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 	if (frameCtx.opaqueRange.visibleCount > 0) {
 		vkCmdPushConstants(frameCtx.commandBuffer,
@@ -282,19 +286,24 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			drawCmdSize
 		);
 
-		for (uint32_t i = 0; i < frameCtx.opaqueRange.visibleCount; ++i) {
-			const auto& draw = frameCtx.indirectDraws[static_cast<size_t>(frameCtx.opaqueRange.first + i)];
-			uint32_t triangleCount = (draw.indexCount * draw.instanceCount) / 3;
-			profiler.addDrawCall(triangleCount);
-		}
+		const uint64_t trisOpaque = sumTrianglesIndirectRange(
+			frameCtx.indirectDraws,
+			frameCtx.opaqueRange.first,
+			frameCtx.opaqueRange.visibleCount,
+			pipeline.topology);
+
+		profiler.addOpaqueIndirect(/*commands*/1,
+			/*sub-draws*/frameCtx.opaqueRange.visibleCount,
+			/*triangles*/trisOpaque);
 	}
 
 	if (frameCtx.transparentRange.visibleCount > 0) {
+		const PipelineHandle& transparent = Pipelines::getHandle(PipelineID::Transparent);
 		if (!profiler.pipeOverride.enabled) {
 			vkCmdBindPipeline(
 				frameCtx.commandBuffer,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				Pipelines::getPipelineByID(PipelineID::Transparent));
+				transparent.pipeline);
 		}
 
 		vkCmdPushConstants(frameCtx.commandBuffer,
@@ -311,14 +320,15 @@ void RenderScene::drawIndirectCommands(FrameContext& frameCtx, GPUResources& res
 			drawCmdSize
 		);
 
-		const auto& meshes = resources.getResgisteredMeshes().meshData;
+		const uint64_t trisTransparent = sumTrianglesIndirectRange(
+			frameCtx.indirectDraws,
+			frameCtx.transparentRange.first,
+			frameCtx.transparentRange.visibleCount,
+			transparent.topology);
 
-		for (uint32_t i = 0; i < frameCtx.transparentRange.visibleCount; ++i) {
-			const uint32_t meshID = frameCtx.visibleInstances[static_cast<size_t>(frameCtx.transparentRange.first + i)].meshID;
-			const auto& mesh = meshes[meshID];
-			uint32_t triangleCount = mesh.indexCount / 3;
-			profiler.addDrawCall(triangleCount);
-		}
+		profiler.addTransparentIndirect(/*commands*/1,
+			/*sub-draws*/frameCtx.transparentRange.visibleCount,
+			/*triangles*/trisTransparent);
 	}
 }
 

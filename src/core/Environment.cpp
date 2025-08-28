@@ -235,7 +235,7 @@ void Environment::dispatchEnvironmentMaps(
 		dispatchHDRToCubemap(
 			cmd,
 			tempEntryEquirect,
-			Pipelines::getPipelineByID(PipelineID::HDRToCubemap),
+			Pipelines::getPipeline(PipelineID::HDRToCubemap),
 			Pipelines::_globalLayout);
 		ImageUtils::transitionImage(cmd,
 			skyboxImg.image,
@@ -250,7 +250,7 @@ void Environment::dispatchEnvironmentMaps(
 		dispatchDiffuseIrradiance(
 			cmd,
 			tempEntryDiffuse,
-			Pipelines::getPipelineByID(PipelineID::DiffuseIrradiance),
+			Pipelines::getPipeline(PipelineID::DiffuseIrradiance),
 			Pipelines::_globalLayout);
 		ImageUtils::transitionImage(cmd,
 			diffuseImg.image,
@@ -263,7 +263,7 @@ void Environment::dispatchEnvironmentMaps(
 		dispatchPrefilterEnvmap(
 			cmd,
 			specularPushConstants,
-			Pipelines::getPipelineByID(PipelineID::SpecularPrefilter),
+			Pipelines::getPipeline(PipelineID::SpecularPrefilter),
 			Pipelines::_globalLayout);
 		ImageUtils::transitionImage(cmd,
 			specImg.image,
@@ -276,7 +276,7 @@ void Environment::dispatchEnvironmentMaps(
 		dispatchBRDFLUT(
 			cmd,
 			tempEntryBRDF,
-			Pipelines::getPipelineByID(PipelineID::BRDFLUT),
+			Pipelines::getPipeline(PipelineID::BRDFLUT),
 			Pipelines::_globalLayout);
 		ImageUtils::transitionImage(cmd,
 			brdfImg.image,

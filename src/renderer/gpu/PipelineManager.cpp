@@ -154,6 +154,9 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	auto createPipeline = [&](PipelineID id, PipelineCategory type, std::string name, bool swappable = false) {
 		PipelinePresent& present = PipelinePresents::getPipelinePresentByID(id);
+
+		PipelineHandle& pipeHdl = Pipelines::getHandle(id);
+
 		if (type == PipelineCategory::Raster) {
 			builder.initializePipelineSTypes();
 			// can overwrite the format if wanted
@@ -162,8 +165,11 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 				present.depthFormat = builder.depthFormat;
 			}
 			setupPipelineConfig(builder, present, MSAA_ENABLED);
+
+			// Only raster pipelines will get topology info
+			pipeHdl.topology = present.topology;
 		}
-		PipelineHandle& pipeHdl = Pipelines::getPipelineHandleByID(id);
+
 		pipeHdl.name = name;
 		pipeHdl.type = type;
 		pipeHdl.swappable = swappable;
@@ -217,7 +223,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
 		queue.push_function([=] {
-			VkPipeline pipeline = Pipelines::getPipelineByID(static_cast<PipelineID>(i));
+			VkPipeline pipeline = Pipelines::getPipeline(static_cast<PipelineID>(i));
 			vkDestroyPipeline(device, pipeline, nullptr);
 		});
 	}

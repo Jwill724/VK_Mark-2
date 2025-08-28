@@ -23,11 +23,14 @@ namespace Pipelines {
 
 	inline std::array<PipelineHandle, static_cast<size_t>(PipelineID::Count)> _pipelineHandles;
 
-	inline VkPipeline getPipelineByID(PipelineID id) {
+	inline VkPipeline getPipeline(PipelineID id) {
 		return _pipelineHandles[static_cast<size_t>(id)].pipeline;
 	}
-	inline PipelineHandle& getPipelineHandleByID(PipelineID id) {
+	inline PipelineHandle& getHandle(PipelineID id) {
 		return _pipelineHandles[static_cast<size_t>(id)];
+	}
+	inline VkPrimitiveTopology getTopology(PipelineID id) {
+		return _pipelineHandles[static_cast<size_t>(id)].topology;
 	}
 
 	inline std::vector<std::pair<PipelineID, PipelineHandle&>> getSwappablePipelines() {
