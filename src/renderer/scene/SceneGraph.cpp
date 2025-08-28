@@ -135,8 +135,6 @@ void SceneGraph::buildSceneGraph(
 		firstTransform += gblInst.transformCount;
 
 		gblInst.instanceID = instanceCounter++;
-
-		fmt::println("Instance {}: {} transforms, firstTransform={}", gblInst.instanceID, gblInst.transformCount, gblInst.firstTransform);
 		globalInstances.push_back(gblInst);
 
 		JobSystem::log(threadCtx.threadID,
