@@ -3,17 +3,30 @@
 #include "renderer/gpu/PipelineBuilder.h"
 
 enum class PipelineID : uint8_t {
+	// === Base (graphics) ===
 	Opaque,
 	Transparent,
 	Wireframe,
 	BoundingBox,
 	Skybox,
+
+	// === Culling pipeline *inactive (compute) ===
 	Visibility,
+
+	// === Post-process (compute) ===
 	ToneMap,
+
+	// === IBL (compute) ===
 	HDRToCubemap,
 	SpecularPrefilter,
 	DiffuseIrradiance,
 	BRDFLUT,
+
+	// === SSAO ===
+	DepthPrepass,  // graphics
+	SSAO,          // compute
+	SSAOBlurH,     // compute
+	SSAOBlurV,     // compute
 	Count
 };
 

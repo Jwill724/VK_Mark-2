@@ -1,26 +1,25 @@
 ## Features
-- Vulkan 1.4 Hybrid CPU/GPU-Driven renderer
+- Vulkan 1.4 Hybrid CPU/GPU-Driven forward renderer
 - GPUAddress table enables a 100% bindless indirect buffer system
 - Batched indirect instancing via `vkCmdDrawIndexedIndirect`
 - Descriptor indexing (bindless rendering)
-- Multithreading (EnkiTS)
-- Transfer and compute async capable
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
-- GLTF asset pipeline
-- AABB visual debug and culling
+- GLTF asset pipeline enabled (kinda) with multithreading (EnkiTS)
+- AABB BVH culling and OBB visual debug
 - Transparent depth sorting
 - ImGui debugging tools
 - MSAA (up to 8x), mipmapping, dynamic pipeline swapping
+- SSAO
+- Push descriptors
 
 ## Future
--SSAO
 -Cascaded shadow mapping
 -Improved tone mapping
 -Render graph
 -SDL2 integration and platform layer
--Push descriptors
 -Better asset management (dynamic asset loading, resource handling)
 -KTX texture format
+-Full compute async
 -Proper multithreading (texture loading, cmd recording)
 -Occlusion culling (Hi-Z/HZB)
 -GPU frustum culling

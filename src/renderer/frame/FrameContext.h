@@ -2,6 +2,7 @@
 
 #include "common/ResourceTypes.h"
 #include "common/EngineTypes.h"
+#include "renderer/gpu/Descriptor.h"
 
 constexpr size_t INSTANCE_SIZE_BYTES = MAX_DRAWS * sizeof(GPUInstance);
 constexpr size_t INDIRECT_SIZE_BYTES = MAX_DRAWS * sizeof(VkDrawIndexedIndirectCommand);
@@ -55,6 +56,8 @@ struct FrameContext {
 		uint32_t totalIndexCount;
 		uint32_t totalMeshCount;
 		uint32_t totalMaterialCount;
+		bool ssaoEnabled = true;
+		uint32_t pad0[3];
 	} drawDataPC{};
 
 	void clearRenderData() {
@@ -65,11 +68,13 @@ struct FrameContext {
 		transparentRange = {};
 	}
 
+	AttachmentDesc attachments;
+
 	size_t stagingHead = 0;
 	AllocatedBuffer combinedGPUStaging;
 
 	// Culling data
-	CullingPushConstantsAddrs cullingPCData{};
+	//CullingPushConstantsAddrs cullingPCData{};
 	uint32_t visibleCount = 0;
 
 	// frames can update the global transforms

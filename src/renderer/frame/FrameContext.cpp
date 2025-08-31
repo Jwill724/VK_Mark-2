@@ -4,7 +4,6 @@
 #include "renderer/backend/Backend.h"
 #include "utils/SyncUtils.h"
 #include "utils/BufferUtils.h"
-#include "renderer/gpu/Descriptor.h"
 #include "renderer/gpu/CommandBuffer.h"
 
 std::vector<std::unique_ptr<FrameContext>> initFrameContexts(

@@ -23,6 +23,7 @@
 #include <deque>
 #include <cmath>
 #include <numeric>
+#include <random>
 
 // Third-party
 #include "fmt/core.h"

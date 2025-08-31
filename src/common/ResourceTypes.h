@@ -247,8 +247,7 @@ struct DescriptorInfo {
 
 enum class PipelineCategory {
 	Raster,  // Vertex/frag traditional
-	Compute, // Comptue shader
-	Mesh     // Mesh shader-based
+	Compute  // Comptue shader
 };
 
 struct PipelineHandle {
@@ -256,6 +255,7 @@ struct PipelineHandle {
 	PipelineCategory type;
 	std::string name;
 	bool swappable = false;
+	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 };
 
@@ -388,51 +388,13 @@ struct MaterialResources {
 	VkSampler emissiveSampler;
 };
 
-struct DescriptorsCentral {
-	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
-	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
-};
-
-// DESCRIPTOR WRITING UTIL
-struct PoolSizeRatio {
-	VkDescriptorType type;
-	float ratio = 0.0f;
-};
-
-struct DescriptorWriteGroup {
-	uint32_t binding = UINT32_MAX;
-	VkDescriptorType type{};
-	VkDescriptorSet dstSet = VK_NULL_HANDLE;
-
-	std::vector<VkDescriptorImageInfo> imageInfos;
-};
-
-enum class DescriptorImageType {
-	SamplerCube,
-	StorageImage,
-	CombinedSampler
-};
-
-struct DescriptorWriter {
-	// Per-binding grouped image descriptor writes
-	std::vector<DescriptorWriteGroup> imageWriteGroups;
-
-	std::vector<VkDescriptorBufferInfo> bufferInfos;
-	std::vector<VkWriteDescriptorSet> bufferWrites;
-	std::vector<size_t> writeBufferIndices;
-
-	std::vector<VkDescriptorImageInfo> samplerCubeDescriptors;
-	std::vector<VkDescriptorImageInfo> storageDescriptors;
-	std::vector<VkDescriptorImageInfo> combinedDescriptors;
-
-	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
-
-	void writeBuffer(uint32_t binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type, VkDescriptorSet set);
-	void writeImages(uint32_t binding, DescriptorImageType type, VkDescriptorSet set);
-
-	void clear();
-
-	~DescriptorWriter() { clear(); }
-
-	void updateSet(VkDevice device, VkDescriptorSet set);
+struct AttachmentDesc {
+	VkImageView imageView = VK_NULL_HANDLE;
+	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
+	VkImageView resolveView = VK_NULL_HANDLE;
+	VkImageLayout resolveLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	VkClearValue clearValue{};
 };

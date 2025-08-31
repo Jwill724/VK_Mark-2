@@ -11,10 +11,6 @@
 #include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) out vec3 outNormal;
-layout(location = 1) out vec3 outColor;
-layout(location = 2) out vec2 outUV;
-layout(location = 3) out vec3 outWorldPos;
-layout(location = 4) flat out uint outMaterialID;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
 	GPUAddressTable globalAddressTable;
@@ -37,9 +33,6 @@ void main()
 	// fetch instance
 	Instance inst = VisibleInstances(frameAddressTable.addrs[ABT_VisibleInstances]).instances[gl_InstanceIndex];
 
-	// pass over to the frag shader
-	outMaterialID = inst.materialID;
-
 	if (gl_VertexIndex >= pc.totalVertexCount) {
 		gl_Position = vec4(2e9, 2e9, 2e9, 1.0); // push off-screen
 		return;
@@ -51,12 +44,9 @@ void main()
 	// fetch transform
 	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
-	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-	outWorldPos = worldPos4.xyz;
-	gl_Position = scene.viewproj * worldPos4;
+	vec3 worldNormal = normalize(mat3(model) * vtx.normal);
+	outNormal = worldNormal;
 
-	mat3 normalMatrix = transpose(inverse(mat3(model)));
-	outNormal = normalize(normalMatrix * vtx.normal);
-	outColor = vtx.color.xyz;
-	outUV = vtx.uv;
+	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
+	gl_Position = scene.viewproj * worldPos4;
 }

@@ -6,6 +6,7 @@
 #include "utils/BufferUtils.h"
 #include "core/AssetManager.h"
 #include "utils/SyncUtils.h"
+#include "renderer/passes/RenderPasses.h"
 
 namespace Renderer {
 	VkExtent3D _drawExtent;
@@ -32,9 +33,6 @@ namespace Renderer {
 
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
-
-	void toneMapPass(FrameContext& frame, ColorData& toneMappingData);
-	void geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler);
 }
 
 void Renderer::initRenderer(
@@ -58,6 +56,9 @@ void Renderer::initRenderer(
 		isAssetsLoaded
 	);
 }
+
+// =============================================
+// === CLEAR DATA AND AQUIRE SWAPCHAIN INDEX ===
 
 void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	auto device = Backend::getDevice();
@@ -98,6 +99,9 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	frameCtx.cpuDeletion.flush();
 }
 
+// ===============================================
+// === SYNC FRAME SEMAPHORES AND PRESENT FRAME ===
+
 void Renderer::submitFrame(FrameContext& frameCtx) {
 	auto& swapDef = Backend::getSwapchainDef();
 	uint32_t imageIndex = frameCtx.swapchainImageIndex;
@@ -118,7 +122,9 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	waitInfos.push_back(waitImageAvailable);
 
 	// Wait on transfer timeline only up to the first buffer consumers
-	if (_transferSync.signalValue) {
+	if (frameCtx.transferWaitValue != UINT64_MAX &&
+		frameCtx.transferWaitValue <= _transferSync.signalValue)
+	{
 		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 		waitTransfer.semaphore = _transferSync.semaphore;
 		waitTransfer.value = frameCtx.transferWaitValue;
@@ -130,7 +136,9 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	}
 
 	if (GPU_ACCELERATION_ENABLED) {
-		if (_computeSync.signalValue) {
+		if (frameCtx.computeWaitValue != UINT64_MAX &&
+			frameCtx.computeWaitValue <= _computeSync.signalValue)
+		{
 			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 			waitCompute.semaphore = _computeSync.semaphore;
 			waitCompute.value = frameCtx.computeWaitValue;
@@ -186,6 +194,9 @@ void Renderer::submitFrame(FrameContext& frameCtx) {
 	_frameNumber++;
 }
 
+// ==============================================
+// === MAIN GRAPHICS RECORDING FOR ALL PASSES ===
+
 void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	auto device = Backend::getDevice();
 	auto& swp = Backend::getSwapchainDef();
@@ -193,19 +204,38 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	auto& msaa = ResourceManager::getMSAAImage();
 	auto& depth = ResourceManager::getDepthImage();
 	auto& toneMap = ResourceManager::getToneMappingImage();
+	auto& depthResolved = ResourceManager::getDepthResolvedImage();
+	auto& normal = ResourceManager::getNormalImage();
+	auto& ssaoImg = ResourceManager::getSSAOImage();
+	auto& noiseTex = ResourceManager::getSSAONoiseImage();
+	auto& ssaoBlurH = ResourceManager::getSSAOBlurHImage();
+	auto& ssaoBlurV = ResourceManager::getSSAOBlurVImage();
+
+	auto samplerDepth = ResourceManager::getSamplerDepth();
+	auto samplerNormal = ResourceManager::getSamplerNormal();
+	auto samplerNoise = ResourceManager::getSamplerNoise();
+	auto samplerSSAO = ResourceManager::getSamplerSSAO();
 
 	_drawExtent.width = std::min(swp.extent.width, draw.imageExtent.width);
 	_drawExtent.height = std::min(swp.extent.height, draw.imageExtent.height);
 
-	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
+	const VkExtent2D extent = { _drawExtent.width, _drawExtent.height };
+	const VkExtent3D workgroupSize = { 16u, 16u, 1u };
+
+	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
 	const VkDescriptorSet sets[2] {
 		unifiedSet,
 		frameCtx.set
 	};
 
-	const auto& globalAddrsTableBuf = Engine::getState().getGPUResources().getAddressTableBuffer();
+	auto& gpuResources = Engine::getState().getGPUResources();
 
-	if (frameCtx.transformsBufferUploadNeeded && frameCtx.visibleCount > 0) {
+	const auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
+
+	bool msaaEnabled = MSAA_ENABLED;
+	bool hasVisibles = frameCtx.visibleCount > 0;
+
+	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
 		// Update the global set for transforms
 		frameCtx.descriptorWriter.clear();
 		frameCtx.descriptorWriter.writeBuffer(
@@ -228,12 +258,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.commandBuffer, &cmdBeginInfo));
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
-	if (frameCtx.transformsBufferUploadNeeded && frameCtx.visibleCount > 0) {
+	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, globalAddrsTableBuf);
 		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
 	}
 
-	if (frameCtx.visibleCount > 0) {
+	if (hasVisibles) {
 		BarrierUtils::acquireShaderReadQ(frameCtx.commandBuffer, frameCtx.addressTableBuffer);
 	}
 
@@ -245,36 +275,446 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// color, depth and msaa transitions
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, draw.image, draw.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	if (MSAA_ENABLED) {
+		frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	if (msaaEnabled) {
 		ImageUtils::transitionImage(
-			frameCtx.commandBuffer, msaa.image, msaa.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			frameCtx.commandBuffer,
+			msaa.image,
+			msaa.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, depth.image, depth.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	geometryPass({ draw.imageView, msaa.imageView, depth.imageView }, frameCtx, profiler);
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		depth.image,
+		depth.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+	// Used in opaque shading to determine if on
+	frameCtx.drawDataPC.ssaoEnabled = profiler.debugToggles.enableSSAO;
+	if (hasVisibles) {
+		// Always bind global index buffer at start of visibles frame
+		const auto indexBuffer = Engine::getState().getGPUResources().getGPUAddrsBuffer(AddressBufferType::Index).buffer;
+		vkCmdBindIndexBuffer(frameCtx.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+
+		ImageUtils::transitionImage(
+			frameCtx.commandBuffer,
+			depthResolved.image,
+			depthResolved.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+		ImageUtils::transitionImage(
+			frameCtx.commandBuffer,
+			normal.image,
+			normal.imageFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+
+		// === DEPTH PREPASS ===
+		{
+			AttachmentDesc prepassDepth{};
+			prepassDepth.imageView = depthResolved.imageView;
+			prepassDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+			prepassDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			prepassDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			prepassDepth.clearValue.depthStencil.depth = 1.0f;
+
+			AttachmentDesc prepassNormal{};
+			prepassNormal.imageView = normal.imageView;
+			prepassNormal.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			prepassNormal.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+			prepassNormal.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			prepassNormal.clearValue.color = { { 0.5f, 0.5f, 1.0f, 1.0f } };
+
+			RenderPasses::GraphicsRenderScope depthScope;
+			RenderPasses::beginRendering(
+				frameCtx.commandBuffer,
+				{ prepassNormal, prepassDepth },
+				extent,
+				depthScope);
+
+			RenderPasses::depthPrePass(frameCtx, Pipelines::getHandle(PipelineID::DepthPrepass));
+			RenderPasses::endRendering(frameCtx.commandBuffer);
+		}
+
+		// =================
+		// === SSAO PASS ===
+
+		if (profiler.debugToggles.enableSSAO) {
+			frameCtx.descriptorWriter.enablePushDescriptor = true;
+
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				depthResolved.image,
+				depthResolved.imageFormat,
+				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			// Transition normals to sampled
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				normal.image,
+				normal.imageFormat,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			// Transition SSAO output to storage writable
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoImg.image,
+				ssaoImg.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+
+			// Push writing for main ssao pass
+			frameCtx.descriptorWriter.clear();
+
+			VkDescriptorImageInfo depthInfo{};
+			depthInfo.imageView = depthResolved.imageView;
+			depthInfo.sampler = samplerDepth;
+			depthInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_DEPTH_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				depthInfo
+			);
+
+			// normal
+			VkDescriptorImageInfo normalInfo{};
+			normalInfo.imageView = normal.imageView;
+			normalInfo.sampler = samplerNormal;
+			normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_NORMAL_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				normalInfo
+			);
+
+			// noise texture
+			VkDescriptorImageInfo noiseInfo{};
+			noiseInfo.imageView = noiseTex.imageView;
+			noiseInfo.sampler = samplerNoise;
+			noiseInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_NOISE_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				noiseInfo
+			);
+
+			// kernel UBO
+			frameCtx.descriptorWriter.writePushBuffer(
+				PUSH_SSAO_KERNEL_BINDING,
+				gpuResources.ssaoKernelBuffer.buffer,
+				sizeof(glm::vec4[ResourceManager::_kernelBlockSize]),
+				0,
+				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+			);
+
+			// SSAO output
+			VkDescriptorImageInfo ssaoOutInfo{};
+			ssaoOutInfo.imageView = ssaoImg.imageView;
+			ssaoOutInfo.sampler = VK_NULL_HANDLE;
+			ssaoOutInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_OUTPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+				ssaoOutInfo
+			);
+
+			const auto& proj = RenderScene::getCurrentSceneData().proj;
+
+			struct alignas(16) SSAOPush {
+				glm::mat4 invProj;
+				glm::vec2 screenSize;
+				glm::vec2 invScreenSize;
+				float aoRadius;
+				float bias;
+				float intensity;
+				int blurRadius;
+				unsigned int sampleCount;
+				float pad0[3];
+			} ssaoPc{};
+			ssaoPc.invProj = glm::inverse(proj);
+			ssaoPc.screenSize = glm::vec2(
+				static_cast<float>(extent.width),
+				static_cast<float>(extent.height)
+			);
+			ssaoPc.invScreenSize = 1.0f / ssaoPc.screenSize;
+
+			ssaoPc.sampleCount = profiler.ssaoSettings.sampleCount;
+			ssaoPc.aoRadius = profiler.ssaoSettings.aoRadius;
+			ssaoPc.bias = profiler.ssaoSettings.bias;
+			ssaoPc.intensity = profiler.ssaoSettings.intensity;
+			ssaoPc.blurRadius = profiler.ssaoSettings.blurRadius;
+
+			RenderPasses::ComputeDispatchScope ssaoScope;
+			ssaoScope.setPush(&ssaoPc);
+			ssaoScope.extent = extent;
+			ssaoScope.workgroupSize = workgroupSize;
+			ssaoScope.calculateGroups();
+
+			RenderPasses::dispatchComputePass(
+				frameCtx,
+				Pipelines::getHandle(PipelineID::SSAO),
+				ssaoScope);
+
+
+			// ============================
+			// === SSAO BLUR HORIZONTAL ===
+
+			// Transition SSAO to input
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoImg.image,
+				ssaoImg.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			// Transition blur h for output
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoBlurH.image,
+				ssaoBlurH.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+
+
+			// Push writing for blur horizontal
+			frameCtx.descriptorWriter.clear();
+
+			VkDescriptorImageInfo ssaoInputInfo{};
+			ssaoInputInfo.imageView = ssaoImg.imageView;
+			ssaoInputInfo.sampler = samplerSSAO;
+			ssaoInputInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_INPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				ssaoInputInfo
+			);
+
+			VkDescriptorImageInfo ssaoBlurHInfo{};
+			ssaoBlurHInfo.imageView = ssaoBlurH.imageView;
+			ssaoBlurHInfo.sampler = VK_NULL_HANDLE;
+			ssaoBlurHInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_OUTPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+				ssaoBlurHInfo
+			);
+
+			RenderPasses::dispatchComputePass(
+				frameCtx,
+				Pipelines::getHandle(PipelineID::SSAOBlurH),
+				ssaoScope);
+
+			// ==========================
+			// === SSAO BLUR VERTICAL ===
+
+			// Transition blur h for input
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoBlurH.image,
+				ssaoBlurH.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			// Transition blur v for outout
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoBlurV.image,
+				ssaoBlurV.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+
+			// Push writing for blur vertical
+			frameCtx.descriptorWriter.clear();
+
+			// Only have to adjust sampler and layout for blur H input
+			ssaoBlurHInfo.sampler = samplerSSAO;
+			ssaoBlurHInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_INPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				ssaoBlurHInfo
+			);
+
+			VkDescriptorImageInfo ssaoBlurVInfo{};
+			ssaoBlurVInfo.imageView = ssaoBlurV.imageView;
+			ssaoBlurVInfo.sampler = VK_NULL_HANDLE;
+			ssaoBlurVInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_OUTPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+				ssaoBlurVInfo
+			);
+
+			RenderPasses::dispatchComputePass(
+				frameCtx,
+				Pipelines::getHandle(PipelineID::SSAOBlurV),
+				ssaoScope);
+
+			// Final transition before lighting
+			// ssaoBlurV final output
+			ImageUtils::transitionImage(
+				frameCtx.commandBuffer,
+				ssaoBlurV.image,
+				ssaoBlurV.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			);
+		}
+	}
+
+	AttachmentDesc colorAttach{};
+	if (msaaEnabled) {
+		colorAttach.imageView = msaa.imageView;
+		colorAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttach.resolveView = draw.imageView;
+		colorAttach.resolveLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttach.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+		colorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	}
+	else {
+		colorAttach.imageView = draw.imageView;
+		colorAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttach.resolveMode = VK_RESOLVE_MODE_NONE;
+		colorAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+
+	AttachmentDesc depthAttach{};
+	depthAttach.imageView = depth.imageView;
+	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depthAttach.clearValue.depthStencil.depth = 1.0f;
+
+	RenderPasses::GraphicsRenderScope geometryScope;
+
+	RenderPasses::beginRendering(
+		frameCtx.commandBuffer,
+		{ colorAttach, depthAttach },
+		{ extent },
+		geometryScope);
+
+	// Sky box always occurs
+	RenderPasses::skyboxPass(frameCtx, Pipelines::getHandle(PipelineID::Skybox), profiler);
+
+	if (hasVisibles) {
+		// Can always assume opaque draw
+		PipelineHandle pipeline{};
+		// Opaque pass
+		if (!profiler.pipeOverride.enabled) {
+			pipeline = Pipelines::getHandle(PipelineID::Opaque); // default mesh pipeline
+		}
+		else {
+			pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
+		}
+
+		frameCtx.descriptorWriter.clear();
+		if (frameCtx.descriptorWriter.enablePushDescriptor && profiler.debugToggles.enableSSAO) {
+			VkDescriptorImageInfo ssaoFinalInfo{};
+			ssaoFinalInfo.imageView = ssaoBlurV.imageView;
+			ssaoFinalInfo.sampler = samplerSSAO;
+			ssaoFinalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_INPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				ssaoFinalInfo
+			);
+
+			frameCtx.descriptorWriter.enablePushDescriptor = false;
+		}
+		else {
+			// Pipeline needs a push layout so dummy white view and normal sampler
+			auto& white = ResourceManager::getWhiteMat();
+			VkDescriptorImageInfo dummyInfo{};
+			dummyInfo.imageView = white.imageView;
+			dummyInfo.sampler = samplerNormal;
+			dummyInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_SSAO_INPUT_TEX_BINDING,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				dummyInfo
+			);
+		}
+
+		RenderPasses::opaqueMeshPass(frameCtx, pipeline, profiler);
+
+		// Transparent pass
+		if (frameCtx.transparentRange.visibleCount > 0) {
+			if (!profiler.pipeOverride.enabled) {
+				pipeline = Pipelines::getHandle(PipelineID::Transparent);
+			}
+
+			RenderPasses::transparentMeshPass(frameCtx, pipeline, profiler);
+		}
+
+		if (profiler.debugToggles.showOBBs) {
+			RenderPasses::obbDebugPass(frameCtx, Pipelines::getHandle(PipelineID::BoundingBox), profiler);
+		}
+	}
+
+	RenderPasses::endRendering(frameCtx.commandBuffer);
 
 	// ToneMapImage transition
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, draw.image, draw.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
+		frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL);
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+		frameCtx.commandBuffer,
+		toneMap.image,
+		toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL);
 
-	toneMapPass(frameCtx, ResourceManager::toneMappingData);
+	// Tone mapping pass
+	RenderPasses::ComputeDispatchScope tonemapPass;
+	tonemapPass.setPush(&ResourceManager::toneMappingData);
+	tonemapPass.extent = extent;
+	tonemapPass.workgroupSize = workgroupSize;
+	tonemapPass.calculateGroups();
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::ToneMap),
+		tonemapPass);
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, toneMap.image, toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		frameCtx.commandBuffer,
+		toneMap.image,
+		toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		frameCtx.commandBuffer,
+		swp.images[frameCtx.swapchainImageIndex],
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 	ImageUtils::copyImageToImage(
 		frameCtx.commandBuffer,
@@ -288,8 +728,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	if (debug.enableSettings || debug.enableStats) {
 		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
 		ImageUtils::transitionImage(
-			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		EditorImgui::drawImgui(
 			frameCtx.commandBuffer,
@@ -298,83 +741,22 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			false);
 
 		ImageUtils::transitionImage(
-			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	else {
 		ImageUtils::transitionImage(
-			frameCtx.commandBuffer, swp.images[frameCtx.swapchainImageIndex], draw.imageFormat,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			frameCtx.commandBuffer,
+			swp.images[frameCtx.swapchainImageIndex],
+			draw.imageFormat,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 
 	VK_CHECK(vkEndCommandBuffer(frameCtx.commandBuffer));
-}
-
-// draw[0], msaa[1], depth[2]
-void Renderer::geometryPass(std::array<VkImageView, 3> imageViews, FrameContext& frameCtx, Profiler& profiler) {
-	VkRenderingAttachmentInfo colorAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-	// MSAA branch
-	if (MSAA_ENABLED) {
-		colorAttachment.imageView = imageViews[1];
-		colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		colorAttachment.resolveImageView = imageViews[0];
-		colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	}
-	else {
-		colorAttachment.imageView = imageViews[0];
-		colorAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-		colorAttachment.resolveImageView = VK_NULL_HANDLE;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	}
-
-	VkRenderingAttachmentInfo depthAttachment{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };
-	depthAttachment.imageView = imageViews[2];
-	depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	depthAttachment.resolveMode = VK_RESOLVE_MODE_NONE;
-	depthAttachment.resolveImageView = VK_NULL_HANDLE;
-	depthAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttachment.clearValue.depthStencil.depth = 1.0f;
-
-	VkRenderingInfo renderInfo{ VK_STRUCTURE_TYPE_RENDERING_INFO };
-	renderInfo.flags = 0,
-	renderInfo.renderArea = { { 0, 0 }, { _drawExtent.width, _drawExtent.height } },
-	renderInfo.layerCount = 1,
-	renderInfo.viewMask = 0,
-	renderInfo.colorAttachmentCount = 1,
-	renderInfo.pColorAttachments = &colorAttachment,
-	renderInfo.pDepthAttachment = &depthAttachment,
-
-	vkCmdBeginRendering(frameCtx.commandBuffer, &renderInfo);
-	VulkanUtils::defineViewportAndScissor(frameCtx.commandBuffer, { _drawExtent.width, _drawExtent.height });
-	RenderScene::renderGeometry(frameCtx, profiler);
-	vkCmdEndRendering(frameCtx.commandBuffer);
-}
-
-// TODO: Make this better, like gltf viewer tonemapper slider
-void Renderer::toneMapPass(FrameContext& frame, ColorData& toneMappingData) {
-	vkCmdBindPipeline(
-		frame.commandBuffer,
-		VK_PIPELINE_BIND_POINT_COMPUTE,
-		Pipelines::getPipeline(PipelineID::ToneMap));
-
-	vkCmdPushConstants(frame.commandBuffer,
-		Pipelines::_globalLayout.layout,
-		Pipelines::_globalLayout.pcRange.stageFlags,
-		Pipelines::_globalLayout.pcRange.offset,
-		Pipelines::_globalLayout.pcRange.size,
-		&toneMappingData);
-
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(_drawExtent.width / 16.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(_drawExtent.height / 16.0f));
-
-	vkCmdDispatch(frame.commandBuffer, xDispatch, yDispatch, 1);
 }
 
 

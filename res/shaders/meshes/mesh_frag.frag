@@ -1,12 +1,12 @@
 #version 450
 
-#extension GL_ARB_shader_draw_parameters : require
-#extension GL_EXT_buffer_reference       : require
-#extension GL_EXT_scalar_block_layout    : require
-#extension GL_ARB_gpu_shader_int64       : require
-#extension GL_GOOGLE_include_directive   : require
+#extension GL_ARB_shader_draw_parameters  : require
+#extension GL_EXT_buffer_reference        : require
+#extension GL_EXT_scalar_block_layout     : require
+#extension GL_ARB_gpu_shader_int64        : require
+#extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
-#extension GL_EXT_nonuniform_qualifier   : require
+#extension GL_EXT_nonuniform_qualifier    : require
 
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
@@ -37,7 +37,15 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 	SceneData scene;
 };
 
+layout(push_constant) uniform DrawData {
+	DrawDataPC pc;
+};
+
+// Only used for opaque shading
+layout(set = PUSH_SET, binding = PUSH_SSAO_INPUT_TEX_BINDING) uniform sampler2D ssaoFinal;
+
 const bool FLIP_ENV_Y = true;
+
 
 // === IBL sampling ===
 vec3 sampleIrradiance(vec3 N, uint irrIdx)
@@ -60,16 +68,9 @@ vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint spe
 	return prefiltered * (F0 * brdf.x + brdf.y);
 }
 
-layout(push_constant) uniform DrawPushConstants {
-	uint totalVertexCount;
-	uint totalIndexCount;
-	uint totalMeshCount;
-	uint totalMaterialCount;
-} drawDataPC;
-
 void main()
 {
-	if (inMaterialID >= drawDataPC.totalMaterialCount) return;
+	if (inMaterialID >= pc.totalMaterialCount) return;
 
 	// fetch material
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inMaterialID];
@@ -79,6 +80,17 @@ void main()
 	float rough = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).g * mat.metalRoughFactors.y;
 	float metal = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).b * mat.metalRoughFactors.x;
 	vec3 emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
+
+	float aoCombined = ao;
+	if (mat.passType == PASS_OPAQUE) {
+		if (pc.ssaoEnabled) {
+			vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
+			float ssaoFactor = texture(ssaoFinal, uv).r;
+			aoCombined = ao * ssaoFactor;
+		}
+	// else: aoCombined stays = ao
+	}
+	// transparent never uses SSAO, aoCombined already = ao
 
 	if (base.a < mat.alphaCutoff) discard;
 
@@ -123,8 +135,8 @@ void main()
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
 	iblSpec *= 0.5; // darken specular on image
 
-	float specAO = SpecAO_Conservative(ao, NdotV, rough);
-	vec3 ambient = kD_ibl * iblDiff * ao + iblSpec * specAO;
+	float specAO = SpecAO_Conservative(aoCombined, NdotV, rough);
+	vec3 ambient = kD_ibl * iblDiff * aoCombined + iblSpec * specAO;
 
 	vec3 color = direct + ambient + emissive;
 	outFragColor = vec4(color, base.a);

@@ -8,8 +8,8 @@
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
-
 	GPUEnvMapIndexArray _envMapIdxArray;
+	glm::vec4 _ssaoKernelBlock[_kernelBlockSize];
 
 	// primary render image
 	AllocatedImage _drawImage;
@@ -22,57 +22,89 @@ namespace ResourceManager {
 	AllocatedImage& getToneMappingImage() { return _toneMappingImage; }
 	ColorData toneMappingData;
 
+	AllocatedImage _depthResolvedImage;
+	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
+
+	VkSampler _samplerDepth;
+	const VkSampler getSamplerDepth() { return _samplerDepth; }
+
+	VkSampler _samplerSSAO;
+	const VkSampler getSamplerSSAO() { return _samplerSSAO; }
+
+	VkSampler _samplerNormal;
+	const VkSampler getSamplerNormal() { return _samplerNormal; }
+
+	VkSampler _samplerNoise;
+	const VkSampler getSamplerNoise() { return _samplerNoise; }
+
+	AllocatedImage _normalImage;
+	AllocatedImage& getNormalImage() { return _normalImage; }
+
+	// ssao images
+	AllocatedImage _ssaoImage;
+	AllocatedImage& getSSAOImage() { return _ssaoImage; }
+
+	AllocatedImage _ssaoBlurHImage;
+	AllocatedImage& getSSAOBlurHImage() { return _ssaoBlurHImage; }
+
+	AllocatedImage _ssaoBlurVImage;
+	AllocatedImage& getSSAOBlurVImage() { return _ssaoBlurVImage; }
+
+	AllocatedImage _ssaoNoiseImage;
+	AllocatedImage& getSSAONoiseImage() { return _ssaoNoiseImage; }
+
+
 	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
 
 
 	// Textures
-	AllocatedImage _whiteImage;
-	AllocatedImage& getWhiteImage() { return _whiteImage; }
+	AllocatedImage _whiteMat;
+	AllocatedImage& getWhiteMat() { return _whiteMat; }
 
-	AllocatedImage _metalRoughImage;
-	AllocatedImage& getMetalRoughImage() { return _metalRoughImage; }
+	AllocatedImage _metalRoughMat;
+	AllocatedImage& getMetalRoughMat() { return _metalRoughMat; }
 
-	AllocatedImage _emissiveImage;
-	AllocatedImage& getEmissiveImage() { return _emissiveImage; }
+	AllocatedImage _emissiveMat;
+	AllocatedImage& getEmissiveMat() { return _emissiveMat; }
 
-	AllocatedImage _aoImage;
-	AllocatedImage& getAOImage() { return _aoImage; }
-	AllocatedImage _normalImage;
-	AllocatedImage& getNormalImage() { return _normalImage; }
-	AllocatedImage _errorCheckerboardImage;
-	AllocatedImage& getCheckboardTex() { return _errorCheckerboardImage; }
+	AllocatedImage _aoMat;
+	AllocatedImage& getAOMat() { return _aoMat; }
+	AllocatedImage _normalMat;
+	AllocatedImage& getNormaMat() { return _normalMat; }
+	AllocatedImage _errorCheckerboardTex;
+	AllocatedImage& getCheckboardTex() { return _errorCheckerboardTex; }
 
 	VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;
-	VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
-	VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+	const VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
+	const VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
 
 
 	AllocatedImage _skyboxImage;
 	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
 
 	VkSampler _skyBoxSampler;
-	VkSampler& getSkyBoxSampler() { return _skyBoxSampler; }
+	const VkSampler getSkyBoxSampler() { return _skyBoxSampler; }
 
 	AllocatedImage _specularPrefilterImage;
 	AllocatedImage& getSpecularPrefilterImage() { return _specularPrefilterImage; }
 
 	VkSampler _specularPrefilterSampler;
-	VkSampler& getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
+	const VkSampler getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
 
 	AllocatedImage _irradianceImage;
 	AllocatedImage& getIrradianceImage() { return _irradianceImage; }
 
 	VkSampler _irradianceSampler;
-	VkSampler& getIrradianceSampler() { return _irradianceSampler; }
+	const VkSampler getIrradianceSampler() { return _irradianceSampler; }
 
 	AllocatedImage _brdfLutImage;
 	AllocatedImage& getBRDFImage() { return _brdfLutImage; }
 
 	VkSampler _brdfSampler;
-	VkSampler& getBRDFSampler() { return _brdfSampler; }
+	const VkSampler getBRDFSampler() { return _brdfSampler; }
 }
 
 
@@ -125,6 +157,9 @@ void GPUResources::cleanup(VkDevice device) {
 	if (envMapIndexBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyAllocatedBuffer(envMapIndexBuffer, allocator);
 
+	if (ssaoKernelBuffer.buffer != VK_NULL_HANDLE)
+		BufferUtils::destroyAllocatedBuffer(ssaoKernelBuffer, allocator);
+
 	if (addressTableStagingBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyAllocatedBuffer(addressTableStagingBuffer, allocator);
 
@@ -147,6 +182,32 @@ void GPUResources::cleanup(VkDevice device) {
 void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
 	gpuBuffers[addressBufferType] = gpuBuffer;
 	markAddressTableDirty();
+}
+
+inline static float lerp(float a, float b, float f) {
+	return a + f * (b - a);
+}
+
+// Opengl SSAO kernel implementation
+void ResourceManager::initSSAOKernel() {
+	std::uniform_real_distribution<float> randFloats(0.0f, 1.0f);
+	std::default_random_engine rng;
+	for (unsigned int i = 0; i < _kernelBlockSize; i++) {
+		glm::vec3 sample(
+			randFloats(rng) * 2.0f - 1.0f, // x in [-1, 1]
+			randFloats(rng) * 2.0f - 1.0f, // y in [-1, 1]
+			randFloats(rng)                // z in [0, 1]
+		);
+		sample = glm::normalize(sample);
+		sample *= randFloats(rng); // push inside hemisphere
+
+		// bias: closer samples more dense, farther ones less
+		float scale = static_cast<float>(i) / 64.0f;
+		scale = lerp(0.1f, 0.9f, (scale * scale));
+		sample *= scale;
+
+		_ssaoKernelBlock[i] = glm::vec4(sample, 0.0f);
+	}
 }
 
 void ResourceManager::initRenderImages(
@@ -181,9 +242,9 @@ void ResourceManager::initRenderImages(
 	_toneMappingImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags toneMapUsages{};
-	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;            // for compute shader write
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;       // to copy to swapchain
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;       // if needed in chain
+	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	ImageUtils::createRenderImage(
 		device,
@@ -211,7 +272,7 @@ void ResourceManager::initRenderImages(
 		queue,
 		allocator);
 
-	// DEPTH
+	// Base depth image
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
 	_depthImage.imageExtent = drawExtent;
 
@@ -225,6 +286,120 @@ void ResourceManager::initRenderImages(
 		sampleCount,
 		queue,
 		allocator);
+
+	// Depth resolved image
+	_depthResolvedImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+	_depthResolvedImage.imageExtent = drawExtent;
+
+	VkImageUsageFlags depthResolvedUsages{};
+	depthResolvedUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	depthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	ImageUtils::createRenderImage(
+		device,
+		_depthResolvedImage,
+		depthResolvedUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		queue,
+		allocator);
+
+	// SSAO pass images
+
+	VkImageUsageFlags ssaoUsages{};
+	ssaoUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	ssaoUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	_ssaoImage.imageFormat = VK_FORMAT_R8_UNORM;
+	_ssaoImage.imageExtent = drawExtent;
+
+	// base ssao image
+	ImageUtils::createRenderImage(
+		device,
+		_ssaoImage,
+		ssaoUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		queue,
+		allocator);
+
+	// bi-lateral blur images
+	_ssaoBlurHImage.imageFormat = VK_FORMAT_R8_UNORM;
+	_ssaoBlurHImage.imageExtent = drawExtent;
+
+	ImageUtils::createRenderImage(
+		device,
+		_ssaoBlurHImage,
+		ssaoUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		queue,
+		allocator);
+
+	_ssaoBlurVImage.imageFormat = VK_FORMAT_R8_UNORM;
+	_ssaoBlurVImage.imageExtent = drawExtent;
+
+	ImageUtils::createRenderImage(
+		device,
+		_ssaoBlurVImage,
+		ssaoUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		queue,
+		allocator);
+
+	// Normal image
+	_normalImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_normalImage.imageExtent = drawExtent;
+
+	VkImageUsageFlags normalUsages{};
+	normalUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	normalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	ImageUtils::createRenderImage(
+		device,
+		_normalImage,
+		normalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		queue,
+		allocator
+	);
+
+	_samplerDepth = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	_samplerNormal = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	_samplerNoise = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	_samplerSSAO = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
 }
 
 void ResourceManager::initEnvironmentImages(
@@ -262,7 +437,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		0.0f,
 		maxAnisotropy,
-		VK_TRUE);
+		&queue);
 
 	_specularPrefilterImage.imageExtent = Environment::CUBEMAP_EXTENTS;
 	_specularPrefilterImage.imageFormat = environmentFormat;
@@ -285,7 +460,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		static_cast<float>(_specularPrefilterImage.mipLevelCount - 1),
 		maxAnisotropy,
-		VK_TRUE);
+		&queue);
 
 
 	_irradianceImage.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
@@ -306,7 +481,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		VK_LOD_CLAMP_NONE,
 		0.0f,
-		VK_FALSE);
+		&queue);
 
 
 	_brdfLutImage.imageExtent = Environment::LUT_IMAGE_EXTENT;
@@ -328,15 +503,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		VK_LOD_CLAMP_NONE,
 		0.0f,
-		VK_FALSE);
-
-	// sampler deletion, should just place the queue into the creation function
-	queue.push_function([&, device] {
-		vkDestroySampler(device, _skyBoxSampler, nullptr);
-		vkDestroySampler(device, _irradianceSampler, nullptr);
-		vkDestroySampler(device, _specularPrefilterSampler, nullptr);
-		vkDestroySampler(device, _brdfSampler, nullptr);
-	});
+		&queue);
 }
 
 void ResourceManager::initTextures(
@@ -354,32 +521,32 @@ void ResourceManager::initTextures(
 	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
 
 
-	_aoImage.imageExtent = texExtent;
-	_aoImage.imageFormat = VK_FORMAT_R8_UNORM;
-	_aoImage.mipmapped = true;
+	_aoMat.imageExtent = texExtent;
+	_aoMat.imageFormat = VK_FORMAT_R8_UNORM;
+	_aoMat.mipmapped = true;
 
 	uint8_t aoPixel = static_cast<uint8_t>(1.0f * 255); // full ambient lighting
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
 		(void*)&aoPixel,
-		_aoImage,
+		_aoMat,
 		usage,
 		samples,
 		imageQueue,
 		bufferQueue,
 		allocator);
 
-	_normalImage.imageExtent = texExtent;
-	_normalImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-	_normalImage.mipmapped = true;
+	_normalMat.imageExtent = texExtent;
+	_normalMat.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	_normalMat.mipmapped = true;
 
 	uint32_t flatNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)); // X = 128, Y = 128, Z = 255, A = 255
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
 		(void*)&flatNormal,
-		_normalImage,
+		_normalMat,
 		usage,
 		samples,
 		imageQueue,
@@ -387,25 +554,25 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_emissiveImage.imageExtent = texExtent;
-	_emissiveImage.imageFormat = format;
-	_emissiveImage.mipmapped = true;
+	_emissiveMat.imageExtent = texExtent;
+	_emissiveMat.imageFormat = format;
+	_emissiveMat.mipmapped = true;
 
 	uint32_t blackEmissive = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1)); // No emission
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
 		(void*)&blackEmissive,
-		_emissiveImage,
+		_emissiveMat,
 		usage,
 		samples,
 		imageQueue,
 		bufferQueue,
 		allocator);
 
-	_metalRoughImage.imageExtent = texExtent;
-	_metalRoughImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
-	_metalRoughImage.mipmapped = true;
+	_metalRoughMat.imageExtent = texExtent;
+	_metalRoughMat.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	_metalRoughMat.mipmapped = true;
 
 	uint8_t mrPixelData[4] {
 		static_cast<uint8_t>(0.0f * 255), // metallic?
@@ -417,7 +584,7 @@ void ResourceManager::initTextures(
 		device,
 		cmdPool,
 		(void*)&mrPixelData,
-		_metalRoughImage,
+		_metalRoughMat,
 		usage,
 		samples,
 		imageQueue,
@@ -425,16 +592,16 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_whiteImage.imageExtent = texExtent;
-	_whiteImage.imageFormat = format;
-	_whiteImage.mipmapped = true;
+	_whiteMat.imageExtent = texExtent;
+	_whiteMat.imageFormat = format;
+	_whiteMat.mipmapped = true;
 
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
 		(void*)&white,
-		_whiteImage,
+		_whiteMat,
 		usage,
 		samples,
 		imageQueue,
@@ -452,27 +619,59 @@ void ResourceManager::initTextures(
 
 	VkExtent3D checkerboardedImageExtent{ 16, 16, 1 };
 
-	_errorCheckerboardImage.imageExtent = checkerboardedImageExtent;
-	_errorCheckerboardImage.imageFormat = format;
-	_errorCheckerboardImage.mipmapped = true;
+	_errorCheckerboardTex.imageExtent = checkerboardedImageExtent;
+	_errorCheckerboardTex.imageFormat = format;
+	_errorCheckerboardTex.mipmapped = true;
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
 		pixels.data(),
-		_errorCheckerboardImage,
+		_errorCheckerboardTex,
 		usage,
 		samples,
 		imageQueue,
 		bufferQueue,
 		allocator);
 
+	// SSAO noise texture
+	std::vector<glm::vec2> noiseData;
+	noiseData.reserve(16);
+
+	std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+	std::default_random_engine rng;
+
+	for (unsigned int i = 0; i < 16; i++) {
+		glm::vec2 noise(dist(rng), dist(rng));
+		noise = glm::normalize(noise); // keep it unit length
+		noiseData.push_back(noise);
+	}
+
+	_ssaoNoiseImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
+	_ssaoNoiseImage.imageExtent = { 4, 4, 1 };
+
+	VkImageUsageFlags noiseUsages{};
+	noiseUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	noiseUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		noiseData.data(),
+		_ssaoNoiseImage,
+		noiseUsages,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
+
+	// Default samplers
 	_defaultSamplerLinear = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
 		FLT_MAX,
 		Backend::getDeviceLimits().maxSamplerAnisotropy,
-		VK_TRUE);
+		&imageQueue);
 
 	_defaultSamplerNearest = ImageUtils::createSampler(
 		device,
@@ -480,10 +679,5 @@ void ResourceManager::initTextures(
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
 		FLT_MAX,
 		1.0f,
-		VK_FALSE);
-
-	imageQueue.push_function([&, device]() {
-		vkDestroySampler(device, _defaultSamplerNearest, nullptr);
-		vkDestroySampler(device, _defaultSamplerLinear, nullptr);
-	});
+		&imageQueue);
 }

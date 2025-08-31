@@ -172,11 +172,13 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		ImGui::SetNextWindowPos(ImVec2(10.f, 10.f), ImGuiCond_Always);
 		ImGui::SetNextWindowSize(ImVec2(300.f, 330.f), ImGuiCond_Always);
 
-		// -- DEBUG TOOLS WINDOW --
+		auto& dbg = profiler.debugToggles;
+
+		// === DEBUG TOOLS WINDOW ===
 		ImGui::Begin("Debug");
 
 		// Pipeline override section
-		if (ImGui::CollapsingHeader("Pipeline Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::CollapsingHeader("Pipeline Settings")) {
 			ImGui::Checkbox("Pipeline Override", &profiler.pipeOverride.enabled);
 
 			auto swappables = Pipelines::getSwappablePipelines();
@@ -193,13 +195,28 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			}
 
 			if (ImGui::TreeNode("Debug Draw")) {
-				ImGui::Checkbox("Draw OBB", &profiler.debugToggles.showOBBs);
+				ImGui::Checkbox("Draw OBB", &dbg.showOBBs);
 				ImGui::TreePop();
 			}
 		}
 
+		// ssao settings
+		if (ImGui::CollapsingHeader("SSAO Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& ssao = profiler.ssaoSettings;
+			ImGui::Checkbox("Enable SSAO", &dbg.enableSSAO);
+
+			ImGui::SeparatorText("AO Parameters");
+			ImGui::SliderFloat("Radius", &ssao.aoRadius, 0.025f, 2.0f, "%.3f");
+			ImGui::SliderFloat("Bias", &ssao.bias, 0.0f, 0.1f, "%.4f");
+			ImGui::SliderFloat("Intensity", &ssao.intensity, 0.0f, 1.5f, "%.2f");
+			ImGui::SliderInt("Blur Radius", &ssao.blurRadius, 0, 8);
+
+			ImGui::SeparatorText("Performance");
+			ImGui::SliderInt("Sample Count", (int*)& ssao.sampleCount, 8u, ResourceManager::_kernelBlockSize);
+		}
+
 		// "tone map", not a very good one
-		if (ImGui::CollapsingHeader("Options", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::CollapsingHeader("Options")) {
 			auto& color = ResourceManager::toneMappingData;
 			ImGui::Text("Tone map color correction");
 			ImGui::SliderFloat("Brightness", &color.brightness, 0.0f, 2.0f);
@@ -209,13 +226,11 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 
 		if (ImGui::CollapsingHeader("Scene Lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
 			auto& sceneData = RenderScene::getCurrentSceneData();
-			static glm::vec3 ambientColor = glm::vec3(sceneData.ambientColor);
 			static glm::vec3 sunlightColor = glm::vec3(sceneData.sunlightColor);
 			static float lightIntensity = sceneData.sunlightColor.w;
 			static glm::vec3 lightDir = glm::vec3(sceneData.sunlightDirection);
 
 			if (ImGui::TreeNode("Light Colors")) {
-				ImGui::SliderFloat3("Ambient Color", glm::value_ptr(ambientColor), 0.0f, 1.0f);
 				ImGui::SliderFloat3("Sunlight Color", glm::value_ptr(sunlightColor), 0.0f, 1.0f);
 				ImGui::TreePop();
 			}
@@ -224,7 +239,6 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::SliderFloat3("Light Direction", glm::value_ptr(lightDir), -1.0f, 1.0f);
 
 			// Update actual scene data
-			sceneData.ambientColor = glm::vec4(ambientColor, 1.0f);
 			sceneData.sunlightColor = glm::vec4(sunlightColor, lightIntensity);
 			sceneData.sunlightDirection = glm::normalize(glm::vec4(lightDir, 0.0f));
 		}

@@ -13,7 +13,6 @@ struct IndirectStats {
 	std::atomic<uint32_t> subdraws{ 0 };
 };
 
-
 struct FrameStats {
 	std::atomic<uint64_t> triangleCount = 0;
 	std::atomic<float> deltaTime = 0.0f;
@@ -33,15 +32,25 @@ struct FrameStats {
 	IndirectStats opaqueIndirect;
 	IndirectStats transparentIndirect;
 };
+
 struct PipelineOverride {
 	bool enabled = false;
 	PipelineID selectedID = PipelineID::Wireframe;
+};
+
+struct SSAOSettings {
+	uint32_t sampleCount = 64;
+	float aoRadius = 0.5f;
+	float bias = 0.025f;
+	float intensity = 1.0f;
+	int blurRadius = 4;
 };
 
 struct DebugToggles {
 	bool showOBBs = false;
 	bool enableSettings = false;
 	bool enableStats = true;
+	bool enableSSAO = true;
 	//bool showNormals = false;
 	//bool showAlbedo = false;
 	//bool showEmissive = false;
@@ -109,6 +118,7 @@ public:
 
 	DebugToggles debugToggles;
 	PipelineOverride pipeOverride;
+	SSAOSettings ssaoSettings;
 
 	VkDeviceSize GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 

@@ -66,7 +66,7 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::getPipelinePresentByID(PipelineID::ToneMap).shaderStagesInfo.push_back(toneMapShaderStage);
 
 
-	// ENVIRONMENTAL AND IBL
+	// === IBL ===
 	ShaderStageInfo cubemapShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/environment/hdr2cubemap_comp.spv"
@@ -101,6 +101,36 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
 
 
+	// === SSAO ===
+	ShaderStageInfo depthPrepassVertStage {
+		.stage = VK_SHADER_STAGE_VERTEX_BIT,
+		.filePath = "res/shaders/post_process/depth_prepass_vert.spv"
+	};
+	ShaderStageInfo depthPrepassFragStage {
+		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.filePath = "res/shaders/post_process/depth_prepass_frag.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassVertStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassFragStage);
+
+	ShaderStageInfo ssaoStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/ssao_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::SSAO).shaderStagesInfo.push_back(ssaoStage);
+
+	ShaderStageInfo ssaoBlurHStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/ssao_blurH_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlurH).shaderStagesInfo.push_back(ssaoBlurHStage);
+
+	ShaderStageInfo ssaoBlurVStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/ssao_blurV_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlurV).shaderStagesInfo.push_back(ssaoBlurVStage);
+
 	// Pipeline shaders defined, good to setup
 	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
 		setupShaders(PipelinePresents::pipelinePresentBuilder[i], dq);
@@ -118,18 +148,23 @@ void PipelineManager::definePipelineData() {
 		maxPCsize = MAX_PUSH_CONSTANT_SIZE;
 	}
 	else {
-		assert(false && "GPU doesn't support required 256 byte push constant size!");
+		maxPCsize = 128u;
+		fmt::print("Device fallback to push constant min: {} bytes\n", maxPCsize);
 	}
+
+	VkShaderStageFlags pcShaderStages = VK_SHADER_STAGE_VERTEX_BIT |
+		VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 
 	const PushConstantDef pcRange {
 		.offset = 0,
 		.size = maxPCsize,
-		.stageFlags = VK_SHADER_STAGE_ALL
+		.stageFlags = pcShaderStages
 	};
 
 	const std::vector<VkDescriptorSetLayout> setLayouts {
-		DescriptorSetOverwatch::getUnifiedDescriptors().descriptorLayout, // set: 0
-		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout    // set: 1
+		DescriptorSetOverwatch::getUnifiedDescriptor().descriptorLayout, // set: 0
+		DescriptorSetOverwatch::getFrameDescriptor().descriptorLayout,   // set: 1
+		DescriptorSetOverwatch::getPushDescriptor().descriptorLayout     // set: 2
 	};
 
 	Pipelines::_globalLayout.layout = PipelineManager::createPipelineLayout(setLayouts, pcRange);
@@ -152,7 +187,13 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	builder.colorFormat = ResourceManager::getDrawImage().imageFormat;
 	builder.depthFormat = ResourceManager::getDepthImage().imageFormat;
 
-	auto createPipeline = [&](PipelineID id, PipelineCategory type, std::string name, bool swappable = false) {
+	auto createPipeline = [&](
+		PipelineID id,
+		PipelineCategory type,
+		std::string name,
+		bool swappable = false,
+		bool mssaOn = MSAA_ENABLED) {
+
 		PipelinePresent& present = PipelinePresents::getPipelinePresentByID(id);
 
 		PipelineHandle& pipeHdl = Pipelines::getHandle(id);
@@ -164,10 +205,15 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 				present.colorFormat = builder.colorFormat;
 				present.depthFormat = builder.depthFormat;
 			}
-			setupPipelineConfig(builder, present, MSAA_ENABLED);
+			setupPipelineConfig(builder, present, mssaOn);
+
+			pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 			// Only raster pipelines will get topology info
 			pipeHdl.topology = present.topology;
+		}
+		else {
+			pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
 		}
 
 		pipeHdl.name = name;
@@ -210,14 +256,26 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	createPipeline(PipelineID::Skybox, PipelineCategory::Raster, "Skybox");
 
-	// === COMPUTE PIPELINE SETUP STAGE ===
+	// === DEPTH RESOLVED PIPELINE ===
+	PipelinePresent& depthPrePresent = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
+	depthPrePresent.colorFormat = VK_FORMAT_UNDEFINED;
+	depthPrePresent.depthFormat = ResourceManager::getDepthResolvedImage().imageFormat;
+	depthPrePresent.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthPrePresent.cullMode = VK_CULL_MODE_BACK_BIT;
 
+	createPipeline(PipelineID::DepthPrepass, PipelineCategory::Raster, "DepthPrepass", false, false);
+
+
+	// === COMPUTE PIPELINE SETUP STAGE ===
 	createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
 	createPipeline(PipelineID::ToneMap, PipelineCategory::Compute, "ToneMap");
 	createPipeline(PipelineID::HDRToCubemap, PipelineCategory::Compute, "HDRToCubemap");
 	createPipeline(PipelineID::SpecularPrefilter, PipelineCategory::Compute, "SpecularPrefilter");
 	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
 	createPipeline(PipelineID::BRDFLUT, PipelineCategory::Compute, "BRDFLUT");
+	createPipeline(PipelineID::SSAO, PipelineCategory::Compute, "SSAO");
+	createPipeline(PipelineID::SSAOBlurH, PipelineCategory::Compute, "SSAOBlurH");
+	createPipeline(PipelineID::SSAOBlurV, PipelineCategory::Compute, "SSAOBlurV");
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 
@@ -392,6 +450,7 @@ void PipelineConfigs::colorBlendingConfig(
 	colorBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 	colorBlend.alphaBlendOp = VK_BLEND_OP_ADD;
 }
+
 void PipelineConfigs::setColorAttachmentAndDepthFormat(
 	VkFormat& colorAttachmentFormat,
 	VkFormat colorFormat,
@@ -411,6 +470,7 @@ void PipelineConfigs::setColorAttachmentAndDepthFormat(
 
 	renderInfo.depthAttachmentFormat = (depthFormat != VK_FORMAT_UNDEFINED) ? depthFormat : VK_FORMAT_UNDEFINED;
 }
+
 void PipelineConfigs::depthStencilConfig(
 	VkPipelineDepthStencilStateCreateInfo& depthStencil,
 	bool depthTestEnabled,

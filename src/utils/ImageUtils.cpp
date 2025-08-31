@@ -8,6 +8,7 @@
 
 // TODO: When I get a better image loading library (ktx),
 // I'll rework this to be able to create large staging buffers for many textures into a single cmd
+// TODO: Change this function, the most spaghetti part of the code-base.
 void ImageUtils::createTextureImage(
 	const VkDevice device,
 	VkCommandPool cmdPool,
@@ -215,8 +216,11 @@ void ImageUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAll
 
 
 void ImageUtils::transitionImage(
-	VkCommandBuffer cmd, VkImage image, VkFormat format,
-	VkImageLayout oldLayout, VkImageLayout newLayout,
+	VkCommandBuffer cmd,
+	VkImage image,
+	VkFormat format,
+	VkImageLayout oldLayout,
+	VkImageLayout newLayout,
 	VkPipelineStageFlags2 dstStageOverride,
 	VkAccessFlags2        dstAccessOverride)
 {
@@ -646,7 +650,8 @@ void ImageUtils::generateMipmaps(VkCommandBuffer cmd, const AllocatedImage& imag
 
 	vkCmdPipelineBarrier(
 		cmd,
-		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		0,
 		0, nullptr,
 		0, nullptr,
@@ -660,20 +665,27 @@ VkSampler ImageUtils::createSampler(
 	VkSamplerAddressMode addressMode,
 	float maxLod,
 	float maxAnisotropy,
-	bool anisotrophyEnable)
+	DeletionQueue* dQueue,
+	VkSamplerMipmapMode mipmapMode)
 {
 	static std::mutex samplerMutex;
 	std::scoped_lock lock(samplerMutex);
 
-	VkSamplerCreateInfo samplerInfo = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
-	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	samplerInfo.minLod = 0.f;
+	VkSamplerCreateInfo samplerInfo{ VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO };
+	samplerInfo.mipmapMode = mipmapMode;
+	samplerInfo.minLod = 0.0f;
 	samplerInfo.maxLod = maxLod;
 	samplerInfo.magFilter = filter;
 	samplerInfo.minFilter = filter;
 
-	samplerInfo.maxAnisotropy = maxAnisotropy;
-	samplerInfo.anisotropyEnable = anisotrophyEnable;
+	if (maxAnisotropy > 1.0f) {
+		samplerInfo.anisotropyEnable = VK_TRUE;
+		samplerInfo.maxAnisotropy = maxAnisotropy;
+	}
+	else {
+		samplerInfo.anisotropyEnable = VK_FALSE;
+		samplerInfo.maxAnisotropy = 1.0f;
+	}
 
 	samplerInfo.addressModeU = addressMode;
 	samplerInfo.addressModeV = addressMode;
@@ -682,5 +694,12 @@ VkSampler ImageUtils::createSampler(
 
 	VkSampler sampler;
 	VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler));
+
+	if (dQueue != nullptr) {
+		dQueue->push_function([sampler, device] {
+			vkDestroySampler(device, sampler, nullptr);
+		});
+	}
+
 	return sampler;
 }

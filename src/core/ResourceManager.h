@@ -55,6 +55,7 @@ public:
 
 	// Uniform buffers
 	AllocatedBuffer envMapIndexBuffer;
+	AllocatedBuffer ssaoKernelBuffer;
 
 	void cleanup(VkDevice device);
 
@@ -89,11 +90,25 @@ private:
 namespace ResourceManager {
 	extern ImageTableManager _globalImageManager;
 	extern GPUEnvMapIndexArray _envMapIdxArray;
+	inline constexpr uint32_t _kernelBlockSize = 128;
+	extern glm::vec4 _ssaoKernelBlock[_kernelBlockSize];
+	void initSSAOKernel();
 
 	AllocatedImage& getDrawImage();
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
 	AllocatedImage& getToneMappingImage();
+	AllocatedImage& getDepthResolvedImage();
+	AllocatedImage& getNormalImage();
+	AllocatedImage& getSSAOImage();
+	AllocatedImage& getSSAOBlurHImage();
+	AllocatedImage& getSSAOBlurVImage();
+	AllocatedImage& getSSAONoiseImage();
+	const VkSampler getSamplerDepth();
+	const VkSampler getSamplerSSAO();
+	const VkSampler getSamplerNormal();
+	const VkSampler getSamplerNoise();
+
 	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
 	void initRenderImages(
@@ -102,14 +117,14 @@ namespace ResourceManager {
 		const VmaAllocator allocator,
 		const VkExtent3D drawExtent);
 
-	AllocatedImage& getMetalRoughImage();
-	AllocatedImage& getWhiteImage();
-	AllocatedImage& getEmissiveImage();
-	AllocatedImage& getAOImage();
-	AllocatedImage& getNormalImage();
+	AllocatedImage& getMetalRoughMat();
+	AllocatedImage& getWhiteMat();
+	AllocatedImage& getEmissiveMat();
+	AllocatedImage& getAOMat();
+	AllocatedImage& getNormaMat();
 	AllocatedImage& getCheckboardTex();
-	VkSampler getDefaultSamplerLinear();
-	VkSampler getDefaultSamplerNearest();
+	const VkSampler getDefaultSamplerLinear();
+	const VkSampler getDefaultSamplerNearest();
 	void initTextures(
 		const VkDevice device,
 		VkCommandPool cmdPool,
@@ -122,10 +137,10 @@ namespace ResourceManager {
 	AllocatedImage& getIrradianceImage();
 	AllocatedImage& getSpecularPrefilterImage();
 	AllocatedImage& getBRDFImage();
-	VkSampler& getBRDFSampler();
-	VkSampler& getSpecularPrefilterSampler();
-	VkSampler& getIrradianceSampler();
-	VkSampler& getSkyBoxSampler();
+	const VkSampler getBRDFSampler();
+	const VkSampler getSpecularPrefilterSampler();
+	const VkSampler getIrradianceSampler();
+	const VkSampler getSkyBoxSampler();
 	void initEnvironmentImages(
 		const VkDevice device,
 		DeletionQueue& queue, const

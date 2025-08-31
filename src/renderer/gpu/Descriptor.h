@@ -1,7 +1,82 @@
 #pragma once
 
-#include <common/ResourceTypes.h>
 #include <common/EngineTypes.h>
+#include <common/ResourceTypes.h>
+
+struct DescriptorsCentral {
+	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
+};
+
+struct PoolSizeRatio {
+	VkDescriptorType type;
+	float ratio = 0.0f;
+};
+
+struct DescriptorWriteGroup {
+	uint32_t binding = UINT32_MAX;
+	VkDescriptorType type{};
+	VkDescriptorSet dstSet = VK_NULL_HANDLE;
+
+	std::vector<VkDescriptorImageInfo> imageInfos;
+};
+
+enum class DescriptorImageType {
+	SamplerCube,
+	StorageImage,
+	CombinedSampler
+};
+
+struct DescriptorWriter {
+	// Per-binding grouped image descriptor writes
+	std::vector<DescriptorWriteGroup> imageWriteGroups;
+
+	std::vector<VkDescriptorBufferInfo> bufferInfos;
+	std::vector<VkWriteDescriptorSet> bufferWrites;
+	std::vector<size_t> writeBufferIndices;
+
+	std::vector<VkDescriptorImageInfo> samplerCubeDescriptors;
+	std::vector<VkDescriptorImageInfo> storageDescriptors;
+	std::vector<VkDescriptorImageInfo> combinedDescriptors;
+
+	bool enablePushDescriptor = false;
+
+	void updatePushSet(
+		VkCommandBuffer cmd,
+		VkPipelineBindPoint bindPoint,
+		VkPipelineLayout pipelineLayout);
+
+	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
+
+	void writePushBuffer(
+		uint32_t binding,
+		VkBuffer buffer,
+		size_t size,
+		size_t offset,
+		VkDescriptorType type);
+
+	void writeBuffer(
+		uint32_t binding,
+		VkBuffer buffer,
+		size_t size,
+		size_t offset,
+		VkDescriptorType type,
+		VkDescriptorSet set);
+	void writeImages(
+		uint32_t binding,
+		DescriptorImageType type,
+		VkDescriptorSet set);
+	void writePushImage(
+		uint32_t binding,
+		VkDescriptorType type,
+		const VkDescriptorImageInfo& imageInfo);
+
+	void clear();
+
+	~DescriptorWriter() { clear(); }
+
+	void updateSet(VkDevice device, VkDescriptorSet set);
+};
 
 struct DescriptorManager {
 	std::vector<VkDescriptorSetLayoutBinding> _bindings;
@@ -28,7 +103,8 @@ struct DescriptorManager {
 
 namespace DescriptorSetOverwatch {
 	extern DescriptorManager mainDescriptorManager;
-	DescriptorsCentral& getUnifiedDescriptors();
-	DescriptorsCentral& getFrameDescriptors();
+	DescriptorsCentral& getUnifiedDescriptor();
+	DescriptorsCentral& getFrameDescriptor();
+	DescriptorsCentral& getPushDescriptor();
 	void initDescriptors(const VkDevice device, DeletionQueue& queue);
 }

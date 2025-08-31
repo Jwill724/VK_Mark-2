@@ -1,0 +1,45 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+#include "../include/set_bindings.glsl"
+
+layout(push_constant) uniform SSAOPush {
+	mat4 invProj;
+	vec2 screenSize;
+	vec2 invScreenSize;
+	float aoRadius;
+	float bias;
+	float intensity;
+	int blurRadius;
+	uint sampleCount;
+	float pad0[3];
+} pc;
+
+layout(set = PUSH_SET, binding = PUSH_SSAO_INPUT_TEX_BINDING) uniform sampler2D ssaoInput;
+layout(set = PUSH_SET, binding = PUSH_SSAO_OUTPUT_TEX_BINDING, r8) uniform image2D blurH;
+
+void main() {
+	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+	vec2 uv = (vec2(pix) + 0.5) * pc.invScreenSize;
+
+	float result = 0.0;
+	float weightSum = 0.0;
+
+	// Gaussian blur, horizontal
+	for (int i = -pc.blurRadius; i <= pc.blurRadius; i++) {
+		vec2 offset = vec2(float(i), 0.0) * pc.invScreenSize;
+		float ssaoSample = texture(ssaoInput, uv + offset).r;
+
+		float weight = exp(-0.5 * (i * i) / float(pc.blurRadius * pc.blurRadius));
+		result += ssaoSample * weight;
+		weightSum += weight;
+	}
+
+	result /= weightSum;
+
+	imageStore(blurH, pix, vec4(result, 0.0, 0.0, 1.0));
+}

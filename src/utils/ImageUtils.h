@@ -32,8 +32,11 @@ namespace ImageUtils {
 	void destroyImage(VkDevice device, AllocatedImage& img, const VmaAllocator allocator);
 
 	void transitionImage(
-		VkCommandBuffer cmd, VkImage image, VkFormat format,
-		VkImageLayout currentLayout, VkImageLayout newLayout,
+		VkCommandBuffer cmd,
+		VkImage image,
+		VkFormat format,
+		VkImageLayout currentLayout,
+		VkImageLayout newLayout,
 		VkPipelineStageFlags2 dstStageOverride = 0,
 		VkAccessFlags2        dstAccessOverride = 0);
 	void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);
@@ -54,5 +57,6 @@ namespace ImageUtils {
 		VkSamplerAddressMode addressMode,
 		float maxLod,
 		float maxAnisotropy,
-		bool anisotrophyEnable);
+		DeletionQueue* dQueue = nullptr,
+		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR);
 }

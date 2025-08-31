@@ -38,7 +38,6 @@ void RenderScene::setScene() {
 	_mainCamera._pitch = 0;
 	_mainCamera._yaw = -90.0f;
 
-	_sceneData.ambientColor = glm::vec4(0.03f, 0.03f, 0.03f, 1.0f);
 	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 1.0f);
 	_sceneData.sunlightDirection = glm::normalize(glm::vec4(1.0f, 1.0f, -0.787f, 0.0f));
 }
@@ -46,7 +45,9 @@ void RenderScene::setScene() {
 
 void RenderScene::updateCamera() {
 	const auto extent = Renderer::getDrawExtent();
-	float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+	float width = static_cast<float>(extent.width);
+	float height = static_cast<float>(extent.height);
+	float aspect = width / height;
 
 	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler());
 
@@ -62,6 +63,7 @@ void RenderScene::updateCamera() {
 	_sceneData.proj = _curCamProj;
 	_sceneData.viewproj = _curCamProj * _curCamView;
 	_sceneData.cameraPosition = glm::vec4(_mainCamera._position, 0.0f);
+	_sceneData.viewportSize = glm::vec4(width, height, 0.0f, 0.0f);
 }
 
 // Draw preparation work
@@ -127,209 +129,11 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 }
 
 void RenderScene::allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator) {
-	const size_t sceneDataBytes = sizeof(GPUSceneData);
-
-	frameCtx.sceneDataBuffer = BufferUtils::createBuffer(sceneDataBytes,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
-
-	ASSERT(frameCtx.sceneDataBuffer.buffer != VK_NULL_HANDLE);
-	ASSERT(frameCtx.sceneDataBuffer.mapped != nullptr);
+	frameCtx.sceneDataBuffer = BufferUtils::createUniformBuffer(_sceneData, allocator);
 
 	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
 		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneDataBuffer, allocator);
 	});
-
-	GPUSceneData* sceneDataPtr = reinterpret_cast<GPUSceneData*>(frameCtx.sceneDataBuffer.mapped);
-	*sceneDataPtr = _sceneData;
-	vmaFlushAllocation(allocator, frameCtx.sceneDataBuffer.allocation, 0, sceneDataBytes);
-}
-
-void RenderScene::renderGeometry(FrameContext& frameCtx, Profiler& profiler) {
-	// all pipelines share push constant and descriptor setup
-	auto defaultPC = Pipelines::_globalLayout.pcRange;
-
-	// === SKYBOX DRAW ===
-	{
-		vkCmdBindPipeline(
-			frameCtx.commandBuffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			Pipelines::getPipeline(PipelineID::Skybox));
-
-		glm::mat4 view = glm::mat4(glm::mat3(_sceneData.view)); // strip translation
-
-		glm::mat4 proj = _sceneData.proj;
-		glm::mat4 viewproj = proj * view;
-
-		glm::mat4 invVp = glm::inverse(viewproj);
-
-		vkCmdPushConstants(frameCtx.commandBuffer,
-			Pipelines::_globalLayout.layout,
-			defaultPC.stageFlags,
-			defaultPC.offset,
-			defaultPC.size,
-			&invVp);
-
-		vkCmdDraw(frameCtx.commandBuffer, 3, 1, 0, 0);
-
-		// Literally one triangle
-		profiler.addDirect(1, 1);
-	}
-
-	if (frameCtx.visibleCount == 0) return;
-
-	auto& resources = Engine::getState().getGPUResources();
-
-	drawIndirectCommands(frameCtx, resources.getGPUAddrsBuffer(AddressBufferType::Index).buffer, profiler);
-
-	// === VISIBLE OBB FOR OBJECTS ===
-	{
-		if (profiler.debugToggles.showOBBs) {
-			std::vector<glm::vec3> allVerts;
-			std::vector<uint32_t> drawOffsets;
-
-			const auto& meshes = resources.getResgisteredMeshes().meshData;
-
-			auto emitAABBVerts = [&](const GPUInstance& inst) {
-				const auto& aabb = meshes[inst.meshID].localAABB;
-				const auto& matrix = _globalTransforms[inst.transformID];
-				auto verts = Visibility::GetOBBVertices(aabb, matrix);
-				uint32_t offset = static_cast<uint32_t>(allVerts.size());
-				drawOffsets.push_back(offset);
-				allVerts.insert(allVerts.end(), verts.begin(), verts.end());
-			};
-			for (const auto& inst : frameCtx.visibleInstances) emitAABBVerts(inst);
-
-			const auto allocator = resources.getAllocator();
-
-			const size_t totalSize = allVerts.size() * sizeof(glm::vec3);
-
-			AllocatedBuffer aabbVBO = BufferUtils::createBuffer(
-				totalSize,
-				VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-				VMA_MEMORY_USAGE_CPU_TO_GPU,
-				allocator);
-			ASSERT(aabbVBO.info.pMappedData != nullptr);
-			memcpy(aabbVBO.mapped, allVerts.data(), totalSize);
-
-			auto aabbBuf = aabbVBO.buffer;
-			auto aabbAlloc = aabbVBO.allocation;
-			frameCtx.cpuDeletion.push_function([aabbBuf, aabbAlloc, allocator]() mutable {
-				BufferUtils::destroyBuffer(aabbBuf, aabbAlloc, allocator);
-			});
-
-			vkCmdBindPipeline(
-				frameCtx.commandBuffer,
-				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				Pipelines::getPipeline(PipelineID::BoundingBox));
-
-			const VkDeviceSize vtxOffset = 0;
-			vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
-
-			struct alignas(16) AABBPushConstant {
-				glm::mat4 worldMatrix;
-				VkDeviceAddress vertexBuffer;
-				uint32_t _pad[2];
-			} pc{};
-			pc.worldMatrix = _sceneData.viewproj;
-			pc.vertexBuffer = aabbVBO.address;
-
-			vkCmdPushConstants(frameCtx.commandBuffer,
-				Pipelines::_globalLayout.layout,
-				defaultPC.stageFlags,
-				defaultPC.offset,
-				defaultPC.size,
-				&pc
-			);
-
-			const uint32_t vertsPerAABB = 24;
-
-			const auto obbTopo = Pipelines::getTopology(PipelineID::BoundingBox);
-			const uint64_t trisPerDraw = trianglesFromNonIndexed(obbTopo, static_cast<uint64_t>(vertsPerAABB));
-
-			for (uint32_t i = 0; i < drawOffsets.size(); ++i) {
-				uint32_t vertexOffset = drawOffsets[i];
-				vkCmdDraw(frameCtx.commandBuffer, vertsPerAABB, 1, vertexOffset, 0);
-				profiler.addDirect(1, trisPerDraw);
-			}
-		}
-	}
-}
-
-// Draw counts are misleading, these would actually be sub-draws. It would be 1 indirect draw per pass, once per frame.
-void RenderScene::drawIndirectCommands(FrameContext& frameCtx, const VkBuffer& indexBuffer, Profiler& profiler) {
-	auto pLayout = Pipelines::_globalLayout;
-
-	// All pipelines use the same layout
-	PipelineHandle pipeline{};
-	if (!profiler.pipeOverride.enabled)
-		pipeline = Pipelines::getHandle(PipelineID::Opaque); // default pipeline
-	else
-		pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
-
-	constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
-
-	vkCmdBindPipeline(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.pipeline);
-	vkCmdBindIndexBuffer(frameCtx.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-
-	if (frameCtx.opaqueRange.visibleCount > 0) {
-		vkCmdPushConstants(frameCtx.commandBuffer,
-			pLayout.layout,
-			pLayout.pcRange.stageFlags,
-			pLayout.pcRange.offset,
-			pLayout.pcRange.size,
-			&frameCtx.drawDataPC);
-
-		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
-			frameCtx.indirectDrawsBuffer.buffer,
-			frameCtx.opaqueRange.first * drawCmdSize,
-			frameCtx.opaqueRange.visibleCount,
-			drawCmdSize
-		);
-
-		const uint64_t trisOpaque = sumTrianglesIndirectRange(
-			frameCtx.indirectDraws,
-			frameCtx.opaqueRange.first,
-			frameCtx.opaqueRange.visibleCount,
-			pipeline.topology);
-
-		profiler.addOpaqueIndirect(/*commands*/1,
-			/*sub-draws*/frameCtx.opaqueRange.visibleCount,
-			/*triangles*/trisOpaque);
-	}
-
-	if (frameCtx.transparentRange.visibleCount > 0) {
-		const PipelineHandle& transparent = Pipelines::getHandle(PipelineID::Transparent);
-		if (!profiler.pipeOverride.enabled) {
-			vkCmdBindPipeline(
-				frameCtx.commandBuffer,
-				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				transparent.pipeline);
-		}
-
-		vkCmdPushConstants(frameCtx.commandBuffer,
-			pLayout.layout,
-			pLayout.pcRange.stageFlags,
-			pLayout.pcRange.offset,
-			pLayout.pcRange.size,
-			&frameCtx.drawDataPC);
-
-		vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
-			frameCtx.indirectDrawsBuffer.buffer,
-			frameCtx.transparentRange.first * drawCmdSize,
-			frameCtx.transparentRange.visibleCount,
-			drawCmdSize
-		);
-
-		const uint64_t trisTransparent = sumTrianglesIndirectRange(
-			frameCtx.indirectDraws,
-			frameCtx.transparentRange.first,
-			frameCtx.transparentRange.visibleCount,
-			transparent.topology);
-
-		profiler.addTransparentIndirect(/*commands*/1,
-			/*sub-draws*/frameCtx.transparentRange.visibleCount,
-			/*triangles*/trisTransparent);
-	}
 }
 
 void RenderScene::copyFrustumToFrame(CullingPushConstantsAddrs& frustumData) {

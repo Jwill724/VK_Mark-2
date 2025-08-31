@@ -16,17 +16,17 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 
 	using namespace SceneGraph;
 
-	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	ASSERT(damagedHelmetFile.has_value());
-	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	queue->push(damagedHelmetFile.value());
+	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	//ASSERT(damagedHelmetFile.has_value());
+	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	//queue->push(damagedHelmetFile.value());
 
-	std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
-	auto spheresFile = loadGltfFiles(spheresPath);
-	ASSERT(spheresFile.has_value());
-	spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
-	queue->push(spheresFile.value());
+	//std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
+	//auto spheresFile = loadGltfFiles(spheresPath);
+	//ASSERT(spheresFile.has_value());
+	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
+	//queue->push(spheresFile.value());
 
 	// TODO: Use a script to download assets
 	// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
@@ -36,17 +36,17 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
 	//queue->push(bistroFile.value());
 
-	std::string cubePath{ "res/assets/Duck.glb" };
-	auto cubeFile = loadGltfFiles(cubePath);
-	ASSERT(cubeFile.has_value());
-	cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
-	queue->push(cubeFile.value());
+	//std::string cubePath{ "res/assets/Duck.glb" };
+	//auto cubeFile = loadGltfFiles(cubePath);
+	//ASSERT(cubeFile.has_value());
+	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	//queue->push(cubeFile.value());
 
-	std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
-	auto dragonFile = loadGltfFiles(dragonPath);
-	ASSERT(dragonFile.has_value());
-	dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
-	queue->push(dragonFile.value());
+	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
+	//auto dragonFile = loadGltfFiles(dragonPath);
+	//ASSERT(dragonFile.has_value());
+	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
+	//queue->push(dragonFile.value());
 
 	std::string sponza1Path{ "res/assets/sponza.glb" };
 	auto sponza1File = loadGltfFiles(sponza1Path);
@@ -199,25 +199,17 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 		auto& scene = *context->scene;
 
 		for (fastgltf::Sampler& sampler : gltf.samplers) {
-			VkSamplerCreateInfo sampl = { .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO, .pNext = nullptr };
-			sampl.maxLod = VK_LOD_CLAMP_NONE;
-			sampl.minLod = 0.0f;
+			VkFilter filter = TextureLoader::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
+			VkSamplerMipmapMode mipmapMode = TextureLoader::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
-			sampl.magFilter = TextureLoader::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
-			sampl.minFilter = TextureLoader::extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
-
-			sampl.mipmapMode = TextureLoader::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
-
-			sampl.anisotropyEnable = VK_TRUE;
-			sampl.maxAnisotropy = Backend::getDeviceLimits().maxSamplerAnisotropy;
-
-			VkSamplerAddressMode addressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-			sampl.addressModeU = addressMode;
-			sampl.addressModeV = addressMode;
-			sampl.addressModeW = addressMode;
-
-			VkSampler newSampler;
-			VK_CHECK(vkCreateSampler(device, &sampl, nullptr, &newSampler));
+			VkSampler newSampler = ImageUtils::createSampler(
+				device,
+				filter,
+				VK_SAMPLER_ADDRESS_MODE_REPEAT,
+				VK_LOD_CLAMP_NONE,
+				Backend::getDeviceLimits().maxSamplerAnisotropy,
+				nullptr,
+				mipmapMode);
 
 			scene.runtime.samplers.push_back(newSampler);
 		}
@@ -252,15 +244,15 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 	// Default/fallback images
 	MaterialResources materialResources {
-		.albedoImage = ResourceManager::getWhiteImage(),
+		.albedoImage = ResourceManager::getWhiteMat(),
 		.albedoSampler = ResourceManager::getDefaultSamplerLinear(),
-		.metalRoughImage = ResourceManager::getMetalRoughImage(),
+		.metalRoughImage = ResourceManager::getMetalRoughMat(),
 		.metalRoughSampler = ResourceManager::getDefaultSamplerNearest(),
-		.aoImage = ResourceManager::getAOImage(),
+		.aoImage = ResourceManager::getAOMat(),
 		.aoSampler = ResourceManager::getDefaultSamplerNearest(),
-		.normalImage = ResourceManager::getNormalImage(),
+		.normalImage = ResourceManager::getNormaMat(),
 		.normalSampler = ResourceManager::getDefaultSamplerLinear(),
-		.emissiveImage = ResourceManager::getEmissiveImage(),
+		.emissiveImage = ResourceManager::getEmissiveMat(),
 		.emissiveSampler = ResourceManager::getDefaultSamplerLinear(),
 	};
 
@@ -390,7 +382,6 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			MaterialPass passType = MaterialPass::Opaque;
 			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
 				passType = MaterialPass::Transparent;
-				fmt::println("\ntransparent");
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
 
@@ -631,11 +622,11 @@ void ModelAsset::clearAll() {
 	for (auto& img : runtime.images) {
 		if (img.image == VK_NULL_HANDLE ||
 			img.image == ResourceManager::getCheckboardTex().image ||
-			img.image == ResourceManager::getWhiteImage().image ||
-			img.image == ResourceManager::getMetalRoughImage().image ||
-			img.image == ResourceManager::getAOImage().image ||
-			img.image == ResourceManager::getNormalImage().image ||
-			img.image == ResourceManager::getEmissiveImage().image) {
+			img.image == ResourceManager::getWhiteMat().image ||
+			img.image == ResourceManager::getMetalRoughMat().image ||
+			img.image == ResourceManager::getAOMat().image ||
+			img.image == ResourceManager::getNormaMat().image ||
+			img.image == ResourceManager::getEmissiveMat().image) {
 			continue;
 		}
 

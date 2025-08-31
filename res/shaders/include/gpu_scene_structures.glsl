@@ -6,24 +6,24 @@
 #define GPU_SCENE_STRUCTURES_GLSL
 
 struct SceneData {
-    mat4 view;
-    mat4 proj;
-    mat4 viewproj;
-    vec4 ambientColor;
-    vec4 sunlightDirection; // .w = power
-    vec4 sunlightColor;
-    vec4 cameraPos;
+	mat4 view;
+	mat4 proj;
+	mat4 viewproj;
+	vec4 sunlightDirection; // .w = power
+	vec4 sunlightColor;
+	vec4 cameraPos;
+	vec4 viewportSize;
 };
 
 // Number of env sets stored in the buffer (must match C++ side)
 const uint MAX_ENV_SETS = 16u;
 
 struct EnvMapIndexArray {
-    uvec4 indices[MAX_ENV_SETS];
-    // x = diffuseMapIndex
-    // y = specularMapIndex
-    // z = brdfLUTIndex
-    // w = skyboxMapIndex
+	uvec4 indices[MAX_ENV_SETS];
+	// x = diffuseMapIndex
+	// y = specularMapIndex
+	// z = brdfLUTIndex
+	// w = skyboxMapIndex
 };
 
 struct AABB {
@@ -35,40 +35,40 @@ struct AABB {
 };
 
 struct Vertex {
-    vec3 position;
-    vec3 normal;
-    vec2 uv;
-    vec4 color;
+	vec3 position;
+	vec3 normal;
+	vec2 uv;
+	vec4 color;
 };
 
 const uint PASS_OPAQUE      = 0u;
 const uint PASS_TRANSPARENT = 1u;
 
 struct Material {
-    vec4 colorFactor;
-    vec2 metalRoughFactors;
+	vec4 colorFactor;
+	vec2 metalRoughFactors;
 
-    vec3 emissiveColor;
-    float emissiveStrength;
+	vec3 emissiveColor;
+	float emissiveStrength;
 
-    float ambientOcclusion;
-    float normalScale;
-    float alphaCutoff;
-    uint passType;
+	float ambientOcclusion;
+	float normalScale;
+	float alphaCutoff;
+	uint passType;
 
-    uint albedoID;
-    uint metalRoughnessID;
-    uint normalID;
-    uint aoID;
-    uint emissiveID;
+	uint albedoID;
+	uint metalRoughnessID;
+	uint normalID;
+	uint aoID;
+	uint emissiveID;
 };
 
 struct Mesh {
-    AABB localAABB;
-    uint firstIndex;
-    uint indexCount;
-    uint vertexOffset;
-    uint vertexCount;
+	AABB localAABB;
+	uint firstIndex;
+	uint indexCount;
+	uint vertexOffset;
+	uint vertexCount;
 };
 
 // All defined as VkDrawIndexedIndirectCommand
@@ -78,11 +78,11 @@ const uint DRAW_DYNAMIC       = 2u;
 const uint DRAW_MULTI_DYNAMIC = 3u;
 
 struct Instance {
-    uint meshID;
-    uint materialID;
-    uint transformID;
-    uint drawType;
-    uint passType;
+	uint meshID;
+	uint materialID;
+	uint transformID;
+	uint drawType;
+	uint passType;
 };
 
 // Enum address buffer types
@@ -96,47 +96,56 @@ const uint ABT_Index             = 6u; // global
 const uint ABT_Count             = 7u;
 
 struct GPUAddressTable {
-    uint64_t addrs[ABT_Count];
+	uint64_t addrs[ABT_Count];
 };
 
 struct IndirectDrawCmd {
-    uint indexCount;
-    uint instanceCount;
-    uint firstIndex;
-    int vertexOffset;
-    uint firstInstance;
+	uint indexCount;
+	uint instanceCount;
+	uint firstIndex;
+	int vertexOffset;
+	uint firstInstance;
+};
+
+struct DrawDataPC {
+	uint totalVertexCount;
+	uint totalIndexCount;
+	uint totalMeshCount;
+	uint totalMaterialCount;
+	bool ssaoEnabled;
+	uint pad0[3];
 };
 
 // GPU-only buffers
 
 // instances
 layout(buffer_reference, scalar) readonly buffer VisibleInstances {
-    Instance instances[];
+	Instance instances[];
 };
 // indirect draws
 layout(buffer_reference, scalar) readonly buffer IndirectDraws {
-    IndirectDrawCmd indirectDraws[];
+	IndirectDrawCmd indirectDraws[];
 };
 
 // materials, vertices, indices, all ready at render time and uploaded at end of asset loading
 layout(buffer_reference, scalar) readonly buffer MaterialBuffer {
-    Material materials[];
+	Material materials[];
 };
 
 layout(buffer_reference, scalar) readonly buffer VertexBuffer {
-    Vertex vertices[];
+	Vertex vertices[];
 };
 
 layout(buffer_reference, scalar) readonly buffer IndexBuffer {
-    uint indices[];
+	uint indices[];
 };
 
 layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
-    mat4 transforms[];
+	mat4 transforms[];
 };
 
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {
-    Mesh meshes[];
+	Mesh meshes[];
 };
 
 #endif

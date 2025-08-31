@@ -14,7 +14,7 @@
     <Filter Include="src\renderer\backend" />
     <Filter Include="src\renderer\gpu" />
     <Filter Include="src\renderer\frame" />
-    <Filter Include="src\renderer\graph" />
+    <Filter Include="src\renderer\passes" />
     <Filter Include="src\renderer\scene" />
     <!-- core (assets/resources) -->
     <Filter Include="src\core" />
@@ -86,10 +86,11 @@
     <ClCompile Include="src\renderer\frame\FrameContext.cpp">
       <Filter>src\renderer\frame</Filter>
     </ClCompile>
-    <!-- renderer / graph -->
-    <ClCompile Include="src\renderer\graph\RenderGraph.cpp">
-      <Filter>src\renderer\graph</Filter>
+    <!-- renderer / passes -->
+    <ClCompile Include="src\renderer\passes\RenderPasses.cpp">
+      <Filter>src\renderer\passes</Filter>
     </ClCompile>
+    <!-- renderer / graph -->
     <!-- renderer / scene -->
     <ClCompile Include="src\renderer\scene\RenderScene.cpp">
       <Filter>src\renderer\scene</Filter>
@@ -280,6 +281,10 @@
     <ClInclude Include="src\renderer\frame\FrameContext.h">
       <Filter>src\renderer\frame</Filter>
     </ClInclude>
+    <!-- renderer / passes -->
+    <ClInclude Include="src\renderer\passes\RenderPasses.h">
+      <Filter>src\renderer\passes</Filter>
+    </ClInclude>
     <!-- renderer / scene -->
     <ClInclude Include="src\renderer\scene\RenderScene.h">
       <Filter>src\renderer\scene</Filter>
@@ -294,9 +299,6 @@
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
     <!-- renderer / graph -->
-    <ClInclude Include="src\renderer\graph\RenderGraph.h">
-      <Filter>src\renderer\graph</Filter>
-    </ClInclude>
     <!-- utils -->
     <ClInclude Include="src\utils\VulkanUtils.h">
       <Filter>src\utils</Filter>
@@ -359,6 +361,21 @@
     </None>
     <None Include="res\shaders\visibility\visibility_comp.comp">
       <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\post_process\depth_prepass_vert.vert">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\ssao_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\ssao_blurH_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\ssao_blurV_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\depth_prepass_frag.frag">
+      <Filter>res\shaders\post_process</Filter>
     </None>
   </ItemGroup>
 </Project>

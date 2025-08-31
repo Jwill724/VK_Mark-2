@@ -8,13 +8,17 @@ namespace DescriptorSetOverwatch {
 	DescriptorManager mainDescriptorManager;
 
 	DescriptorsCentral unifiedDescriptor;
-	DescriptorsCentral& getUnifiedDescriptors() { return unifiedDescriptor; }
+	DescriptorsCentral& getUnifiedDescriptor() { return unifiedDescriptor; }
 
 	DescriptorsCentral frameDescriptor;
-	DescriptorsCentral& getFrameDescriptors() { return frameDescriptor; }
+	DescriptorsCentral& getFrameDescriptor() { return frameDescriptor; }
 
-	void initUnifiedDescriptors(const VkDevice device, DeletionQueue& dQueue);
-	void initFrameDescriptors(const VkDevice device, DeletionQueue& dQueue);
+	DescriptorsCentral pushDescriptor;
+	DescriptorsCentral& getPushDescriptor() { return pushDescriptor; }
+
+	void initUnifiedDescriptor(const VkDevice device, DeletionQueue& dQueue);
+	void initFrameDescriptor(const VkDevice device, DeletionQueue& dQueue);
+	void initPushDescriptor(const VkDevice device, DeletionQueue& dQueue);
 	void initMainDescriptorManager(const VkDevice device, DeletionQueue& dQueue);
 }
 
@@ -35,8 +39,9 @@ void DescriptorSetOverwatch::initMainDescriptorManager(const VkDevice device, De
 
 void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueue& queue) {
 	initMainDescriptorManager(device, queue);
-	initUnifiedDescriptors(device, queue);
-	initFrameDescriptors(device, queue);
+	initUnifiedDescriptor(device, queue);
+	initFrameDescriptor(device, queue);
+	initPushDescriptor(device, queue);
 }
 
 // Unified descriptor bindings:
@@ -52,7 +57,7 @@ void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueu
 // image LUT stored in binding [0]. This design makes all image usage agnostic,
 // bindless, and scalable across the entire engine.
 
-void DescriptorSetOverwatch::initUnifiedDescriptors(const VkDevice device, DeletionQueue& queue) {
+void DescriptorSetOverwatch::initUnifiedDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
 	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
@@ -94,7 +99,7 @@ void DescriptorSetOverwatch::initUnifiedDescriptors(const VkDevice device, Delet
 // Only defines layout
 // [0] = Storage buffer holding addresses (instance and indirect buffers)
 // [1] = Scene data UBO (camera, lighting, frame constants, etc)
-void DescriptorSetOverwatch::initFrameDescriptors(const VkDevice device, DeletionQueue& queue) {
+void DescriptorSetOverwatch::initFrameDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
 	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_ALL, 1);
@@ -102,6 +107,63 @@ void DescriptorSetOverwatch::initFrameDescriptors(const VkDevice device, Deletio
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout(device);
 	frameDescriptor.descriptorLayout = layout;
+
+	queue.push_function([layout, device]() {
+		if (layout != VK_NULL_HANDLE) {
+			vkDestroyDescriptorSetLayout(device, layout, nullptr);
+		}
+	});
+}
+
+// Push descriptor bindings will be filled up overtime
+void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQueue& queue) {
+	mainDescriptorManager.clearBinding();
+
+	// depth (sampled)
+	mainDescriptorManager.addBinding(
+		PUSH_DEPTH_TEX_BINDING,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		VK_SHADER_STAGE_COMPUTE_BIT,
+		1);
+
+	// normal (sampled)
+	mainDescriptorManager.addBinding(
+		PUSH_NORMAL_TEX_BINDING,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT,
+		1);
+
+	// kernel block
+	mainDescriptorManager.addBinding(
+		PUSH_SSAO_KERNEL_BINDING,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		VK_SHADER_STAGE_COMPUTE_BIT,
+		1);
+
+	// SSAO writable output
+	mainDescriptorManager.addBinding(
+		PUSH_SSAO_OUTPUT_TEX_BINDING,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		VK_SHADER_STAGE_COMPUTE_BIT,
+		1);
+
+	// SSAO input
+	mainDescriptorManager.addBinding(
+		PUSH_SSAO_INPUT_TEX_BINDING,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+		1);
+
+	// noise texture
+	mainDescriptorManager.addBinding(
+		PUSH_NOISE_TEX_BINDING,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		VK_SHADER_STAGE_COMPUTE_BIT,
+		1);
+
+	VkDescriptorSetLayout layout = mainDescriptorManager.createPushSetLayout(device);
+
+	pushDescriptor.descriptorLayout = layout;
 
 	queue.push_function([layout, device]() {
 		if (layout != VK_NULL_HANDLE) {
@@ -299,8 +361,88 @@ VkDescriptorSet DescriptorManager::allocateDescriptor(
 	return ds;
 }
 
+// Push descriptors
+VkDescriptorSetLayout DescriptorManager::createPushSetLayout(const VkDevice device) {
+	std::sort(_bindings.begin(), _bindings.end(), [](auto& a, auto& b) { return a.binding < b.binding; });
+
+	VkDescriptorSetLayoutCreateInfo info{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
+		.bindingCount = static_cast<uint32_t>(_bindings.size()),
+		.pBindings = _bindings.data()
+	};
+
+	VkDescriptorSetLayout set{};
+	VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
+	return set;
+}
+
 // TODO: Create a way to turn on debugging text easier
-// DESCRIPTOR WRITING
+// === DESCRIPTOR WRITING ===
+
+void DescriptorWriter::updatePushSet(
+	VkCommandBuffer cmd,
+	VkPipelineBindPoint bindPoint,
+	VkPipelineLayout pipelineLayout)
+{
+	std::vector<VkWriteDescriptorSet> writes;
+
+	for (size_t i = 0; i < bufferWrites.size(); i++) {
+		bufferWrites[i].dstSet = VK_NULL_HANDLE;
+		bufferWrites[i].pBufferInfo = &bufferInfos[writeBufferIndices[i]];
+		writes.push_back(bufferWrites[i]);
+	}
+
+	for (const auto& group : imageWriteGroups) {
+		if (group.imageInfos.empty()) continue;
+
+		VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+		write.dstBinding = group.binding;
+		write.descriptorCount = static_cast<uint32_t>(group.imageInfos.size());
+		write.descriptorType = group.type;
+		write.pImageInfo = group.imageInfos.data();
+
+		writes.push_back(write);
+	}
+
+	if (!writes.empty()) {
+		vkCmdPushDescriptorSet(
+			cmd,
+			bindPoint,
+			pipelineLayout,
+			PUSH_SET, // Hard coded set 2
+			static_cast<uint32_t>(writes.size()),
+			writes.data());
+	}
+}
+
+void DescriptorWriter::writePushBuffer(
+	uint32_t binding,
+	VkBuffer buffer,
+	size_t size,
+	size_t offset,
+	VkDescriptorType type)
+{
+	size_t bufferIndex = bufferInfos.size();
+	bufferInfos.emplace_back(VkDescriptorBufferInfo{
+		.buffer = buffer,
+		.offset = offset,
+		.range = size
+	});
+
+	bufferWrites.push_back({
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = VK_NULL_HANDLE,
+		.dstBinding = binding,
+		.dstArrayElement = 0,
+		.descriptorCount = 1,
+		.descriptorType = type,
+		.pBufferInfo = nullptr
+	});
+
+	writeBufferIndices.push_back(bufferIndex);
+}
+
 void DescriptorWriter::writeBuffer(
 	uint32_t binding,
 	VkBuffer buffer,
@@ -392,6 +534,22 @@ void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, V
 	});
 }
 
+void DescriptorWriter::writePushImage(
+	uint32_t binding,
+	VkDescriptorType type,
+	const VkDescriptorImageInfo& imageInfo)
+{
+	std::vector<VkDescriptorImageInfo> infos;
+	infos.push_back(imageInfo);
+
+	imageWriteGroups.push_back({
+		.binding = binding,
+		.type = type,
+		.dstSet = VK_NULL_HANDLE,
+		.imageInfos = std::move(infos)
+	});
+}
+
 void DescriptorWriter::clear() {
 	imageWriteGroups.clear();
 	bufferWrites.clear();
@@ -433,20 +591,4 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 		}
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(bufferWrites.size()), bufferWrites.data(), 0, nullptr);
 	}
-}
-
-// Push descriptors
-VkDescriptorSetLayout DescriptorManager::createPushSetLayout(const VkDevice device) {
-	std::sort(_bindings.begin(), _bindings.end(), [](auto& a, auto& b) { return a.binding < b.binding; });
-
-	VkDescriptorSetLayoutCreateInfo info{
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT,
-		.bindingCount = static_cast<uint32_t>(_bindings.size()),
-		.pBindings = _bindings.data()
-	};
-
-	VkDescriptorSetLayout set{};
-	VK_CHECK(vkCreateDescriptorSetLayout(device, &info, nullptr, &set));
-	return set;
 }

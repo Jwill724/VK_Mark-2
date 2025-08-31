@@ -3,16 +3,15 @@
 #include <functional>
 
 // General Engine Limits
-constexpr uint32_t MAX_DRAWS = 65536;
+constexpr uint32_t MAX_DRAWS = 65536u;
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_DRAWS;
-constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3;
+constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3u;
 
 // Default spawn with loading
-constexpr glm::vec3 SPAWNPOINT(1, 1, 1);
+constexpr glm::vec3 SPAWNPOINT(1.0f, 1.0f, 1.0f);
 
-static constexpr uint32_t LOCAL_SIZE_X = 64;
-constexpr unsigned int MAX_THREADS = 12;
-constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256;
+constexpr uint32_t MAX_THREADS = 12u;
+constexpr uint32_t MAX_PUSH_CONSTANT_SIZE = 256u;
 constexpr float TARGET_FRAME_RATE_60 = 59.94f;
 constexpr float TARGET_FRAME_RATE_120 = 119.88f;
 constexpr float TARGET_FRAME_RATE_144 = 143.856f;
@@ -20,25 +19,42 @@ constexpr float TARGET_FRAME_RATE_240 = 239.76f;
 
 // Image / Texture Limits
 constexpr float ANISOTROPY_LEVEL = 16.0f;
-static constexpr uint32_t MSAACOUNT_8 = 8;
-static constexpr uint32_t MSAACOUNT_4 = 4;
-static constexpr uint32_t MSAACOUNT_2 = 2;
-constexpr uint32_t MAX_MIP_LEVELS = 12;
-constexpr uint32_t MAX_ENV_SETS = 16; // 256 uniform alignment 16 * uvec4(16 bytes)
-constexpr uint32_t MAX_MATERIALS = 512;
+static constexpr uint32_t MSAACOUNT_8 = 8u;
+static constexpr uint32_t MSAACOUNT_4 = 4u;
+static constexpr uint32_t MSAACOUNT_2 = 2u;
+constexpr uint32_t MAX_MIP_LEVELS = 12u;
+constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * uvec4(16 bytes)
+constexpr uint32_t MAX_MATERIALS = 512u;
 
 // Descriptor info
-constexpr uint32_t GLOBAL_SET = 0;
-constexpr uint32_t FRAME_SET = 1;
-constexpr uint32_t ADDRESS_TABLE_BINDING = 0;
-constexpr uint32_t GLOBAL_BINDING_ENV_INDEX = 1;
-constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE = 2;
-constexpr uint32_t GLOBAL_BINDING_STORAGE_IMAGE = 3;
-constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 4;
-constexpr uint32_t FRAME_BINDING_SCENE = 1;
-constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100;
-constexpr uint32_t MAX_STORAGE_IMAGES = 100;
-constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 1000;
+constexpr uint32_t GLOBAL_SET = 0u;
+constexpr uint32_t FRAME_SET = 1u;
+constexpr uint32_t PUSH_SET = 2u;
+
+// Shared between global and frame
+constexpr uint32_t ADDRESS_TABLE_BINDING = 0u;
+
+// Global bindings
+constexpr uint32_t GLOBAL_BINDING_ENV_INDEX = 1u;
+constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE = 2u;
+constexpr uint32_t GLOBAL_BINDING_STORAGE_IMAGE = 3u;
+constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 4u;
+
+// Frame bindings
+constexpr uint32_t FRAME_BINDING_SCENE = 1u;
+
+// Push bindings
+constexpr uint32_t PUSH_DEPTH_TEX_BINDING = 0u;
+constexpr uint32_t PUSH_NORMAL_TEX_BINDING = 1u;
+constexpr uint32_t PUSH_SSAO_KERNEL_BINDING = 2u;
+constexpr uint32_t PUSH_SSAO_OUTPUT_TEX_BINDING = 3u;
+constexpr uint32_t PUSH_SSAO_INPUT_TEX_BINDING = 4u;
+constexpr uint32_t PUSH_NOISE_TEX_BINDING = 5u;
+
+// Image array sizes
+constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100u;
+constexpr uint32_t MAX_STORAGE_IMAGES = 100u;
+constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 10000u;
 
 // Threading / Job System
 constexpr uint32_t JOB_WORKER_COUNT = MAX_THREADS;

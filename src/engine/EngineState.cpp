@@ -92,7 +92,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			mainAllocator
 		);
 
-		fmt::print("\nAssets available for loading!\n");
+		fmt::println("\nAssets available for loading!");
 
 		engineProfiler.startTimer();
 
@@ -238,16 +238,16 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
-	auto& skyboxSmpl = ResourceManager::getSkyBoxSampler();
+	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
 
 	auto& diffuseImg = ResourceManager::getIrradianceImage();
-	auto& diffuseSmpl = ResourceManager::getIrradianceSampler();
+	auto diffuseSmpl = ResourceManager::getIrradianceSampler();
 
 	auto& specImg = ResourceManager::getSpecularPrefilterImage();
-	auto& specSmpl = ResourceManager::getSpecularPrefilterSampler();
+	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
 
 	auto& brdfImg = ResourceManager::getBRDFImage();
-	auto& brdfSmpl = ResourceManager::getBRDFSampler();
+	auto brdfSmpl = ResourceManager::getBRDFSampler();
 
 	// In current implementation the entries must be pushed in proper order
 	// Diffuse -> Specular -> BRDF -> Skybox
@@ -293,15 +293,14 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		ResourceManager::_envMapIdxArray.indices[setIndex++] = envEntry;
 	}
 
-	_resources.envMapIndexBuffer = BufferUtils::createBuffer(sizeof(GPUEnvMapIndexArray),
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, mainAllocator);
+	_resources.envMapIndexBuffer = BufferUtils::createUniformBuffer(ResourceManager::_envMapIdxArray, mainAllocator);
 
-	GPUEnvMapIndexArray* envMapIndices = reinterpret_cast<GPUEnvMapIndexArray*>(_resources.envMapIndexBuffer.mapped);
-	*envMapIndices = ResourceManager::_envMapIdxArray;
-	vmaFlushAllocation(mainAllocator, _resources.envMapIndexBuffer.allocation, 0, VK_WHOLE_SIZE);
+	// ssao kernel block
+	ResourceManager::initSSAOKernel();
+	_resources.ssaoKernelBuffer = BufferUtils::createUniformBuffer(ResourceManager::_ssaoKernelBlock, mainAllocator);
 
 	// Global descriptor writing and update
-	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptors().descriptorSet;
+	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
 	DescriptorWriter mainWriter;
 	if (availableAssets) {
 		mainWriter.writeBuffer(
@@ -334,7 +333,7 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 
 	Renderer::initRenderer(
 		device,
-		DescriptorSetOverwatch::getFrameDescriptors().descriptorLayout,
+		DescriptorSetOverwatch::getFrameDescriptor().descriptorLayout,
 		_resources,
 		engineProfiler.assetsLoaded
 	);
