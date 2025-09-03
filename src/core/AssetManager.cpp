@@ -16,43 +16,43 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 
 	using namespace SceneGraph;
 
-	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
-	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
-	//ASSERT(damagedHelmetFile.has_value());
-	//damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
-	//queue->push(damagedHelmetFile.value());
-
 	//std::string spheresPath{ "res/assets/MetalRoughSpheres.glb" };
 	//auto spheresFile = loadGltfFiles(spheresPath);
 	//ASSERT(spheresFile.has_value());
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
 	//queue->push(spheresFile.value());
 
-	// TODO: Use a script to download assets
-	// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
+	//// TODO: Use a script to download assets
+	//// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
 	//std::string bistroPath{ "res/assets/Bistro.glb" };
 	//auto bistroFile = loadGltfFiles(bistroPath);
 	//ASSERT(bistroFile.has_value());
 	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
 	//queue->push(bistroFile.value());
 
-	//std::string cubePath{ "res/assets/Duck.glb" };
-	//auto cubeFile = loadGltfFiles(cubePath);
-	//ASSERT(cubeFile.has_value());
-	//cubeFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
-	//queue->push(cubeFile.value());
-
-	//std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
-	//auto dragonFile = loadGltfFiles(dragonPath);
-	//ASSERT(dragonFile.has_value());
-	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
-	//queue->push(dragonFile.value());
+	//std::string duckPath{ "res/assets/Duck.glb" };
+	//auto duckFile = loadGltfFiles(duckPath);
+	//ASSERT(duckFile.has_value());
+	//duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	//queue->push(duckFile.value());
 
 	std::string sponza1Path{ "res/assets/sponza.glb" };
 	auto sponza1File = loadGltfFiles(sponza1Path);
 	ASSERT(sponza1File.has_value());
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
+
+	std::string dragonPath{ "res/assets/DragonAttenuation.glb" };
+	auto dragonFile = loadGltfFiles(dragonPath);
+	ASSERT(dragonFile.has_value());
+	dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
+	queue->push(dragonFile.value());
+
+	std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
+	auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
+	ASSERT(damagedHelmetFile.has_value());
+	damagedHelmetFile.value()->scene->sceneName = SceneNames.at(SceneID::DamagedHelmet);
+	queue->push(damagedHelmetFile.value());
 
 	//std::string cityPath{ "res/assets/city/town4new.glb" };
 	//auto cityFile = loadGltfFiles(cityPath);
@@ -207,7 +207,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 				filter,
 				VK_SAMPLER_ADDRESS_MODE_REPEAT,
 				VK_LOD_CLAMP_NONE,
-				Backend::getDeviceLimits().maxSamplerAnisotropy,
+				CURRENT_AF_LVL,
 				nullptr,
 				mipmapMode);
 
@@ -236,7 +236,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		totalMaterialCount += context->gltfAsset.materials.size();
 	}
 
-	resources.stats.totalMaterialCount = static_cast<uint32_t>(totalMaterialCount);
+	resources.modelDataCounts.totalMaterialCount = static_cast<uint32_t>(totalMaterialCount);
 
 	// Pre-allocate space for flat material staging
 	std::vector<GPUMaterial> materialUploadList;
@@ -442,7 +442,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 	auto matBuf = materialStaging.buffer;
 	auto matAlloc = materialStaging.allocation;
-	resources.getTempDeletionQueue().push_function([matBuf, matAlloc, allocator]() mutable {
+	resources.getTempDQueue().push_function([matBuf, matAlloc, allocator]() mutable {
 		BufferUtils::destroyBuffer(matBuf, matAlloc, allocator);
 	});
 }
@@ -454,7 +454,8 @@ void AssetManager::processMeshes(
 	ThreadContext& threadCtx,
 	MeshRegistry& meshes,
 	std::vector<Vertex>& vertices,
-	std::vector<uint32_t>& indices)
+	std::vector<uint32_t>& indices,
+	ModelDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
@@ -462,8 +463,6 @@ void AssetManager::processMeshes(
 	ASSERT(queue && "[processMeshes] queue broken.");
 
 	auto gltfJobs = queue->collect();
-
-	auto& resourceStats = Engine::getState().getGPUResources().stats;
 
 	uint32_t matOffset = 0;
 
@@ -571,7 +570,7 @@ void AssetManager::processMeshes(
 					inst->materialID = matOffset;
 					inst->passType = static_cast<uint32_t>(MaterialPass::Opaque);
 				}
-				ASSERT(inst->materialID < resourceStats.totalMaterialCount && "MaterialID out of range");
+				ASSERT(inst->materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
 
 				glm::vec3 vmin = vertices[globalVertexOffset].position;
 				glm::vec3 vmax = vmin;
@@ -595,16 +594,16 @@ void AssetManager::processMeshes(
 
 		matOffset += sceneMatCount;
 
-		resourceStats.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
-		resourceStats.totalVertexCount = static_cast<uint32_t>(vertices.size());
-		resourceStats.totalIndexCount = static_cast<uint32_t>(indices.size());
+		modelDataCounts.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
+		modelDataCounts.totalVertexCount = static_cast<uint32_t>(vertices.size());
+		modelDataCounts.totalIndexCount = static_cast<uint32_t>(indices.size());
 
 		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
-			resourceStats.totalMeshCount,
-			resourceStats.totalVertexCount,
-			resourceStats.totalIndexCount);
+			modelDataCounts.totalMeshCount,
+			modelDataCounts.totalVertexCount,
+			modelDataCounts.totalIndexCount);
 
-		ASSERT(resourceStats.totalMeshCount > 0 && resourceStats.totalVertexCount > 0 && resourceStats.totalIndexCount > 0 &&
+		ASSERT(modelDataCounts.totalMeshCount > 0 && modelDataCounts.totalVertexCount > 0 && modelDataCounts.totalIndexCount > 0 &&
 			"Invalid draw ranges.");
 
 		queue->push(context);

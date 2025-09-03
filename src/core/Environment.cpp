@@ -83,6 +83,7 @@ AllocatedImage Environment::loadHDR(
 	return equirect;
 }
 
+// TODO: Enable loading of more than one environment map at once
 void Environment::dispatchEnvironmentMaps(
 	const VkDevice device,
 	GPUResources& resources,
@@ -90,34 +91,36 @@ void Environment::dispatchEnvironmentMaps(
 {
 	AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
 		resources.getGraphicsPool(),
-		resources.getTempDeletionQueue(),
-		resources.getTempDeletionQueue(),
+		resources.getTempDQueue(),
+		resources.getTempDQueue(),
 		resources.getAllocator(),
 		device);
+
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_puresky_4k.hdr",
 	//	resources.getGraphicsPool(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDQueue(),
+	//	resources.getTempDQueue(),
 	//	resources.getAllocator(),
 	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
 	//	resources.getGraphicsPool(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDQueue(),
+	//	resources.getTempDQueue(),
 	//	resources.getAllocator(),
 	//	device);
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
 	//	resources.getGraphicsPool(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDQueue(),
+	//	resources.getTempDQueue(),
 	//	resources.getAllocator(),
 	//	device);
 
-	// Diffuse sampling is terrible for this
+	// Diffuse sampling is terrible for this,
+	// probably due to sun blotches
 	//AllocatedImage equirect = loadHDR("res/assets/envhdr/san_giuseppe_bridge_4k.hdr",
 	//	resources.getGraphicsPool(),
-	//	resources.getTempDeletionQueue(),
-	//	resources.getTempDeletionQueue(),
+	//	resources.getTempDQueue(),
+	//	resources.getTempDQueue(),
 	//	resources.getAllocator(),
 	//	device);
 
@@ -186,6 +189,7 @@ void Environment::dispatchEnvironmentMaps(
 	}
 
 	auto& graphicsPool = resources.getGraphicsPool();
+	auto& graphicsQ = Backend::getGraphicsQueue();
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		ImageUtils::transitionImage(cmd,
 			equirect.image,
@@ -212,23 +216,17 @@ void Environment::dispatchEnvironmentMaps(
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-	}, graphicsPool, QueueType::Graphics, device);
 
-	auto& graphicsQ = Backend::getGraphicsQueue();
+		// Write once
+		auto set = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
+		DescriptorWriter writer;
+		writer.writeFromImageLUT(resources.getLUTManager().getEntries(), globalImgTable.table);
+		writer.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, set);
+		writer.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, set);
+		writer.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, set);
+		writer.updateSet(device, set);
 
-	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
 
-	waitAndRecycleLastFence(resources.getLastSubmittedFence(), graphicsQ, device);
-
-	auto set = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
-	DescriptorWriter writer;
-	writer.writeFromImageLUT(resources.getLUTManager().getEntries(), globalImgTable.table);
-	writer.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, set);
-	writer.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, set);
-	writer.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, set);
-	writer.updateSet(device, set);
-
-	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		// Bind once
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, GLOBAL_SET, 1, &set, 0, nullptr);
 

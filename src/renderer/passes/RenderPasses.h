@@ -10,6 +10,7 @@ namespace RenderPasses {
 		std::vector<VkRenderingAttachmentInfo> colorAttachments;
 		VkRenderingAttachmentInfo depthAttachment{};
 		bool hasDepth = false;
+		uint32_t viewMask{ 0 };
 	};
 
 	struct ComputeDispatchScope {
@@ -37,6 +38,10 @@ namespace RenderPasses {
 
 	void depthPrePass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle);
+	void shadowCSMPass(FrameContext& frameCtx,
+		const PipelineHandle& pipeHandle);
+	void SSAOPass(FrameContext& frameCtx,
+		ComputeDispatchScope ssaoScope);
 
 	void opaqueMeshPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,
@@ -51,6 +56,9 @@ namespace RenderPasses {
 		FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,
 		Profiler& profiler);
+	void ToneMapPass(FrameContext& frameCtx,
+		ComputeDispatchScope toneScope,
+		AllocatedImage& toneMap);
 
 	void dispatchComputePass(
 		FrameContext& frameCtx,

@@ -27,24 +27,25 @@ void EngineState::init() {
 	JobSystem::getThreadPoolManager().init(device, static_cast<uint32_t>(allThreadContexts.size()), graphicsIndex, transferIndex);
 
 	_resources.init(device);
-	auto& dQueue = _resources.getMainDeletionQueue();
+	auto& dQueue = _resources.getMainDQueue();
 	auto mainAllocator = _resources.getAllocator();
 
-	EditorImgui::initImgui(
-		device,
-		Backend::getPhysicalDevice(),
-		Backend::getGraphicsQueue().queue,
-		Backend::getInstance(),
-		Backend::getSwapchainDef().imageFormat,
-		dQueue);
+	EditorImgui::initImgui(dQueue);
 
 	DescriptorSetOverwatch::initDescriptors(device, dQueue);
 
 	auto& winExtent = Engine::getWindowExtent();
 	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1 });
 
-	ResourceManager::initRenderImages(device, dQueue, mainAllocator, Renderer::getDrawExtent());
-	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDeletionQueue(), mainAllocator);
+	ResourceManager::initRenderTargets(
+		device,
+		_resources.getRenderTargetDQueue(),
+		mainAllocator,
+		Renderer::getDrawExtent());
+
+	ResourceManager::initRenderSamplers(device, dQueue);
+	ResourceManager::initShadowMapImages(device, dQueue, mainAllocator);
+	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDQueue(), mainAllocator);
 	ResourceManager::initEnvironmentImages(device, dQueue, mainAllocator);
 
 	RenderScene::setScene();
@@ -55,7 +56,7 @@ void EngineState::init() {
 	// all work is cleared afterward
 	Environment::dispatchEnvironmentMaps(device, _resources, ResourceManager::_globalImageManager);
 
-	_resources.getTempDeletionQueue().flush();
+	_resources.getTempDQueue().flush();
 
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
 	_resources.clearLUTEntries();
@@ -105,8 +106,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		JobSystem::wait();
 
-		// temp queue needed for deferred buffer deletions for buffers used in commands
-		auto& tempQueue = _resources.getTempDeletionQueue();
+		// Temp queue needed for deferred buffer deletions for buffers used in commands.
+		auto& tempQueue = _resources.getTempDQueue();
 
 		// === TEXTURE LOADING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device, &tempQueue](ThreadContext& threadCtx) {
@@ -147,10 +148,11 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		auto& meshes = _resources.getResgisteredMeshes();
 		std::vector<Vertex> totalVertices;
 		std::vector<uint32_t> totalIndices;
+		auto& modelDataCounts = _resources.modelDataCounts;
 
-		JobSystem::submitJob([assetQueue, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, &meshes, &totalVertices, &totalIndices, &modelDataCounts](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::processMeshes(threadCtx, meshes, totalVertices, totalIndices);
+			AssetManager::processMeshes(threadCtx, meshes, totalVertices, totalIndices, modelDataCounts);
 			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MESHES_READY);
 		});
 
@@ -177,12 +179,13 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		});
 
 		// === SCENE GRAPH BUILD ===
-		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
+		JobSystem::submitJob([assetQueue, &modelDataCounts](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			SceneGraph::buildSceneGraph(
 				threadCtx,
 				RenderScene::_globalInstances,
-				RenderScene::_globalTransforms);
+				RenderScene::_globalTransforms,
+				modelDataCounts);
 
 			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 			ASSERT(queue && "queue broke.");
@@ -223,18 +226,10 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// Define static images in global image table manager
 	auto& globalImgManager = ResourceManager::_globalImageManager;
 
-	auto& toneMapImg = ResourceManager::getToneMappingImage();
-	auto& drawImg = ResourceManager::getDrawImage();
-	toneMapImg.lutEntry.storageImageIndex = globalImgManager.addStorageImage(toneMapImg.storageView);
-	drawImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(drawImg.imageView, ResourceManager::getDefaultSamplerLinear());
-	_resources.addImageLUTEntry(toneMapImg.lutEntry);
-	_resources.addImageLUTEntry(drawImg.lutEntry);
-
-	ResourceManager::toneMappingData.brightness = 1.0f;
-	ResourceManager::toneMappingData.saturation = 1.0f;
-	ResourceManager::toneMappingData.contrast = 1.0f;
-	ResourceManager::toneMappingData.cmbViewIdx = drawImg.lutEntry.combinedImageIndex;
-	ResourceManager::toneMappingData.storageViewIdx = toneMapImg.lutEntry.storageImageIndex;
+	// CSM image
+	auto& shadowImg = ResourceManager::getShadowMapImage();
+	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, ResourceManager::getShadowMapSampler());
+	_resources.addImageLUTEntry(shadowImg.lutEntry);
 
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto& skyboxImg = ResourceManager::getSkyBoxImage();
@@ -311,10 +306,20 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			unifiedSet);
 	}
+	// env map index
 	mainWriter.writeBuffer(
 		GLOBAL_BINDING_ENV_INDEX,
 		_resources.envMapIndexBuffer.buffer,
 		sizeof(GPUEnvMapIndexArray),
+		0,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		unifiedSet);
+
+	// ssao kernel UBO
+	mainWriter.writeBuffer(
+		GLOBAL_BINDING_SSAO_KERNEL,
+		_resources.ssaoKernelBuffer.buffer,
+		sizeof(glm::vec4[ResourceManager::_kernelBlockSize]),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		unifiedSet);
@@ -335,15 +340,16 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 		device,
 		DescriptorSetOverwatch::getFrameDescriptor().descriptorLayout,
 		_resources,
-		engineProfiler.assetsLoaded
+		engineProfiler
 	);
+
+	// GPU name
+	// This can be defined whenever before render
+	engineProfiler.getStats().gpuName = Backend::getDeviceName();
 
 	// VRAM Usage calculator
 	auto physicalDevice = Backend::getPhysicalDevice();
-	VkDeviceSize totalUsedVRAM = 0;
-
-	totalUsedVRAM += engineProfiler.GetTotalVRAMUsage(physicalDevice, _resources.getAllocator());
-	engineProfiler.getStats().vramUsed = totalUsedVRAM;
+	engineProfiler.getStats().vramStats = engineProfiler.GetTotalVRAMUsage(physicalDevice, _resources.getAllocator());
 }
 
 
@@ -361,7 +367,7 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	engineProfiler.resetDrawCalls();
 
 	engineProfiler.startTimer();
-	RenderScene::updateScene(frame, _resources);
+	RenderScene::updateScene(frame, _resources, debug);
 	auto elapsed = engineProfiler.endTimerMS();
 	engineProfiler.getStats().sceneUpdateTime = elapsed;
 
@@ -370,7 +376,7 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	elapsed = engineProfiler.endTimerMS();
 	engineProfiler.getStats().drawTime = elapsed;
 
-	Renderer::submitFrame(frame);
+	Renderer::submitFrame(frame, _resources);
 }
 
 void EngineState::shutdown() {
@@ -391,8 +397,9 @@ void EngineState::shutdown() {
 		ASSERT(threadCtx.stagingMapped == nullptr);
 	}
 
-	_resources.getTempDeletionQueue().flush();
-	_resources.getMainDeletionQueue().flush();
+	_resources.getTempDQueue().flush();
+	_resources.getMainDQueue().flush();
+	_resources.getRenderTargetDQueue().flush();
 
 	Renderer::cleanupRenderer(device, _resources.getAllocator());
 

@@ -83,7 +83,7 @@ void MeshLoader::uploadMeshes(
 
 	auto stgBuf = stagingBuffer.buffer;
 	auto stgAlloc = stagingBuffer.allocation;
-	resources.getTempDeletionQueue().push_function([stgBuf, stgAlloc, alloc]() mutable {
+	resources.getTempDQueue().push_function([stgBuf, stgAlloc, alloc]() mutable {
 		BufferUtils::destroyBuffer(stgBuf, stgAlloc, alloc);
 	});
 

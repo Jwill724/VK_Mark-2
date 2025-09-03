@@ -21,11 +21,12 @@ struct DescriptorWriteGroup {
 	std::vector<VkDescriptorImageInfo> imageInfos;
 };
 
-enum class DescriptorImageType {
+enum class DescriptorImageType : uint8_t {
 	SamplerCube,
 	StorageImage,
 	CombinedSampler
 };
+
 
 struct DescriptorWriter {
 	// Per-binding grouped image descriptor writes
@@ -66,10 +67,21 @@ struct DescriptorWriter {
 		uint32_t binding,
 		DescriptorImageType type,
 		VkDescriptorSet set);
+
+	// sampler == read only, combined sampler type
+	// !sampler == storage, general type
 	void writePushImage(
 		uint32_t binding,
-		VkDescriptorType type,
-		const VkDescriptorImageInfo& imageInfo);
+		VkImageView view,
+		VkSampler sampler = VK_NULL_HANDLE);
+
+	// Requires immediate update
+	void writeInlineUniform(
+		uint32_t binding,
+		const void* data,
+		uint32_t size,
+		VkDevice device,
+		VkDescriptorSet set);
 
 	void clear();
 

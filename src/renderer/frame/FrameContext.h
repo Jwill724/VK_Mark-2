@@ -51,15 +51,6 @@ struct FrameContext {
 
 	VisibilitySyncResult visSyncResult;
 
-	struct alignas(16) DrawPushConstants {
-		uint32_t totalVertexCount;
-		uint32_t totalIndexCount;
-		uint32_t totalMeshCount;
-		uint32_t totalMaterialCount;
-		bool ssaoEnabled = true;
-		uint32_t pad0[3];
-	} drawDataPC{};
-
 	void clearRenderData() {
 		visibleInstances.clear();
 		indirectDraws.clear();
@@ -86,6 +77,8 @@ struct FrameContext {
 	bool addressTableDirty = false; // Always set to true when frame address table is updated
 	AllocatedBuffer addressTableBuffer;
 
+	AllocatedBuffer shadowCSMBuffer;
+
 	AllocatedBuffer sceneDataBuffer;
 
 	VkDescriptorSet set = VK_NULL_HANDLE;
@@ -101,9 +94,8 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 	const VkDevice device,
 	const VkDescriptorSetLayout frameLayout,
 	const VmaAllocator alloc,
-	const ResourceStats resStats,
 	uint32_t& framesInFlight,
-	bool isAssetsLoaded = false);
+	bool isAssetsLoaded);
 
 void cleanupFrameContexts(
 	std::vector<std::unique_ptr<FrameContext>>& frameContexts,

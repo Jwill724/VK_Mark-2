@@ -11,7 +11,8 @@
 void SceneGraph::buildSceneGraph(
 	ThreadContext& threadCtx,
 	std::vector<GlobalInstance>& globalInstances,
-	std::vector<glm::mat4>& globalTransforms)
+	std::vector<glm::mat4>& globalTransforms,
+	ModelDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -133,6 +134,7 @@ void SceneGraph::buildSceneGraph(
 			globalTransforms.push_back(world);
 		}
 		firstTransform += gblInst.transformCount;
+		modelDataCounts.totalTransformCount += gblInst.transformCount;
 
 		gblInst.instanceID = instanceCounter++;
 		globalInstances.push_back(gblInst);

@@ -27,6 +27,7 @@
     <Filter Include="res\shaders" />
     <Filter Include="res\shaders\include" />
     <Filter Include="res\shaders\meshes" />
+    <Filter Include="res\shaders\depth" />
     <Filter Include="res\shaders\environment" />
     <Filter Include="res\shaders\visibility" />
     <Filter Include="res\shaders\debug" />
@@ -362,9 +363,6 @@
     <None Include="res\shaders\visibility\visibility_comp.comp">
       <Filter>res\shaders\visibility</Filter>
     </None>
-    <None Include="res\shaders\post_process\depth_prepass_vert.vert">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
     <None Include="res\shaders\post_process\ssao_comp.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
@@ -374,8 +372,14 @@
     <None Include="res\shaders\post_process\ssao_blurV_comp.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\post_process\depth_prepass_frag.frag">
-      <Filter>res\shaders\post_process</Filter>
+    <None Include="res\shaders\depth\depth_prepass_frag.frag">
+      <Filter>res\shaders\depth</Filter>
+    </None>
+    <None Include="res\shaders\depth\depth_prepass_vert.vert">
+      <Filter>res\shaders\depth</Filter>
+    </None>
+    <None Include="res\shaders\depth\csm_depth_vert.vert">
+      <Filter>res\shaders\depth</Filter>
     </None>
   </ItemGroup>
 </Project>

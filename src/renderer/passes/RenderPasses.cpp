@@ -4,6 +4,7 @@
 #include "renderer/scene/Visibility.h"
 #include "utils/VulkanUtils.h"
 #include "utils/BufferUtils.h"
+#include "utils/ImageUtils.h"
 #include "renderer/scene/RenderScene.h"
 #include "engine/Engine.h"
 
@@ -22,15 +23,253 @@ inline static void bindPushConstants(const PCType& pc, VkCommandBuffer cmd) {
 }
 
 void RenderPasses::depthPrePass(FrameContext& frameCtx, const PipelineHandle& pipeHandle) {
-	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
+	auto& depthResolved = ResourceManager::getDepthResolvedImage();
+	auto& normal = ResourceManager::getNormalImage();
 
-	bindPushConstants(frameCtx.drawDataPC, frameCtx.commandBuffer);
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		depthResolved.image,
+		depthResolved.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		normal.image,
+		normal.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+	AttachmentDesc prepassDepth{};
+	prepassDepth.imageView = depthResolved.imageView;
+	prepassDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	prepassDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	prepassDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	prepassDepth.clearValue.depthStencil.depth = 1.0f;
+
+	AttachmentDesc prepassNormal{};
+	prepassNormal.imageView = normal.imageView;
+	prepassNormal.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	prepassNormal.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	prepassNormal.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	prepassNormal.clearValue.color = { { 0.5f, 0.5f, 1.0f, 1.0f } };
+
+	RenderPasses::GraphicsRenderScope depthScope;
+	RenderPasses::beginRendering(
+		frameCtx.commandBuffer,
+		{ prepassNormal, prepassDepth },
+		{ depthResolved.imageExtent.width, depthResolved.imageExtent.height },
+		depthScope);
+
+	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
 
 	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
 		frameCtx.opaqueRange.visibleCount,
 		drawCmdSize
+	);
+
+	RenderPasses::endRendering(frameCtx.commandBuffer);
+}
+
+void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle) {
+	const auto& shadowImg = ResourceManager::getShadowMapImage();
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		shadowImg.image,
+		shadowImg.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+	AttachmentDesc shadowDepth{};
+	shadowDepth.imageView = shadowImg.imageView;
+	shadowDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	shadowDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	shadowDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	shadowDepth.clearValue.depthStencil.depth = 1.0f;
+
+	RenderPasses::GraphicsRenderScope csmScope;
+	csmScope.info.layerCount = MAX_CASCADES; // Pipeline is hard defined with this
+	csmScope.info.viewMask = (1u << MAX_CASCADES) - 1u;
+	RenderPasses::beginRendering(
+		frameCtx.commandBuffer,
+		{ shadowDepth },
+		{ shadowImg.imageExtent.width, shadowImg.imageExtent.height },
+		csmScope);
+
+	vkCmdBindPipeline(frameCtx.commandBuffer,
+		pipeHandle.bindPoint,
+		pipeHandle.pipeline);
+
+	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+		frameCtx.indirectDrawsBuffer.buffer,
+		frameCtx.opaqueRange.first * drawCmdSize,
+		frameCtx.opaqueRange.visibleCount,
+		drawCmdSize);
+
+	RenderPasses::endRendering(frameCtx.commandBuffer);
+}
+
+void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoScope) {
+	auto& depthResolved = ResourceManager::getDepthResolvedImage();
+	auto& normal = ResourceManager::getNormalImage();
+	auto& ssaoImg = ResourceManager::getSSAOImage();
+	auto& noiseTex = ResourceManager::getSSAONoiseImage();
+	auto& ssaoBlurH = ResourceManager::getSSAOBlurHImage();
+	auto& ssaoBlurV = ResourceManager::getSSAOBlurVImage();
+
+	auto depthSampler = ResourceManager::getDepthSampler();
+	auto normalSampler = ResourceManager::getNormalSampler();
+	auto noiseSampler = ResourceManager::getNoiseSampler();
+	auto ssaoSampler = ResourceManager::getSSAOSampler();
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		depthResolved.image,
+		depthResolved.imageFormat,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	// Transition normals to sampled
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		normal.image,
+		normal.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	// Transition SSAO output to storage writable
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoImg.image,
+		ssaoImg.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL);
+
+	// Push writing for main ssao pass
+	frameCtx.descriptorWriter.clear();
+
+	// depth
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_DEPTH_TEX,
+		depthResolved.imageView,
+		depthSampler
+	);
+
+	// normal
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_NORMAL_TEX,
+		normal.imageView,
+		normalSampler
+	);
+
+	// noise texture
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_NOISE_TEX,
+		noiseTex.imageView,
+		noiseSampler
+	);
+
+	// SSAO output
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_OUTPUT_TEX,
+		ssaoImg.imageView
+	);
+
+	// =================
+	// === MAIN SSAO ===
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::SSAO),
+		ssaoScope);
+
+
+	// ============================
+	// === SSAO BLUR HORIZONTAL ===
+
+	// Transition SSAO to input
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoImg.image,
+		ssaoImg.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	// Transition blur h for output
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoBlurH.image,
+		ssaoBlurH.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL);
+
+
+	// Push writing for blur horizontal
+	frameCtx.descriptorWriter.clear();
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_INPUT_TEX,
+		ssaoImg.imageView,
+		ssaoSampler
+	);
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_OUTPUT_TEX,
+		ssaoBlurH.imageView
+	);
+
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::SSAOBlurH),
+		ssaoScope);
+
+	// ==========================
+	// === SSAO BLUR VERTICAL ===
+
+	// Transition blur h for input
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoBlurH.image,
+		ssaoBlurH.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	// Transition blur v for outout
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoBlurV.image,
+		ssaoBlurV.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL);
+
+	// Push writing for blur vertical
+	frameCtx.descriptorWriter.clear();
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_INPUT_TEX,
+		ssaoBlurH.imageView,
+		ssaoSampler
+	);
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_OUTPUT_TEX,
+		ssaoBlurV.imageView
+	);
+
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::SSAOBlurV),
+		ssaoScope);
+
+	// Final transition before lighting
+	// ssaoBlurV final output
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		ssaoBlurV.image,
+		ssaoBlurV.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	);
 }
 
@@ -61,8 +300,6 @@ void RenderPasses::skyboxPass(FrameContext& frameCtx, const PipelineHandle& pipe
 
 void RenderPasses::opaqueMeshPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle, Profiler& profiler) {
 	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
-
-	bindPushConstants(frameCtx.drawDataPC, frameCtx.commandBuffer);
 
 	// For ssao, the final blur image
 	// Only applied to opaque shading
@@ -96,8 +333,6 @@ void RenderPasses::transparentMeshPass(FrameContext& frameCtx, const PipelineHan
 		frameCtx.commandBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
-
-	bindPushConstants(frameCtx.drawDataPC, frameCtx.commandBuffer);
 
 	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
@@ -182,6 +417,52 @@ void RenderPasses::obbDebugPass(FrameContext& frameCtx, const PipelineHandle& pi
 			profiler.addDirect(1, trisPerDraw);
 		}
 	}
+}
+
+void RenderPasses::ToneMapPass(
+	FrameContext& frameCtx,
+	ComputeDispatchScope toneScope,
+	AllocatedImage& toneMap)
+{
+	auto& draw = ResourceManager::getDrawImage();
+	auto linearSampler = ResourceManager::getDefaultSamplerLinear();
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		draw.image,
+		draw.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		toneMap.image,
+		toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_GENERAL);
+
+	frameCtx.descriptorWriter.clear();
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_INPUT_TEX,
+		draw.imageView,
+		linearSampler);
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_OUTPUT_TEX,
+		toneMap.imageView);
+
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::ToneMap),
+		toneScope);
+
+	// Transition for swapchain
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		toneMap.image,
+		toneMap.imageFormat,
+		VK_IMAGE_LAYOUT_GENERAL,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 }
 
 void RenderPasses::beginRendering(

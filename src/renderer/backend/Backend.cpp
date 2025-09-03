@@ -32,6 +32,9 @@ namespace Backend {
 	VkDevice _device = VK_NULL_HANDLE;
 	VkDevice getDevice() { return _device; }
 
+	std::string _deviceName;
+	const std::string getDeviceName() { return _deviceName; };
+
 	QueueFamilyIndices _queueFamilyIndices;
 	QueueFamilyIndices getQueueFamilyIndices() { return _queueFamilyIndices; }
 
@@ -143,7 +146,6 @@ void Backend::pickPhysicalDevice() {
 	for (const auto& device : devices) {
 		if (BackendTools::isDeviceSuitable(device, _surface)) {
 			_physicalDevice = device;
-			fmt::print("Physical device {}\n", (void*)_physicalDevice);
 			_queueFamilyIndices = VulkanUtils::FindQueueFamilies(_physicalDevice, _surface);
 			break;
 		}
@@ -152,6 +154,7 @@ void Backend::pickPhysicalDevice() {
 
 	vkGetPhysicalDeviceProperties(_physicalDevice, &_deviceProps);
 	_deviceLimits = _deviceProps.limits;
+	_deviceName = std::string(_deviceProps.deviceName);
 	ResourceManager::getAvailableSampleCounts() = VulkanUtils::findSupportedSampleCounts(_deviceLimits);
 }
 
@@ -194,15 +197,18 @@ void Backend::createLogicalDevice() {
 	baseFeatures.features.shaderInt64 = VK_TRUE;                       // 64-bit addressing
 	baseFeatures.features.tessellationShader = VK_TRUE;
 	baseFeatures.features.depthBiasClamp = VK_TRUE;
+	baseFeatures.features.depthClamp = VK_TRUE;
 	baseFeatures.features.drawIndirectFirstInstance = VK_TRUE;
 	baseFeatures.features.imageCubeArray = VK_TRUE;
 	baseFeatures.features.occlusionQueryPrecise = VK_TRUE;
 	baseFeatures.features.shaderStorageImageExtendedFormats = VK_TRUE;
+	baseFeatures.features.robustBufferAccess = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	features11.shaderDrawParameters = VK_TRUE;                         // InstanceIndex
 	features11.variablePointers = VK_TRUE;
 	features11.variablePointersStorageBuffer = VK_TRUE;
+	features11.multiview = VK_TRUE;                                    // Render into shadow map in one pass
 
 	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	features12.bufferDeviceAddress = VK_TRUE;                          // GPU pointers
@@ -233,6 +239,8 @@ void Backend::createLogicalDevice() {
 	features13.maintenance4 = VK_TRUE;
 	features13.shaderDemoteToHelperInvocation = VK_TRUE;
 	features13.subgroupSizeControl = VK_TRUE;
+	features13.inlineUniformBlock = VK_TRUE;
+	features13.descriptorBindingInlineUniformBlockUpdateAfterBind = VK_TRUE;
 
 	VkPhysicalDeviceVulkan14Features features14{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES };
 	features14.pushDescriptor = VK_TRUE;
@@ -289,11 +297,13 @@ void Backend::createSwapchain() {
 	VkPresentModeKHR presentMode = BackendTools::chooseSwapSurfacePresentMode(swapChainSupport.presentModes);
 	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+	uint32_t imageCount = imageCount = swapChainSupport.capabilities.minImageCount + 1;
 	if (swapChainSupport.capabilities.maxImageCount > 0 &&
 		imageCount > swapChainSupport.capabilities.maxImageCount) {
 		imageCount = swapChainSupport.capabilities.maxImageCount;
 	}
+
+	if (presentMode == VK_PRESENT_MODE_FIFO_KHR) imageCount = 2; // Hard lock to double buffer
 
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -307,7 +317,6 @@ void Backend::createSwapchain() {
 	createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	createInfo.presentMode = presentMode;
-	//createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
 	createInfo.clipped = VK_TRUE;
 
 	uint32_t qFamIndices[] {

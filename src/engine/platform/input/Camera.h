@@ -11,6 +11,10 @@ struct Camera {
 	// horizontal rotation
 	float _yaw{ 0.0f };
 
+	float _fovYDegrees = 0.0f;
+	float _nearClip = 0.0f;
+	float _farClip = 0.0f;
+
 	glm::vec3 _currentView = glm::vec3(0.0f);
 
 	glm::mat4 getViewMatrix() const;

@@ -13,6 +13,8 @@ namespace Backend {
 	VkPhysicalDevice getPhysicalDevice();
 	VkDevice getDevice();
 
+	const std::string getDeviceName();
+
 	SwapchainDef& getSwapchainDef();
 
 	QueueFamilyIndices getQueueFamilyIndices();

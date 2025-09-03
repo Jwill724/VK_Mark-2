@@ -5,7 +5,6 @@
 #extension GL_ARB_gpu_shader_int64 : require
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
-#extension GL_EXT_nonuniform_qualifier : require
 
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
@@ -24,19 +23,10 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 	SceneData scene;
 };
 
-layout(push_constant) uniform DrawData {
-	DrawDataPC pc;
-};
-
 void main()
 {
 	// fetch instance
 	Instance inst = VisibleInstances(frameAddressTable.addrs[ABT_VisibleInstances]).instances[gl_InstanceIndex];
-
-	if (gl_VertexIndex >= pc.totalVertexCount) {
-		gl_Position = vec4(2e9, 2e9, 2e9, 1.0); // push off-screen
-		return;
-	}
 
 	// fetch vertex
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];

@@ -13,7 +13,13 @@ struct IndirectStats {
 	std::atomic<uint32_t> subdraws{ 0 };
 };
 
+struct VRAMStats {
+	VkDeviceSize used = 0;
+	VkDeviceSize budget = 0;
+};
+
 struct FrameStats {
+	std::string gpuName;
 	std::atomic<uint64_t> triangleCount = 0;
 	std::atomic<float> deltaTime = 0.0f;
 	std::atomic<float> frameTime = 0.0f;
@@ -21,10 +27,8 @@ struct FrameStats {
 	std::atomic<float> sceneUpdateTime = 0.0f;
 	std::atomic<float> drawTime = 0.0f;
 
-	std::atomic<size_t> vramUsed = 0;
+	VRAMStats vramStats{};
 
-	// V-sync is default present mode for now
-	// frame capping is fucking busted
 	bool capFramerate = false;
 	float targetFrameRate = 0.0f;
 
@@ -35,32 +39,55 @@ struct FrameStats {
 
 struct PipelineOverride {
 	bool enabled = false;
-	PipelineID selectedID = PipelineID::Wireframe;
+	PipelineID selectedID = PipelineID::Opaque;
 };
 
 struct SSAOSettings {
 	uint32_t sampleCount = 64;
-	float aoRadius = 0.5f;
+	float aoRadius = 1.0f;
 	float bias = 0.025f;
 	float intensity = 1.0f;
 	int blurRadius = 4;
 };
 
-struct DebugToggles {
-	bool showOBBs = false;
-	bool enableSettings = false;
-	bool enableStats = true;
-	bool enableSSAO = true;
-	//bool showNormals = false;
-	//bool showAlbedo = false;
-	//bool showEmissive = false;
-	//bool showAO = false;
-	//bool showSpecular = false;
-	//bool showDiffuse = false;
-	//bool showMetallic = false;
-	//bool showRoughness = false;
-	bool showWireframe = false;
+
+// inline uniform block in global set 0
+struct alignas(4) DebugToggles {
+	// Higher level toggles
+	uint32_t enableOBBs = 0;
+	uint32_t enableSettings = 1;
+	uint32_t enableStats = 1;
+	uint32_t enableSSAO = 1;
+
+	uint32_t enableShadows = 0;
+	uint32_t enableTonemap = 0;
+	uint32_t pad0[2]{};
+
+	// draw stats
+	uint32_t meshCount = 0;
+	uint32_t materialCount = 0;
+	uint32_t transformCount = 0;
+	uint32_t vertexCount = 0;
+
+	uint32_t indexCount = 0;
+	uint32_t pad1[3]{};
+
+	// fragment shader outputs
+	uint32_t showAlbedo = 0;
+	uint32_t showNormals = 0;
+	uint32_t showRoughness = 0;
+	uint32_t showMetallic = 0;
+
+	uint32_t showSSAO = 0;
+	uint32_t showSpecular = 0;
+	uint32_t showDiffuse = 0;
+	uint32_t showCascadeSplits = 0;
+
+	uint32_t showEmissive = 0;
+	uint32_t showAO = 0;
+	uint32_t pad2[2]{};
 };
+
 
 class Profiler {
 public:
@@ -120,7 +147,7 @@ public:
 	PipelineOverride pipeOverride;
 	SSAOSettings ssaoSettings;
 
-	VkDeviceSize GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
+	VRAMStats GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 
 	void enablePlatformTimerPrecision();
 	void disablePlatformTimerPrecision();

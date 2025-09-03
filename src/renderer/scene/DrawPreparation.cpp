@@ -26,7 +26,8 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
 	const std::vector<GPUMeshData>& meshes,
 	const std::vector<AABB>& worldAABBs,
-	const glm::vec4 cameraPos)
+	const glm::vec4 cameraPos,
+	const DebugToggles& meshStats)
 {
 	// Partition visible instances, while remembering their original indices
 	std::vector<GPUInstance> opaqueInstances;
@@ -63,9 +64,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	for (const auto& [key, instanceIndices] : opaqueBatches) {
 		const GPUMeshData& mesh = meshes[key.meshID];
 
-		ASSERT(mesh.firstIndex + mesh.indexCount <= frameCtx.drawDataPC.totalIndexCount &&
+		ASSERT(mesh.firstIndex + mesh.indexCount <= meshStats.indexCount &&
 			"[DrawPrep] Opaque draws would read past end of index buffer.");
-		ASSERT(mesh.vertexOffset + mesh.vertexCount <= frameCtx.drawDataPC.totalVertexCount &&
+		ASSERT(mesh.vertexOffset + mesh.vertexCount <= meshStats.vertexCount &&
 			"[DrawPrep] Opaque draws would read past end of vertex buffer.");
 
 		VkDrawIndexedIndirectCommand cmd {
@@ -98,9 +99,9 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			const auto& entry = transparentEntries[i];
 			const GPUMeshData& mesh = meshes[entry.instance.meshID];
 
-			ASSERT(mesh.firstIndex + mesh.indexCount <= frameCtx.drawDataPC.totalIndexCount &&
+			ASSERT(mesh.firstIndex + mesh.indexCount <= meshStats.indexCount &&
 				"[DrawPrep] Transparent draws would read past end of index buffer.");
-			ASSERT(mesh.vertexOffset + mesh.vertexCount <= frameCtx.drawDataPC.totalVertexCount &&
+			ASSERT(mesh.vertexOffset + mesh.vertexCount <= meshStats.vertexCount &&
 				"[DrawPrep] Transparent draws would read past end of vertex buffer.");
 
 			VkDrawIndexedIndirectCommand cmd {
@@ -256,14 +257,14 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 	frameCtx.transferWaitValue = signalValue;
 }
 
-static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing) {
-	uint32_t gridSize = static_cast<uint32_t>(std::ceil(std::sqrt(count)));
-	uint32_t x = index % gridSize;
-	uint32_t z = index / gridSize;
-
-	glm::vec3 translation = glm::vec3(x * spacing, 0.0f, z * spacing);
-	return glm::translate(glm::mat4(1.0f), translation);
-}
+//static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing) {
+//	uint32_t gridSize = static_cast<uint32_t>(std::ceil(std::sqrt(count)));
+//	uint32_t x = index % gridSize;
+//	uint32_t z = index / gridSize;
+//
+//	glm::vec3 translation = glm::vec3(x * spacing, 0.0f, z * spacing);
+//	return glm::translate(glm::mat4(1.0f), translation);
+//}
 
 void DrawPreparation::syncGlobalInstancesAndTransforms(
 	FrameContext& frameCtx,
@@ -339,8 +340,6 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 
 	// First time creation on frame 0
 	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms)) {
-		fmt::print("[syncGobalInstances] create Transforms GPU buffer\n");
-
 		auto& globalAddrsTable = gpuResources.getAddressTable();
 		const auto allocator = gpuResources.getAllocator();
 
@@ -353,8 +352,6 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			allocator);
 		// Note: The current global address table gets marked dirty, only the internal upload function marks it back to false.
 		gpuResources.addGPUBufferToGlobalAddress(AddressBufferType::Transforms, newTransformBuf);
-
-		fmt::print("[syncGobalInstances] new buffer=0x{:x} size={}\n", (uint64_t)newTransformBuf.buffer, newTransformBuf.info.size);
 
 		frameCtx.transformsBufferUploadNeeded = true;
 	}

@@ -25,17 +25,17 @@ namespace ResourceManager {
 	AllocatedImage _depthResolvedImage;
 	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
 
-	VkSampler _samplerDepth;
-	const VkSampler getSamplerDepth() { return _samplerDepth; }
+	VkSampler _depthSampler;
+	const VkSampler getDepthSampler() { return _depthSampler; }
 
-	VkSampler _samplerSSAO;
-	const VkSampler getSamplerSSAO() { return _samplerSSAO; }
+	VkSampler _ssaoSampler;
+	const VkSampler getSSAOSampler() { return _ssaoSampler; }
 
-	VkSampler _samplerNormal;
-	const VkSampler getSamplerNormal() { return _samplerNormal; }
+	VkSampler _normalSampler;
+	const VkSampler getNormalSampler() { return _normalSampler; }
 
-	VkSampler _samplerNoise;
-	const VkSampler getSamplerNoise() { return _samplerNoise; }
+	VkSampler _noiseSampler;
+	const VkSampler getNoiseSampler() { return _noiseSampler; }
 
 	AllocatedImage _normalImage;
 	AllocatedImage& getNormalImage() { return _normalImage; }
@@ -53,6 +53,11 @@ namespace ResourceManager {
 	AllocatedImage _ssaoNoiseImage;
 	AllocatedImage& getSSAONoiseImage() { return _ssaoNoiseImage; }
 
+	AllocatedImage _shadowMapImage;
+	AllocatedImage& getShadowMapImage() { return _shadowMapImage; }
+
+	VkSampler _shadowMapSampler;
+	const VkSampler getShadowMapSampler() { return _shadowMapSampler; }
 
 	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
@@ -210,9 +215,9 @@ void ResourceManager::initSSAOKernel() {
 	}
 }
 
-void ResourceManager::initRenderImages(
+void ResourceManager::initRenderTargets(
 	const VkDevice device,
-	DeletionQueue& queue,
+	DeletionQueue& targetQueue,
 	const VmaAllocator allocator,
 	const VkExtent3D drawExtent)
 {
@@ -234,7 +239,7 @@ void ResourceManager::initRenderImages(
 		_drawImage,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	// tone mapping post process image
@@ -251,7 +256,7 @@ void ResourceManager::initRenderImages(
 		_toneMappingImage,
 		toneMapUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	VkSampleCountFlagBits sampleCount = !MSAA_ENABLED ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
@@ -269,7 +274,7 @@ void ResourceManager::initRenderImages(
 		_msaaImage,
 		msaaImageUsages,
 		sampleCount,
-		queue,
+		targetQueue,
 		allocator);
 
 	// Base depth image
@@ -284,7 +289,7 @@ void ResourceManager::initRenderImages(
 		_depthImage,
 		depthImageUsages,
 		sampleCount,
-		queue,
+		targetQueue,
 		allocator);
 
 	// Depth resolved image
@@ -300,7 +305,7 @@ void ResourceManager::initRenderImages(
 		_depthResolvedImage,
 		depthResolvedUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	// SSAO pass images
@@ -318,7 +323,7 @@ void ResourceManager::initRenderImages(
 		_ssaoImage,
 		ssaoUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	// bi-lateral blur images
@@ -330,7 +335,7 @@ void ResourceManager::initRenderImages(
 		_ssaoBlurHImage,
 		ssaoUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	_ssaoBlurVImage.imageFormat = VK_FORMAT_R8_UNORM;
@@ -341,7 +346,7 @@ void ResourceManager::initRenderImages(
 		_ssaoBlurVImage,
 		ssaoUsages,
 		VK_SAMPLE_COUNT_1_BIT,
-		queue,
+		targetQueue,
 		allocator);
 
 	// Normal image
@@ -357,11 +362,52 @@ void ResourceManager::initRenderImages(
 		_normalImage,
 		normalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+}
+
+void ResourceManager::initShadowMapImages(
+	const VkDevice device,
+	DeletionQueue& queue,
+	const VmaAllocator allocator)
+{
+	// Shadow map image
+	_shadowMapImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+	_shadowMapImage.imageExtent = { 2048, 2048, 1 };
+	_shadowMapImage.arrayLayers = MAX_CASCADES;
+
+	VkImageUsageFlags shadowUsages =
+		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+		VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	ImageUtils::createRenderImage(
+		device,
+		_shadowMapImage,
+		shadowUsages,
+		VK_SAMPLE_COUNT_1_BIT,
 		queue,
 		allocator
 	);
 
-	_samplerDepth = ImageUtils::createSampler(
+	// Shadow map sampler
+	_shadowMapSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST,
+		true // compare enabled
+	);
+}
+
+void ResourceManager::initRenderSamplers(
+	const VkDevice device,
+	DeletionQueue& queue)
+{
+	_depthSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -371,7 +417,7 @@ void ResourceManager::initRenderImages(
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
 
-	_samplerNormal = ImageUtils::createSampler(
+	_normalSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -381,7 +427,7 @@ void ResourceManager::initRenderImages(
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
 
-	_samplerNoise = ImageUtils::createSampler(
+	_noiseSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -391,7 +437,7 @@ void ResourceManager::initRenderImages(
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
 
-	_samplerSSAO = ImageUtils::createSampler(
+	_ssaoSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -407,8 +453,6 @@ void ResourceManager::initEnvironmentImages(
 	DeletionQueue& queue,
 	const VmaAllocator allocator)
 {
-	auto maxAnisotropy = Backend::getDeviceLimits().maxSamplerAnisotropy;
-
 	VkImageUsageFlags usage =
 		VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT |
@@ -436,7 +480,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		0.0f,
-		maxAnisotropy,
+		0.0f,
 		&queue);
 
 	_specularPrefilterImage.imageExtent = Environment::CUBEMAP_EXTENTS;
@@ -459,7 +503,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		static_cast<float>(_specularPrefilterImage.mipLevelCount - 1),
-		maxAnisotropy,
+		0.0f,
 		&queue);
 
 
@@ -670,7 +714,7 @@ void ResourceManager::initTextures(
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
 		FLT_MAX,
-		Backend::getDeviceLimits().maxSamplerAnisotropy,
+		CURRENT_AF_LVL,
 		&imageQueue);
 
 	_defaultSamplerNearest = ImageUtils::createSampler(

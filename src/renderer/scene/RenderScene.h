@@ -8,6 +8,7 @@
 // Holds and controls scene data
 namespace RenderScene {
 	GPUSceneData& getCurrentSceneData();
+	GPUShadowCSM& getShadowCSM();
 
 	inline std::unordered_map<SceneID, std::shared_ptr<ModelAsset>> _loadedScenes;
 
@@ -29,11 +30,9 @@ namespace RenderScene {
 	const Camera getCamera();
 
 	void setScene();
-	void updateCamera();
 	void copyFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
 	void cleanScene();
 
-	void allocateSceneBuffer(FrameContext& frameCtx, const VmaAllocator allocator);
-	void updateScene(FrameContext& frameCtx, GPUResources& gpuResources);
+	void updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug);
 }

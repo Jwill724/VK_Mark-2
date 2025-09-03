@@ -12,6 +12,12 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 	SceneData scene;
 };
 
+// Sample kernel
+const int KERNEL_SIZE = 128;
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_SSAO_KERNEL) uniform KernelUBO {
+	vec4 samples[KERNEL_SIZE]; // pre-generated hemisphere samples
+} kernel;
+
 layout(push_constant) uniform SSAOPush {
 	mat4 invProj;
 	vec2 screenSize;
@@ -25,22 +31,16 @@ layout(push_constant) uniform SSAOPush {
 } pc;
 
 // Depth texture
-layout(set = PUSH_SET, binding = PUSH_DEPTH_TEX_BINDING) uniform sampler2D depthTex;
+layout(set = PUSH_SET, binding = PUSH_BINDING_DEPTH_TEX) uniform sampler2D depthTex;
 
 // Normal texture
-layout(set = PUSH_SET, binding = PUSH_NORMAL_TEX_BINDING) uniform sampler2D normalTex;
+layout(set = PUSH_SET, binding = PUSH_BINDING_NORMAL_TEX) uniform sampler2D normalTex;
 
 // Noise texture
-layout(set = PUSH_SET, binding = PUSH_NOISE_TEX_BINDING) uniform sampler2D noiseTex;
-
-// Sample kernel
-const int KERNEL_SIZE = 128;
-layout(set = PUSH_SET, binding = PUSH_SSAO_KERNEL_BINDING) uniform KernelUBO {
-	vec4 samples[KERNEL_SIZE]; // pre-generated hemisphere samples
-} kernel;
+layout(set = PUSH_SET, binding = PUSH_BINDING_NOISE_TEX) uniform sampler2D noiseTex;
 
 // SSAO output (R8_UNORM)
-layout(set = PUSH_SET, binding = PUSH_SSAO_OUTPUT_TEX_BINDING, r8) uniform image2D ssaoOut;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX, r8) uniform writeonly image2D ssaoOut;
 
 vec3 reconstructViewPos(vec2 uv, float depth) {
 	// clip space position (NDC)
@@ -50,6 +50,7 @@ vec3 reconstructViewPos(vec2 uv, float depth) {
 	return pos;
 }
 
+// Basically just opengl tutorial ssao implementation
 void main() {
 	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
 	if (pix.x >= int(pc.screenSize.x) || pix.y >= int(pc.screenSize.y))
@@ -73,9 +74,10 @@ void main() {
 	vec3 bitangent = cross(normal, tangent);
 	mat3 TBN = mat3(tangent, bitangent, normal);
 
+	float radius = pc.aoRadius;
 	float occlusion = 0.0;
-	for (int i = 0; i < pc.sampleCount; i++) {
-		vec3 samplePos = pos + (TBN * kernel.samples[i].xyz) * pc.aoRadius;
+	for (int i = 0; i < pc.sampleCount; ++i) {
+		vec3 samplePos = pos + (TBN * kernel.samples[i].xyz) * radius;
 
 		// project from view -> clip -> uv
 		vec4 clip = scene.proj * vec4(samplePos, 1.0);
@@ -88,7 +90,7 @@ void main() {
 		float sampleDepth = texture(depthTex, sampleUV).r;
 		vec3 sampleViewPos = reconstructViewPos(sampleUV, sampleDepth);
 
-		float rangeCheck = smoothstep(0.0, 1.0, pc.aoRadius / abs(pos.z - sampleViewPos.z));
+		float rangeCheck = smoothstep(0.0, 1.0, radius / abs(pos.z - sampleViewPos.z));
 		occlusion += (sampleViewPos.z >= samplePos.z + pc.bias ? 1.0 : 0.0) * rangeCheck;
 	}
 

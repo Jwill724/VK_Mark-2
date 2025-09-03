@@ -6,8 +6,8 @@
 #include "core/ResourceManager.h"
 
 namespace PipelinePresents {
-	inline std::array<PipelinePresent, (size_t)PipelineID::Count> pipelinePresentBuilder;
-	static inline PipelinePresent& getPipelinePresentByID(PipelineID id) {
+	inline std::array<PipelinePreset, (size_t)PipelineID::Count> pipelinePresentBuilder;
+	static inline PipelinePreset& getPipelinePresentByID(PipelineID id) {
 		return pipelinePresentBuilder[static_cast<size_t>(id)];
 	}
 }
@@ -56,6 +56,25 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxVertStage);
 	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxFragStage);
 
+	// === DEPTH PRE-PASS ===
+	ShaderStageInfo depthPrepassVertStage{
+		.stage = VK_SHADER_STAGE_VERTEX_BIT,
+		.filePath = "res/shaders/depth/depth_prepass_vert.spv"
+	};
+	ShaderStageInfo depthPrepassFragStage{
+		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.filePath = "res/shaders/depth/depth_prepass_frag.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassVertStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassFragStage);
+
+	// === CASCADED SHADOW MAPPING ===
+	ShaderStageInfo csmVertStage{
+		.stage = VK_SHADER_STAGE_VERTEX_BIT,
+		.filePath = "res/shaders/depth/csm_depth_vert.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::ShadowCSM).shaderStagesInfo.push_back(csmVertStage);
+
 	// === COMPUTE PIPELINES ===
 
 	// TONE MAP
@@ -100,19 +119,7 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	};
 	PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
 
-
 	// === SSAO ===
-	ShaderStageInfo depthPrepassVertStage {
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/post_process/depth_prepass_vert.spv"
-	};
-	ShaderStageInfo depthPrepassFragStage {
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/post_process/depth_prepass_frag.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassVertStage);
-	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassFragStage);
-
 	ShaderStageInfo ssaoStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/post_process/ssao_comp.spv"
@@ -194,7 +201,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		bool swappable = false,
 		bool mssaOn = MSAA_ENABLED) {
 
-		PipelinePresent& present = PipelinePresents::getPipelinePresentByID(id);
+		PipelinePreset& present = PipelinePresents::getPipelinePresentByID(id);
 
 		PipelineHandle& pipeHdl = Pipelines::getHandle(id);
 
@@ -228,21 +235,21 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 
 	// === TRANSPARENT PIPELINE ===
-	PipelinePresent& transPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
+	PipelinePreset& transPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
 	transPresent.enableBlending = true;
 	transPresent.enableDepthWrite = false;
 	createPipeline(PipelineID::Transparent, PipelineCategory::Raster, "Transparent", true);
 
 
 	// === WIREFRAME PIPELINE ===
-	PipelinePresent& wirePresent = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
+	PipelinePreset& wirePresent = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
 	wirePresent.polygonMode = VK_POLYGON_MODE_LINE;
 	wirePresent.depthCompareOp = VK_COMPARE_OP_LESS;
 
 	createPipeline(PipelineID::Wireframe, PipelineCategory::Raster, "Wireframe", true);
 
 	// === BOUNDINGBOX PIPELINE ===
-	PipelinePresent& bbPresent = PipelinePresents::getPipelinePresentByID(PipelineID::BoundingBox);
+	PipelinePreset& bbPresent = PipelinePresents::getPipelinePresentByID(PipelineID::BoundingBox);
 	bbPresent.polygonMode = VK_POLYGON_MODE_LINE;
 	bbPresent.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 	bbPresent.enableDepthWrite = false;
@@ -251,19 +258,33 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	createPipeline(PipelineID::BoundingBox, PipelineCategory::Raster, "BoundingBox");
 
 	// === SKYBOX PIPELINE ===
-	PipelinePresent& skyboxPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Skybox);
+	PipelinePreset& skyboxPresent = PipelinePresents::getPipelinePresentByID(PipelineID::Skybox);
 	skyboxPresent.enableDepthWrite = false;
 
 	createPipeline(PipelineID::Skybox, PipelineCategory::Raster, "Skybox");
 
 	// === DEPTH RESOLVED PIPELINE ===
-	PipelinePresent& depthPrePresent = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
+	PipelinePreset& depthPrePresent = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
 	depthPrePresent.colorFormat = VK_FORMAT_UNDEFINED;
 	depthPrePresent.depthFormat = ResourceManager::getDepthResolvedImage().imageFormat;
-	depthPrePresent.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthPrePresent.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
 	depthPrePresent.cullMode = VK_CULL_MODE_BACK_BIT;
 
 	createPipeline(PipelineID::DepthPrepass, PipelineCategory::Raster, "DepthPrepass", false, false);
+
+	// === CSM PIPELINE ===
+	PipelinePreset& csmPresent = PipelinePresents::getPipelinePresentByID(PipelineID::ShadowCSM);
+	csmPresent.colorFormat = VK_FORMAT_UNDEFINED;
+	csmPresent.depthFormat = ResourceManager::getShadowMapImage().imageFormat;
+	csmPresent.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	csmPresent.cullMode = VK_CULL_MODE_BACK_BIT;
+	csmPresent.enableDepthBias = true;
+	csmPresent.depthBiasConstant = 0.5f;
+	csmPresent.depthBiasSlope = 1.0f;
+	csmPresent.depthBiasClamp = 0.0f;
+	csmPresent.viewMask = (1u << MAX_CASCADES) - 1u;
+
+	createPipeline(PipelineID::ShadowCSM, PipelineCategory::Raster, "ShadowCSM", false, false);
 
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
@@ -322,7 +343,7 @@ VkPipelineShaderStageCreateInfo PipelineManager::createPipelineShaderStage(VkSha
 	return shaderStageInfo;
 }
 
-void PipelineManager::setupShaders(PipelinePresent& pipelineSettings, DeletionQueue& shaderDeletionQueue) {
+void PipelineManager::setupShaders(PipelinePreset& pipelineSettings, DeletionQueue& shaderDeletionQueue) {
 	pipelineSettings.shaderStages.clear();
 
 	for (auto& shaders : pipelineSettings.shaderStagesInfo) {
@@ -343,10 +364,17 @@ VkPipelineShaderStageCreateInfo PipelineManager::setShader(const char* shaderFil
 	return shaderStage;
 }
 
-void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn) {
+void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings, bool msaaOn) {
 
 	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, settings.topology, VK_FALSE);
 
+	// For cascaded shadow mapping
+	if (settings.enableDepthBias) {
+		pipeline._rasterizer.depthBiasEnable = VK_TRUE;
+		pipeline._rasterizer.depthBiasConstantFactor = settings.depthBiasConstant;
+		pipeline._rasterizer.depthBiasSlopeFactor = settings.depthBiasSlope;
+		pipeline._rasterizer.depthBiasClamp = settings.depthBiasClamp;
+	}
 	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.0f, settings.cullMode, settings.frontFace);
 
 	if (msaaOn) {
@@ -372,6 +400,8 @@ void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePre
 		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
 	}
 
+
+	pipeline._renderInfo.viewMask = settings.viewMask;
 	PipelineConfigs::setColorAttachmentAndDepthFormat(pipeline._colorAttachmentformat,
 		settings.colorFormat, pipeline._renderInfo, settings.depthFormat);
 }

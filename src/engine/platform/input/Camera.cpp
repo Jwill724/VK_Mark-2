@@ -10,8 +10,8 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 
 	auto& debug = profiler.debugToggles;
 	// debug toggle settings
-	if (keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = !debug.enableSettings;
-	if (keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = !debug.enableStats;
+	if (keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = 1u - debug.enableSettings;
+	if (keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = 1u - debug.enableStats;
 
 	// Mouse rotation, imgui can be properly used with free cam
 	if (!ImGui::GetIO().WantCaptureMouse && mouse.leftPressed) {

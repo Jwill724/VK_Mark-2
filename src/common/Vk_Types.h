@@ -102,8 +102,7 @@ struct alignas(16) GPUAddressTable {
 	}
 };
 
-// UNIFORMS
-
+// UNIFORM BUFFER TYPES
 struct alignas(16) GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
@@ -121,6 +120,11 @@ struct alignas(16) GPUEnvMapIndexArray {
 };
 static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 
+struct alignas(16) GPUShadowCSM {
+	glm::mat4 cascadeVP[MAX_CASCADES]{0.0f};
+	glm::vec4 cascadeSplits{0.0f};
+	glm::vec4 params{0.0f}; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount
+};
 
 struct TimelineSync {
 	VkSemaphore semaphore = VK_NULL_HANDLE;
@@ -142,13 +146,10 @@ enum class DrawType : uint32_t {
 
 // Push constant use
 struct alignas(16) ColorData {
-	float brightness = 0.0f;
-	float saturation = 0.0f;
-	float contrast = 0.0f;
+	float brightness = 1.0f;
+	float saturation = 1.0f;
+	float contrast = 1.0f;
 	float pad0 = 0.0f;
-	uint32_t cmbViewIdx = 0;
-	uint32_t storageViewIdx = 0;
-	uint32_t pad1[2]{};
 };
 
 template<typename T>

@@ -72,5 +72,6 @@ namespace AssetManager {
 		ThreadContext& threadCtx,
 		MeshRegistry& meshes,
 		std::vector<Vertex>& vertices,
-		std::vector<uint32_t>& indices);
+		std::vector<uint32_t>& indices,
+		ModelDataCounts& modelDataCounts);
 }

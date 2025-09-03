@@ -5,6 +5,7 @@
 #include "BufferUtils.h"
 #include "renderer/gpu/CommandBuffer.h"
 #include "VulkanUtils.h"
+#include "renderer/backend/Backend.h"
 
 // TODO: When I get a better image loading library (ktx),
 // I'll rework this to be able to create large staging buffers for many textures into a single cmd
@@ -120,6 +121,9 @@ void ImageUtils::createRenderImage(
 		imgInfo.arrayLayers = 6;
 		renderImage.arrayLayers = 6;
 	}
+	else if (renderImage.arrayLayers > 1) {
+		imgInfo.arrayLayers = renderImage.arrayLayers;
+	}
 	else {
 		imgInfo.arrayLayers = 1;
 		renderImage.arrayLayers = 1;
@@ -144,7 +148,13 @@ void ImageUtils::createRenderImage(
 		viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
 		viewInfo.subresourceRange.layerCount = renderImage.arrayLayers;
-		viewInfo.viewType = renderImage.isCubeMap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+
+		if ((usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) && renderImage.arrayLayers > 1) {
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+		}
+		else {
+			viewInfo.viewType = renderImage.isCubeMap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+		}
 
 		VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 
@@ -666,7 +676,8 @@ VkSampler ImageUtils::createSampler(
 	float maxLod,
 	float maxAnisotropy,
 	DeletionQueue* dQueue,
-	VkSamplerMipmapMode mipmapMode)
+	VkSamplerMipmapMode mipmapMode,
+	bool compareEnabled)
 {
 	static std::mutex samplerMutex;
 	std::scoped_lock lock(samplerMutex);
@@ -677,6 +688,9 @@ VkSampler ImageUtils::createSampler(
 	samplerInfo.maxLod = maxLod;
 	samplerInfo.magFilter = filter;
 	samplerInfo.minFilter = filter;
+
+	ASSERT(maxAnisotropy <= Backend::getDeviceLimits().maxSamplerAnisotropy &&
+		"[Sampler] Requested anisotropy exceeds device limits");
 
 	if (maxAnisotropy > 1.0f) {
 		samplerInfo.anisotropyEnable = VK_TRUE;
@@ -691,6 +705,11 @@ VkSampler ImageUtils::createSampler(
 	samplerInfo.addressModeV = addressMode;
 	samplerInfo.addressModeW = addressMode;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+	if (compareEnabled) {
+		samplerInfo.compareEnable = VK_TRUE;
+		samplerInfo.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	}
 
 	VkSampler sampler;
 	VK_CHECK(vkCreateSampler(device, &samplerInfo, nullptr, &sampler));

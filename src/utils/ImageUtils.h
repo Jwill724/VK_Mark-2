@@ -58,5 +58,6 @@ namespace ImageUtils {
 		float maxLod,
 		float maxAnisotropy,
 		DeletionQueue* dQueue = nullptr,
-		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR);
+		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+		bool compareEnabled = false);
 }

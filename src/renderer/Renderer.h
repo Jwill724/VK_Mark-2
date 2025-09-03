@@ -26,11 +26,11 @@ namespace Renderer {
 		const VkDevice device,
 		const VkDescriptorSetLayout frameLayout,
 		GPUResources& gpuResouces,
-		bool isAssetsLoaded = false);
+		Profiler& profiler);
 
 	void recordRenderCommand(FrameContext& frameCtx, Profiler& profiler);
 	void prepareFrameContext(FrameContext& frameCtx);
-	void submitFrame(FrameContext& frameCtx);
+	void submitFrame(FrameContext& frameCtx, GPUResources& resources);
 
 	void cleanupRenderer(const VkDevice device, const VmaAllocator alloc);
 }

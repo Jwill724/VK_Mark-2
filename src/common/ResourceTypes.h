@@ -208,13 +208,12 @@ struct AllocatedImage {
 	bool isCubeMap = false;
 };
 
-// Total values in memory
-// TODO: Utilize this more effectively to hold more values and support future dynamic updates
-struct ResourceStats {
+struct ModelDataCounts {
 	uint32_t totalVertexCount = 0;
 	uint32_t totalIndexCount = 0;
 	uint32_t totalMaterialCount = 0;
 	uint32_t totalMeshCount = 0;
+	uint32_t totalTransformCount = 0;
 };
 
 
@@ -259,7 +258,7 @@ struct PipelineHandle {
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 };
 
-struct PipelinePresent {
+struct PipelinePreset {
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
 	// Default pipeline settings
@@ -271,6 +270,13 @@ struct PipelinePresent {
 	bool enableDepthTest = true;
 	bool enableDepthWrite = true;
 	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+	bool enableDepthBias = false;
+	float depthBiasConstant = 0.0f;
+	float depthBiasSlope = 0.0f;
+	float depthBiasClamp = 0.0f;
+
+	uint32_t viewMask = 0;
 
 	VkFormat colorFormat = VK_FORMAT_UNDEFINED;
 	VkFormat depthFormat = VK_FORMAT_UNDEFINED;

@@ -10,7 +10,6 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 	const VkDevice device,
 	const VkDescriptorSetLayout frameLayout,
 	const VmaAllocator alloc,
-	ResourceStats resStats,
 	uint32_t& framesInFlight,
 	bool isAssetsLoaded)
 {
@@ -57,11 +56,6 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 				VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 				VMA_MEMORY_USAGE_GPU_ONLY,
 				alloc);
-
-			frame->drawDataPC.totalVertexCount = resStats.totalVertexCount;
-			frame->drawDataPC.totalIndexCount = resStats.totalIndexCount;
-			frame->drawDataPC.totalMeshCount = resStats.totalMeshCount;
-			frame->drawDataPC.totalMaterialCount = resStats.totalMaterialCount;
 
 			frame->combinedGPUStaging = BufferUtils::createBuffer(
 				totalGPUStagingSize,
@@ -158,6 +152,17 @@ void FrameContext::writeFrameDescriptors(const VkDevice device) {
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		set
 	);
+
+	if (visibleCount > 0) {
+		descriptorWriter.writeBuffer(
+			FRAME_BINDING_CSM,
+			shadowCSMBuffer.buffer,
+			sizeof(GPUShadowCSM),
+			offset,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			set
+		);
+	}
 
 	descriptorWriter.updateSet(device, set);
 }

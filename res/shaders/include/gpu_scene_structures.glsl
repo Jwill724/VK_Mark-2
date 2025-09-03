@@ -11,7 +11,7 @@ struct SceneData {
 	mat4 viewproj;
 	vec4 sunlightDirection; // .w = power
 	vec4 sunlightColor;
-	vec4 cameraPos;
+	vec4 cameraPos; // .z camFar
 	vec4 viewportSize;
 };
 
@@ -24,6 +24,51 @@ struct EnvMapIndexArray {
 	// y = specularMapIndex
 	// z = brdfLUTIndex
 	// w = skyboxMapIndex
+};
+
+const uint MAX_CASCADES = 3u;
+
+struct ShadowCSM {
+	mat4 cascadeVP[MAX_CASCADES];
+	vec4 cascadeSplits;
+	vec4 params; // shadowBias, shadowMapID, cascadeCount
+};
+
+// inline uniform block
+struct DebugToggles {
+	// Higher level toggles
+	uint enableOBBs;
+	uint enableSettings;
+	uint enableStats;
+	uint enableSSAO;
+
+	uint enableShadows;
+	uint enableTonemap;
+	uint pad0[2];
+
+	// draw stats
+	uint meshCount;
+	uint materialCount;
+	uint transformCount;
+	uint vertexCount;
+
+	uint indexCount;
+	uint pad1[3];
+
+	// fragment shader outputs
+	uint showAlbedo;
+	uint showNormals;
+	uint showRoughness;
+	uint showMetallic;
+
+	uint showSSAO;
+	uint showSpecular;
+	uint showDiffuse;
+	uint showCascadeSplits;
+
+	uint showEmissive;
+	uint showAO;
+	uint pad2[2];
 };
 
 struct AABB {
@@ -105,15 +150,6 @@ struct IndirectDrawCmd {
 	uint firstIndex;
 	int vertexOffset;
 	uint firstInstance;
-};
-
-struct DrawDataPC {
-	uint totalVertexCount;
-	uint totalIndexCount;
-	uint totalMeshCount;
-	uint totalMaterialCount;
-	bool ssaoEnabled;
-	uint pad0[3];
 };
 
 // GPU-only buffers

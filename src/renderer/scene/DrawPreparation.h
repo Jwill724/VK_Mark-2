@@ -32,7 +32,8 @@ namespace DrawPreparation {
 		FrameContext& frameCtx,
 		const std::vector<GPUMeshData>& meshes,
 		const std::vector<AABB>& worldAABBs,
-		const glm::vec4 cameraPos);
+		const glm::vec4 cameraPos,
+		const DebugToggles& meshStats);
 
 	void syncGlobalInstancesAndTransforms(
 		FrameContext& frameCtx,

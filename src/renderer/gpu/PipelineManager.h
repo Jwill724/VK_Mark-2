@@ -22,8 +22,11 @@ enum class PipelineID : uint8_t {
 	DiffuseIrradiance,
 	BRDFLUT,
 
-	// === SSAO ===
+	// === DEPTH ===
 	DepthPrepass,  // graphics
+	ShadowCSM, // graphics
+
+	// === SSAO ===
 	SSAO,          // compute
 	SSAOBlurH,     // compute
 	SSAOBlurV,     // compute
@@ -64,8 +67,8 @@ namespace PipelineManager {
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts, const PushConstantDef pushConstants);
 
-	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePresent& settings, bool msaaOn);
-	void setupShaders(PipelinePresent& pipelineSettings, DeletionQueue& shaderDeletionQueue);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings, bool msaaOn);
+	void setupShaders(PipelinePreset& pipelineSettings, DeletionQueue& shaderDeletionQueue);
 
 	// configurations for pipelines altered here
 	void initPipelines(DeletionQueue& queue);

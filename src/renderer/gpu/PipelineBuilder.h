@@ -20,5 +20,5 @@ struct PipelineBuilder {
 
 	void initializePipelineSTypes();
 
-	void createPipeline(PipelineHandle& pipelineObj, const PipelinePresent& pipelineSettings, const VkDevice device);
+	void createPipeline(PipelineHandle& pipelineObj, const PipelinePreset& pipelineSettings, const VkDevice device);
 };

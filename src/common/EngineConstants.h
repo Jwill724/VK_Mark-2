@@ -18,13 +18,16 @@ constexpr float TARGET_FRAME_RATE_144 = 143.856f;
 constexpr float TARGET_FRAME_RATE_240 = 239.76f;
 
 // Image / Texture Limits
-constexpr float ANISOTROPY_LEVEL = 16.0f;
+constexpr float ANISOTROPY_LEVEL_16 = 16.0f;
+constexpr float ANISOTROPY_LEVEL_8 = 8.0f;
+constexpr float ANISOTROPY_LEVEL_4 = 4.0f;
 static constexpr uint32_t MSAACOUNT_8 = 8u;
 static constexpr uint32_t MSAACOUNT_4 = 4u;
 static constexpr uint32_t MSAACOUNT_2 = 2u;
 constexpr uint32_t MAX_MIP_LEVELS = 12u;
 constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * uvec4(16 bytes)
 constexpr uint32_t MAX_MATERIALS = 512u;
+constexpr uint32_t MAX_CASCADES = 3u; // For shadows
 
 // Descriptor info
 constexpr uint32_t GLOBAL_SET = 0u;
@@ -36,20 +39,22 @@ constexpr uint32_t ADDRESS_TABLE_BINDING = 0u;
 
 // Global bindings
 constexpr uint32_t GLOBAL_BINDING_ENV_INDEX = 1u;
-constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE = 2u;
-constexpr uint32_t GLOBAL_BINDING_STORAGE_IMAGE = 3u;
-constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 4u;
+constexpr uint32_t GLOBAL_BINDING_SSAO_KERNEL = 2u;
+constexpr uint32_t GLOBAL_BINDING_DEBUG_INLINE = 3u;
+constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE = 4u;
+constexpr uint32_t GLOBAL_BINDING_STORAGE_IMAGE = 5u;
+constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 6u;
 
 // Frame bindings
 constexpr uint32_t FRAME_BINDING_SCENE = 1u;
+constexpr uint32_t FRAME_BINDING_CSM = 2u;
 
 // Push bindings
-constexpr uint32_t PUSH_DEPTH_TEX_BINDING = 0u;
-constexpr uint32_t PUSH_NORMAL_TEX_BINDING = 1u;
-constexpr uint32_t PUSH_SSAO_KERNEL_BINDING = 2u;
-constexpr uint32_t PUSH_SSAO_OUTPUT_TEX_BINDING = 3u;
-constexpr uint32_t PUSH_SSAO_INPUT_TEX_BINDING = 4u;
-constexpr uint32_t PUSH_NOISE_TEX_BINDING = 5u;
+constexpr uint32_t PUSH_BINDING_DEPTH_TEX = 0u;
+constexpr uint32_t PUSH_BINDING_NORMAL_TEX = 1u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_TEX = 2u;
+constexpr uint32_t PUSH_BINDING_INPUT_TEX = 3u;
+constexpr uint32_t PUSH_BINDING_NOISE_TEX = 4u;
 
 // Image array sizes
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100u;

@@ -648,7 +648,7 @@ Frustum Visibility::extractFrustum(const glm::mat4& viewproj) {
 	int i = 0;
 	for (int x = -1; x <= 1; x += 2) {
 		for (int y = -1; y <= 1; y += 2) {
-			for (int z = -1; z <= 1; z += 2) {
+			for (int z = 0; z <= 1; ++z) { // Vulkan NDC z [0,1]
 				glm::vec4 corner = invVp * glm::vec4(x, y, z, 1.0f);
 				frustum.points[i++] = glm::vec4(corner) / corner.w;
 			}
@@ -658,6 +658,31 @@ Frustum Visibility::extractFrustum(const glm::mat4& viewproj) {
 	return frustum;
 }
 
+Frustum Visibility::extractCascadeFrustum(
+	const glm::mat4& camView,
+	float fov,
+	float aspect,
+	float nearSplit,
+	float farSplit)
+{
+	glm::mat4 proj = glm::perspectiveZO(glm::radians(fov), aspect, nearSplit, farSplit);
+	proj[1][1] *= -1;
+	glm::mat4 invVp = glm::inverse(proj * camView);
+
+	Frustum frustum{};
+
+	int i = 0;
+	for (int x = -1; x <= 1; x += 2) {
+		for (int y = -1; y <= 1; y += 2) {
+			for (int z = 0; z <= 1; ++z) { // Vulkan NDC z [0,1]
+				glm::vec4 corner = invVp * glm::vec4(x, y, z, 1.0f);
+				frustum.points[i++] = glm::vec4(corner) / corner.w;
+			}
+		}
+	}
+
+	return frustum;
+}
 
 AABB Visibility::transformAABB(const AABB& localBox, const glm::mat4& transform) {
 	// Convert to min/max corners first

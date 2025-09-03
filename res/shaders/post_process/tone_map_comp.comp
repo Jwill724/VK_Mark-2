@@ -8,28 +8,25 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE) uniform writeonly image2D storageImages[];
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_TEX) uniform sampler2D drawImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX) uniform writeonly image2D toneMap;
 
 layout(push_constant) uniform PC {
 	float brightness;
 	float saturation;
 	float contrast;
 	float pad0;
-	uint cmbViewIdx;
-	uint sampledViewIdx;
-	uint pad1[2];
 } pc;
 
 void main() {
 	uvec2 texelCoord = gl_GlobalInvocationID.xy;
 
-	ivec2 size = imageSize(storageImages[nonuniformEXT(pc.sampledViewIdx)]);
+	ivec2 size = imageSize(toneMap);
 	if (texelCoord.x >= uint(size.x) || texelCoord.y >= uint(size.y)) return;
 
 	vec2 uv = vec2(texelCoord) / vec2(size);
 
-	vec4 color = texture(combinedSamplers[nonuniformEXT(pc.cmbViewIdx)], uv);
+	vec4 color = texture(drawImage, uv);
 
 	color.rgb *= pc.brightness;
 	color.rgb = clamp(color.rgb, 0.0, 1.0);
@@ -40,5 +37,5 @@ void main() {
 
 	color.rgb = (color.rgb - 0.5) * pc.contrast + 0.5;
 
-	imageStore(storageImages[nonuniformEXT(pc.sampledViewIdx)], ivec2(texelCoord), color);
+	imageStore(toneMap, ivec2(texelCoord), color);
 }

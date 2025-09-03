@@ -276,6 +276,7 @@
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="res\shaders\depth\csm_depth_vert.vert" />
     <None Include="res\shaders\meshes\mesh_vert.vert" />
     <None Include="res\shaders\meshes\mesh_frag.frag" />
     <None Include="res\shaders\environment\hdr2cubemap_comp.comp" />
@@ -283,8 +284,8 @@
     <None Include="res\shaders\environment\skybox_frag.frag" />
     <None Include="res\shaders\environment\specular_prefilter_comp.comp" />
     <None Include="res\shaders\environment\diffuse_irradiance_comp.comp" />
-    <None Include="res\shaders\post_process\depth_prepass_frag.frag" />
-    <None Include="res\shaders\post_process\depth_prepass_vert.vert" />
+    <None Include="res\shaders\depth\depth_prepass_frag.frag" />
+    <None Include="res\shaders\depth\depth_prepass_vert.vert" />
     <None Include="res\shaders\post_process\ssao_blurH_comp.comp" />
     <None Include="res\shaders\post_process\ssao_blurV_comp.comp" />
     <None Include="res\shaders\post_process\ssao_comp.comp" />
