@@ -363,18 +363,17 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	Renderer::prepareFrameContext(frame);
 	if (frame.swapchainResult != VK_SUCCESS) return;
 
-	engineProfiler.resetRenderTimers();
 	engineProfiler.resetDrawCalls();
 
+	// === Scene update ===
 	engineProfiler.startTimer();
 	RenderScene::updateScene(frame, _resources, debug);
-	auto elapsed = engineProfiler.endTimerMS();
-	engineProfiler.getStats().sceneUpdateTime = elapsed;
+	engineProfiler.getStats().sceneUpdateTime.add(engineProfiler.endTimerMS());
 
+	// === Draw commands ===
 	engineProfiler.startTimer();
 	Renderer::recordRenderCommand(frame, engineProfiler);
-	elapsed = engineProfiler.endTimerMS();
-	engineProfiler.getStats().drawTime = elapsed;
+	engineProfiler.getStats().drawTime.add(engineProfiler.endTimerMS());
 
 	Renderer::submitFrame(frame, _resources);
 }

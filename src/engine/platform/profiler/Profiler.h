@@ -9,8 +9,8 @@
 #endif
 
 struct IndirectStats {
-	std::atomic<uint32_t> commands{ 0 };
-	std::atomic<uint32_t> subdraws{ 0 };
+	uint32_t commands{ 0 };
+	uint32_t subdraws{ 0 };
 };
 
 struct VRAMStats {
@@ -18,21 +18,40 @@ struct VRAMStats {
 	VkDeviceSize budget = 0;
 };
 
+// Exponential moving average, to show clearer values over frames
+struct TimerAverager {
+	float smoothed = 0.0f;
+	bool initialized = false;
+
+	void add(float sample, float alpha = 0.1f) {
+		if (!initialized) {
+			smoothed = sample;
+			initialized = true;
+		}
+		else {
+			smoothed = (1.0f - alpha) * smoothed + alpha * sample;
+		}
+	}
+
+	float get() const { return smoothed; }
+};
+
 struct FrameStats {
 	std::string gpuName;
-	std::atomic<uint64_t> triangleCount = 0;
-	std::atomic<float> deltaTime = 0.0f;
-	std::atomic<float> frameTime = 0.0f;
-	std::atomic<float> fps = 0.0f;
-	std::atomic<float> sceneUpdateTime = 0.0f;
-	std::atomic<float> drawTime = 0.0f;
+	uint64_t triangleCount = 0;
+
+	TimerAverager deltaTime;
+	TimerAverager fps;
+	TimerAverager frameTime;
+	TimerAverager sceneUpdateTime;
+	TimerAverager drawTime;
 
 	VRAMStats vramStats{};
 
 	bool capFramerate = false;
 	float targetFrameRate = 0.0f;
 
-	std::atomic<uint32_t> directDraws{ 0 };
+	uint32_t directDraws = 0;
 	IndirectStats opaqueIndirect;
 	IndirectStats transparentIndirect;
 };
@@ -49,7 +68,6 @@ struct SSAOSettings {
 	float intensity = 1.0f;
 	int blurRadius = 4;
 };
-
 
 // inline uniform block in global set 0
 struct alignas(4) DebugToggles {
@@ -107,12 +125,12 @@ public:
 	FrameStats& getStats() { return _stats; }
 
 	void resetDrawCalls() {
-		_stats.triangleCount.store(0);
-		_stats.directDraws.store(0);
-		_stats.opaqueIndirect.commands.store(0);
-		_stats.opaqueIndirect.subdraws.store(0);
-		_stats.transparentIndirect.commands.store(0);
-		_stats.transparentIndirect.subdraws.store(0);
+		_stats.triangleCount = 0u;
+		_stats.directDraws = 0u;
+		_stats.opaqueIndirect.commands = 0u;
+		_stats.opaqueIndirect.subdraws = 0u;
+		_stats.transparentIndirect.commands = 0u;
+		_stats.transparentIndirect.subdraws = 0u;
 	}
 
 	inline void addDirect(uint32_t calls, uint64_t tris = 0) {
@@ -131,13 +149,6 @@ public:
 		_stats.transparentIndirect.commands += commands;
 		_stats.transparentIndirect.subdraws += subdraws;
 		_stats.triangleCount += tris;
-	}
-
-	void resetRenderTimers() {
-		_stats.drawTime.store(0);
-		_stats.sceneUpdateTime.store(0);
-		_stats.frameTime.store(0);
-		_stats.fps.store(0);
 	}
 
 	glm::vec3 cameraPos{};

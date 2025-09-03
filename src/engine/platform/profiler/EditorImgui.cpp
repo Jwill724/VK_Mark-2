@@ -7,7 +7,6 @@
 
 static void MyWindowFocusCallback(GLFWwindow* window, int focused) {
 	ImGui_ImplGlfw_WindowFocusCallback(window, focused); // Forward to ImGui
-	Engine::getProfiler().resetRenderTimers();
 }
 
 void EditorImgui::initImgui(DeletionQueue& queue) {
@@ -111,11 +110,11 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 10.f, 10.f), ImGuiCond_Always, ImVec2(1, 0));
 		if (ImGui::Begin("Stats", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize)) {
 			ImGui::Text("Camera: %.2f %.2f %.2f", camera._position.x, camera._position.y, camera._position.z);
-			ImGui::Text("FPS: %.1f", stats.fps.load());
-			ImGui::Text("Frame: %.3f ms", stats.frameTime.load());
-			ImGui::Text("Draw:  %.3f ms", stats.drawTime.load());
-			ImGui::Text("Scene: %.3f ms", stats.sceneUpdateTime.load());
-			ImGui::Text("Triangles: %llu", (unsigned long long)stats.triangleCount.load());
+			ImGui::Text("FPS: %.1f", stats.fps.get());
+			ImGui::Text("Frame: %.3f ms", stats.frameTime.get());
+			ImGui::Text("Draw:  %.3f ms", stats.drawTime.get());
+			ImGui::Text("Scene: %.3f ms", stats.sceneUpdateTime.get());
+			ImGui::Text("Triangles: %llu", (unsigned long long)stats.triangleCount);
 			ImGui::Text("VRAM: %llu / %llu MB",
 				stats.vramStats.used / (1024ull * 1024ull),
 				stats.vramStats.budget / (1024ull * 1024ull));
@@ -133,12 +132,12 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::TextUnformatted("Draw Calls");
 
 			const uint32_t indirectTotal =
-				stats.opaqueIndirect.commands.load() + stats.transparentIndirect.commands.load();
+				stats.opaqueIndirect.commands + stats.transparentIndirect.commands;
 
 			if (ImGui::BeginTable("DrawPathsTop", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg)) {
 				ImGui::TableSetupColumn("API"); ImGui::TableSetupColumn("Commands"); ImGui::TableHeadersRow();
 				ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("vkCmdDraw");
-				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.directDraws.load());
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.directDraws);
 				ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("vkCmdDrawIndirect");
 				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", indirectTotal);
 				ImGui::EndTable();
@@ -147,11 +146,11 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::BeginTable("IndirectBreakdown", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg)) {
 				ImGui::TableSetupColumn("Pass"); ImGui::TableSetupColumn("Commands"); ImGui::TableSetupColumn("Subdraws"); ImGui::TableHeadersRow();
 				ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Opaque");
-				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.opaqueIndirect.commands.load());
-				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.opaqueIndirect.subdraws.load());
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.opaqueIndirect.commands);
+				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.opaqueIndirect.subdraws);
 				ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("Transparent");
-				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.transparentIndirect.commands.load());
-				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.transparentIndirect.subdraws.load());
+				ImGui::TableSetColumnIndex(1); ImGui::Text("%u", stats.transparentIndirect.commands);
+				ImGui::TableSetColumnIndex(2); ImGui::Text("%u", stats.transparentIndirect.subdraws);
 				ImGui::EndTable();
 			}
 			ImGui::End();

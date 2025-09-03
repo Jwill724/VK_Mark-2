@@ -39,7 +39,7 @@ void Profiler::beginFrame() {
 	double delta = _frameStartTime - _lastDeltaTime;
 	_lastDeltaTime = _frameStartTime;
 
-	_stats.deltaTime = static_cast<float>(std::min(delta, 0.1));
+	_stats.deltaTime.add(static_cast<float>(std::min(delta, 0.1)));
 	rendererWasStalled = (delta > 0.05); // 50ms stall
 }
 
@@ -95,11 +95,13 @@ void Profiler::endFrame() {
 		}
 	}
 
-	_stats.frameTime = elapsed * 1000.0f;
-	_stats.fps = 1.0f / std::max(elapsed, 0.00001f);
-	_stats.deltaTime = elapsed;
-}
+	float frameMs = elapsed * 1000.0f;
+	float fpsVal = 1.0f / std::max(elapsed, 0.00001f);
 
+	_stats.frameTime.add(frameMs);
+	_stats.fps.add(fpsVal);
+	_stats.deltaTime.add(elapsed);
+}
 
 void Profiler::startTimer() {
 	QueryPerformanceCounter(&_startTimer);

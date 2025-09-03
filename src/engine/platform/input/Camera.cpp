@@ -24,7 +24,7 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	// TODO: movement is slow asf in space station model, due to model units being too large so
 	// some scaling factor will need to be added for this particular model
 	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 25.0f : 5.0f;
-	float moveSpeed = baseSpeed * profiler.getStats().deltaTime;
+	float moveSpeed = baseSpeed * profiler.getStats().deltaTime.get();
 
 	float radPitch = glm::radians(_pitch);
 	float radYaw = glm::radians(_yaw);
