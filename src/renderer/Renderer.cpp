@@ -324,8 +324,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		// === SSAO PASS ===
 		if (debug.enableSSAO) {
 			const auto& proj = RenderScene::getCurrentSceneData().proj;
+			const auto& winExtent = Engine::getWindowExtent();
 
-			struct alignas(16) SSAOPush {
+			static struct alignas(16) SSAOPush {
 				glm::mat4 invProj;
 				glm::vec2 screenSize;
 				glm::vec2 invScreenSize;
@@ -338,8 +339,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			} ssaoPc{};
 			ssaoPc.invProj = glm::inverse(proj);
 			ssaoPc.screenSize = glm::vec2(
-				static_cast<float>(extent.width),
-				static_cast<float>(extent.height)
+				static_cast<float>(winExtent.width),
+				static_cast<float>(winExtent.height)
 			);
 			ssaoPc.invScreenSize = 1.0f / ssaoPc.screenSize;
 

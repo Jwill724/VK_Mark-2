@@ -61,8 +61,8 @@ void Window::initWindow(const uint32_t width, const uint32_t height) {
 	const GLFWvidmode* vm = glfwGetVideoMode(mon);
 	int mx = 0, my = 0;
 	glfwGetMonitorPos(mon, &mx, &my);
-	int x = mx + (vm->width - (int)width) / 2;
-	int y = my + (vm->height - (int)height) / 2;
+	int x = mx + (vm->width - static_cast<int>(width)) / 2;
+	int y = my + (vm->height - static_cast<int>(height)) / 2;
 	glfwSetWindowPos(window, x, y);
 
 	glfwSetWindowUserPointer(window, this);

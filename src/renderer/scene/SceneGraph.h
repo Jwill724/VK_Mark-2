@@ -36,7 +36,7 @@ namespace SceneGraph {
 		{ SceneID::DragonAttenuation, "Dragon" },
 		{ SceneID::City, "City" },
 		{ SceneID::Structure, "Structure" },
-		{ SceneID::EmissiveTest, "EmissiveTest" }
+		{ SceneID::EmissiveTest, "EmissiveTest" },
 	};
 
 	static const std::unordered_map<std::string, SceneID> SceneIDs {
@@ -48,7 +48,7 @@ namespace SceneGraph {
 		{ "Dragon", SceneID::DragonAttenuation },
 		{ "City", SceneID::City },
 		{ "Structure", SceneID::Structure },
-		{ "EmissiveTest", SceneID::EmissiveTest }
+		{ "EmissiveTest", SceneID::EmissiveTest },
 	};
 
 	// ====== Scene Graph Node Base ======
