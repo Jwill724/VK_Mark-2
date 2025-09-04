@@ -244,7 +244,7 @@ void Visibility::bakeCoreSceneMeshes(
 	uint32_t w = outFirst;
 	for (uint32_t c = 0; c < copies; ++c) {
 		for (uint32_t local = 0; local < stride; ++local, ++w) {
-			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+			const GPUInstance& baked = asset.runtime.bakedInstances[local];
 
 			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
 			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
@@ -323,7 +323,7 @@ bool Visibility::updateWorldAABBsForDynamic(
 //	uint32_t w = outFirst;
 //	for (uint32_t c = oldCopies; c < newCopies; ++c) {
 //		for (uint32_t local = 0; local < stride; ++local, ++w) {
-//			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+//			const GPUInstance& baked = asset.runtime.bakedInstances[local];
 //			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
 //			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
 //
@@ -366,7 +366,7 @@ bool Visibility::updateWorldAABBsForDynamic(
 //	uint32_t w = slab.first;
 //	for (uint32_t c = 0; c < slab.usedCopies; ++c) {
 //		for (uint32_t local = 0; local < slab.stride; ++local, ++w) {
-//			const GPUInstance& baked = *asset.runtime.bakedInstances[local];
+//			const GPUInstance& baked = asset.runtime.bakedInstances[local];
 //			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
 //			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
 //

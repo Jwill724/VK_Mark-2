@@ -61,9 +61,9 @@ void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueu
 // [1] = EnvSetUBO (Environment image indexes)
 // [2] = SSAO sample kernel glm::vec4[128]
 // [3] = inline uniform, debug toggles and draw stats
-// [4] = Samplercube images (environment images)
-// [5] = Storage image array (All writable images)
-// [6] = Combined sampler (All static global samplers, e.g, material textures)
+// [4] = Samplercube images (Environment images)
+// [5] = Storage image array (Writable images)
+// [6] = Combined sampler (Static global combined sampelrs, mostly materials)
 
 // All image resources - textures, render targets, compute inputs/outputs -
 // are stored in these arrays. Access and interpretation are handled via the
@@ -149,14 +149,14 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 		IMAGE_STAGES,
 		1);
 
-	// SSAO writable output
+	// Writable output
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_OUTPUT_TEX,
 		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
 		COMPUTE_ONLY,
 		1);
 
-	// SSAO input
+	// Readable input
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_INPUT_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -447,21 +447,13 @@ void DescriptorWriter::writePushImage(
 	VkDescriptorType type = (sampler != VK_NULL_HANDLE) ?
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 
-	VkDescriptorImageInfo imageInfo{
-		.sampler = sampler,
-		.imageView = view,
-		.imageLayout = layout
-	};
-
-	std::vector<VkDescriptorImageInfo> infos;
-	infos.push_back(imageInfo);
-
+	VkDescriptorImageInfo imageInfo{ sampler, view, layout };
 	imageWriteGroups.push_back({
 		.binding = binding,
 		.type = type,
 		.dstSet = VK_NULL_HANDLE,
-		.imageInfos = std::move(infos)
-		});
+		.imageInfo = imageInfo
+	});
 }
 
 void DescriptorWriter::updatePushSet(
@@ -471,22 +463,28 @@ void DescriptorWriter::updatePushSet(
 {
 	std::vector<VkWriteDescriptorSet> writes;
 
-	for (size_t i = 0; i < bufferWrites.size(); i++) {
-		bufferWrites[i].dstSet = VK_NULL_HANDLE;
-		bufferWrites[i].pBufferInfo = &bufferInfos[writeBufferIndices[i]];
-		writes.push_back(bufferWrites[i]);
+	if (!bufferWrites.empty()) {
+		for (size_t i = 0; i < bufferWrites.size(); i++) {
+			bufferWrites[i].dstSet = VK_NULL_HANDLE;
+			bufferWrites[i].pBufferInfo = &bufferInfos[writeBufferIndices[i]];
+			writes.push_back(bufferWrites[i]);
+		}
+
+		shouldClearWrites = true;
 	}
 
-	for (const auto& group : imageWriteGroups) {
-		if (group.imageInfos.empty()) continue;
+	if (!imageWriteGroups.empty()) {
+		for (const auto& group : imageWriteGroups) {
+			VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+			write.dstBinding = group.binding;
+			write.descriptorCount = 1u;
+			write.descriptorType = group.type;
+			write.pImageInfo = &group.imageInfo;
 
-		VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
-		write.dstBinding = group.binding;
-		write.descriptorCount = static_cast<uint32_t>(group.imageInfos.size());
-		write.descriptorType = group.type;
-		write.pImageInfo = group.imageInfos.data();
+			writes.push_back(write);
+		}
 
-		writes.push_back(write);
+		shouldClearWrites = true;
 	}
 
 	if (!writes.empty()) {
@@ -500,6 +498,8 @@ void DescriptorWriter::updatePushSet(
 
 		enablePushDescriptor = false;
 	}
+
+	if (shouldClearWrites) clear();
 }
 
 // Normal descriptor writing
@@ -530,7 +530,7 @@ void DescriptorWriter::writeBuffer(
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.dstSet = set,
 		.dstBinding = binding,
-		.descriptorCount = 1,
+		.descriptorCount = 1u,
 		.descriptorType = type,
 		.pBufferInfo = nullptr,
 	});
@@ -590,7 +590,7 @@ void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, V
 		.binding = binding,
 		.type = vkType,
 		.dstSet = set,
-		.imageInfos = *selected
+		.v_imageInfos = *selected
 	});
 }
 
@@ -602,6 +602,7 @@ void DescriptorWriter::clear() {
 	samplerCubeDescriptors.clear();
 	storageDescriptors.clear();
 	combinedDescriptors.clear();
+	shouldClearWrites = false;
 }
 
 void DescriptorWriter::writeInlineUniform(
@@ -611,14 +612,14 @@ void DescriptorWriter::writeInlineUniform(
 	VkDevice device,
 	VkDescriptorSet set)
 {
-	VkWriteDescriptorSetInlineUniformBlock inlineBlock {
+	VkWriteDescriptorSetInlineUniformBlock inlineBlock{
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK,
 		.pNext = nullptr,
 		.dataSize = size,
 		.pData = data
 	};
 
-	VkWriteDescriptorSet write {
+	VkWriteDescriptorSet write{
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.pNext = &inlineBlock,
 		.dstSet = set,
@@ -634,24 +635,26 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	std::vector<VkWriteDescriptorSet> writes;
 
 	uint32_t totalImageCount = 0;
-	for (const auto& group : imageWriteGroups) {
-		if (group.imageInfos.empty()) continue;
+	if (!imageWriteGroups.empty()) {
+		for (const auto& group : imageWriteGroups) {
+			VkWriteDescriptorSet write{};
+			write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			write.dstSet = group.dstSet;
+			write.dstBinding = group.binding;
+			write.descriptorCount = static_cast<uint32_t>(group.v_imageInfos.size());
+			write.descriptorType = group.type;
+			write.pImageInfo = group.v_imageInfos.data();
+			totalImageCount += static_cast<uint32_t>(group.v_imageInfos.size());
 
-		VkWriteDescriptorSet write{};
-		write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		write.dstSet = group.dstSet;
-		write.dstBinding = group.binding;
-		write.descriptorCount = static_cast<uint32_t>(group.imageInfos.size());
-		write.descriptorType = group.type;
-		write.pImageInfo = group.imageInfos.data();
-		totalImageCount += static_cast<uint32_t>(group.imageInfos.size());
-
-		writes.push_back(write);
+			writes.push_back(write);
+		}
 	}
 
 	if (!writes.empty()) {
 		fmt::print("Total image write count: {}\n\n", totalImageCount);
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+
+		shouldClearWrites = true;
 	}
 
 	if (!bufferWrites.empty()) {
@@ -660,5 +663,9 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 			bufferWrites[i].pBufferInfo = &bufferInfos[writeBufferIndices[i]];
 		}
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(bufferWrites.size()), bufferWrites.data(), 0, nullptr);
+
+		shouldClearWrites = true;
 	}
+
+	if (shouldClearWrites) clear();
 }

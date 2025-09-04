@@ -148,7 +148,6 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 		VK_IMAGE_LAYOUT_GENERAL);
 
 	// Push writing for main ssao pass
-	frameCtx.descriptorWriter.clear();
 
 	// depth
 	frameCtx.descriptorWriter.writePushImage(
@@ -206,8 +205,6 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 
 	// Push writing for blur horizontal
-	frameCtx.descriptorWriter.clear();
-
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_INPUT_TEX,
 		ssaoImg.imageView,
@@ -244,8 +241,6 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 		VK_IMAGE_LAYOUT_GENERAL);
 
 	// Push writing for blur vertical
-	frameCtx.descriptorWriter.clear();
-
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_INPUT_TEX,
 		ssaoBlurH.imageView,
@@ -441,7 +436,6 @@ void RenderPasses::ToneMapPass(
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_GENERAL);
 
-	frameCtx.descriptorWriter.clear();
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_INPUT_TEX,
 		draw.imageView,

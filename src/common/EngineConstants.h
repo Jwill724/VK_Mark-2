@@ -3,7 +3,8 @@
 #include <functional>
 
 // General Engine Limits
-constexpr uint32_t MAX_DRAWS = 65536u;
+constexpr uint32_t MAX_DRAWS = 16384u;
+//constexpr uint32_t MAX_DRAWS = 65536u;
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_DRAWS;
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3u;
 
@@ -25,8 +26,7 @@ static constexpr uint32_t MSAACOUNT_8 = 8u;
 static constexpr uint32_t MSAACOUNT_4 = 4u;
 static constexpr uint32_t MSAACOUNT_2 = 2u;
 constexpr uint32_t MAX_MIP_LEVELS = 12u;
-constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * uvec4(16 bytes)
-constexpr uint32_t MAX_MATERIALS = 512u;
+constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * ivec4(16 bytes)
 constexpr uint32_t MAX_CASCADES = 3u; // For shadows
 
 // Descriptor info

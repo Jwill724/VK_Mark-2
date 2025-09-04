@@ -18,7 +18,8 @@ struct DescriptorWriteGroup {
 	VkDescriptorType type{};
 	VkDescriptorSet dstSet = VK_NULL_HANDLE;
 
-	std::vector<VkDescriptorImageInfo> imageInfos;
+	std::vector<VkDescriptorImageInfo> v_imageInfos;
+	VkDescriptorImageInfo imageInfo;
 };
 
 enum class DescriptorImageType : uint8_t {
@@ -82,12 +83,14 @@ struct DescriptorWriter {
 		uint32_t size,
 		VkDevice device,
 		VkDescriptorSet set);
-
-	void clear();
-
 	~DescriptorWriter() { clear(); }
 
 	void updateSet(VkDevice device, VkDescriptorSet set);
+
+private:
+	// After a set is updated, all data written is cleared
+	bool shouldClearWrites;
+	void clear();
 };
 
 struct DescriptorManager {

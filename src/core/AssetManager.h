@@ -5,7 +5,11 @@
 
 struct ModelAsset {
 	struct GPUData {
-		std::vector<std::shared_ptr<GPUInstance>> bakedInstances;
+		std::vector<GPUInstance> bakedInstances;
+		size_t vertexOffset = 0;
+		size_t indexOffset = 0;
+		size_t vertexCount = 0;
+		size_t indexCount = 0;
 		std::vector<AllocatedImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;

@@ -196,7 +196,7 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 		Backend::resizeSwapchain();
 		auto& queue = resources.getRenderTargetDQueue();
 		queue.flush(); // Clear render targets
-		// Recreate all render targets for proper extent updates
+		// Recreate all render targets with extent updates
 		ResourceManager::initRenderTargets(
 			Backend::getDevice(),
 			queue,
@@ -244,7 +244,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
 		// Update the global set for transforms
-		frameCtx.descriptorWriter.clear();
 		frameCtx.descriptorWriter.writeBuffer(
 			ADDRESS_TABLE_BINDING,
 			globalAddrsTableBuf.buffer,
@@ -310,7 +309,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		vkCmdBindIndexBuffer(frameCtx.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 
-		//======================
+		// =====================
 		// === DEPTH PREPASS ===
 		RenderPasses::depthPrePass(frameCtx, Pipelines::getHandle(PipelineID::DepthPrepass));
 
@@ -413,7 +412,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
 		}
 
-		frameCtx.descriptorWriter.clear();
+		//frameCtx.descriptorWriter.clear();
 		if (debug.enableSSAO) {
 			auto& ssaoBlurV = ResourceManager::getSSAOBlurVImage(); // Final ao image
 

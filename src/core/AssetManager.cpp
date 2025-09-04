@@ -451,10 +451,10 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 // A global meshes registry holds the mesh vector that'll be uploaded.
 // meshbuffer holds each localaabb and the range data into vertex and index buffers,
 void AssetManager::processMeshes(
-	ThreadContext& threadCtx,
-	MeshRegistry& meshes,
-	std::vector<Vertex>& vertices,
-	std::vector<uint32_t>& indices,
+	ThreadContext & threadCtx,
+	MeshRegistry & meshes,
+	std::vector<Vertex>&vertices,
+	std::vector<uint32_t>&indices,
 	ModelDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
@@ -464,8 +464,50 @@ void AssetManager::processMeshes(
 
 	auto gltfJobs = queue->collect();
 
+	// Compute total vertex/index counts per scene
+	size_t totalVertexCount = 0;
+	size_t totalIndexCount = 0;
+
+	for (auto& context : gltfJobs) {
+		auto& gltf = context->gltfAsset;
+		auto& scene = *context->scene;
+
+		// Grab offsets first
+		scene.runtime.vertexOffset = totalVertexCount;
+		scene.runtime.indexOffset = totalIndexCount;
+
+		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
+			const auto& node = gltf.nodes[nodeIdx];
+			if (!node.meshIndex.has_value()) continue;
+
+			const auto& mesh = gltf.meshes[*node.meshIndex];
+
+			for (auto& p : mesh.primitives) {
+				if (auto posAttr = p.findAttribute("POSITION"); posAttr != p.attributes.end()) {
+					totalVertexCount += gltf.accessors[posAttr->accessorIndex].count;
+				}
+				if (p.indicesAccessor.has_value()) {
+					totalIndexCount += gltf.accessors[p.indicesAccessor.value()].count;
+				}
+			}
+		}
+
+		// Define scene total counts
+		scene.runtime.vertexCount = totalVertexCount - scene.runtime.vertexOffset;
+		scene.runtime.indexCount = totalIndexCount - scene.runtime.indexOffset;
+		ASSERT(scene.runtime.vertexCount > 0);
+		ASSERT(scene.runtime.indexCount > 0);
+	}
+
+	// Reserve big enough buffers once
+	modelDataCounts.totalVertexCount = static_cast<uint32_t>(totalVertexCount);
+	modelDataCounts.totalIndexCount = static_cast<uint32_t>(totalIndexCount);
+	vertices.resize(totalVertexCount);
+	indices.resize(totalIndexCount);
+
 	uint32_t matOffset = 0;
 
+	// Fill pass
 	for (auto& context : gltfJobs) {
 		if (!context->isJobComplete(GLTFJobType::ProcessMaterials)) continue;
 
@@ -474,108 +516,89 @@ void AssetManager::processMeshes(
 
 		scene.runtime.bakedInstances.clear();
 		scene.runtime.bakedNodeIDs.clear();
-		uint32_t sceneMatCount = static_cast<uint32_t>(scene.runtime.materials.size());
 
-		// Iterate over nodes that reference a mesh
+		const uint32_t sceneMatCount = static_cast<uint32_t>(scene.runtime.materials.size());
+
+		// Base offsets for this scene
+		const size_t sceneVertexBase = scene.runtime.vertexOffset;
+		const size_t sceneIndexBase = scene.runtime.indexOffset;
+
+		// Local cursors into this scene's global slice
+		size_t sceneVertexCursor = 0;
+		size_t sceneIndexCursor = 0;
+
+		uint32_t localMeshCount = 0;
+
 		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
 			const auto& node = gltf.nodes[nodeIdx];
-
 			if (!node.meshIndex.has_value()) continue;
 
-			uint32_t meshIdx = static_cast<uint32_t>(*node.meshIndex);
-			const auto& mesh = gltf.meshes[meshIdx];
+			const auto& mesh = gltf.meshes[*node.meshIndex];
 
-			for (uint32_t primIdx = 0; primIdx < mesh.primitives.size(); ++primIdx) {
-				const auto& p = mesh.primitives[primIdx];
-
-				const uint32_t globalVertexOffset = static_cast<uint32_t>(vertices.size());
-				const uint32_t globalIndexOffset = static_cast<uint32_t>(indices.size());
-
+			for (auto& p : mesh.primitives) {
+				// Vertex accessor
 				const auto& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
-				uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
-				vertices.resize(static_cast<size_t>(globalVertexOffset + vertexCount));
+				const uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
+
+				const size_t vtxOff = sceneVertexBase + sceneVertexCursor;
 
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
-					[&](glm::vec3 v, size_t index) {
-						ASSERT(globalVertexOffset + index < vertices.size());
-						Vertex newvtx{};
-						newvtx.position = v;
-						newvtx.normal = glm::vec3(1.0f, 0.0f, 0.0f);
-						newvtx.color = glm::vec4(1.0f);
-						newvtx.uv = glm::vec2(0.0f);
-						vertices[globalVertexOffset + index] = newvtx;
+					[&](glm::vec3 v, size_t i) {
+						ASSERT(vtxOff + i < vertices.size());
+						Vertex vtx{};
+						vtx.position = v;
+						vertices[vtxOff + i] = vtx;
 					});
 
-				auto normals = p.findAttribute("NORMAL");
-				if (normals != p.attributes.end()) {
+				// Fill other attributes
+				if (auto normals = p.findAttribute("NORMAL"); normals != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
-						[&](glm::vec3 v, size_t index) {
-							vertices[globalVertexOffset + index].normal = v;
+						[&](glm::vec3 v, size_t i) {
+							vertices[vtxOff + i].normal = v;
 						});
 				}
-
-				auto uv = p.findAttribute("TEXCOORD_0");
-				if (uv != p.attributes.end()) {
+				if (auto uv = p.findAttribute("TEXCOORD_0"); uv != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[uv->accessorIndex],
-						[&](glm::vec2 v, size_t index) {
-							vertices[globalVertexOffset + index].uv = v;
+						[&](glm::vec2 v, size_t i) {
+							vertices[vtxOff + i].uv = v;
 						});
 				}
-
-				auto colors = p.findAttribute("COLOR_0");
-				if (colors != p.attributes.end()) {
+				if (auto colors = p.findAttribute("COLOR_0"); colors != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[colors->accessorIndex],
-						[&](glm::vec4 v, size_t index) {
-							vertices[globalVertexOffset + index].color = v;
+						[&](glm::vec4 v, size_t i) {
+							vertices[vtxOff + i].color = v;
 						});
 				}
 
+				// Indices
 				const auto& indexAccessor = gltf.accessors[p.indicesAccessor.value()];
-				uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
+				const uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
+
+				const size_t idxOff = sceneIndexBase + sceneIndexCursor;
 
 				uint32_t maxIndex = 0;
-				indices.reserve(static_cast<size_t>(globalIndexOffset + indexCount));
-
 				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, indexAccessor,
-					[&](uint32_t idx, size_t /*i*/) {
+					[&](uint32_t idx, size_t j) {
+						indices[idxOff + j] = idx;
 						maxIndex = std::max(maxIndex, idx);
-						indices.push_back(idx);
 					});
 
-				ASSERT(globalVertexOffset + maxIndex < vertices.size() &&
+				ASSERT(vtxOff + maxIndex < vertices.size() &&
 					"Index buffer is referencing a vertex out of bounds!");
 
-				GPUMeshData newMesh {
-					.firstIndex = globalIndexOffset,
+				// Register mesh
+				GPUMeshData newMesh{
+					.firstIndex = static_cast<uint32_t>(idxOff),
 					.indexCount = indexCount,
-					.vertexOffset = globalVertexOffset,
+					.vertexOffset = static_cast<uint32_t>(vtxOff),
 					.vertexCount = vertexCount
 				};
 
-				ASSERT(vertices.size() >= newMesh.vertexOffset + newMesh.vertexCount &&
-					"Vertex buffer too small for range!");
-
-				ASSERT(indices.size() >= newMesh.firstIndex + newMesh.indexCount &&
-					"Index buffer too small for range!");
-
-				// Define baked instance in model
-				auto inst = std::make_shared<GPUInstance>();
-
-				if (p.materialIndex.has_value()) {
-					auto matID = p.materialIndex.value();
-					inst->materialID = static_cast<uint32_t>(matID) + matOffset;
-					inst->passType = scene.runtime.materials[static_cast<uint32_t>(matID)].passType;
-				}
-				else {
-					inst->materialID = matOffset;
-					inst->passType = static_cast<uint32_t>(MaterialPass::Opaque);
-				}
-				ASSERT(inst->materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
-
-				glm::vec3 vmin = vertices[globalVertexOffset].position;
+				// AABB computation
+				glm::vec3 vmin = vertices[vtxOff].position;
 				glm::vec3 vmax = vmin;
 				for (uint32_t i = 0; i < vertexCount; ++i) {
-					glm::vec3 pos = vertices[static_cast<size_t>(globalVertexOffset + i)].position;
+					glm::vec3 pos = vertices[vtxOff + static_cast<size_t>(i)].position;
 					vmin = glm::min(vmin, pos);
 					vmax = glm::max(vmax, pos);
 				}
@@ -586,30 +609,48 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.extent = (vmax - vmin) * 0.5f;
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
-				inst->meshID = meshes.registerMesh(newMesh);
-				scene.runtime.bakedInstances.push_back(inst);
+				GPUInstance newInst{};
+				if (p.materialIndex.has_value()) {
+					auto matID = p.materialIndex.value();
+					newInst.materialID = static_cast<uint32_t>(matID) + matOffset;
+					newInst.passType = scene.runtime.materials[matID].passType;
+				}
+				else {
+					newInst.materialID = matOffset;
+					newInst.passType = static_cast<uint32_t>(MaterialPass::Opaque);
+				}
+				ASSERT(newInst.materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
+
+				newInst.meshID = meshes.registerMesh(newMesh);
+				scene.runtime.bakedInstances.push_back(newInst);
 				scene.runtime.bakedNodeIDs.push_back(nodeIdx);
+
+				// Advance cursors
+				sceneVertexCursor += vertexCount;
+				sceneIndexCursor += indexCount;
+				localMeshCount++;
 			}
 		}
 
 		matOffset += sceneMatCount;
 
-		modelDataCounts.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
-		modelDataCounts.totalVertexCount = static_cast<uint32_t>(vertices.size());
-		modelDataCounts.totalIndexCount = static_cast<uint32_t>(indices.size());
-
-		fmt::print("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
-			modelDataCounts.totalMeshCount,
-			modelDataCounts.totalVertexCount,
-			modelDataCounts.totalIndexCount);
-
-		ASSERT(modelDataCounts.totalMeshCount > 0 && modelDataCounts.totalVertexCount > 0 && modelDataCounts.totalIndexCount > 0 &&
-			"Invalid draw ranges.");
+		fmt::println("[processMeshes] totals: meshes={}, verts={}, inds={}",
+			localMeshCount,
+			scene.runtime.vertexCount,
+			scene.runtime.indexCount);
 
 		queue->push(context);
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
 	}
+
+	modelDataCounts.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
+
+	ASSERT(modelDataCounts.totalMeshCount > 0 &&
+		modelDataCounts.totalVertexCount > 0 &&
+		modelDataCounts.totalIndexCount > 0 &&
+		"Invalid draw ranges.");
 }
+
 
 void ModelAsset::clearAll() {
 	auto device = Backend::getDevice();

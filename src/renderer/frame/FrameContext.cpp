@@ -126,8 +126,6 @@ void FrameContext::freeStashedCmds(const VkDevice device) {
 }
 
 void FrameContext::writeFrameDescriptors(const VkDevice device) {
-	descriptorWriter.clear();
-
 	constexpr size_t offset = 0;
 
 	// Only write the table if updated
