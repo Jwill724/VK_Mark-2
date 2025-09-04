@@ -651,7 +651,8 @@ void DescriptorWriter::updateSet(VkDevice device, VkDescriptorSet set) {
 	}
 
 	if (!writes.empty()) {
-		fmt::print("Total image write count: {}\n\n", totalImageCount);
+		if (ENABLE_DEBUG_LOGS) fmt::print("Total image write count: {}\n\n", totalImageCount);
+
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
 
 		shouldClearWrites = true;

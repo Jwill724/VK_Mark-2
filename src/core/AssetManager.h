@@ -10,6 +10,8 @@ struct ModelAsset {
 		size_t indexOffset = 0;
 		size_t vertexCount = 0;
 		size_t indexCount = 0;
+		uint32_t localMaterialCount = 0;
+		size_t materialBaseOffset = 0;
 		std::vector<AllocatedImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
@@ -71,7 +73,10 @@ namespace AssetManager {
 		DeletionQueue& bufferQueue,
 		const VkDevice device);
 	void buildSamplers(ThreadContext& threadCtx);
-	void processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator, const VkDevice device);
+	void processMaterials(
+		ThreadContext& threadCtx,
+		const VmaAllocator allocator,
+		const VkDevice device);
 	void processMeshes(
 		ThreadContext& threadCtx,
 		MeshRegistry& meshes,

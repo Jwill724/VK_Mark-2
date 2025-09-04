@@ -2,8 +2,6 @@
 
 #include "core/ResourceManager.h"
 #include <filesystem>
-#include "fmt/base.h"
-#include "fmt/format.h"
 #include "platform/profiler/Profiler.h"
 #include "engine/JobSystem.h"
 

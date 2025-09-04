@@ -3,6 +3,7 @@
 #include "TextureLoader.h"
 #include "renderer/backend/Backend.h"
 #include "utils/ImageUtils.h"
+#include "engine/JobSystem.h"
 
 std::optional<AllocatedImage> TextureLoader::loadImage(
 	fastgltf::Asset& asset,
@@ -18,15 +19,13 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 	int width = 0, height = 0, nrChannels = 0;
 
-	//fmt::print("[loadImage] Start loading image: '{}'\n", image.name);
-
 	std::visit(fastgltf::visitor{
-		[](auto& arg) {
-			fmt::print("[loadImage] fastgltf::visitor fallback: unsupported image source type: {}\n", typeid(arg).name());
+		[&](auto& arg) {
+			JobSystem::log(ctx.threadID,
+				fmt::format("[loadImage] fastgltf::visitor fallback: unsupported image source type: {}\n", typeid(arg).name()));
 		},
 
 		[&](fastgltf::sources::URI& filePath) {
-			//fmt::print("[loadImage] URI source detected\n");
 
 			ASSERT(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
 			ASSERT(filePath.uri.isLocalPath());   // We're only capable of loading local files.
@@ -34,13 +33,9 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 			std::filesystem::path relativePath(filePath.uri.path().begin(), filePath.uri.path().end());
 			std::filesystem::path fullPath = basePath / relativePath;
 
-			//fmt::print("[loadImage] Loading from file: {}\n", fullPath.string());
-
 			unsigned char* data = stbi_load(fullPath.string().c_str(), &width, &height, &nrChannels, 4);
 
 			if (data && width > 0 && height > 0) {
-				//fmt::print("[loadImage] Success: {}x{} Channels:{}\n", width, height, nrChannels);
-
 				VkExtent3D imagesize{};
 				imagesize.width = width;
 				imagesize.height = height;
@@ -56,9 +51,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				}
 				newImage.imageFormat = format;
 
-				//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
-				//	imagesize.width, imagesize.height, newImage.mipmapped);
-
 				ImageUtils::createTextureImage(
 					device,
 					ctx.cmdPool,
@@ -72,21 +64,15 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					true
 				);
 
-				//fmt::print("[createTextureImage] Allocation done: Image handle {}\n", (void*)newImage.image);
-
-
-				//fmt::print("Image source is {}\n", image.data.index());
-
 				stbi_image_free(data);
 			}
 			else {
-				fmt::print("[loadImage] stbi_load FAILED for file: {}\n", fullPath.string());
+				JobSystem::log(ctx.threadID,
+					fmt::format("[loadImage] stbi_load FAILED for file: {}\n", fullPath.string()));
 			}
 		},
 
 		[&](fastgltf::sources::Array& array) {
-			//fmt::print("[loadImage] Array source detected\n");
-
 			unsigned char* data = stbi_load_from_memory(
 				reinterpret_cast<const unsigned char*>(array.bytes.data()),
 				static_cast<int>(array.bytes.size()),
@@ -94,7 +80,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 			);
 
 			if (data && width > 0 && height > 0) {
-				//fmt::print("[loadImage] Success: {}x{} Channels:{}\n", width, height, nrChannels);
 				VkExtent3D imagesize{};
 				imagesize.width = width;
 				imagesize.height = height;
@@ -110,9 +95,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				}
 				newImage.imageFormat = format;
 
-				//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
-				//	imagesize.width, imagesize.height, newImage.mipmapped);
-
 				ImageUtils::createTextureImage(
 					device,
 					ctx.cmdPool,
@@ -126,28 +108,21 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					true
 				);
 
-				//fmt::print("[createTextureImage] Allocation done: Image handle {}\n", (void*)newImage.image);
-
-
-				//fmt::print("Image source is {}\n", image.data.index());
-
 				stbi_image_free(data);
 			}
 			else {
-				fmt::print("[loadImage] stbi_load_from_memory FAILED (Array source)\n");
+				JobSystem::log(ctx.threadID,
+					fmt::format("[loadImage] stbi_load_from_memory FAILED (Array source)\n"));
 			}
 		},
 
 		[&](fastgltf::sources::BufferView& view) {
-			//fmt::print("[loadImage] BufferView source detected\n");
 
 			auto& bufferView = asset.bufferViews[view.bufferViewIndex];
 			auto& buffer = asset.buffers[bufferView.bufferIndex];
 
 			std::visit(fastgltf::visitor{
-
 				[&](fastgltf::sources::Array& array) {
-					//fmt::print("[loadImage] BufferView->Array detected\n");
 
 					unsigned char* data = stbi_load_from_memory(
 						reinterpret_cast<const unsigned char*>(array.bytes.data()) + bufferView.byteOffset,
@@ -156,7 +131,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					);
 
 					if (data && width > 0 && height > 0) {
-						//fmt::print("[loadImage] Success: {}x{} Channels:{}\n", width, height, nrChannels);
 
 						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
 						newImage.imageExtent = imagesize;
@@ -168,9 +142,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 							newImage.mipmapped = false;
 						}
 						newImage.imageFormat = format;
-
-						//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
-						//	imagesize.width, imagesize.height, newImage.mipmapped);
 
 						ImageUtils::createTextureImage(
 							device,
@@ -185,25 +156,23 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 							true
 						);
 
-						//fmt::print("[createTextureImage] Allocation done: Image handle {}\n", (void*)newImage.image);
-
 						stbi_image_free(data);
 					}
 					else {
-						 fmt::print("[loadImage] stbi_load_from_memory FAILED (BufferView->Array)\n");
+						JobSystem::log(ctx.threadID,
+							fmt::format("[loadImage] stbi_load_from_memory FAILED (BufferView->Array)\n"));
 					}
 				},
 
 
 				[&](fastgltf::sources::URI& uri) {
-					//fmt::print("[loadImage] BufferView->URI detected\n");
-
 					ASSERT(uri.uri.isLocalPath());
 					std::filesystem::path bufferPath = basePath / std::string(uri.uri.path());
 					std::ifstream file(bufferPath, std::ios::binary);
 
 					if (!file) {
-						fmt::print("[loadImage] Failed to open external buffer file: {}\n", bufferPath.string());
+						JobSystem::log(ctx.threadID,
+							fmt::format("[loadImage] Failed to open external buffer file: {}\n", bufferPath.string()));
 						return;
 					}
 
@@ -221,8 +190,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					);
 
 					if (data && width > 0 && height > 0) {
-						//fmt::print("[loadImage] Success: {}x{} Channels:{}\n", width, height, nrChannels);
-
 						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
 						newImage.imageExtent = imagesize;
 
@@ -233,9 +200,6 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 							newImage.mipmapped = false;
 						}
 						newImage.imageFormat = format;
-
-						//fmt::print("[createTextureImage] Allocating image: {}x{} mipmapped:{}\n",
-						//	imagesize.width, imagesize.height, newImage.mipmapped);
 
 						ImageUtils::createTextureImage(
 							device,
@@ -250,17 +214,17 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 							true
 						);
 
-						//fmt::print("[createTextureImage] Allocation done: Image handle {}\n", (void*)newImage.image);
-
 						stbi_image_free(data);
 
 					}
 					else {
-						fmt::print("[loadImage] stbi_load_from_memory FAILED for external buffer file: {}\n", bufferPath.string());
+						JobSystem::log(ctx.threadID,
+							fmt::format("[loadImage] stbi_load_from_memory FAILED for external buffer file: {}\n", bufferPath.string()));
 					}
 				},
-				[](auto& arg) {
-					fmt::print("[loadImage] Unsupported buffer source inside BufferView: {}\n", typeid(arg).name());
+				[&](auto& arg) {
+					JobSystem::log(ctx.threadID,
+						fmt::format("[loadImage] Unsupported buffer source inside BufferView: {}\n", typeid(arg).name()));
 				}
 			}, buffer.data);
 		}
@@ -268,11 +232,11 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 	// If any of the attempts to load the data failed, we haven't written the image.
 	if (newImage.image == VK_NULL_HANDLE) {
-		fmt::print("[loadImage] FAILED: No valid image allocated for '{}'\n", image.name);
+		JobSystem::log(ctx.threadID, fmt::format("[loadImage] FAILED: No valid image allocated for '{}'\n", image.name));
 		return {};
 	}
 	else {
-		//fmt::print("[loadImage] SUCCESS: Allocated image for '{}'\n", image.name);
+		//JobSystem::log(ctx.threadID, fmt::format("[loadImage] SUCCESS: Allocated image for '{}'\n", image.name));
 		return newImage;
 	}
 }

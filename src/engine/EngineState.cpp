@@ -68,14 +68,11 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	const auto mainAllocator = _resources.getAllocator();
 
-	EngineStages::SetGoal(ENGINE_STAGE_LOADING_START);
-
 	bool availableAssets = false;
 	// Load files for assets
 	JobSystem::submitJob([assetQueue, &availableAssets](ThreadContext& threadCtx) {
 		ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 		availableAssets = AssetManager::loadGltf(threadCtx);
-		EngineStages::SetGoal(ENGINE_STAGE_LOADING_FILES_READY);
 	});
 
 	JobSystem::wait();
@@ -101,10 +98,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			AssetManager::buildSamplers(threadCtx);
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_SAMPLERS_READY);
 		});
-
-		JobSystem::wait();
 
 		// Temp queue needed for deferred buffer deletions for buffers used in commands.
 		auto& tempQueue = _resources.getTempDQueue();
@@ -120,11 +114,10 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			waitAndRecycleLastFence(threadCtx.lastSubmittedFence, gQueue, device);
 			vkResetCommandPool(device, threadCtx.cmdPool, 0);
 			threadCtx.cmdPool = VK_NULL_HANDLE;
-
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_TEXTURES_READY);
 		});
 
 		JobSystem::wait();
+		JobSystem::flushLogs();
 
 		// === MATERIAL PROCESSING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device](ThreadContext& threadCtx) {
@@ -138,27 +131,24 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);
 			vkResetCommandPool(device, threadCtx.cmdPool, 0);
 			threadCtx.cmdPool = VK_NULL_HANDLE;
-
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MATERIALS_READY);
 		});
 
 		JobSystem::wait();
+		JobSystem::flushLogs();
 
 		// === MESH PROCESS ===
 		auto& meshes = _resources.getResgisteredMeshes();
 		std::vector<Vertex> totalVertices;
 		std::vector<uint32_t> totalIndices;
-		auto& modelDataCounts = _resources.modelDataCounts;
 
+		auto& modelDataCounts = _resources.modelDataCounts;
 		JobSystem::submitJob([assetQueue, &meshes, &totalVertices, &totalIndices, &modelDataCounts](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			AssetManager::processMeshes(threadCtx, meshes, totalVertices, totalIndices, modelDataCounts);
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_MESHES_READY);
 		});
 
 		JobSystem::wait();
-
-		// Currently only scene graph and mesh upload are truly parallel
+		JobSystem::flushLogs();
 
 		// === MESH UPLOAD ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
@@ -174,8 +164,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 				meshes,
 				mainAllocator,
 				device);
-
-			EngineStages::SetGoal(ENGINE_STAGE_MESH_UPLOAD_READY, threadCtx.threadID);
 		});
 
 		// === SCENE GRAPH BUILD ===
@@ -202,13 +190,10 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 					context->hasRegisteredScene = true;
 				}
 			}
-
-			EngineStages::SetGoal(ENGINE_STAGE_LOADING_SCENE_GRAPH_READY, threadCtx.threadID);
 		});
 
-		EngineStages::WaitUntilAll(ENGINE_STAGE_MESH_UPLOAD_READY | ENGINE_STAGE_LOADING_SCENE_GRAPH_READY);
+		JobSystem::wait();
 		JobSystem::flushLogs();
-		EngineStages::Clear(static_cast<EngineStage>(EngineStages::loadingStageFlags));
 
 		// flush any setup temp data like staging buffers
 		tempQueue.flush();
@@ -329,8 +314,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	mainWriter.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, unifiedSet);
 	mainWriter.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, unifiedSet);
 	mainWriter.updateSet(device, unifiedSet);
-
-	EngineStages::SetGoal(ENGINE_STAGE_READY);
 }
 
 void EngineState::initRenderer(Profiler& engineProfiler) {

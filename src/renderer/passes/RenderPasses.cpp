@@ -392,7 +392,7 @@ void RenderPasses::obbDebugPass(FrameContext& frameCtx, const PipelineHandle& pi
 	const VkDeviceSize vtxOffset = 0;
 	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
 
-	struct alignas(16) AABBPush {
+	static struct alignas(16) AABBPush {
 		glm::mat4 worldMatrix;
 		VkDeviceAddress vertexBuffer;
 		uint32_t pad0[2];

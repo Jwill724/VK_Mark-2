@@ -2,6 +2,7 @@
 
 #include "Vk_Types.h"
 #include "common/ErrorChecking.h"
+#include "engine/JobSystem.h"
 
 using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
 
@@ -104,12 +105,12 @@ struct ImageTable {
 		return { view, sampler };
 	}
 
-	uint32_t pushCombined(VkImageView view, VkSampler sampler);
-	uint32_t pushStorage(VkImageView view);
-	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler);
+	uint32_t pushCombined(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr);
+	uint32_t pushStorage(VkImageView view, ThreadContext* threadCtx = nullptr);
+	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr);
 };
 
-inline uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
+inline uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler, ThreadContext* threadCtx) {
 	std::scoped_lock lock(combinedMutex);
 	ASSERT(view && sampler && "Null handle in pushCombined");
 	auto key = makeKey(view, sampler);
@@ -122,11 +123,20 @@ inline uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler) {
 	combinedViews.push_back(info);
 	combinedViewHashToID[key] = index;
 
-	fmt::print("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+	if (ENABLE_DEBUG_LOGS) {
+		if (threadCtx == nullptr) {
+			fmt::print("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+		}
+		else {
+			JobSystem::log(threadCtx->threadID,
+				fmt::format("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
+		}
+	}
+
 	return index;
 }
 
-inline uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler) {
+inline uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler, ThreadContext* threadCtx) {
 	std::scoped_lock lock(samplerCubeMutex);
 	ASSERT(view && sampler && "Null handle in pushSamplerCube");
 	auto key = makeKey(view, sampler);
@@ -139,11 +149,19 @@ inline uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler)
 	samplerCubeViews.push_back(info);
 	samplerCubeViewHashToID[key] = index;
 
-	fmt::print("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+	if (ENABLE_DEBUG_LOGS) {
+		if (threadCtx == nullptr) {
+			fmt::print("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+		}
+		else {
+			JobSystem::log(threadCtx->threadID,
+				fmt::format("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
+		}
+	}
 	return index;
 }
 
-inline uint32_t ImageTable::pushStorage(VkImageView view) {
+inline uint32_t ImageTable::pushStorage(VkImageView view, ThreadContext* threadCtx) {
 	std::scoped_lock lock(storageMutex);
 	ASSERT(view && "Null handle in pushStorage");
 
@@ -156,21 +174,30 @@ inline uint32_t ImageTable::pushStorage(VkImageView view) {
 	storageViews.push_back(info);
 	storageViewHashToID[hash] = index;
 
-	fmt::print("[ImageTable::pushStorage] New [{}] = view={}\n", index, (void*)view);
+	if (ENABLE_DEBUG_LOGS) {
+		if (threadCtx == nullptr) {
+			fmt::print("[ImageTable::pushStorage] New [{}] = view={}\n", index, (void*)view);
+		}
+		else {
+			JobSystem::log(threadCtx->threadID,
+				fmt::format("[ImageTable::pushStorage] New [{}] = view={}\n", index, (void*)view));
+		}
+	}
+
 	return index;
 }
 
 struct ImageTableManager {
 	ImageTable table;
 
-	uint32_t addCombinedImage(VkImageView view, VkSampler sampler) {
-		return table.pushCombined(view, sampler);
+	uint32_t addCombinedImage(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr) {
+		return table.pushCombined(view, sampler, threadCtx);
 	}
-	uint32_t addStorageImage(VkImageView view) {
-		return table.pushStorage(view);
+	uint32_t addStorageImage(VkImageView view, ThreadContext* threadCtx = nullptr) {
+		return table.pushStorage(view, threadCtx);
 	}
-	uint32_t addCubeImage(VkImageView view, VkSampler sampler) {
-		return table.pushSamplerCube(view, sampler);
+	uint32_t addCubeImage(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr) {
+		return table.pushSamplerCube(view, sampler, threadCtx);
 	}
 
 	void clear() {

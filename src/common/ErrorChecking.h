@@ -8,6 +8,13 @@
 #define ASSERT(x) assert(x)
 #endif
 
+inline bool ENABLE_DEBUG_LOGS =
+#ifdef NDEBUG
+false;
+#else
+true;
+#endif
+
 inline const char* vkResultToString(VkResult result) {
 	switch (result) {
 		case VK_SUCCESS: return "VK_SUCCESS";

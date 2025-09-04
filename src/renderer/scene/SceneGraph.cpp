@@ -139,12 +139,14 @@ void SceneGraph::buildSceneGraph(
 		gblInst.instanceID = instanceCounter++;
 		globalInstances.push_back(gblInst);
 
-		JobSystem::log(threadCtx.threadID,
-			fmt::format("SceneGraph built: '{}'. Total bakedInstances = {}. Total materials = {}. Total transforms = {}\n",
-				modelAsset.sceneName,
-				bakedInstances.size(),
-				modelAsset.runtime.materials.size(),
-				gblInst.transformCount));
+		if (ENABLE_DEBUG_LOGS) {
+			JobSystem::log(threadCtx.threadID,
+				fmt::format("SceneGraph built: '{}'. Total bakedInstances = {}. Total materials = {}. Total transforms = {}\n",
+					modelAsset.sceneName,
+					bakedInstances.size(),
+					modelAsset.runtime.materials.size(),
+					gblInst.transformCount));
+		}
 
 		queue->push(context);
 	}

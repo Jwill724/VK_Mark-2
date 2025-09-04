@@ -20,28 +20,30 @@ void MeshLoader::uploadMeshes(
 	const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
 	const size_t totalStagingSize = vertexBufferSize + indexBufferSize + meshesSize;
 
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format(
-			"[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
-			vertexBufferSize, vertices.size())
-	);
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format(
-			"[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",
-			indexBufferSize, indices.size())
-	);
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format(
-			"[MeshUpload] meshesSize         = {} bytes ({} meshes)\n",
-			meshesSize, meshes.meshData.size())
-	);
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize)
-	);
+	if (ENABLE_DEBUG_LOGS) {
+		JobSystem::log(
+			threadCtx.threadID,
+			fmt::format(
+				"[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
+				vertexBufferSize, vertices.size())
+		);
+		JobSystem::log(
+			threadCtx.threadID,
+			fmt::format(
+				"[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",
+				indexBufferSize, indices.size())
+		);
+		JobSystem::log(
+			threadCtx.threadID,
+			fmt::format(
+				"[MeshUpload] meshesSize         = {} bytes ({} meshes)\n",
+				meshesSize, meshes.meshData.size())
+		);
+		JobSystem::log(
+			threadCtx.threadID,
+			fmt::format("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize)
+		);
+	}
 
 	auto& resources = Engine::getState().getGPUResources();
 	auto& globalAddrTable = resources.getAddressTable();
@@ -95,16 +97,6 @@ void MeshLoader::uploadMeshes(
 	const size_t vertexWriteOffset = 0;
 	const size_t indexWriteOffset = vertexWriteOffset + vertexBufferSize;
 	const size_t meshesWriteOffset = indexWriteOffset + indexBufferSize;
-
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format("[MeshUpload] vertexWriteOffset     = {}\n", vertexWriteOffset));
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format("[MeshUpload] indexWriteOffset      = {}\n", indexWriteOffset));
-	JobSystem::log(
-		threadCtx.threadID,
-		fmt::format("[MeshUpload] meshesWriteOffset     = {}\n", meshesWriteOffset));
 
 	// Copy into staging
 	memcpy(mappedStagingPtr + vertexWriteOffset, vertices.data(), vertexBufferSize);

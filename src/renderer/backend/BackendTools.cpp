@@ -177,11 +177,13 @@ namespace BackendTools {
 		VkPhysicalDeviceFeatures supportedFeatures;
 		vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-		fmt::print("Device check:\n");
-		fmt::print("  QueuesAvailable: {}\n", queuesAvailable);
-		fmt::print("  ExtensionsSupported: {}\n", extensionsSupported);
-		fmt::print("  SwapchainAdequate: {}\n", swapchainAdequate);
-		fmt::print("  SamplerAnisotropy: {}\n", supportedFeatures.samplerAnisotropy);
+		if (ENABLE_DEBUG_LOGS) {
+			fmt::println("Device check:");
+			fmt::println("  QueuesAvailable: {}", queuesAvailable);
+			fmt::println("  ExtensionsSupported: {}", extensionsSupported);
+			fmt::println("  SwapchainAdequate: {}", swapchainAdequate);
+			fmt::println("  SamplerAnisotropy: {}", supportedFeatures.samplerAnisotropy);
+		}
 
 		return queuesAvailable &&
 			extensionsSupported &&

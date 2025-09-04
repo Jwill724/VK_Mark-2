@@ -176,7 +176,7 @@ void AssetManager::decodeImages(
 			else {
 				// magenta and black for missing textures
 				scene.runtime.images.push_back(ResourceManager::getCheckboardTex());
-				fmt::print("gltf failed to load texture {}\n", image.name);
+				JobSystem::log(threadCtx.threadID, fmt::format("gltf failed to load texture {}\n", image.name));
 			}
 		}
 
@@ -191,7 +191,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[buildSamplers] queue broken.");
 
-	auto device = Backend::getDevice();
+	const auto device = Backend::getDevice();
 
 	auto gltfJobs = queue->collect();
 	for (auto& context : gltfJobs) {
@@ -199,6 +199,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 		auto& scene = *context->scene;
 
 		for (fastgltf::Sampler& sampler : gltf.samplers) {
+
 			VkFilter filter = TextureLoader::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
 			VkSamplerMipmapMode mipmapMode = TextureLoader::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
@@ -219,28 +220,37 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 	}
 }
 
-void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator allocator, const VkDevice device) {
+void AssetManager::processMaterials(
+	ThreadContext& threadCtx,
+	const VmaAllocator allocator,
+	const VkDevice device)
+{
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto& imageManager = ResourceManager::_globalImageManager;
 	auto& resources = Engine::getState().getGPUResources();
+	auto& modelStats = resources.modelDataCounts;
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[processMaterials] queue broken.");
 
 	auto gltfJobs = queue->collect();
 
-	// First count total materials
-	size_t totalMaterialCount = 0;
+	// Collect global and local material counts
 	for (const auto& context : gltfJobs) {
-		totalMaterialCount += context->gltfAsset.materials.size();
+		auto& gltf = context->gltfAsset;
+		auto& scene = *context->scene;
+		scene.runtime.materialBaseOffset = modelStats.totalMaterialCount;
+		scene.runtime.localMaterialCount = static_cast<uint32_t>(gltf.materials.size());
+		scene.runtime.materials.clear();
+		scene.runtime.materials.reserve(scene.runtime.localMaterialCount);
+		modelStats.totalMaterialCount += scene.runtime.localMaterialCount;
 	}
 
-	resources.modelDataCounts.totalMaterialCount = static_cast<uint32_t>(totalMaterialCount);
-
 	// Pre-allocate space for flat material staging
+	const uint32_t totalMatCount = modelStats.totalMaterialCount;
 	std::vector<GPUMaterial> materialUploadList;
-	materialUploadList.reserve(totalMaterialCount);
+	materialUploadList.reserve(totalMatCount);
 
 	// Default/fallback images
 	MaterialResources materialResources {
@@ -259,23 +269,28 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 	// Default lut indexes
 	const uint32_t defaultAlbedoID = imageManager.addCombinedImage(
 		materialResources.albedoImage.imageView,
-		materialResources.albedoSampler
+		materialResources.albedoSampler,
+		&threadCtx
 	);
 	const uint32_t defaultMetalRoughID = imageManager.addCombinedImage(
 		materialResources.metalRoughImage.imageView,
-		materialResources.metalRoughSampler
+		materialResources.metalRoughSampler,
+		&threadCtx
 	);
 	const uint32_t defaultNormalID = imageManager.addCombinedImage(
 		materialResources.normalImage.imageView,
-		materialResources.normalSampler
+		materialResources.normalSampler,
+		&threadCtx
 	);
 	const uint32_t defaultAoID = imageManager.addCombinedImage(
 		materialResources.aoImage.imageView,
-		materialResources.aoSampler
+		materialResources.aoSampler,
+		&threadCtx
 	);
 	const uint32_t defaultEmissiveID = imageManager.addCombinedImage(
 		materialResources.emissiveImage.imageView,
-		materialResources.emissiveSampler
+		materialResources.emissiveSampler,
+		&threadCtx
 	);
 
 	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAlbedoID));
@@ -293,8 +308,6 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
-		scene.runtime.materials.clear();
-		scene.runtime.materials.reserve(gltf.materials.size());
 
 		uint32_t currentMat = 0;
 		for (fastgltf::Material& mat : gltf.materials) {
@@ -304,7 +317,7 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 					outImg = scene.runtime.images[texture.imageIndex.value()];
 				if (texture.samplerIndex.has_value())
 					outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
-				};
+			};
 
 
 			GPUMaterial newMaterial{};
@@ -315,7 +328,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
 				newMaterial.albedoID = imageManager.addCombinedImage(
 					materialResources.albedoImage.imageView,
-					materialResources.albedoSampler
+					materialResources.albedoSampler,
+					&threadCtx
 				);
 			}
 			else {
@@ -328,7 +342,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
 				newMaterial.metalRoughnessID = imageManager.addCombinedImage(
 					materialResources.metalRoughImage.imageView,
-					materialResources.metalRoughSampler
+					materialResources.metalRoughSampler,
+					&threadCtx
 				);
 			}
 			else {
@@ -341,7 +356,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				newMaterial.normalScale = mat.normalTexture->scale;
 				newMaterial.normalID = imageManager.addCombinedImage(
 					materialResources.normalImage.imageView,
-					materialResources.normalSampler
+					materialResources.normalSampler,
+					&threadCtx
 				);
 			}
 			else {
@@ -354,7 +370,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				newMaterial.ambientOcclusion = mat.occlusionTexture->strength;
 				newMaterial.aoID = imageManager.addCombinedImage(
 					materialResources.aoImage.imageView,
-					materialResources.aoSampler
+					materialResources.aoSampler,
+					&threadCtx
 				);
 			}
 			else {
@@ -368,7 +385,8 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 				newMaterial.emissiveStrength = mat.emissiveStrength;
 				newMaterial.emissiveID = imageManager.addCombinedImage(
 					materialResources.emissiveImage.imageView,
-					materialResources.emissiveSampler
+					materialResources.emissiveSampler,
+					&threadCtx
 				);
 			}
 			else {
@@ -391,13 +409,16 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.aoID));
 			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
 
-			fmt::print("[Material:{}] A:{} MR:{} N:{} AO:{} E:{}\n",
-				currentMat,
-				newMaterial.albedoID,
-				newMaterial.metalRoughnessID,
-				newMaterial.normalID,
-				newMaterial.aoID,
-				newMaterial.emissiveID);
+			if (ENABLE_DEBUG_LOGS) {
+				JobSystem::log(threadCtx.threadID,
+					fmt::format("[Material:{}] A:{} MR:{} N:{} AO:{} E:{}\n",
+						currentMat,
+						newMaterial.albedoID,
+						newMaterial.metalRoughnessID,
+						newMaterial.normalID,
+						newMaterial.aoID,
+						newMaterial.emissiveID));
+			}
 
 			// Store in scene-local and global staging
 			scene.runtime.materials.push_back(newMaterial);
@@ -410,10 +431,10 @@ void AssetManager::processMaterials(ThreadContext& threadCtx, const VmaAllocator
 		context->markJobComplete(GLTFJobType::ProcessMaterials);
 	}
 
-	fmt::print("Scene Materials Processed: {}.\n", totalMaterialCount);
+	ASSERT(!materialUploadList.empty() && "Material list is invalid.");
 
 	// Upload flattened materials
-	const size_t totalMatBufSize = totalMaterialCount * sizeof(GPUMaterial);
+	const size_t totalMatBufSize = totalMatCount * sizeof(GPUMaterial);
 	AllocatedBuffer materialStaging = BufferUtils::createBuffer(
 		totalMatBufSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -505,7 +526,6 @@ void AssetManager::processMeshes(
 	vertices.resize(totalVertexCount);
 	indices.resize(totalIndexCount);
 
-	uint32_t matOffset = 0;
 
 	// Fill pass
 	for (auto& context : gltfJobs) {
@@ -516,8 +536,6 @@ void AssetManager::processMeshes(
 
 		scene.runtime.bakedInstances.clear();
 		scene.runtime.bakedNodeIDs.clear();
-
-		const uint32_t sceneMatCount = static_cast<uint32_t>(scene.runtime.materials.size());
 
 		// Base offsets for this scene
 		const size_t sceneVertexBase = scene.runtime.vertexOffset;
@@ -587,7 +605,7 @@ void AssetManager::processMeshes(
 					"Index buffer is referencing a vertex out of bounds!");
 
 				// Register mesh
-				GPUMeshData newMesh{
+				GPUMeshData newMesh {
 					.firstIndex = static_cast<uint32_t>(idxOff),
 					.indexCount = indexCount,
 					.vertexOffset = static_cast<uint32_t>(vtxOff),
@@ -610,13 +628,18 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
 
 				GPUInstance newInst{};
+
+				// Attach local materialID and account for global bindless array,
+				// as well as pass types.
 				if (p.materialIndex.has_value()) {
-					auto matID = p.materialIndex.value();
-					newInst.materialID = static_cast<uint32_t>(matID) + matOffset;
-					newInst.passType = scene.runtime.materials[matID].passType;
+					auto bindlessMatID = scene.runtime.materialBaseOffset + p.materialIndex.value();
+					auto localMatID = p.materialIndex.value();
+					newInst.materialID = static_cast<uint32_t>(bindlessMatID); // ID into the gpu bindless array
+					newInst.passType = scene.runtime.materials[localMatID].passType;
 				}
 				else {
-					newInst.materialID = matOffset;
+					// Default material types
+					newInst.materialID = static_cast<uint32_t>(scene.runtime.materialBaseOffset);
 					newInst.passType = static_cast<uint32_t>(MaterialPass::Opaque);
 				}
 				ASSERT(newInst.materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
@@ -632,12 +655,13 @@ void AssetManager::processMeshes(
 			}
 		}
 
-		matOffset += sceneMatCount;
-
-		fmt::println("[processMeshes] totals: meshes={}, verts={}, inds={}",
-			localMeshCount,
-			scene.runtime.vertexCount,
-			scene.runtime.indexCount);
+		if (ENABLE_DEBUG_LOGS) {
+			JobSystem::log(threadCtx.threadID,
+				fmt::format("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
+					localMeshCount,
+					scene.runtime.vertexCount,
+					scene.runtime.indexCount));
+		}
 
 		queue->push(context);
 		context->markJobComplete(GLTFJobType::ProcessMeshes);

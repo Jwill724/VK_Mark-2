@@ -177,13 +177,15 @@ void Environment::dispatchEnvironmentMaps(
 		pc.width = std::max(1u, specImg.imageExtent.width >> mip);
 		pc.height = std::max(1u, specImg.imageExtent.height >> mip);
 
-		fmt::print("\n--- Mip {} Prefilter Setup ---\n", mip);
-		fmt::print("-> Roughness: {:.3f}\n", roughness);
-		fmt::print("-> Skybox Sampler Index: {}\n", skyboxIdx);
-		fmt::print("-> Storage View Handle: {}\n", static_cast<void*>(mipView));
-		fmt::print("-> Pushed Storage Index: {}\n", storageIdx);
-		fmt::print("-> PushConstant: skyboxViewIdx = {}, storageIdx = {}\n", pc.skyboxViewIdx, pc.specularStorageIdx);
-		fmt::print("-> Dispatch Dimensions: {}x{} (SampleCount: {})\n", pc.width, pc.height, pc.sampleCount);
+		if (ENABLE_DEBUG_LOGS) {
+			fmt::print("\n--- Mip {} Prefilter Setup ---\n", mip);
+			fmt::print("-> Roughness: {:.3f}\n", roughness);
+			fmt::print("-> Skybox Sampler Index: {}\n", skyboxIdx);
+			fmt::print("-> Storage View Handle: {}\n", static_cast<void*>(mipView));
+			fmt::print("-> Pushed Storage Index: {}\n", storageIdx);
+			fmt::print("-> PushConstant: skyboxViewIdx = {}, storageIdx = {}\n", pc.skyboxViewIdx, pc.specularStorageIdx);
+			fmt::print("-> Dispatch Dimensions: {}x{} (SampleCount: {})\n", pc.width, pc.height, pc.sampleCount);
+		}
 
 		specularPushConstants.push_back(pc);
 	}

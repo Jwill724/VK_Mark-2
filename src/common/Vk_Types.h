@@ -21,6 +21,7 @@
 #include <mutex>
 #include <atomic>
 #include <fmt/base.h>
+#include <fmt/format.h>
 
 struct Frustum {
 	glm::vec4 planes[6]; // Plane equation: ax + by + cz + d = 0
