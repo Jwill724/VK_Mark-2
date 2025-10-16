@@ -5,6 +5,15 @@
 #include "renderer/frame/FrameContext.h"
 #include "engine/platform/input/Camera.h"
 
+// User view and control over scene instance data
+struct SceneProfileEntry {
+	std::string name;
+	DrawType drawType;
+	uint32_t instanceCount;   // total active instances
+	uint32_t reservedCopies;  // capacity
+	uint32_t usedCopies;      // currently realized
+};
+
 // Holds and controls scene data
 namespace RenderScene {
 	GPUSceneData& getCurrentSceneData();
@@ -22,15 +31,17 @@ namespace RenderScene {
 		{ SceneID::City, { "City", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::WrathDragon, { "WrathDragon", DrawType::DrawStatic, 1, 1, 1 } },
 	};
 
 	extern std::vector<GlobalInstance> _globalInstances;
 	extern std::vector<glm::mat4> _globalTransforms;
 
+	extern ShadowControl _shadowControl;
+
 	const Camera getCamera();
 
 	void setScene();
-	void copyFrustumToFrame(CullingPushConstantsAddrs& frustumData);
 
 	void cleanScene();
 

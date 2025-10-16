@@ -71,10 +71,12 @@ struct DescriptorWriter {
 
 	// sampler == read only, combined sampler type
 	// !sampler == storage, general type
+	// Optional manual layout definition
 	void writePushImage(
 		uint32_t binding,
 		VkImageView view,
-		VkSampler sampler = VK_NULL_HANDLE);
+		VkSampler sampler = VK_NULL_HANDLE,
+		VkImageLayout layoutOverride = VK_IMAGE_LAYOUT_UNDEFINED);
 
 	// Requires immediate update
 	void writeInlineUniform(

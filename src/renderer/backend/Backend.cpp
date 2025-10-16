@@ -138,7 +138,7 @@ void Backend::pickPhysicalDevice() {
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
 
-	ASSERT(deviceCount != 0 && "[Backend] No physical device found.\n");
+	ASSERT(deviceCount != 0 && "[Backend] No physical device found.");
 
 	std::vector<VkPhysicalDevice> devices(deviceCount);
 

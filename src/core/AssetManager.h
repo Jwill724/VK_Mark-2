@@ -1,7 +1,36 @@
 #pragma once
 
 #include <core/loader/TextureLoader.h>
-#include "renderer/scene/SceneGraph.h"
+
+// ====== Scene Graph Node Base ======
+struct Node {
+	std::weak_ptr<Node> parent;
+	std::vector<std::shared_ptr<Node>> children;
+
+	glm::mat4 localTransform{ 1.0f };
+	glm::mat4 worldTransform{ 1.0f };
+
+	inline void refreshTransform(const glm::mat4& parentMatrix) {
+		worldTransform = parentMatrix * localTransform;
+		for (auto& c : children) {
+			if (c) c->refreshTransform(worldTransform);
+		}
+	}
+};
+
+enum class SceneID : uint8_t {
+	Sponza,
+	Bistro,
+	MRSpheres,
+	Duck,
+	DamagedHelmet,
+	DragonAttenuation,
+	City,
+	Structure,
+	EmissiveTest,
+	WrathDragon,
+	Count
+};
 
 struct ModelAsset {
 	struct GPUData {
@@ -22,9 +51,9 @@ struct ModelAsset {
 	} runtime;
 
 	struct SceneGraphNodes {
-		std::vector<std::shared_ptr<SceneGraph::Node>> nodes;
+		std::vector<std::shared_ptr<Node>> nodes;
 		// nodes that don't have a parent, for iterating through the file in tree order
-		std::vector<std::shared_ptr<SceneGraph::Node>> topNodes;
+		std::vector<std::shared_ptr<Node>> topNodes;
 	} sceneNodes;
 
 	SceneID sceneID = SceneID::Count;
@@ -61,10 +90,35 @@ struct GLTFJobContext {
 		return true;
 	}
 };
-
 using GLTFAssetQueue = TypedWorkQueue<std::shared_ptr<GLTFJobContext>>;
 
 namespace AssetManager {
+	static const std::unordered_map<SceneID, std::string> SceneNames{
+		{ SceneID::Sponza, "Sponza" },
+		{ SceneID::Bistro, "Bistro" },
+		{ SceneID::MRSpheres, "MRSpheres" },
+		{ SceneID::Duck, "Duck" },
+		{ SceneID::DamagedHelmet, "DamagedHelmet" },
+		{ SceneID::DragonAttenuation, "Dragon" },
+		{ SceneID::City, "City" },
+		{ SceneID::Structure, "Structure" },
+		{ SceneID::EmissiveTest, "EmissiveTest" },
+		{ SceneID::WrathDragon, "WrathDragon" },
+	};
+
+	static const std::unordered_map<std::string, SceneID> SceneIDs{
+		{ "Sponza", SceneID::Sponza },
+		{ "Bistro", SceneID::Bistro },
+		{ "MRSpheres", SceneID::MRSpheres },
+		{ "Duck", SceneID::Duck },
+		{ "DamagedHelmet", SceneID::DamagedHelmet },
+		{ "Dragon", SceneID::DragonAttenuation },
+		{ "City", SceneID::City },
+		{ "Structure", SceneID::Structure },
+		{ "EmissiveTest", SceneID::EmissiveTest },
+		{ "WrathDragon", SceneID::WrathDragon },
+	};
+
 	bool loadGltf(ThreadContext& threadCtx);
 	std::optional<std::shared_ptr<GLTFJobContext>> loadGltfFiles(std::string_view filePath);
 	void decodeImages(
@@ -82,5 +136,11 @@ namespace AssetManager {
 		MeshRegistry& meshes,
 		std::vector<Vertex>& vertices,
 		std::vector<uint32_t>& indices,
+		ModelDataCounts& modelDataCounts);
+
+	void buildSceneGraph(
+		ThreadContext& threadCtx,
+		std::vector<GlobalInstance>& globalInstances,
+		std::vector<glm::mat4>& globalTransforms,
 		ModelDataCounts& modelDataCounts);
 }

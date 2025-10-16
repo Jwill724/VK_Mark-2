@@ -63,7 +63,7 @@ void Engine::run() {
 
 	_engineProfiler.getStats().capFramerate = true;
 	// TODO: Add auto define for target fps to match monitor hz
-	_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_240;
+	_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_60;
 
 	while (WindowIsOpen(_window->window)) {
 		_window->pollEvents();

@@ -7,7 +7,8 @@ enum class PipelineID : uint8_t {
 	Opaque,
 	Transparent,
 	Wireframe,
-	BoundingBox,
+	OBBLine,
+	CascadeVPLine,
 	Skybox,
 
 	// === Culling pipeline *inactive (compute) ===

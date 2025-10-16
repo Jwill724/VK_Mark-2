@@ -34,7 +34,7 @@ void EngineState::init() {
 
 	DescriptorSetOverwatch::initDescriptors(device, dQueue);
 
-	auto& winExtent = Engine::getWindowExtent();
+	const auto& winExtent = Engine::getWindowExtent();
 	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1 });
 
 	ResourceManager::initRenderTargets(
@@ -42,7 +42,6 @@ void EngineState::init() {
 		_resources.getRenderTargetDQueue(),
 		mainAllocator,
 		Renderer::getDrawExtent());
-
 	ResourceManager::initRenderSamplers(device, dQueue);
 	ResourceManager::initShadowMapImages(device, dQueue, mainAllocator);
 	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDQueue(), mainAllocator);
@@ -92,6 +91,9 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		fmt::println("\nAssets available for loading!");
 
+		// Temp queue needed for deferred buffer deletions for buffers used in commands.
+		auto& tempQueue = _resources.getTempDQueue();
+
 		engineProfiler.startTimer();
 
 		// === SAMPLER CREATION ===
@@ -99,9 +101,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 			AssetManager::buildSamplers(threadCtx);
 		});
-
-		// Temp queue needed for deferred buffer deletions for buffers used in commands.
-		auto& tempQueue = _resources.getTempDQueue();
 
 		// === TEXTURE LOADING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device, &tempQueue](ThreadContext& threadCtx) {
@@ -169,7 +168,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		// === SCENE GRAPH BUILD ===
 		JobSystem::submitJob([assetQueue, &modelDataCounts](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			SceneGraph::buildSceneGraph(
+			AssetManager::buildSceneGraph(
 				threadCtx,
 				RenderScene::_globalInstances,
 				RenderScene::_globalTransforms,
@@ -366,12 +365,11 @@ void EngineState::shutdown() {
 
 	JobSystem::shutdownScheduler();
 
-	if (!RenderScene::_loadedScenes.empty())
-		RenderScene::cleanScene();
+	RenderScene::cleanScene();
 
 	JobSystem::getThreadPoolManager().cleanup(device);
 
-	for (int i = 0; i < static_cast<int>(allThreadContexts.size()); ++i) {
+	for (uint32_t i = 0; i < static_cast<int>(allThreadContexts.size()); ++i) {
 		ThreadContext& threadCtx = allThreadContexts[i];
 		threadCtx.deletionQueue.flush();
 		ASSERT(threadCtx.cmdPool == VK_NULL_HANDLE);

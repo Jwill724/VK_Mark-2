@@ -13,7 +13,8 @@ layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec3 outColor;
 layout(location = 2) out vec2 outUV;
 layout(location = 3) out vec3 outWorldPos;
-layout(location = 4) flat out uint outMaterialID;
+layout(location = 4) out vec4 outViewPos;
+layout(location = 5) flat out uint outMaterialID;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
 	GPUAddressTable globalAddressTable;
@@ -43,6 +44,7 @@ void main()
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	outWorldPos = worldPos4.xyz;
+	outViewPos = scene.view * vec4(worldPos4.xyz, 1.0);
 	gl_Position = scene.viewproj * worldPos4;
 
 	mat3 normalMatrix = transpose(inverse(mat3(model)));

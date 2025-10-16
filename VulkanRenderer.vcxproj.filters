@@ -67,9 +67,6 @@
       <Filter>src\engine\platform\profiler</Filter>
     </ClCompile>
     <!-- renderer (root) -->
-    <ClCompile Include="src\renderer\Renderer.cpp">
-      <Filter>src\renderer</Filter>
-    </ClCompile>
     <!-- renderer / gpu -->
     <ClCompile Include="src\renderer\gpu\CommandBuffer.cpp">
       <Filter>src\renderer\gpu</Filter>
@@ -100,9 +97,6 @@
       <Filter>src\renderer\scene</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\scene\Visibility.cpp">
-      <Filter>src\renderer\scene</Filter>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\SceneGraph.cpp">
       <Filter>src\renderer\scene</Filter>
     </ClCompile>
     <!-- renderer / backend -->
@@ -191,10 +185,16 @@
     <ClCompile Include="vendor\fmt\format.cc">
       <Filter>vendor</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\Renderer.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <!-- common -->
     <ClInclude Include="src\common\pch.h">
+      <Filter>src\common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\glm_common.hpp">
       <Filter>src\common</Filter>
     </ClInclude>
     <ClInclude Include="src\common\ErrorChecking.h">
@@ -293,9 +293,6 @@
     <ClInclude Include="src\renderer\scene\Visibility.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\scene\SceneGraph.h">
-      <Filter>src\renderer\scene</Filter>
-    </ClInclude>
     <ClInclude Include="src\renderer\scene\DrawPreparation.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
@@ -333,10 +330,10 @@
     <None Include="res\shaders\post_process\tone_map_comp.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\debug\aabb_frag.frag">
+    <None Include="res\shaders\debug\obb_line_frag.frag">
       <Filter>res\shaders\debug</Filter>
     </None>
-    <None Include="res\shaders\debug\aabb_vert.vert">
+    <None Include="res\shaders\debug\obb_line_vert.vert">
       <Filter>res\shaders\debug</Filter>
     </None>
     <None Include="res\shaders\environment\skybox_frag.frag">
@@ -349,6 +346,9 @@
       <Filter>res\shaders\environment</Filter>
     </None>
     <None Include="res\shaders\environment\diffuse_irradiance_comp.comp">
+      <Filter>res\shaders\environment</Filter>
+    </None>
+    <None Include="res\shaders\environment\brdf_lut_comp.comp">
       <Filter>res\shaders\environment</Filter>
     </None>
     <None Include="res\shaders\include\set_bindings.glsl">
@@ -380,6 +380,12 @@
     </None>
     <None Include="res\shaders\depth\csm_depth_vert.vert">
       <Filter>res\shaders\depth</Filter>
+    </None>
+    <None Include="res\shaders\debug\cascadevp_line_vert.vert">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\debug\cascadevp_line_frag.frag">
+      <Filter>res\shaders\debug</Filter>
     </None>
   </ItemGroup>
 </Project>

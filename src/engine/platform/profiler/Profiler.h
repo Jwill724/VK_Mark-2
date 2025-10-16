@@ -73,13 +73,14 @@ struct SSAOSettings {
 struct alignas(4) DebugToggles {
 	// Higher level toggles
 	uint32_t enableOBBs = 0;
+	uint32_t enableCascadeVPs = 0;
 	uint32_t enableSettings = 1;
-	uint32_t enableStats = 1;
-	uint32_t enableSSAO = 1;
+	uint32_t enableStats = 0;
 
-	uint32_t enableShadows = 0;
+	uint32_t enableSSAO = 1;
+	uint32_t enableShadows = 1;
 	uint32_t enableTonemap = 0;
-	uint32_t pad0[2]{};
+	uint32_t pad0;
 
 	// draw stats
 	uint32_t meshCount = 0;

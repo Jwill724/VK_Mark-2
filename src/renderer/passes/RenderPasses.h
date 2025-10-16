@@ -52,7 +52,11 @@ namespace RenderPasses {
 	void skyboxPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,
 		Profiler& profiler);
-	void obbDebugPass(
+	void obbLinePass(
+		FrameContext& frameCtx,
+		const PipelineHandle& pipeHandle,
+		Profiler& profiler);
+	void CascadeVPLinePass(
 		FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,
 		Profiler& profiler);

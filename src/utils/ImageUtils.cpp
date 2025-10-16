@@ -100,7 +100,7 @@ void ImageUtils::createRenderImage(
 	imgInfo.usage = usage;
 	imgInfo.samples = samples;
 	imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imgInfo.initialLayout = imgInfo.initialLayout; // Default layout is undefined
 
 	// enable mip-maps to get levels per extent of image
 	if (renderImage.mipmapped && renderImage.mipLevelCount == 0) {
@@ -149,9 +149,25 @@ void ImageUtils::createRenderImage(
 		viewInfo.subresourceRange.baseArrayLayer = 0;
 		viewInfo.subresourceRange.layerCount = renderImage.arrayLayers;
 
+		// First path is meant for shadow maps, using a 2d array
 		if ((usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) && renderImage.arrayLayers > 1) {
 			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+			//// Creates a debug image view of all layers
+			//renderImage.layerViews.resize(renderImage.arrayLayers);
+			//for (uint32_t layer = 0; layer < renderImage.arrayLayers; ++layer) {
+			//	VkImageViewCreateInfo layerViewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
+			//	layerViewInfo.image = renderImage.image;
+			//	layerViewInfo.format = renderImage.imageFormat;
+			//	layerViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+			//	layerViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			//	layerViewInfo.subresourceRange.baseMipLevel = 0;
+			//	layerViewInfo.subresourceRange.levelCount = 1;
+			//	layerViewInfo.subresourceRange.baseArrayLayer = layer;
+			//	layerViewInfo.subresourceRange.layerCount = 1;
+			//	VK_CHECK(vkCreateImageView(device, &layerViewInfo, nullptr, &renderImage.layerViews[layer]));
+			//}
 		}
+		// Default path
 		else {
 			viewInfo.viewType = renderImage.isCubeMap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
 		}
@@ -187,15 +203,21 @@ void ImageUtils::createRenderImage(
 		auto imgView = renderImage.imageView;
 		auto& v_storageViews = renderImage.storageViews;
 		auto storageView = renderImage.storageView;
+		auto& v_layerViews = renderImage.layerViews;
 
 		// the deletion queue needs copies don't try to add destroyImage since it takes it by reference
-		dq.push_function([device, image, alloc, imgView, storageView, v_storageViews, imgAlloc] {
+		dq.push_function([device, image, alloc, imgView, storageView, v_storageViews, v_layerViews, imgAlloc] {
 			if (imgView != VK_NULL_HANDLE)
 				vkDestroyImageView(device, imgView, nullptr);
 			if (storageView != VK_NULL_HANDLE)
 				vkDestroyImageView(device, storageView, nullptr);
 
 			for (auto& view : v_storageViews) {
+				if (view != VK_NULL_HANDLE)
+					vkDestroyImageView(device, view, nullptr);
+			}
+
+			for (auto& view : v_layerViews) {
 				if (view != VK_NULL_HANDLE)
 					vkDestroyImageView(device, view, nullptr);
 			}
@@ -216,6 +238,11 @@ void ImageUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAll
 		vkDestroyImageView(device, img.storageView, nullptr);
 
 	for (auto& view : img.storageViews) {
+		if (view != VK_NULL_HANDLE)
+			vkDestroyImageView(device, view, nullptr);
+	}
+
+	for (auto& view : img.layerViews) {
 		if (view != VK_NULL_HANDLE)
 			vkDestroyImageView(device, view, nullptr);
 	}
@@ -708,7 +735,7 @@ VkSampler ImageUtils::createSampler(
 
 	if (compareEnabled) {
 		samplerInfo.compareEnable = VK_TRUE;
-		samplerInfo.compareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+		samplerInfo.compareOp = VK_COMPARE_OP_LESS;
 	}
 
 	VkSampler sampler;

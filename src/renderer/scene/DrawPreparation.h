@@ -1,8 +1,7 @@
 #pragma once
 
-#include "common/EngineTypes.h"
 #include "renderer/Renderer.h"
-#include "SceneGraph.h"
+#include "renderer/scene/RenderScene.h"
 
 struct OpaqueBatchKey {
 	uint32_t meshID;

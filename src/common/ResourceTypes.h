@@ -220,6 +220,7 @@ struct AllocatedImage {
 	VkExtent3D imageExtent{};
 	uint32_t mipLevelCount = 0;
 	uint32_t arrayLayers = 1;
+	std::vector<VkImageView> layerViews{}; // Visual debugging a 2d array
 
 	VkImageType imageType = VK_IMAGE_TYPE_2D;
 	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -323,16 +324,16 @@ struct AllocatedBuffer {
 	uint8_t qmask = 0; // bit0=graphics, bit1=transfer, bit2=compute
 };
 
-struct alignas(16) CullingPushConstantsAddrs {
-	glm::vec4 frusPlanes[6];
-	uint64_t meshIDBufferAddr;
-	uint64_t visibleMeshOutBufferAddr;
-	glm::vec4 frusPoints[8];
-	uint64_t visibleCountOutBufferAddr;
-	uint32_t meshCount;
-	uint32_t rebuildTransforms;
-};
-static_assert(sizeof(CullingPushConstantsAddrs) == 256);
+//struct alignas(16) CullingPushConstantsAddrs {
+//	glm::vec4 frusPlanes[6];
+//	uint64_t meshIDBufferAddr;
+//	uint64_t visibleMeshOutBufferAddr;
+//	glm::vec4 frusPoints[8];
+//	uint64_t visibleCountOutBufferAddr;
+//	uint32_t meshCount;
+//	uint32_t rebuildTransforms;
+//};
+//static_assert(sizeof(CullingPushConstantsAddrs) == 256);
 
 // Opaque and transparent distinction in shared instance/indirectcmd buffers
 struct PassRange {

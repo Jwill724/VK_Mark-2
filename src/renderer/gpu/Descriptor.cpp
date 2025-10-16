@@ -63,7 +63,7 @@ void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueu
 // [3] = inline uniform, debug toggles and draw stats
 // [4] = Samplercube images (Environment images)
 // [5] = Storage image array (Writable images)
-// [6] = Combined sampler (Static global combined sampelrs, mostly materials)
+// [6] = Combined sampler (Static global combined sampelers, mostly materials)
 
 // All image resources - textures, render targets, compute inputs/outputs -
 // are stored in these arrays. Access and interpretation are handled via the
@@ -437,12 +437,17 @@ void DescriptorWriter::writePushBuffer(
 void DescriptorWriter::writePushImage(
 	uint32_t binding,
 	VkImageView view,
-	VkSampler sampler)
+	VkSampler sampler,
+	VkImageLayout layoutOverride)
 {
 	enablePushDescriptor = true;
 
 	VkImageLayout layout = (sampler != VK_NULL_HANDLE) ?
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+
+	if (layoutOverride != VK_IMAGE_LAYOUT_UNDEFINED) {
+		layout = layoutOverride;
+	}
 
 	VkDescriptorType type = (sampler != VK_NULL_HANDLE) ?
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -462,29 +467,28 @@ void DescriptorWriter::updatePushSet(
 	VkPipelineLayout pipelineLayout)
 {
 	std::vector<VkWriteDescriptorSet> writes;
+	writes.reserve(bufferWrites.size() + imageWriteGroups.size());
 
 	if (!bufferWrites.empty()) {
-		for (size_t i = 0; i < bufferWrites.size(); i++) {
+		for (size_t i = 0; i < bufferWrites.size(); ++i) {
 			bufferWrites[i].dstSet = VK_NULL_HANDLE;
+			bufferWrites[i].dstArrayElement = 0;
 			bufferWrites[i].pBufferInfo = &bufferInfos[writeBufferIndices[i]];
 			writes.push_back(bufferWrites[i]);
 		}
-
-		shouldClearWrites = true;
 	}
 
 	if (!imageWriteGroups.empty()) {
 		for (const auto& group : imageWriteGroups) {
 			VkWriteDescriptorSet write{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+			write.dstSet = VK_NULL_HANDLE;
+			write.dstArrayElement = 0;
 			write.dstBinding = group.binding;
 			write.descriptorCount = 1u;
 			write.descriptorType = group.type;
 			write.pImageInfo = &group.imageInfo;
-
 			writes.push_back(write);
 		}
-
-		shouldClearWrites = true;
 	}
 
 	if (!writes.empty()) {
@@ -496,10 +500,9 @@ void DescriptorWriter::updatePushSet(
 			static_cast<uint32_t>(writes.size()),
 			writes.data());
 
+		clear();
 		enablePushDescriptor = false;
 	}
-
-	if (shouldClearWrites) clear();
 }
 
 // Normal descriptor writing
@@ -603,6 +606,7 @@ void DescriptorWriter::clear() {
 	storageDescriptors.clear();
 	combinedDescriptors.clear();
 	shouldClearWrites = false;
+	enablePushDescriptor = false;
 }
 
 void DescriptorWriter::writeInlineUniform(
@@ -612,14 +616,14 @@ void DescriptorWriter::writeInlineUniform(
 	VkDevice device,
 	VkDescriptorSet set)
 {
-	VkWriteDescriptorSetInlineUniformBlock inlineBlock{
+	VkWriteDescriptorSetInlineUniformBlock inlineBlock {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK,
 		.pNext = nullptr,
 		.dataSize = size,
 		.pData = data
 	};
 
-	VkWriteDescriptorSet write{
+	VkWriteDescriptorSet write {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.pNext = &inlineBlock,
 		.dstSet = set,

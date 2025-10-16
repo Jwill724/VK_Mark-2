@@ -417,10 +417,27 @@ void Visibility::cullBVHCollect(
 	const VisibilityState& vs,
 	const Frustum& frus,
 	std::vector<GPUInstance>& visibleInstances,
-	std::vector<AABB>& visibleWorldAABBs)
+	std::vector<AABB>& visibleWorldAABBs,
+	bool disableCulling)
 {
 	visibleInstances.clear();
 	visibleWorldAABBs.clear();
+
+	// just push all active instances(no culling)
+	if (disableCulling) {
+		// if no active data, nothing to do
+		if (vs.active.empty()) return;
+
+		visibleInstances.reserve(vs.active.size());
+		visibleWorldAABBs.reserve(vs.active.size());
+
+		for (uint32_t idx : vs.active) {
+			visibleInstances.push_back(vs.instances[idx]);
+			visibleWorldAABBs.push_back(vs.worldAABBs[idx]);
+		}
+		return;
+	}
+
 	if (vs.bvh.empty()) return;
 
 	visibleInstances.reserve(vs.active.size());
@@ -563,6 +580,7 @@ bool Visibility::isVisible(const AABB& aabb, const Frustum& frus) {
 	return true; // object is in the view frustum
 }
 
+// Frustum culling method https://iquilezles.org/articles/frustumcorrect/
 bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru) {
 	const glm::vec3 center = (box.vmax + box.vmin) * 0.5f;
 	const glm::vec3 extents = (box.vmax - box.vmin) * 0.5f;
@@ -571,13 +589,12 @@ bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru) {
 	const float safeRadius = glm::max(box.sphereRadius, minSafeRadius);
 
 	//For each plane in the frustum
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 6; ++i) {
 		glm::vec3 normal = glm::vec3(fru.planes[i]);
 		float d = fru.planes[i].w;
 
 		float dist = glm::dot(normal, center) + d;
 
-		// FIXME: need to adjust culling issues with small spheres
 		if (dist < -safeRadius) return false;
 
 		float r =
@@ -588,43 +605,43 @@ bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru) {
 		if (dist + r < 0.0f) return false;
 	}
 
-	int out;
+	//int out;
 
-	// check +x
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].x > box.vmax.x) ? 1 : 0;
-	if (out == 8) return false;
+	//// check +x
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].x > box.vmax.x) ? 1 : 0;
+	//if (out == 8) return false;
 
-	// check -x
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].x < box.vmin.x) ? 1 : 0;
-	if (out == 8) return false;
+	//// check -x
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].x < box.vmin.x) ? 1 : 0;
+	//if (out == 8) return false;
 
-	// check +y
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].y > box.vmax.y) ? 1 : 0;
-	if (out == 8) return false;
+	//// check +y
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].y > box.vmax.y) ? 1 : 0;
+	//if (out == 8) return false;
 
-	// check -y
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].y < box.vmin.y) ? 1 : 0;
-	if (out == 8) return false;
+	//// check -y
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].y < box.vmin.y) ? 1 : 0;
+	//if (out == 8) return false;
 
-	// check +z
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].z > box.vmax.z) ? 1 : 0;
-	if (out == 8) return false;
+	//// check +z
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].z > box.vmax.z) ? 1 : 0;
+	//if (out == 8) return false;
 
-	// check -z
-	out = 0;
-	for (int i = 0; i < 8; i++)
-		out += (fru.points[i].z < box.vmin.z) ? 1 : 0;
-	if (out == 8) return false;
+	//// check -z
+	//out = 0;
+	//for (int i = 0; i < 8; ++i)
+	//	out += (fru.corners[i].z < box.vmin.z) ? 1 : 0;
+	//if (out == 8) return false;
 
 	return true;
 }
@@ -644,46 +661,27 @@ Frustum Visibility::extractFrustum(const glm::mat4& viewproj) {
 		frustum.planes[i] /= glm::length(glm::vec3(frustum.planes[i]));
 	}
 
-	glm::mat4 invVp = glm::inverse(viewproj);
-	int i = 0;
-	for (int x = -1; x <= 1; x += 2) {
-		for (int y = -1; y <= 1; y += 2) {
-			for (int z = 0; z <= 1; ++z) { // Vulkan NDC z [0,1]
-				glm::vec4 corner = invVp * glm::vec4(x, y, z, 1.0f);
-				frustum.points[i++] = glm::vec4(corner) / corner.w;
-			}
-		}
-	}
+	//glm::mat4 invVp = glm::inverse(viewproj);
+	//int i = 0;
+	//for (int x = -1; x <= 1; x += 2) {
+	//	for (int y = -1; y <= 1; y += 2) {
+	//		for (int z = 0; z <= 1; z++) { // Vulkan NDC z [0,1]
+	//			glm::vec4 cornerNDC = glm::vec4(
+	//				static_cast<float>(x),
+	//				static_cast<float>(y),
+	//				static_cast<float>(z),
+	//				1.0f
+	//			);
+	//			glm::vec4 cornerWorld = invVp * cornerNDC;
+	//			frustum.corners[i++] = cornerWorld / cornerWorld.w;
+	//		}
+	//	}
+	//}
 
 	return frustum;
 }
 
-Frustum Visibility::extractCascadeFrustum(
-	const glm::mat4& camView,
-	float fov,
-	float aspect,
-	float nearSplit,
-	float farSplit)
-{
-	glm::mat4 proj = glm::perspectiveZO(glm::radians(fov), aspect, nearSplit, farSplit);
-	proj[1][1] *= -1;
-	glm::mat4 invVp = glm::inverse(proj * camView);
-
-	Frustum frustum{};
-
-	int i = 0;
-	for (int x = -1; x <= 1; x += 2) {
-		for (int y = -1; y <= 1; y += 2) {
-			for (int z = 0; z <= 1; ++z) { // Vulkan NDC z [0,1]
-				glm::vec4 corner = invVp * glm::vec4(x, y, z, 1.0f);
-				frustum.points[i++] = glm::vec4(corner) / corner.w;
-			}
-		}
-	}
-
-	return frustum;
-}
-
+// AABB transform methods https://ktstephano.github.io/rendering/stratusgfx/aabbs
 AABB Visibility::transformAABB(const AABB& localBox, const glm::mat4& transform) {
 	// Convert to min/max corners first
 	const glm::vec3 vmin = localBox.vmin;
@@ -779,7 +777,7 @@ std::vector<glm::vec3> Visibility::GetOBBVertices(
 	};
 
 	glm::vec3 worldCorners[8]{};
-	for (uint32_t i = 0; i < 8; i++) {
+	for (uint32_t i = 0; i < 8; ++i) {
 		glm::vec4 world = modelMatrix * glm::vec4(localCorners[i], 1.0f);
 		worldCorners[i] = glm::vec3(world);
 	}

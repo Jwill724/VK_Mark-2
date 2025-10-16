@@ -31,20 +31,21 @@ const uint MAX_CASCADES = 3u;
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	vec4 cascadeSplits;
-	vec4 params; // shadowBias, shadowMapID, cascadeCount
+	vec4 params; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount, .w/texelSize
 };
 
 // inline uniform block
 struct DebugToggles {
 	// Higher level toggles
 	uint enableOBBs;
+	uint enableCascadeVPs;
 	uint enableSettings;
 	uint enableStats;
-	uint enableSSAO;
 
+	uint enableSSAO;
 	uint enableShadows;
 	uint enableTonemap;
-	uint pad0[2];
+	uint pad0;
 
 	// draw stats
 	uint meshCount;

@@ -43,8 +43,8 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_NOISE_TEX) uniform sampler2D noise
 layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX, r8) uniform writeonly image2D ssaoOut;
 
 vec3 reconstructViewPos(vec2 uv, float depth) {
-	// clip space position (NDC)
-	vec4 clip = vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+	// clip space position vulkan [0,1](NDC)
+	vec4 clip = vec4(uv * 2.0 - 1.0, depth, 1.0);
 	vec4 view = pc.invProj * clip;
 	vec3 pos = view.xyz / view.w;
 	return pos;
@@ -53,8 +53,7 @@ vec3 reconstructViewPos(vec2 uv, float depth) {
 // Basically just opengl tutorial ssao implementation
 void main() {
 	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
-	if (pix.x >= int(pc.screenSize.x) || pix.y >= int(pc.screenSize.y))
-		return;
+	if (pix.x >= int(pc.screenSize.x) || pix.y >= int(pc.screenSize.y)) return;
 
 	vec2 uv = (vec2(pix) + 0.5) * pc.invScreenSize;
 

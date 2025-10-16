@@ -45,7 +45,7 @@ vec3 DisneyDiffuse(vec3 albedo, float linearRoughness, float NdotV, float NdotL,
 {
 	linearRoughness = clamp(linearRoughness, 0.0, 1.0);
 	float energyBias   = mix(0.0, 0.5,  linearRoughness);
-	float energyFactor = mix(1.0, 1.0/1.51, linearRoughness);
+	float energyFactor = mix(1.0, 1.0 / 1.51, linearRoughness);
 	float F_D90        = energyBias + 2.0 * LdotH * LdotH * linearRoughness;
 
 	float F_L = 1.0 + (F_D90 - 1.0) * pow(1.0 - clamp(NdotL, 0.0, 1.0), 5.0);
@@ -88,12 +88,12 @@ vec3 F_SchlickRoughness(vec3 F0, float NoV, float roughness)
 // Roughness-aware specular AO (cheap, view-dependent)
 float SpecAO_Conservative(float ao, float NdotV, float rough)
 {
-    // stronger on smooth, lighter on rough
-    float p = mix(4.0, 1.5, rough);
-    float v = max(NdotV, 0.1);
-    // never < ao and =1 when ao=1
-    float t = pow(saturate(ao + v - 1.0 + ao), p);
-    return clamp(max(t, ao), 0.0, 1.0);
+	// stronger on smooth, lighter on rough
+	float p = mix(4.0, 1.5, rough);
+	float v = max(NdotV, 0.1);
+	// never < ao and =1 when ao=1
+	float t = pow(saturate(ao + v - 1.0 + ao), p);
+	return clamp(max(t, ao), 0.0, 1.0);
 }
 
 // Multi-scatter energy compensation (UE/Frostbite style)

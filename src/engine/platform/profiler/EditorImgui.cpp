@@ -26,7 +26,7 @@ void EditorImgui::initImgui(DeletionQueue& queue) {
 	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	pool_info.maxSets = 1000;
-	pool_info.poolSizeCount = (uint32_t)std::size(pool_sizes);
+	pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
 	pool_info.pPoolSizes = pool_sizes;
 
 	const auto device = Backend::getDevice();
@@ -59,7 +59,7 @@ void EditorImgui::initImgui(DeletionQueue& queue) {
 	init_info.UseDynamicRendering = true;
 
 	//dynamic rendering parameters for imgui to use
-	init_info.PipelineRenderingCreateInfo = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+	init_info.PipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
 	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &Backend::getSwapchainDef().imageFormat;
 
@@ -160,24 +160,64 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 	// Debug / Controls
 	if (dbg.enableSettings) {
 		ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
-		ImGui::SetNextWindowSize(ImVec2(350.0f, 470.0f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(380.0f, 425.0f), ImGuiCond_Always);
 		ImGui::Begin("Debug");
 
-		// Render toggles
-		if (ImGui::CollapsingHeader("Render Toggles", ImGuiTreeNodeFlags_DefaultOpen)) {
-			bool obb = dbg.enableOBBs != 0;
-			bool ssao = dbg.enableSSAO != 0;
+		// SHADOWS
+		if (ImGui::CollapsingHeader("Shadow settings", ImGuiTreeNodeFlags_DefaultOpen)) {
 			bool shadows = dbg.enableShadows != 0;
-			bool tonemap = dbg.enableTonemap != 0;
+			bool cascadeVP = dbg.enableCascadeVPs != 0;
+			bool cascadeSplitView = dbg.showCascadeSplits != 0;
 
-			if (ImGui::Checkbox("Draw OBBs##rt", &obb))          dbg.enableOBBs = obb ? 1u : 0u;
-			if (ImGui::Checkbox("Enable SSAO##rt", &ssao))       dbg.enableSSAO = ssao ? 1u : 0u;
-			if (ImGui::Checkbox("Enable Shadows##rt", &shadows)) dbg.enableShadows = shadows ? 1u : 0u;
-			if (ImGui::Checkbox("Enable Tonemap##rt", &tonemap)) dbg.enableTonemap = tonemap ? 1u : 0u;
+			if (ImGui::Checkbox("Enable Shadows##rt", &shadows))    dbg.enableShadows = shadows ? 1u : 0u;
+			if (ImGui::Checkbox("Draw CascadeVPs##rt", &cascadeVP)) dbg.enableCascadeVPs = cascadeVP ? 1u : 0u;
+			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
+
+			//auto& shadowControl = RenderScene::_shadowControl;
+			//ImGui::SliderFloat("Split lamba##rt", &shadowControl.splitLambda, 0.0f, 1.0f);
+			//ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
+			//ImGui::SliderFloat("Depth min scale##rt", &shadowControl.depthMinScale, 0.0f, 10.0f);
+			//ImGui::SliderFloat("Depth max scale##rt", &shadowControl.depthMaxScale, 0.0f, 10.0f);
+			//ImGui::SliderFloat("Frustum plane scale##rt", &shadowControl.lightDist, 0.0f, 5.0f);
+
+		//	if (ImGui::BeginChild("ShadowMapBox", ImVec2(0, 270), true, ImGuiWindowFlags_NoScrollbar)) {
+		//		const float previewSize = 125.0f;
+		//		int imagesPerRow = 2;
+
+		//		for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
+		//			if (i > 0 && (i % imagesPerRow) != 0) {
+		//				ImGui::SameLine();
+		//			}
+		//			ImGui::Image(
+		//				(ImTextureID)ResourceManager::getShadowMapDescriptors()[i],
+		//				ImVec2(previewSize, previewSize)
+		//			);
+		//		}
+		//	}
+		//	ImGui::EndChild();
+		}
+
+		// Lighting
+		if (ImGui::CollapsingHeader("Lighting##settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+			auto& scene = RenderScene::getCurrentSceneData();
+			static glm::vec3 sunCol = glm::vec3(scene.sunlightColor);
+			static float     sunI = scene.sunlightColor.w;
+			static glm::vec3 sunDir = glm::vec3(scene.sunlightDirection);
+
+			ImGui::SliderFloat3("Sun Dir##light", glm::value_ptr(sunDir), -1.0f, 1.0f);
+			ImGui::SliderFloat3("Sun Color##light", glm::value_ptr(sunCol), 0.0f, 1.0f);
+			ImGui::SliderFloat("Sun Intensity##light", &sunI, 0.0f, 5.0f);
+
+			scene.sunlightColor = glm::vec4(sunCol, sunI);
+			//scene.sunlightDirection = glm::normalize(glm::vec4(sunDir, 0.0f));
+			scene.sunlightDirection = glm::vec4(sunDir, 0.0f);
 		}
 
 		// Pipeline override
-		if (ImGui::CollapsingHeader("Pipeline##ovr", 0)) {
+		if (ImGui::CollapsingHeader("Pipeline Views##ovr", 0)) {
+			bool obb = dbg.enableOBBs != 0;
+			if (ImGui::Checkbox("Enable OBB##rt", &obb))    dbg.enableOBBs = obb ? 1u : 0u;
+
 			ImGui::Checkbox("Pipeline Override##ovr", &profiler.pipeOverride.enabled);
 			auto swappables = Pipelines::getSwappablePipelines();
 			static int selected = 0;
@@ -191,7 +231,9 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		}
 
 		// SSAO
-		if (ImGui::CollapsingHeader("SSAO##settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::CollapsingHeader("SSAO##settings", 0)) {
+			bool ssaoOn = dbg.enableSSAO != 0;
+			if (ImGui::Checkbox("Enable SSAO##rt", &ssaoOn))          dbg.enableSSAO = ssaoOn ? 1u : 0u;
 			auto& ssao = profiler.ssaoSettings;
 			ImGui::SliderFloat("Radius##ssao", &ssao.aoRadius, 0.025f, 2.0f, "%.3f");
 			ImGui::SliderFloat("Bias##ssao", &ssao.bias, 0.0f, 0.1f, "%.4f");
@@ -202,32 +244,19 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 
 		// Tonemap
 		if (ImGui::CollapsingHeader("Tonemap##settings", 0)) {
+			bool tonemap = dbg.enableTonemap != 0;
+			if (ImGui::Checkbox("Enable Tonemap##rt", &tonemap))    dbg.enableTonemap = tonemap ? 1u : 0u;
 			auto& tm = ResourceManager::toneMappingData;
 			ImGui::SliderFloat("Brightness##tm", &tm.brightness, 0.0f, 2.0f);
 			ImGui::SliderFloat("Saturation##tm", &tm.saturation, 0.0f, 2.0f);
 			ImGui::SliderFloat("Contrast##tm", &tm.contrast, 0.0f, 2.0f);
 		}
 
-		// Lighting
-		if (ImGui::CollapsingHeader("Lighting##settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-			auto& scene = RenderScene::getCurrentSceneData();
-			static glm::vec3 sunCol = glm::vec3(scene.sunlightColor);
-			static float     sunI = scene.sunlightColor.w;
-			static glm::vec3 sunDir = glm::vec3(scene.sunlightDirection);
-
-			ImGui::SliderFloat3("Sun Color##light", glm::value_ptr(sunCol), 0.0f, 1.0f);
-			ImGui::SliderFloat("Sun Intensity##light", &sunI, 0.0f, 5.0f);
-			ImGui::SliderFloat3("Sun Dir##light", glm::value_ptr(sunDir), -1.0f, 1.0f);
-
-			scene.sunlightColor = glm::vec4(sunCol, sunI);
-			scene.sunlightDirection = glm::normalize(glm::vec4(sunDir, 0.0f));
-		}
-
 		// Fragment debug overlays
 		if (ImGui::CollapsingHeader("Shading Overlay##overlay", ImGuiTreeNodeFlags_DefaultOpen)) {
 			enum Overlay {
 				O_Complete, O_Normals, O_Albedo, O_Emissive, O_AO, O_SSAO,
-				O_Specular, O_Diffuse, O_Metallic, O_Roughness, O_Cascades
+				O_Specular, O_Diffuse, O_Metallic, O_Roughness
 			};
 
 			auto pickFromToggles = [&] {
@@ -240,7 +269,6 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 				if (dbg.showDiffuse)       return O_Diffuse;
 				if (dbg.showMetallic)      return O_Metallic;
 				if (dbg.showRoughness)     return O_Roughness;
-				if (dbg.showCascadeSplits) return O_Cascades;
 				return O_Complete;
 				};
 
@@ -258,7 +286,6 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 				case O_Diffuse:   dbg.showDiffuse = 1; break;
 				case O_Metallic:  dbg.showMetallic = 1; break;
 				case O_Roughness: dbg.showRoughness = 1; break;
-				case O_Cascades:  dbg.showCascadeSplits = 1; break;
 				default: break;
 				}
 			};
@@ -296,8 +323,6 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::NewLine();
 
 			// Row 3
-			if (ImGui::RadioButton("Cascade Splits##ov", &overlay, O_Cascades))
-				applyOverlay(overlay);
 			ImGui::SameLine();
 			if (ImGui::RadioButton("Emissive##ov", &overlay, O_Emissive))
 				applyOverlay(overlay);

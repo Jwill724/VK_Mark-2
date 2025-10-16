@@ -15,6 +15,9 @@ struct alignas(16) SpecularPC {
 	uint32_t pad[2];
 };
 
+// Practically all environment shaders are based off this
+// https://www.williscool.com/technical/environmentMapping.md.html
+
 namespace Environment {
 	void dispatchPrefilterEnvmap(
 		VkCommandBuffer cmd,

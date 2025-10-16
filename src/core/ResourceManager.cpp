@@ -59,6 +59,9 @@ namespace ResourceManager {
 	VkSampler _shadowMapSampler;
 	const VkSampler getShadowMapSampler() { return _shadowMapSampler; }
 
+	std::vector<VkDescriptorSet> _shadowMapDescriptors; // Only meant for debugging visually in imgui
+	std::vector<VkDescriptorSet>& getShadowMapDescriptors() { return _shadowMapDescriptors; }
+
 	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts() { return _availableSampleCounts; }
@@ -221,8 +224,7 @@ void ResourceManager::initRenderTargets(
 	const VmaAllocator allocator,
 	const VkExtent3D drawExtent)
 {
-	//_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_drawImage.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_drawImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags drawImageUsages{};
@@ -267,7 +269,7 @@ void ResourceManager::initRenderTargets(
 	VkImageUsageFlags msaaImageUsages{};
 	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	msaaImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
-
+	_msaaImage.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	// msaa color attachment to the draw image
 	ImageUtils::createRenderImage(
 		device,
@@ -280,10 +282,9 @@ void ResourceManager::initRenderTargets(
 	// Base depth image
 	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
 	_depthImage.imageExtent = drawExtent;
-
+	_depthImage.initialLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-
 	ImageUtils::createRenderImage(
 		device,
 		_depthImage,
@@ -350,7 +351,7 @@ void ResourceManager::initRenderTargets(
 		allocator);
 
 	// Normal image
-	_normalImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_normalImage.imageFormat = _drawImage.imageFormat;
 	_normalImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags normalUsages{};
@@ -374,7 +375,8 @@ void ResourceManager::initShadowMapImages(
 {
 	// Shadow map image
 	_shadowMapImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_shadowMapImage.imageExtent = { 2048, 2048, 1 };
+	_shadowMapImage.imageExtent = { 4096, 4096, 1 };
+	//_shadowMapImage.imageExtent = { 2048, 2048, 1 };
 	_shadowMapImage.arrayLayers = MAX_CASCADES;
 
 	VkImageUsageFlags shadowUsages =
@@ -390,7 +392,6 @@ void ResourceManager::initShadowMapImages(
 		allocator
 	);
 
-	// Shadow map sampler
 	_shadowMapSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
@@ -398,9 +399,25 @@ void ResourceManager::initShadowMapImages(
 		0.0f,
 		1.0f,
 		&queue,
-		VK_SAMPLER_MIPMAP_MODE_NEAREST,
-		true // compare enabled
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
+
+	//_shadowMapDescriptors.resize(MAX_CASCADES);
+	//for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
+	//	_shadowMapDescriptors[i] = ImGui_ImplVulkan_AddTexture(
+	//		_shadowMapSampler,
+	//		_shadowMapImage.layerViews[i],
+	//		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+	//	);
+	//}
+
+	//queue.push_function([=]() {
+	//	for (auto ds : _shadowMapDescriptors) {
+	//		if (ds != VK_NULL_HANDLE) {
+	//			ImGui_ImplVulkan_RemoveTexture(ds);
+	//		}
+	//	}
+	//});
 }
 
 void ResourceManager::initRenderSamplers(

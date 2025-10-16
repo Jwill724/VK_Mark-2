@@ -9,11 +9,11 @@
 - Transparent depth sorting
 - ImGui debugging tools
 - MSAA (up to 8x), mipmapping, dynamic pipeline swapping
+- Cascaded shadow mapping
 - SSAO
 - Push descriptors
 
 ## Future
--Cascaded shadow mapping
 -Improved tone mapping
 -Render graph
 -SDL2 integration and platform layer

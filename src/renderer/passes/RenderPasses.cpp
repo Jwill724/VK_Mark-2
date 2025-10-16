@@ -9,6 +9,7 @@
 #include "engine/Engine.h"
 
 static constexpr VkDeviceSize drawCmdSize = sizeof(VkDrawIndexedIndirectCommand);
+static constexpr uint32_t vertsLineCount = 24u;
 
 template<typename PCType>
 inline static void bindPushConstants(const PCType& pc, VkCommandBuffer cmd) {
@@ -20,6 +21,52 @@ inline static void bindPushConstants(const PCType& pc, VkCommandBuffer cmd) {
 		globalLayout.pcRange.offset,
 		static_cast<uint32_t>(sizeof(PCType)),
 		&pc);
+}
+
+void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle) {
+	const auto& shadowImg = ResourceManager::getShadowMapImage();
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		shadowImg.image,
+		shadowImg.imageFormat,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+	AttachmentDesc shadowDepth{};
+	shadowDepth.imageView = shadowImg.imageView;
+	shadowDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	shadowDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	shadowDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	shadowDepth.clearValue.depthStencil.depth = 1.0f;
+
+	RenderPasses::GraphicsRenderScope csmScope;
+	csmScope.info.layerCount = MAX_CASCADES; // Pipeline is hard defined with this
+	csmScope.info.viewMask = (1u << MAX_CASCADES) - 1u;
+	RenderPasses::beginRendering(
+		frameCtx.commandBuffer,
+		{ shadowDepth },
+		{ shadowImg.imageExtent.width, shadowImg.imageExtent.height },
+		csmScope);
+
+	vkCmdBindPipeline(frameCtx.commandBuffer,
+		pipeHandle.bindPoint,
+		pipeHandle.pipeline);
+
+	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+		frameCtx.indirectDrawsBuffer.buffer,
+		frameCtx.opaqueRange.first * drawCmdSize,
+		frameCtx.opaqueRange.visibleCount,
+		drawCmdSize);
+
+	RenderPasses::endRendering(frameCtx.commandBuffer);
+
+	ImageUtils::transitionImage(
+		frameCtx.commandBuffer,
+		shadowImg.image,
+		shadowImg.imageFormat,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
 }
 
 void RenderPasses::depthPrePass(FrameContext& frameCtx, const PipelineHandle& pipeHandle) {
@@ -71,44 +118,21 @@ void RenderPasses::depthPrePass(FrameContext& frameCtx, const PipelineHandle& pi
 	);
 
 	RenderPasses::endRendering(frameCtx.commandBuffer);
-}
 
-void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle) {
-	const auto& shadowImg = ResourceManager::getShadowMapImage();
+	// Transition images to be sampled
 	ImageUtils::transitionImage(
 		frameCtx.commandBuffer,
-		shadowImg.image,
-		shadowImg.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+		depthResolved.image,
+		depthResolved.imageFormat,
+		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
 
-	AttachmentDesc shadowDepth{};
-	shadowDepth.imageView = shadowImg.imageView;
-	shadowDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	shadowDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	shadowDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	shadowDepth.clearValue.depthStencil.depth = 1.0f;
-
-	RenderPasses::GraphicsRenderScope csmScope;
-	csmScope.info.layerCount = MAX_CASCADES; // Pipeline is hard defined with this
-	csmScope.info.viewMask = (1u << MAX_CASCADES) - 1u;
-	RenderPasses::beginRendering(
+	ImageUtils::transitionImage(
 		frameCtx.commandBuffer,
-		{ shadowDepth },
-		{ shadowImg.imageExtent.width, shadowImg.imageExtent.height },
-		csmScope);
-
-	vkCmdBindPipeline(frameCtx.commandBuffer,
-		pipeHandle.bindPoint,
-		pipeHandle.pipeline);
-
-	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
-		frameCtx.indirectDrawsBuffer.buffer,
-		frameCtx.opaqueRange.first * drawCmdSize,
-		frameCtx.opaqueRange.visibleCount,
-		drawCmdSize);
-
-	RenderPasses::endRendering(frameCtx.commandBuffer);
+		normal.image,
+		normal.imageFormat,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoScope) {
@@ -124,21 +148,6 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	auto noiseSampler = ResourceManager::getNoiseSampler();
 	auto ssaoSampler = ResourceManager::getSSAOSampler();
 
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		depthResolved.image,
-		depthResolved.imageFormat,
-		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-	// Transition normals to sampled
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		normal.image,
-		normal.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
 	// Transition SSAO output to storage writable
 	ImageUtils::transitionImage(
 		frameCtx.commandBuffer,
@@ -153,7 +162,8 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_DEPTH_TEX,
 		depthResolved.imageView,
-		depthSampler
+		depthSampler,
+		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 	);
 
 	// normal
@@ -278,8 +288,7 @@ void RenderPasses::skyboxPass(FrameContext& frameCtx, const PipelineHandle& pipe
 
 	glm::mat4 view = glm::mat4(glm::mat3(sceneData.view)); // strip translation
 
-	glm::mat4 proj = sceneData.proj;
-	glm::mat4 viewproj = proj * view;
+	glm::mat4 viewproj = sceneData.proj * view;
 
 	glm::mat4 invVp = glm::inverse(viewproj);
 
@@ -349,14 +358,18 @@ void RenderPasses::transparentMeshPass(FrameContext& frameCtx, const PipelineHan
 	}
 }
 
-void RenderPasses::obbDebugPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle, Profiler& profiler) {
+void RenderPasses::obbLinePass(
+	FrameContext& frameCtx,
+	const PipelineHandle& pipeHandle,
+	Profiler& profiler)
+{
 	std::vector<glm::vec3> allVerts;
 	std::vector<uint32_t> drawOffsets;
 
 	auto& resources = Engine::getState().getGPUResources();
 	const auto& meshes = resources.getResgisteredMeshes().meshData;
 
-	auto emitAABBVerts = [&](const GPUInstance& inst) {
+	auto emitOBBVerts = [&](const GPUInstance& inst) {
 		const auto& aabb = meshes[inst.meshID].localAABB;
 		const auto& matrix = RenderScene::_globalTransforms[inst.transformID];
 		auto verts = Visibility::GetOBBVertices(aabb, matrix);
@@ -364,22 +377,22 @@ void RenderPasses::obbDebugPass(FrameContext& frameCtx, const PipelineHandle& pi
 		drawOffsets.push_back(offset);
 		allVerts.insert(allVerts.end(), verts.begin(), verts.end());
 	};
-	for (const auto& inst : frameCtx.visibleInstances) emitAABBVerts(inst);
+	for (const auto& inst : frameCtx.visibleInstances) emitOBBVerts(inst);
 
 	const auto allocator = resources.getAllocator();
 
 	const size_t totalSize = allVerts.size() * sizeof(glm::vec3);
 
-	AllocatedBuffer aabbVBO = BufferUtils::createBuffer(
+	AllocatedBuffer obbVBO = BufferUtils::createBuffer(
 		totalSize,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 		VMA_MEMORY_USAGE_CPU_TO_GPU,
 		allocator);
-	ASSERT(aabbVBO.info.pMappedData != nullptr);
-	memcpy(aabbVBO.mapped, allVerts.data(), totalSize);
+	ASSERT(obbVBO.info.pMappedData != nullptr);
+	memcpy(obbVBO.mapped, allVerts.data(), totalSize);
 
-	auto aabbBuf = aabbVBO.buffer;
-	auto aabbAlloc = aabbVBO.allocation;
+	auto aabbBuf = obbVBO.buffer;
+	auto aabbAlloc = obbVBO.allocation;
 	frameCtx.cpuDeletion.push_function([aabbBuf, aabbAlloc, allocator]() mutable {
 		BufferUtils::destroyBuffer(aabbBuf, aabbAlloc, allocator);
 	});
@@ -390,27 +403,105 @@ void RenderPasses::obbDebugPass(FrameContext& frameCtx, const PipelineHandle& pi
 		pipeHandle.pipeline);
 
 	const VkDeviceSize vtxOffset = 0;
-	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &aabbVBO.buffer, &vtxOffset);
+	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &obbVBO.buffer, &vtxOffset);
 
-	static struct alignas(16) AABBPush {
-		glm::mat4 worldMatrix;
+	static struct alignas(16) OBBPush {
 		VkDeviceAddress vertexBuffer;
 		uint32_t pad0[2];
 	} pc{};
-	pc.worldMatrix = RenderScene::getCurrentSceneData().viewproj;
-	pc.vertexBuffer = aabbVBO.address;
+	pc.vertexBuffer = obbVBO.address;
 
 	bindPushConstants(pc, frameCtx.commandBuffer);
 
-	const uint32_t vertsPerAABB = 24;
-	const uint64_t trisPerDraw = trianglesFromNonIndexed(pipeHandle.topology, static_cast<uint64_t>(vertsPerAABB));
-
 	for (uint32_t i = 0; i < drawOffsets.size(); ++i) {
 		uint32_t vertexOffset = drawOffsets[i];
-		vkCmdDraw(frameCtx.commandBuffer, vertsPerAABB, 1, vertexOffset, 0);
+		vkCmdDraw(frameCtx.commandBuffer, vertsLineCount, 1, vertexOffset, 0);
 		if (profiler.debugToggles.enableStats) {
-			profiler.addDirect(1, trisPerDraw);
+			profiler.addDirect(1);
 		}
+	}
+}
+
+void RenderPasses::CascadeVPLinePass(
+	FrameContext& frameCtx,
+	const PipelineHandle& pipeHandle,
+	Profiler& profiler)
+{
+	static const std::array<glm::vec3, 8> ndcCorners {
+		glm::vec3(-1, -1, 0),
+		glm::vec3( 1, -1, 0),
+		glm::vec3(-1,  1, 0),
+		glm::vec3( 1,  1, 0),
+		glm::vec3(-1, -1, 1),
+		glm::vec3( 1, -1, 1),
+		glm::vec3(-1,  1, 1),
+		glm::vec3( 1,  1, 1)
+	};
+
+	static const uint32_t edgeIndices[24] {
+		0,1, 1,3, 3,2, 2,0, // near plane
+		4,5, 5,7, 7,6, 6,4, // far plane
+		0,4, 1,5, 2,6, 3,7  // verticals
+	};
+
+	const auto allocator = Engine::getState().getGPUResources().getAllocator();
+	const auto& cascadeCSM = RenderScene::getShadowCSM();
+
+	// Turn from normalized to world view
+	std::array<glm::vec3, MAX_CASCADES * 8> worldCorners{};
+	std::array<glm::vec3, MAX_CASCADES * 24> lineVerts{};
+
+	for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
+		glm::mat4 invVP = glm::inverse(cascadeCSM.cascadeVP[i]);
+
+		uint32_t base = i * 8;
+		for (uint32_t c = 0; c < 8; ++c) {
+			glm::vec4 corner = invVP * glm::vec4(ndcCorners[c], 1.0f);
+			worldCorners[static_cast<size_t>(base + c)] = glm::vec3(corner) / corner.w; // perspective divide
+		}
+
+		uint32_t lineBase = i * 24;
+		for (uint32_t e = 0; e < 24; ++e) {
+			lineVerts[static_cast<size_t>(lineBase + e)] = worldCorners[static_cast<size_t>(base) + edgeIndices[e]];
+		}
+	}
+
+	const size_t totalSize = lineVerts.size() * sizeof(glm::vec3);
+
+	AllocatedBuffer cascadeVPVBO = BufferUtils::createBuffer(
+		totalSize,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_MEMORY_USAGE_CPU_TO_GPU,
+		allocator);
+	ASSERT(cascadeVPVBO.info.pMappedData != nullptr);
+	memcpy(cascadeVPVBO.mapped, lineVerts.data(), totalSize);
+
+	auto cascadeVPBuf = cascadeVPVBO.buffer;
+	auto cascadeVPAlloc = cascadeVPVBO.allocation;
+	frameCtx.cpuDeletion.push_function([cascadeVPBuf, cascadeVPAlloc, allocator]() mutable {
+		BufferUtils::destroyBuffer(cascadeVPBuf, cascadeVPAlloc, allocator);
+	});
+
+	vkCmdBindPipeline(
+		frameCtx.commandBuffer,
+		pipeHandle.bindPoint,
+		pipeHandle.pipeline);
+
+	const VkDeviceSize vtxOffset = 0;
+	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &cascadeVPVBO.buffer, &vtxOffset);
+
+	static struct alignas(16) CascadeVPPush {
+		VkDeviceAddress cascadeVPVertBuffer;
+		uint32_t pad0[2];
+	} pc{};
+	pc.cascadeVPVertBuffer = cascadeVPVBO.address;
+
+	bindPushConstants(pc, frameCtx.commandBuffer);
+
+	vkCmdDraw(frameCtx.commandBuffer, static_cast<uint32_t>(lineVerts.size()), 1, 0, 0);
+
+	if (profiler.debugToggles.enableStats) {
+		profiler.addDirect(1);
 	}
 }
 

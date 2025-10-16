@@ -7,11 +7,11 @@
 // TODO: Find a better place for this.
 // All systems that need msaa counts are
 // image creation in here, pipeline setup, and during rendering
-static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_4;
+static uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
 static bool MSAA_ENABLED = true;
 
 // Anisotropic Filtering
-static float CURRENT_AF_LVL = ANISOTROPY_LEVEL_8;
+static float CURRENT_AF_LVL = ANISOTROPY_LEVEL_16;
 
 struct GPUResources {
 public:
@@ -115,6 +115,8 @@ namespace ResourceManager {
 	const VkSampler getNormalSampler();
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
+
+	std::vector<VkDescriptorSet>& getShadowMapDescriptors();
 
 	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();

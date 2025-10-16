@@ -8,6 +8,11 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 
 	updateLocalInput(window);
 
+	// Note: If one imgui window is active and a mouse click on that window is occurring,
+	// then if the window is closed, that mouse click stays stuck until the imgui window is reopened.
+	// Same behavior as movement keys becoming sticky with window resizing/stalls.
+	// This is likely an event queue issue.
+
 	auto& debug = profiler.debugToggles;
 	// debug toggle settings
 	if (keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = 1u - debug.enableSettings;
@@ -15,19 +20,20 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 
 	// Mouse rotation, imgui can be properly used with free cam
 	if (!ImGui::GetIO().WantCaptureMouse && mouse.leftPressed) {
-		float sensitivity = 30.0f;
+		constexpr float sensitivity = 30.0f;
 		_yaw -= mouse.delta.x * sensitivity;
 		_pitch += mouse.delta.y * sensitivity;
-		_pitch = std::clamp(_pitch, -89.0f, 89.0f);
+		constexpr float maxPitch = 89.0f;
+		_pitch = std::clamp(_pitch, -maxPitch, maxPitch);
 	}
 
 	// TODO: movement is slow asf in space station model, due to model units being too large so
 	// some scaling factor will need to be added for this particular model
-	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 25.0f : 5.0f;
+	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 20.0f : 8.0f;
 	float moveSpeed = baseSpeed * profiler.getStats().deltaTime.get();
 
-	float radPitch = glm::radians(_pitch);
-	float radYaw = glm::radians(_yaw);
+	const float radPitch = glm::radians(_pitch);
+	const float radYaw = glm::radians(_yaw);
 
 	glm::vec3 front = glm::normalize(glm::vec3(
 		cos(radPitch) * cos(radYaw),
@@ -61,9 +67,7 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	// scale speed on whole axis while frame independent
 	_velocity = (horiz + vert) * moveSpeed;
 
-	if (keyboard.isPressed(GLFW_KEY_R)) {
-		reset();
-	}
+	if (keyboard.isPressed(GLFW_KEY_R)) reset();
 
 	_position += _velocity;
 }

@@ -133,6 +133,9 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	if (frameCtx.transferWaitValue != UINT64_MAX &&
 		frameCtx.transferWaitValue <= _transferSync.signalValue)
 	{
+		ASSERT(frameCtx.transferWaitValue <= _transferSync.signalValue &&
+			"Invalid transfer wait: waiting on unsignaled or future timeline value!");
+
 		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 		waitTransfer.semaphore = _transferSync.semaphore;
 		waitTransfer.value = frameCtx.transferWaitValue;
@@ -147,6 +150,9 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 		if (frameCtx.computeWaitValue != UINT64_MAX &&
 			frameCtx.computeWaitValue <= _computeSync.signalValue)
 		{
+			ASSERT(frameCtx.computeWaitValue <= _computeSync.signalValue &&
+				"Invalid compute wait: waiting on unsignaled or future timeline value!");
+
 			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 			waitCompute.semaphore = _computeSync.semaphore;
 			waitCompute.value = frameCtx.computeWaitValue;
@@ -239,7 +245,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	const auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
 
-	bool msaaEnabled = MSAA_ENABLED;
 	bool hasVisibles = frameCtx.visibleCount > 0;
 
 	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
@@ -279,28 +284,13 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	vkCmdBindDescriptorSets(frameCtx.commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
 		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
-	// color, depth and msaa transitions
+	// color transition
 	ImageUtils::transitionImage(
 		frameCtx.commandBuffer,
 		draw.image,
 		draw.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	if (msaaEnabled) {
-		ImageUtils::transitionImage(
-			frameCtx.commandBuffer,
-			msaa.image,
-			msaa.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	}
-
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		depth.image,
-		depth.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	// Used in opaque shading to determine if on
 	if (hasVisibles) {
@@ -308,11 +298,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		const auto indexBuffer = Engine::getState().getGPUResources().getGPUAddrsBuffer(AddressBufferType::Index).buffer;
 		vkCmdBindIndexBuffer(frameCtx.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-
 		// =====================
 		// === DEPTH PREPASS ===
 		RenderPasses::depthPrePass(frameCtx, Pipelines::getHandle(PipelineID::DepthPrepass));
-
 
 		// ================
 		// === CSM PASS ===
@@ -334,9 +322,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 				float bias;
 				float intensity;
 				int blurRadius;
-				unsigned int sampleCount;
+				uint32_t sampleCount;
 				float pad0[3]{};
 			} ssaoPc{};
+
 			ssaoPc.invProj = glm::inverse(proj);
 			ssaoPc.screenSize = glm::vec2(
 				static_cast<float>(winExtent.width),
@@ -363,9 +352,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// === MAIN FORWARD SHADING PASS ===
 	AttachmentDesc colorAttach{};
-	if (msaaEnabled) {
+	if (MSAA_ENABLED) {
 		colorAttach.imageView = msaa.imageView;
-		colorAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		colorAttach.layout = msaa.initialLayout;
 		colorAttach.resolveView = draw.imageView;
 		colorAttach.resolveLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		colorAttach.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
@@ -382,7 +371,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	AttachmentDesc depthAttach{};
 	depthAttach.imageView = depth.imageView;
-	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+	depthAttach.layout = depth.initialLayout;
 	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	depthAttach.clearValue.depthStencil.depth = 1.0f;
@@ -413,7 +402,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
 		}
 
-		//frameCtx.descriptorWriter.clear();
 		if (debug.enableSSAO) {
 			auto& ssaoBlurV = ResourceManager::getSSAOBlurVImage(); // Final ao image
 
@@ -446,10 +434,16 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			RenderPasses::transparentMeshPass(frameCtx, pipeline, profiler);
 		}
 
-		// ================
-		// === OBB PASS ===
+		// ======================
+		// === OBB DEBUG PASS ===
 		if (debug.enableOBBs) {
-			RenderPasses::obbDebugPass(frameCtx, Pipelines::getHandle(PipelineID::BoundingBox), profiler);
+			RenderPasses::obbLinePass(frameCtx, Pipelines::getHandle(PipelineID::OBBLine), profiler);
+		}
+
+		// ============================
+		// === CASCADEVP DEBUG PASS ===
+		if (debug.enableShadows && debug.enableCascadeVPs) {
+			RenderPasses::CascadeVPLinePass(frameCtx, Pipelines::getHandle(PipelineID::CascadeVPLine), profiler);
 		}
 	}
 
@@ -500,10 +494,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	if (debug.enableSettings || debug.enableStats) {
 		// Transition swapchain to COLOR_ATTACHMENT_OPTIMAL for ImGui
+
 		ImageUtils::transitionImage(
 			frameCtx.commandBuffer,
 			swp.images[frameCtx.swapchainImageIndex],
-			draw.imageFormat,
+			swp.imageFormat,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
@@ -516,7 +511,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		ImageUtils::transitionImage(
 			frameCtx.commandBuffer,
 			swp.images[frameCtx.swapchainImageIndex],
-			draw.imageFormat,
+			swp.imageFormat,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}

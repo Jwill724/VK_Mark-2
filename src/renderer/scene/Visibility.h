@@ -78,18 +78,13 @@ namespace Visibility {
 		const VisibilityState& vs,
 		const Frustum& fr,
 		std::vector<GPUInstance>& visibleInstances,
-		std::vector<AABB>& visibleWorldAABBs);
+		std::vector<AABB>& visibleWorldAABBs,
+		bool disableCulling = false);
 
 	bool isVisible(const AABB& aabb, const Frustum& frus);
 	bool boxInFrustum(const AABB& aabb, const Frustum& frus);
 	AABB transformAABB(const AABB& localBox, const glm::mat4& transform);
 	Frustum extractFrustum(const glm::mat4& viewproj);
-	Frustum extractCascadeFrustum(
-		const glm::mat4& camView,
-		float fov,
-		float aspect,
-		float nearSplit,
-		float farSplit);
 	std::vector<glm::vec3> GetAABBVertices(const AABB& box);
 	std::vector<glm::vec3> GetOBBVertices(const AABB& localBox, const glm::mat4& modelMatrix);
 }

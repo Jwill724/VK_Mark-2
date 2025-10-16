@@ -25,7 +25,7 @@
 
 struct Frustum {
 	glm::vec4 planes[6]; // Plane equation: ax + by + cz + d = 0
-	glm::vec4 points[8];
+	//glm::vec4 corners[8];
 };
 
 struct AABB {
@@ -124,7 +124,7 @@ static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 struct alignas(16) GPUShadowCSM {
 	glm::mat4 cascadeVP[MAX_CASCADES]{0.0f};
 	glm::vec4 cascadeSplits{0.0f};
-	glm::vec4 params{0.0f}; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount
+	glm::vec4 params{0.0f}; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount, .w/texelSize
 };
 
 struct TimelineSync {

@@ -332,3 +332,11 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 		fmt::print("No fence... skipping.\n");
 	}
 }
+
+struct ShadowControl {
+	float splitLambda;
+	float depthMinScale;
+	float depthMaxScale;
+	float lightDist;
+	float bias;
+};

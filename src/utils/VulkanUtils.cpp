@@ -224,9 +224,9 @@ VmaAllocator VulkanUtils::createAllocator(VkPhysicalDevice pDevice, VkDevice dev
 void VulkanUtils::defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent) {
 	VkViewport viewport {
 		.x = 0.0f,
-		.y = 0.0f,
+		.y = static_cast<float>(drawExtent.height),
 		.width = static_cast<float>(drawExtent.width),
-		.height = static_cast<float>(drawExtent.height),
+		.height = -static_cast<float>(drawExtent.height),
 		.minDepth = 0.0f,
 		.maxDepth = 1.0f
 	};

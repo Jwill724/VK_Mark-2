@@ -16,6 +16,7 @@ layout(push_constant) uniform SSAOPush {
 	float intensity;
 	int blurRadius;
 	uint sampleCount;
+	float pad0[3];
 } pc;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_TEX) uniform sampler2D ssaoInput;
