@@ -52,4 +52,4 @@ Open project file in visual studio 2022
 Cmake to be utilized in future, doesn't currently work.
 
 For Bistro asset
-https://www.dropbox.com/scl/fi/hmrtvev8jw6k74wvcojkb/Bistro.glb?rlkey=djv8g8jjsag9cbxuh0pboqmyd&e=1&st=l9ysxwvt&dl=0
+https://www.dropbox.com/scl/fi/aozfte8k1aewhpl7omx3r/Bistro.glb?rlkey=wmy6ep2yezcs77bidxwqeeiec&e=1&st=pxnwxvpe&dl=0
