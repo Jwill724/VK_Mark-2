@@ -60,9 +60,15 @@ namespace RenderPasses {
 		FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,
 		Profiler& profiler);
+
+	void ExposureReducePass(FrameContext& frameCtx,
+		ComputeDispatchScope& expScopee);
+
+	void ExposureFinalizePass(FrameContext& frameCtx,
+		ComputeDispatchScope& expScope);
+
 	void ToneMapPass(FrameContext& frameCtx,
-		ComputeDispatchScope toneScope,
-		AllocatedImage& toneMap);
+		ComputeDispatchScope& expScope);
 
 	void dispatchComputePass(
 		FrameContext& frameCtx,

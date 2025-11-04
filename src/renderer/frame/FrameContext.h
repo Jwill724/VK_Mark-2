@@ -16,7 +16,7 @@ struct FrameContext {
 	VkResult swapchainResult = VK_RESULT_MAX_ENUM;
 	uint32_t swapchainImageIndex = 0;
 
-	VkCommandBuffer commandBuffer = VK_NULL_HANDLE; // primary graphics command
+	VkCommandBuffer cmdBuffer = VK_NULL_HANDLE; // primary graphics command
 	// Deferred transfer work
 	VkCommandPool transferPool = VK_NULL_HANDLE;
 	VkCommandPool graphicsPool = VK_NULL_HANDLE;

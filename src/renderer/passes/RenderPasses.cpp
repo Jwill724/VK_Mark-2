@@ -27,7 +27,7 @@ void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& p
 	const auto& shadowImg = ResourceManager::getShadowMapImage();
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		shadowImg.image,
 		shadowImg.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -44,25 +44,25 @@ void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& p
 	csmScope.info.layerCount = MAX_CASCADES; // Pipeline is hard defined with this
 	csmScope.info.viewMask = (1u << MAX_CASCADES) - 1u;
 	RenderPasses::beginRendering(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		{ shadowDepth },
 		{ shadowImg.imageExtent.width, shadowImg.imageExtent.height },
 		csmScope);
 
-	vkCmdBindPipeline(frameCtx.commandBuffer,
+	vkCmdBindPipeline(frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
-	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
 		frameCtx.opaqueRange.visibleCount,
 		drawCmdSize);
 
-	RenderPasses::endRendering(frameCtx.commandBuffer);
+	RenderPasses::endRendering(frameCtx.cmdBuffer);
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		shadowImg.image,
 		shadowImg.imageFormat,
 		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
@@ -74,14 +74,14 @@ void RenderPasses::depthPrePass(FrameContext& frameCtx, const PipelineHandle& pi
 	auto& normal = ResourceManager::getNormalImage();
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		depthResolved.image,
 		depthResolved.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		normal.image,
 		normal.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -103,32 +103,32 @@ void RenderPasses::depthPrePass(FrameContext& frameCtx, const PipelineHandle& pi
 
 	RenderPasses::GraphicsRenderScope depthScope;
 	RenderPasses::beginRendering(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		{ prepassNormal, prepassDepth },
 		{ depthResolved.imageExtent.width, depthResolved.imageExtent.height },
 		depthScope);
 
-	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
+	vkCmdBindPipeline(frameCtx.cmdBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
 
-	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
 		frameCtx.opaqueRange.visibleCount,
 		drawCmdSize
 	);
 
-	RenderPasses::endRendering(frameCtx.commandBuffer);
+	RenderPasses::endRendering(frameCtx.cmdBuffer);
 
 	// Transition images to be sampled
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		depthResolved.image,
 		depthResolved.imageFormat,
 		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
 		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
 
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		normal.image,
 		normal.imageFormat,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -150,7 +150,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Transition SSAO output to storage writable
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoImg.image,
 		ssaoImg.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -199,7 +199,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Transition SSAO to input
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoImg.image,
 		ssaoImg.imageFormat,
 		VK_IMAGE_LAYOUT_GENERAL,
@@ -207,7 +207,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Transition blur h for output
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoBlurH.image,
 		ssaoBlurH.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -216,7 +216,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Push writing for blur horizontal
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_TEX,
+		PUSH_BINDING_INPUT_1_TEX,
 		ssaoImg.imageView,
 		ssaoSampler
 	);
@@ -236,7 +236,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Transition blur h for input
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoBlurH.image,
 		ssaoBlurH.imageFormat,
 		VK_IMAGE_LAYOUT_GENERAL,
@@ -244,7 +244,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Transition blur v for outout
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoBlurV.image,
 		ssaoBlurV.imageFormat,
 		VK_IMAGE_LAYOUT_UNDEFINED,
@@ -252,7 +252,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 	// Push writing for blur vertical
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_TEX,
+		PUSH_BINDING_INPUT_1_TEX,
 		ssaoBlurH.imageView,
 		ssaoSampler
 	);
@@ -270,7 +270,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	// Final transition before lighting
 	// ssaoBlurV final output
 	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		ssaoBlurV.image,
 		ssaoBlurV.imageFormat,
 		VK_IMAGE_LAYOUT_GENERAL,
@@ -280,7 +280,7 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 
 void RenderPasses::skyboxPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle, Profiler& profiler) {
 	vkCmdBindPipeline(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
@@ -292,9 +292,9 @@ void RenderPasses::skyboxPass(FrameContext& frameCtx, const PipelineHandle& pipe
 
 	glm::mat4 invVp = glm::inverse(viewproj);
 
-	bindPushConstants(invVp, frameCtx.commandBuffer);
+	bindPushConstants(invVp, frameCtx.cmdBuffer);
 
-	vkCmdDraw(frameCtx.commandBuffer, 3, 1, 0, 0);
+	vkCmdDraw(frameCtx.cmdBuffer, 3, 1, 0, 0);
 
 	// Literally one triangle
 	if (profiler.debugToggles.enableStats) {
@@ -303,16 +303,16 @@ void RenderPasses::skyboxPass(FrameContext& frameCtx, const PipelineHandle& pipe
 }
 
 void RenderPasses::opaqueMeshPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle, Profiler& profiler) {
-	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
+	vkCmdBindPipeline(frameCtx.cmdBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
 
 	// For ssao, the final blur image
 	// Only applied to opaque shading
 	frameCtx.descriptorWriter.updatePushSet(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		Pipelines::_globalLayout.layout);
 
-	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
 		frameCtx.opaqueRange.visibleCount,
@@ -334,11 +334,11 @@ void RenderPasses::opaqueMeshPass(FrameContext& frameCtx, const PipelineHandle& 
 
 void RenderPasses::transparentMeshPass(FrameContext& frameCtx, const PipelineHandle& pipeHandle, Profiler& profiler) {
 	vkCmdBindPipeline(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
-	vkCmdDrawIndexedIndirect(frameCtx.commandBuffer,
+	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.transparentRange.first * drawCmdSize,
 		frameCtx.transparentRange.visibleCount,
@@ -398,12 +398,12 @@ void RenderPasses::obbLinePass(
 	});
 
 	vkCmdBindPipeline(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
 	const VkDeviceSize vtxOffset = 0;
-	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &obbVBO.buffer, &vtxOffset);
+	vkCmdBindVertexBuffers(frameCtx.cmdBuffer, 0, 1, &obbVBO.buffer, &vtxOffset);
 
 	static struct alignas(16) OBBPush {
 		VkDeviceAddress vertexBuffer;
@@ -411,11 +411,11 @@ void RenderPasses::obbLinePass(
 	} pc{};
 	pc.vertexBuffer = obbVBO.address;
 
-	bindPushConstants(pc, frameCtx.commandBuffer);
+	bindPushConstants(pc, frameCtx.cmdBuffer);
 
 	for (uint32_t i = 0; i < drawOffsets.size(); ++i) {
 		uint32_t vertexOffset = drawOffsets[i];
-		vkCmdDraw(frameCtx.commandBuffer, vertsLineCount, 1, vertexOffset, 0);
+		vkCmdDraw(frameCtx.cmdBuffer, vertsLineCount, 1, vertexOffset, 0);
 		if (profiler.debugToggles.enableStats) {
 			profiler.addDirect(1);
 		}
@@ -483,12 +483,12 @@ void RenderPasses::CascadeVPLinePass(
 	});
 
 	vkCmdBindPipeline(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
 	const VkDeviceSize vtxOffset = 0;
-	vkCmdBindVertexBuffers(frameCtx.commandBuffer, 0, 1, &cascadeVPVBO.buffer, &vtxOffset);
+	vkCmdBindVertexBuffers(frameCtx.cmdBuffer, 0, 1, &cascadeVPVBO.buffer, &vtxOffset);
 
 	static struct alignas(16) CascadeVPPush {
 		VkDeviceAddress cascadeVPVertBuffer;
@@ -496,58 +496,34 @@ void RenderPasses::CascadeVPLinePass(
 	} pc{};
 	pc.cascadeVPVertBuffer = cascadeVPVBO.address;
 
-	bindPushConstants(pc, frameCtx.commandBuffer);
+	bindPushConstants(pc, frameCtx.cmdBuffer);
 
-	vkCmdDraw(frameCtx.commandBuffer, static_cast<uint32_t>(lineVerts.size()), 1, 0, 0);
+	vkCmdDraw(frameCtx.cmdBuffer, static_cast<uint32_t>(lineVerts.size()), 1, 0, 0);
 
 	if (profiler.debugToggles.enableStats) {
 		profiler.addDirect(1);
 	}
 }
 
-void RenderPasses::ToneMapPass(
-	FrameContext& frameCtx,
-	ComputeDispatchScope toneScope,
-	AllocatedImage& toneMap)
-{
-	auto& draw = ResourceManager::getDrawImage();
-	auto linearSampler = ResourceManager::getDefaultSamplerLinear();
+void RenderPasses::ExposureReducePass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::ExposureReduce),
+		expScope);
+}
 
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		draw.image,
-		draw.imageFormat,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+void RenderPasses::ExposureFinalizePass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
+	RenderPasses::dispatchComputePass(
+		frameCtx,
+		Pipelines::getHandle(PipelineID::ExposureFinalize),
+		expScope);
+}
 
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		toneMap.image,
-		toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_GENERAL);
-
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_TEX,
-		draw.imageView,
-		linearSampler);
-
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_TEX,
-		toneMap.imageView);
-
+void RenderPasses::ToneMapPass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
 	RenderPasses::dispatchComputePass(
 		frameCtx,
 		Pipelines::getHandle(PipelineID::ToneMap),
-		toneScope);
-
-	// Transition for swapchain
-	ImageUtils::transitionImage(
-		frameCtx.commandBuffer,
-		toneMap.image,
-		toneMap.imageFormat,
-		VK_IMAGE_LAYOUT_GENERAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+		expScope);
 }
 
 void RenderPasses::beginRendering(
@@ -591,12 +567,12 @@ void RenderPasses::dispatchComputePass(
 	const PipelineHandle& pipeHandle,
 	ComputeDispatchScope& scope)
 {
-	vkCmdBindPipeline(frameCtx.commandBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
+	vkCmdBindPipeline(frameCtx.cmdBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
 
 	if (scope.pushData && scope.pushSize > 0) {
 		const PipelineLayoutConst globalLayout = Pipelines::_globalLayout;
 		vkCmdPushConstants(
-			frameCtx.commandBuffer,
+			frameCtx.cmdBuffer,
 			globalLayout.layout,
 			globalLayout.pcRange.stageFlags,
 			globalLayout.pcRange.offset,
@@ -607,7 +583,7 @@ void RenderPasses::dispatchComputePass(
 	auto& writer = frameCtx.descriptorWriter;
 	if (writer.enablePushDescriptor) {
 		writer.updatePushSet(
-			frameCtx.commandBuffer,
+			frameCtx.cmdBuffer,
 			pipeHandle.bindPoint,
 			Pipelines::_globalLayout.layout);
 	}
@@ -615,7 +591,7 @@ void RenderPasses::dispatchComputePass(
 	scope.calculateGroups();
 
 	vkCmdDispatch(
-		frameCtx.commandBuffer,
+		frameCtx.cmdBuffer,
 		scope.groupCountX,
 		scope.groupCountY,
 		scope.groupCountZ);

@@ -48,7 +48,7 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_CSM) uniform ShadowUBO {
 };
 
 // Only used for opaque shading
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_TEX) uniform sampler2D ssaoFinal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D ssaoFinal;
 
 const bool FLIP_ENV_Y = true;
 
@@ -82,6 +82,28 @@ vec3 cascadeColor(uint i)
 		vec3(1, 1, 0)
 	);
 	return C[min(i, 3u)];
+}
+
+// 8-tap Poisson disk in texels
+const vec2 PD[8] = vec2[](
+  vec2( 0.0, -0.5), vec2( 0.5,  0.0), vec2( 0.0,  0.5), vec2(-0.5,  0.0),
+  vec2( 0.35, 0.35), vec2(-0.35, 0.35), vec2( 0.35,-0.35), vec2(-0.35,-0.35)
+);
+
+float PCFPoisson(sampler2DArray sm, vec2 uv, uint layer, float z, float bias, float texel)
+{
+	// hash
+	float h = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233))) * 43758.5453);
+	float ang = h * 6.2831853;
+	mat2 R = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+
+	float s = 0.0;
+	for (int i = 0; i < 8; ++i) {
+		vec2 o = (R * PD[i]) * texel;
+		float d = texture(sm, vec3(uv + o, float(layer))).r;
+		s += float((z - bias) < d);
+	}
+	return s * (1.0 / 8.0);
 }
 
 float PCFShadow(sampler2DArray shadowMap, vec2 baseUV, uint layer, float curDepth, float bias, float texelSize, int kernelSize) {
@@ -118,10 +140,21 @@ void main()
 	float metal = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).b * mat.metalRoughFactors.x;
 	vec3 emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
 
-	if (base.a < mat.alphaCutoff) discard;
+	if (mat.passType == PASS_OPAQUE && base.a < mat.alphaCutoff) discard;
+
+	vec3 albedo = inColor * base.rgb;
+	vec3 emissive = emissT * mat.emissiveColor * mat.emissiveStrength;
 
 	rough = clamp(rough, 0.04, 1.0);
 	metal = clamp(metal, 0.0, 1.0);
+
+	if (DBG(showAlbedo))     RET(albedo, base.a);
+	if (DBG(showEmissive))   RET(emissive, base.a);
+	if (DBG(showAO))         RET(vec3(ao), base.a);
+	if (DBG(showMetallic))   RET(vec3(metal), base.a);
+	if (DBG(showRoughness))  RET(vec3(rough), base.a);
+
+	vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
 
 	vec3 V = normalize(scene.cameraPos.xyz - inWorldPos);
 	vec3 L = normalize(scene.sunlightDirection.xyz);
@@ -131,27 +164,13 @@ void main()
 	float NdotL = max(dot(N, L), 0.0);
 	float LdotH = max(dot(L, H), 0.0);
 
-	vec3 albedo = inColor * base.rgb;
-	vec3 emissive = emissT * mat.emissiveColor * mat.emissiveStrength;
-
-	if (DBG(showAlbedo))     RET(albedo, base.a);
-	if (DBG(showEmissive))   RET(emissive, base.a);
-	if (DBG(showAO))         RET(vec3(ao), base.a);
-	if (DBG(showMetallic))   RET(vec3(metal), base.a);
-	if (DBG(showRoughness))  RET(vec3(rough), base.a);
-
-	// SSAO only
-	if (DBG(showSSAO)) {
-		vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
-		float ssaoFactor = texture(ssaoFinal, uv).r;
-		RET(vec3(ssaoFactor), 1.0);
-	}
-
 	// SSAO combine
 	float aoFinal = ao;
 	if (mat.passType == PASS_OPAQUE && DBG(enableSSAO)) {
-		vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
 		float ssaoFactor = texture(ssaoFinal, uv).r;
+		if(DBG(showSSAO)) {
+			RET(vec3(ssaoFactor), 1.0);
+		}
 		aoFinal *= ssaoFactor;
 	}
 
@@ -174,7 +193,7 @@ void main()
 
 	// Shadows
 	float shadow = 1.0;
-	if (DBG(enableShadows)) {
+	if (DBG(enableShadows) && mat.passType == PASS_OPAQUE) {
 		const uint cascadeCount = uint(csm.params.z);
 		const uint shadowMapID = uint(csm.params.y);
 		const float shadowBias = csm.params.x;
@@ -217,10 +236,20 @@ void main()
 			uint nextIdx = min(cascadeIdx + 1u, maxCascade);
 
 			float bias = shadowBias * (1.0 - NdotL) * (1.0 + float(cascadeIdx) * 0.1);
-			int kernelSizeA = (cascadeIdx == 1u ? 1 : 3);
-			int kernelSizeB = (cascadeIdx == maxCascade ? 5 : 3);
-			float sA = PCFShadow(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, cascadeIdx, curDepth, bias, texelSize, kernelSizeA);
-			float sB = PCFShadow(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, nextIdx, curDepth, bias, texelSize, kernelSizeB);
+
+			bool isMaxCascade = false;
+			float texel = texelSize;
+			if (cascadeIdx == maxCascade) {
+				texel *= 2.0; // wider footprint for distant cascade
+				isMaxCascade = true;
+			}
+
+			float sA = PCFPoisson(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, cascadeIdx, curDepth, bias, texel);
+
+			float sB = sA;
+			if (!isMaxCascade) {
+				sB = PCFPoisson(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, nextIdx, curDepth, bias, texel);
+			}
 
 			// Smooth cascade transition
 			float splitFar = csm.cascadeSplits[cascadeIdx];
@@ -239,7 +268,7 @@ void main()
 	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
-	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx) * 0.5;
+	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
 
 	float specAO = SpecAO_Conservative(aoFinal, NdotV, rough);
 	vec3 ambient = kD_ibl * iblDiff * aoFinal + iblSpec * specAO;

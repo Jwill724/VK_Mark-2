@@ -8,19 +8,21 @@
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
-	GPUEnvMapIndexArray _envMapIdxArray;
-	glm::vec4 _ssaoKernelBlock[_kernelBlockSize];
+	GPUEnvMapIndexArray _envMapIdxArray; // uniform
+	glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE]{}; // uniform
+	glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) }; // ssbo
 
 	// primary render image
-	AllocatedImage _drawImage;
-	AllocatedImage& getDrawImage() { return _drawImage; }
+	AllocatedImage _opaqueImage;
+	AllocatedImage& getOpaqueImage() { return _opaqueImage; }
+	AllocatedImage _transparentImage;
+	AllocatedImage& getTransparentImage() { return _transparentImage; }
+	AllocatedImage _toneMapImage;
+	AllocatedImage& getToneMapImage() { return _toneMapImage; }
 	AllocatedImage _depthImage;
 	AllocatedImage& getDepthImage() { return _depthImage; }
 	AllocatedImage _msaaImage;
 	AllocatedImage& getMSAAImage() { return _msaaImage; }
-	AllocatedImage _toneMappingImage;
-	AllocatedImage& getToneMappingImage() { return _toneMappingImage; }
-	ColorData toneMappingData;
 
 	AllocatedImage _depthResolvedImage;
 	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
@@ -59,8 +61,8 @@ namespace ResourceManager {
 	VkSampler _shadowMapSampler;
 	const VkSampler getShadowMapSampler() { return _shadowMapSampler; }
 
-	std::vector<VkDescriptorSet> _shadowMapDescriptors; // Only meant for debugging visually in imgui
-	std::vector<VkDescriptorSet>& getShadowMapDescriptors() { return _shadowMapDescriptors; }
+	//std::vector<VkDescriptorSet> _shadowMapDescriptors; // Only meant for debugging visually in imgui
+	//std::vector<VkDescriptorSet>& getShadowMapDescriptors() { return _shadowMapDescriptors; }
 
 	// Grabbed during physical device selection
 	std::vector<VkSampleCountFlags> _availableSampleCounts;
@@ -83,6 +85,9 @@ namespace ResourceManager {
 	AllocatedImage& getNormaMat() { return _normalMat; }
 	AllocatedImage _errorCheckerboardTex;
 	AllocatedImage& getCheckboardTex() { return _errorCheckerboardTex; }
+
+	AllocatedImage _dummyTransparent;
+	AllocatedImage& getDummyTransparent() { return _dummyTransparent; }
 
 	VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;
@@ -200,7 +205,7 @@ inline static float lerp(float a, float b, float f) {
 void ResourceManager::initSSAOKernel() {
 	std::uniform_real_distribution<float> randFloats(0.0f, 1.0f);
 	std::default_random_engine rng;
-	for (unsigned int i = 0; i < _kernelBlockSize; i++) {
+	for (unsigned int i = 0; i < KERNEL_BLOCK_SIZE; i++) {
 		glm::vec3 sample(
 			randFloats(rng) * 2.0f - 1.0f, // x in [-1, 1]
 			randFloats(rng) * 2.0f - 1.0f, // y in [-1, 1]
@@ -224,8 +229,9 @@ void ResourceManager::initRenderTargets(
 	const VmaAllocator allocator,
 	const VkExtent3D drawExtent)
 {
-	_drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_drawImage.imageExtent = drawExtent;
+	// Opaque
+	_opaqueImage.imageFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_opaqueImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags drawImageUsages{};
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -234,43 +240,38 @@ void ResourceManager::initRenderTargets(
 	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	drawImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
-	// non sampled image
-	// primary draw image color target
 	ImageUtils::createRenderImage(
 		device,
-		_drawImage,
+		_opaqueImage,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
-	// tone mapping post process image
-	_toneMappingImage.imageFormat = _drawImage.imageFormat;
-	_toneMappingImage.imageExtent = drawExtent;
-
-	VkImageUsageFlags toneMapUsages{};
-	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	// Transparent
+	_transparentImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_transparentImage.imageExtent = drawExtent;
 
 	ImageUtils::createRenderImage(
 		device,
-		_toneMappingImage,
-		toneMapUsages,
+		_transparentImage,
+		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
-		allocator);
+		allocator
+	);
 
+	// MSAA
 	VkSampleCountFlagBits sampleCount = !MSAA_ENABLED ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
 
-	_msaaImage.imageFormat = _drawImage.imageFormat;
+	_msaaImage.imageFormat = _opaqueImage.imageFormat;
 	_msaaImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags msaaImageUsages{};
 	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	msaaImageUsages |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 	_msaaImage.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	// msaa color attachment to the draw image
+
 	ImageUtils::createRenderImage(
 		device,
 		_msaaImage,
@@ -300,7 +301,6 @@ void ResourceManager::initRenderTargets(
 	VkImageUsageFlags depthResolvedUsages{};
 	depthResolvedUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	depthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-
 	ImageUtils::createRenderImage(
 		device,
 		_depthResolvedImage,
@@ -350,8 +350,8 @@ void ResourceManager::initRenderTargets(
 		targetQueue,
 		allocator);
 
-	// Normal image
-	_normalImage.imageFormat = _drawImage.imageFormat;
+	// Normal
+	_normalImage.imageFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	_normalImage.imageExtent = drawExtent;
 
 	VkImageUsageFlags normalUsages{};
@@ -362,6 +362,23 @@ void ResourceManager::initRenderTargets(
 		device,
 		_normalImage,
 		normalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	// Tone map
+	_toneMapImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_toneMapImage.imageExtent = drawExtent;
+	VkImageUsageFlags toneMapUsages{};
+	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	toneMapUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	ImageUtils::createRenderImage(
+		device,
+		_toneMapImage,
+		toneMapUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
@@ -651,6 +668,24 @@ void ResourceManager::initTextures(
 		imageQueue,
 		bufferQueue,
 		allocator);
+
+
+	_dummyTransparent.imageExtent = texExtent;
+	_dummyTransparent.imageFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_dummyTransparent.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	glm::vec4 transparentBlack = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		(void*)&transparentBlack,
+		_dummyTransparent,
+		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+		VK_SAMPLE_COUNT_1_BIT,
+		imageQueue,
+		bufferQueue,
+		allocator
+	);
 
 
 	_whiteMat.imageExtent = texExtent;

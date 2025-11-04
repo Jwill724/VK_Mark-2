@@ -14,8 +14,10 @@ enum class PipelineID : uint8_t {
 	// === Culling pipeline *inactive (compute) ===
 	Visibility,
 
-	// === Post-process (compute) ===
-	ToneMap,
+	// === Post-process ===
+	ExposureReduce,   // compute
+	ExposureFinalize, // compute
+	ToneMap,          // graphics
 
 	// === IBL (compute) ===
 	HDRToCubemap,
@@ -25,7 +27,7 @@ enum class PipelineID : uint8_t {
 
 	// === DEPTH ===
 	DepthPrepass,  // graphics
-	ShadowCSM, // graphics
+	ShadowCSM,     // graphics
 
 	// === SSAO ===
 	SSAO,          // compute

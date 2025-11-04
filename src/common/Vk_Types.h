@@ -91,6 +91,7 @@ enum class AddressBufferType : uint8_t {
 	Mesh,             // global
 	Vertex,           // global
 	Index,            // global
+	Luminance,        // global
 	Count
 };
 
@@ -111,7 +112,7 @@ struct alignas(16) GPUSceneData {
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
 	glm::vec4 cameraPosition;
-	glm::vec4 viewportSize; // .x and .y for width and height
+	glm::vec4 viewportSize; // .x and .y for width and height, .z for pixel count
 };
 static_assert(sizeof(GPUSceneData) == 256);
 
@@ -143,14 +144,6 @@ enum class DrawType : uint32_t {
 	DrawMultiStatic, // many baked instances
 	DrawDynamic,     // single instance, dynamic transform
 	DrawMultiDynamic // many instances, dynamic transforms
-};
-
-// Push constant use
-struct alignas(16) ColorData {
-	float brightness = 1.0f;
-	float saturation = 1.0f;
-	float contrast = 1.0f;
-	float pad0 = 0.0f;
 };
 
 template<typename T>

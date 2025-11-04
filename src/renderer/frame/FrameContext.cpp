@@ -41,7 +41,7 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 
 		frame->graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
 		frame->transferPool = CommandBuffer::createCommandPool(device, transferIndex);
-		frame->commandBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
+		frame->cmdBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
 		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, frameLayout);
 
 		if (GPU_ACCELERATION_ENABLED) {

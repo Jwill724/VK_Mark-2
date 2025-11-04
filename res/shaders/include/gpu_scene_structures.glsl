@@ -12,7 +12,7 @@ struct SceneData {
 	vec4 sunlightDirection; // .w = power
 	vec4 sunlightColor;
 	vec4 cameraPos; // .z camFar
-	vec4 viewportSize;
+	vec4 viewportSize; // .x screenwidth, .y screenheight .z pixelcount
 };
 
 // Number of env sets stored in the buffer (must match C++ side)
@@ -44,8 +44,7 @@ struct DebugToggles {
 
 	uint enableSSAO;
 	uint enableShadows;
-	uint enableTonemap;
-	uint pad0;
+	uint pad0[2];
 
 	// draw stats
 	uint meshCount;
@@ -139,7 +138,8 @@ const uint ABT_Material          = 3u; // global
 const uint ABT_Mesh              = 4u; // global
 const uint ABT_Vertex            = 5u; // global
 const uint ABT_Index             = 6u; // global
-const uint ABT_Count             = 7u;
+const uint ABT_Luminance         = 7u; // global
+const uint ABT_Count             = 8u;
 
 struct GPUAddressTable {
 	uint64_t addrs[ABT_Count];
@@ -152,6 +152,8 @@ struct IndirectDrawCmd {
 	int vertexOffset;
 	uint firstInstance;
 };
+
+const uint MAX_LUMINANCE_GROUPS = 65536;
 
 // GPU-only buffers
 
@@ -183,6 +185,11 @@ layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
 
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {
 	Mesh meshes[];
+};
+
+// .x = exposure when applied in final tone map stage
+layout(buffer_reference, scalar) buffer LuminanceBuffer {
+	vec4 luminanceSums[MAX_LUMINANCE_GROUPS];
 };
 
 #endif

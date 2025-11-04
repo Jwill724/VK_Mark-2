@@ -173,9 +173,9 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::Checkbox("Draw CascadeVPs##rt", &cascadeVP)) dbg.enableCascadeVPs = cascadeVP ? 1u : 0u;
 			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
 
-			//auto& shadowControl = RenderScene::_shadowControl;
+			auto& shadowControl = RenderScene::_shadowControl;
 			//ImGui::SliderFloat("Split lamba##rt", &shadowControl.splitLambda, 0.0f, 1.0f);
-			//ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
+			ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
 			//ImGui::SliderFloat("Depth min scale##rt", &shadowControl.depthMinScale, 0.0f, 10.0f);
 			//ImGui::SliderFloat("Depth max scale##rt", &shadowControl.depthMaxScale, 0.0f, 10.0f);
 			//ImGui::SliderFloat("Frustum plane scale##rt", &shadowControl.lightDist, 0.0f, 5.0f);
@@ -239,17 +239,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::SliderFloat("Bias##ssao", &ssao.bias, 0.0f, 0.1f, "%.4f");
 			ImGui::SliderFloat("Intensity##ssao", &ssao.intensity, 0.10f, 1.5f, "%.2f");
 			ImGui::SliderInt("BlurRadius##ssao", &ssao.blurRadius, 1, 8);
-			ImGui::SliderInt("Samples##ssao", (int*)&ssao.sampleCount, 8, ResourceManager::_kernelBlockSize);
-		}
-
-		// Tonemap
-		if (ImGui::CollapsingHeader("Tonemap##settings", 0)) {
-			bool tonemap = dbg.enableTonemap != 0;
-			if (ImGui::Checkbox("Enable Tonemap##rt", &tonemap))    dbg.enableTonemap = tonemap ? 1u : 0u;
-			auto& tm = ResourceManager::toneMappingData;
-			ImGui::SliderFloat("Brightness##tm", &tm.brightness, 0.0f, 2.0f);
-			ImGui::SliderFloat("Saturation##tm", &tm.saturation, 0.0f, 2.0f);
-			ImGui::SliderFloat("Contrast##tm", &tm.contrast, 0.0f, 2.0f);
+			ImGui::SliderInt("Samples##ssao", (int*)&ssao.sampleCount, 8, KERNEL_BLOCK_SIZE);
 		}
 
 		// Fragment debug overlays

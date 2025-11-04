@@ -77,7 +77,11 @@ static void RenderScene::updateCamera() {
 	_sceneData.proj = _curCamProj;
 	_sceneData.viewproj = _curCamProj * _curCamView;
 	_sceneData.cameraPosition = glm::vec4(_mainCamera._position, _mainCamera._farClip);
-	_sceneData.viewportSize = glm::vec4(width, height, 0.0f, 0.0f);
+
+	if (_sceneData.viewportSize.x != width || _sceneData.viewportSize.y != height) {
+		float pixelCount = width * height;
+		_sceneData.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
+	}
 
 	if (_sceneData.viewproj != _lastViewProj) {
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
@@ -180,17 +184,6 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		min.z -= depthRange * _shadowControl.depthMinScale;
 		max.z += depthRange * _shadowControl.depthMaxScale;
 
-		// Snap to texel grid
-		const float widthLS = max.x - min.x;
-		const float heightLS = max.y - min.y;
-		const float texelX = widthLS / shadowRes;
-		const float texelY = heightLS / shadowRes;
-
-		min.x = std::floor(min.x / texelX) * texelX;
-		max.x = std::ceil(max.x / texelX) * texelX;
-		min.y = std::floor(min.y / texelY) * texelY;
-		max.y = std::ceil(max.y / texelY) * texelY;
-
 		//fmt::println("AABB min: ({}, {}, {})", min.x, min.y, min.z);
 		//fmt::println("AABB max: ({}, {}, {})", max.x, max.y, max.z);
 
@@ -198,6 +191,7 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
 		glm::mat4 shadowMatrix = lightProj * lightView;
 
+		// This works beautifully
 		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
 		// scale origin by shadow map size
 		// round it (nearest texel)

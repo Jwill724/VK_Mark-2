@@ -67,32 +67,72 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 	const auto mainAllocator = _resources.getAllocator();
 
+	const auto device = Backend::getDevice();
+
+	// Temp queue needed for deferred buffer deletions for buffers used in commands.
+	auto& tempQueue = _resources.getTempDQueue();
+
+	// main address table buffer
+	_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
+		sizeof(GPUAddressTable),
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+		VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VMA_MEMORY_USAGE_GPU_ONLY,
+		mainAllocator
+	);
+
+	// LUMINANCE SSBO SETUP
+	const size_t luminanceSize = sizeof(glm::vec4[MAX_LUMINANCE_GROUPS]);
+
+	AllocatedBuffer luminanceStaging = BufferUtils::createBuffer(
+		luminanceSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+		mainAllocator
+	);
+
+	memcpy(luminanceStaging.info.pMappedData, &ResourceManager::_luminanceSums, luminanceSize);
+
+	AllocatedBuffer luminanceBuffer = BufferUtils::createGPUAddressBuffer(
+		AddressBufferType::Luminance,
+		_resources.getAddressTable(),
+		luminanceSize,
+		mainAllocator
+	);
+	_resources.addGPUBufferToGlobalAddress(AddressBufferType::Luminance, luminanceBuffer);
+
+	auto lBuf = luminanceStaging.buffer;
+	auto lAlloc = luminanceStaging.allocation;
+	tempQueue.push_function([lBuf, lAlloc, mainAllocator]() mutable {
+		BufferUtils::destroyBuffer(lBuf, lAlloc, mainAllocator);
+	});
+
 	bool availableAssets = false;
-	// Load files for assets
-	JobSystem::submitJob([assetQueue, &availableAssets](ThreadContext& threadCtx) {
+	// Load files for assets and upload any default global buffers
+	JobSystem::submitJob([assetQueue, &availableAssets, &luminanceBuffer, &luminanceStaging, device](ThreadContext& threadCtx) {
+		threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
+
+		CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
+			VkBufferCopy copyRegion{};
+			copyRegion.size = luminanceSize;
+			vkCmdCopyBuffer(cmd, luminanceStaging.buffer, luminanceBuffer.buffer, 1, &copyRegion);
+		}, threadCtx.cmdPool, QueueType::Transfer, device);
+
+		auto& tQueue = Backend::getTransferQueue();
+		threadCtx.lastSubmittedFence = Engine::getState().submitCommandBuffers(tQueue);
+		waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);
+		vkResetCommandPool(device, threadCtx.cmdPool, 0);
+		threadCtx.cmdPool = VK_NULL_HANDLE;
+
 		ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 		availableAssets = AssetManager::loadGltf(threadCtx);
 	});
 
 	JobSystem::wait();
 
-	const auto device = Backend::getDevice();
-
 	if (availableAssets) {
-		// main address table buffer
-		_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
-			sizeof(GPUAddressTable),
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-			VMA_MEMORY_USAGE_GPU_ONLY,
-			mainAllocator
-		);
-
 		fmt::println("\nAssets available for loading!");
-
-		// Temp queue needed for deferred buffer deletions for buffers used in commands.
-		auto& tempQueue = _resources.getTempDQueue();
 
 		engineProfiler.startTimer();
 
@@ -194,9 +234,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		JobSystem::wait();
 		JobSystem::flushLogs();
 
-		// flush any setup temp data like staging buffers
-		tempQueue.flush();
-
 		// Asset loading done
 		auto elapsed = engineProfiler.endTimerSec();
 		fmt::print("Asset loading completed in {:.3f} seconds.\n\n", elapsed);
@@ -204,6 +241,9 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	else {
 		fmt::print("No assets for loading... skipping\n\n");
 	}
+
+	// flush any setup temp data like staging buffers
+	tempQueue.flush();
 
 	engineProfiler.assetsLoaded = availableAssets;
 
@@ -281,15 +321,14 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// Global descriptor writing and update
 	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
 	DescriptorWriter mainWriter;
-	if (availableAssets) {
-		mainWriter.writeBuffer(
-			ADDRESS_TABLE_BINDING,
-			_resources.getAddressTableBuffer().buffer,
-			sizeof(GPUAddressTable),
-			0,
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			unifiedSet);
-	}
+	mainWriter.writeBuffer(
+		ADDRESS_TABLE_BINDING,
+		_resources.getAddressTableBuffer().buffer,
+		sizeof(GPUAddressTable),
+		0,
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		unifiedSet);
+
 	// env map index
 	mainWriter.writeBuffer(
 		GLOBAL_BINDING_ENV_INDEX,
@@ -303,7 +342,7 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	mainWriter.writeBuffer(
 		GLOBAL_BINDING_SSAO_KERNEL,
 		_resources.ssaoKernelBuffer.buffer,
-		sizeof(glm::vec4[ResourceManager::_kernelBlockSize]),
+		sizeof(glm::vec4[KERNEL_BLOCK_SIZE]),
 		0,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		unifiedSet);

@@ -8,13 +8,13 @@
 - AABB BVH culling and OBB visual debug
 - Transparent depth sorting
 - ImGui debugging tools
-- MSAA (up to 8x), mipmapping, dynamic pipeline swapping
+- MSAA (up to 8x)
 - Cascaded shadow mapping
 - SSAO
+- Tonemapping (ACES Film)
 - Push descriptors
 
 ## Future
--Improved tone mapping
 -Render graph
 -SDL2 integration and platform layer
 -Better asset management (dynamic asset loading, resource handling)

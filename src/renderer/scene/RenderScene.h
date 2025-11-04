@@ -26,7 +26,7 @@ namespace RenderScene {
 		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Duck, { "Duck", DrawType::DrawDynamic, 1, 1, 1 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawDynamic, 1, 1, 1 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::City, { "City", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1, 1, 1 } },

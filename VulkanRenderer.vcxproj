@@ -286,12 +286,14 @@
     <None Include="res\shaders\environment\brdf_lut_comp.comp" />
     <None Include="res\shaders\depth\depth_prepass_frag.frag" />
     <None Include="res\shaders\depth\depth_prepass_vert.vert" />
+    <None Include="res\shaders\post_process\exposure_finalize_comp.comp" />
     <None Include="res\shaders\post_process\ssao_blurH_comp.comp" />
     <None Include="res\shaders\post_process\ssao_blurV_comp.comp" />
     <None Include="res\shaders\post_process\ssao_comp.comp" />
-    <None Include="res\shaders\post_process\tone_map_comp.comp" />
+    <None Include="res\shaders\post_process\exposure_reduce_comp.comp" />
     <None Include="res\shaders\debug\obb_line_vert.vert" />
     <None Include="res\shaders\debug\obb_line_frag.frag" />
+    <None Include="res\shaders\post_process\tone_map_comp.comp" />
     <None Include="res\shaders\visibility\visibility_comp.comp" />
     <None Include="res\shaders\include\set_bindings.glsl" />
     <None Include="res\shaders\include\pbr.glsl" />

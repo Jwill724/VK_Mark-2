@@ -58,15 +58,15 @@ struct FrameStats {
 
 struct PipelineOverride {
 	bool enabled = false;
-	PipelineID selectedID = PipelineID::Opaque;
+	PipelineID selectedID = PipelineID::Wireframe;
 };
 
 struct SSAOSettings {
 	uint32_t sampleCount = 64;
-	float aoRadius = 1.0f;
-	float bias = 0.025f;
+	float aoRadius = 1.2f;
+	float bias = 0.05f;
 	float intensity = 1.0f;
-	int blurRadius = 4;
+	int blurRadius = 5;
 };
 
 // inline uniform block in global set 0
@@ -75,12 +75,11 @@ struct alignas(4) DebugToggles {
 	uint32_t enableOBBs = 0;
 	uint32_t enableCascadeVPs = 0;
 	uint32_t enableSettings = 1;
-	uint32_t enableStats = 0;
+	uint32_t enableStats = 1;
 
 	uint32_t enableSSAO = 1;
 	uint32_t enableShadows = 1;
-	uint32_t enableTonemap = 0;
-	uint32_t pad0;
+	uint32_t pad0[2];
 
 	// draw stats
 	uint32_t meshCount = 0;

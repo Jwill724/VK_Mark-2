@@ -95,14 +95,17 @@ private:
 namespace ResourceManager {
 	extern ImageTableManager _globalImageManager;
 	extern GPUEnvMapIndexArray _envMapIdxArray;
-	inline constexpr uint32_t _kernelBlockSize = 128;
-	extern glm::vec4 _ssaoKernelBlock[_kernelBlockSize];
+	extern glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE];
 	void initSSAOKernel();
 
-	AllocatedImage& getDrawImage();
+	extern glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS];
+
+	AllocatedImage& getOpaqueImage();
+	AllocatedImage& getTransparentImage();
+	AllocatedImage& getDummyTransparent();
+	AllocatedImage& getToneMapImage();
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
-	AllocatedImage& getToneMappingImage();
 	AllocatedImage& getDepthResolvedImage();
 	AllocatedImage& getNormalImage();
 	AllocatedImage& getSSAOImage();
@@ -116,9 +119,8 @@ namespace ResourceManager {
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
 
-	std::vector<VkDescriptorSet>& getShadowMapDescriptors();
+	//std::vector<VkDescriptorSet>& getShadowMapDescriptors();
 
-	extern ColorData toneMappingData;
 	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
 	void initRenderSamplers(
 		const VkDevice device,

@@ -34,11 +34,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
 
-	//std::string duckPath{ "res/assets/Duck.glb" };
-	//auto duckFile = loadGltfFiles(duckPath);
-	//ASSERT(duckFile.has_value());
-	//duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
-	//queue->push(duckFile.value());
+	std::string duckPath{ "res/assets/Duck.glb" };
+	auto duckFile = loadGltfFiles(duckPath);
+	ASSERT(duckFile.has_value());
+	duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	queue->push(duckFile.value());
 
 	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
@@ -402,6 +402,7 @@ void AssetManager::processMaterials(
 			}
 
 			MaterialPass passType = MaterialPass::Opaque;
+
 			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
 				passType = MaterialPass::Transparent;
 			}

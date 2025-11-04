@@ -390,7 +390,7 @@ void ImageUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage d
 	blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	blitInfo.srcImage = source;
 	blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	blitInfo.filter = VK_FILTER_LINEAR;
+	blitInfo.filter = VK_FILTER_NEAREST;
 	blitInfo.regionCount = 1;
 	blitInfo.pRegions = &blitRegion;
 
@@ -531,27 +531,24 @@ size_t ImageUtils::getPixelSize(VkFormat format) {
 	case VK_FORMAT_R8G8_SINT:
 		return 2;
 
-		// 4-channel 8-bit formats
-	case VK_FORMAT_R8G8B8A8_UNORM:
-	case VK_FORMAT_R8G8B8A8_SNORM:
-	case VK_FORMAT_R8G8B8A8_UINT:
-	case VK_FORMAT_R8G8B8A8_SINT:
-	case VK_FORMAT_R8G8B8A8_SRGB:
-		return 4;
-
-		// 3-channel 8-bit formats (rarely used)
+		// 3-channel 8-bit formats
 	case VK_FORMAT_R8G8B8_UNORM:
 	case VK_FORMAT_R8G8B8_SRGB:
 	case VK_FORMAT_B8G8R8_UNORM:
 	case VK_FORMAT_B8G8R8_SRGB:
 		return 3;
 
-		// 4-channel BGRA formats
+		// 4-channel 8-bit formats
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R8G8B8A8_SNORM:
+	case VK_FORMAT_R8G8B8A8_UINT:
+	case VK_FORMAT_R8G8B8A8_SINT:
+	case VK_FORMAT_R8G8B8A8_SRGB:
 	case VK_FORMAT_B8G8R8A8_UNORM:
 	case VK_FORMAT_B8G8R8A8_SRGB:
 		return 4;
 
-		// 16-bit formats
+		// === 16-bit formats ===
 	case VK_FORMAT_R16_UNORM:
 	case VK_FORMAT_R16_SNORM:
 	case VK_FORMAT_R16_UINT:
@@ -573,7 +570,7 @@ size_t ImageUtils::getPixelSize(VkFormat format) {
 	case VK_FORMAT_R16G16B16A16_SFLOAT:
 		return 8;
 
-		// 32-bit float/int formats
+		// === 32-bit float/int formats ===
 	case VK_FORMAT_R32_UINT:
 	case VK_FORMAT_R32_SINT:
 	case VK_FORMAT_R32_SFLOAT:
@@ -593,6 +590,16 @@ size_t ImageUtils::getPixelSize(VkFormat format) {
 	case VK_FORMAT_R32G32B32A32_SINT:
 	case VK_FORMAT_R32G32B32A32_SFLOAT:
 		return 16;
+
+		// Packed formats
+	case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+		return 4;
+
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+	case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+	case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+	case VK_FORMAT_A2R10G10B10_UINT_PACK32:
+		return 4;
 
 	default:
 		ASSERT(false && "Unhandled VkFormat in getPixelSize");

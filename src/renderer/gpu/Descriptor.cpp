@@ -57,13 +57,13 @@ void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueu
 
 // Unified descriptor bindings:
 // Global access constant descriptors
-// [0] = GPU address table (draw ranges/material buffers)
+// [0] = GPU address table (draw ranges/material buffers, GPU ONLY SSBOs)
 // [1] = EnvSetUBO (Environment image indexes)
 // [2] = SSAO sample kernel glm::vec4[128]
 // [3] = inline uniform, debug toggles and draw stats
 // [4] = Samplercube images (Environment images)
 // [5] = Storage image array (Writable images)
-// [6] = Combined sampler (Static global combined sampelers, mostly materials)
+// [6] = Combined sampler (Static global combined samplers, mostly materials)
 
 // All image resources - textures, render targets, compute inputs/outputs -
 // are stored in these arrays. Access and interpretation are handled via the
@@ -131,7 +131,7 @@ void DescriptorSetOverwatch::initFrameDescriptor(const VkDevice device, Deletion
 	});
 }
 
-// Push descriptor bindings will be filled up overtime
+// Push descriptor bindings will be filled up over time
 void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
@@ -158,7 +158,14 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 
 	// Readable input
 	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_TEX,
+		PUSH_BINDING_INPUT_1_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		IMAGE_STAGES,
+		1);
+
+	// Readable input
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_INPUT_2_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		1);

@@ -18,7 +18,7 @@ constexpr float TARGET_FRAME_RATE_120 = 119.88f;
 constexpr float TARGET_FRAME_RATE_144 = 143.856f;
 constexpr float TARGET_FRAME_RATE_240 = 239.76f;
 
-// Image / Texture Limits
+// Resource Limits
 constexpr float ANISOTROPY_LEVEL_16 = 16.0f;
 constexpr float ANISOTROPY_LEVEL_8 = 8.0f;
 constexpr float ANISOTROPY_LEVEL_4 = 4.0f;
@@ -28,6 +28,8 @@ static constexpr uint32_t MSAACOUNT_2 = 2u;
 constexpr uint32_t MAX_MIP_LEVELS = 12u;
 constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * ivec4(16 bytes)
 constexpr uint32_t MAX_CASCADES = 3u;  // For shadows
+constexpr uint32_t KERNEL_BLOCK_SIZE = 128; // ssao kernel
+constexpr uint32_t MAX_LUMINANCE_GROUPS = 65536;
 
 // Descriptor info
 constexpr uint32_t GLOBAL_SET = 0u;
@@ -53,8 +55,9 @@ constexpr uint32_t FRAME_BINDING_CSM = 2u;
 constexpr uint32_t PUSH_BINDING_DEPTH_TEX = 0u;
 constexpr uint32_t PUSH_BINDING_NORMAL_TEX = 1u;
 constexpr uint32_t PUSH_BINDING_OUTPUT_TEX = 2u;
-constexpr uint32_t PUSH_BINDING_INPUT_TEX = 3u;
-constexpr uint32_t PUSH_BINDING_NOISE_TEX = 4u;
+constexpr uint32_t PUSH_BINDING_INPUT_1_TEX = 3u;
+constexpr uint32_t PUSH_BINDING_INPUT_2_TEX = 4u;
+constexpr uint32_t PUSH_BINDING_NOISE_TEX = 5u;
 
 // Image array sizes
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100u;

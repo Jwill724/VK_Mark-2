@@ -88,7 +88,20 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 
 	// === COMPUTE PIPELINES ===
 
-	// TONE MAP
+	// === EXPOSURE ===
+	ShaderStageInfo exposureReduceShaderStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/exposure_reduce_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::ExposureReduce).shaderStagesInfo.push_back(exposureReduceShaderStage);
+
+	ShaderStageInfo exposureFinalizeShaderStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/exposure_finalize_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::ExposureFinalize).shaderStagesInfo.push_back(exposureFinalizeShaderStage);
+
+	// === TONE MAP ===
 	ShaderStageInfo toneMapShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
 		.filePath = "res/shaders/post_process/tone_map_comp.spv"
@@ -202,7 +215,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelineBuilder builder;
 	builder._pipelineLayout = Pipelines::_globalLayout.layout;
 
-	builder.colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	builder.colorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	builder.depthFormat = VK_FORMAT_D32_SFLOAT;
 
 	auto createPipeline = [&](
@@ -242,15 +255,15 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	};
 
 	// === OPAQUE PIPELINE ===
-	createPipeline(PipelineID::Opaque, PipelineCategory::Raster, "Opaque", true);
-
+	createPipeline(PipelineID::Opaque, PipelineCategory::Raster, "Opaque", false);
 
 	// === TRANSPARENT PIPELINE ===
 	PipelinePreset& transparentPreset = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
+	transparentPreset.colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	transparentPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	transparentPreset.enableBlending = true;
 	transparentPreset.enableDepthWrite = false;
-	createPipeline(PipelineID::Transparent, PipelineCategory::Raster, "Transparent", true);
-
+	createPipeline(PipelineID::Transparent, PipelineCategory::Raster, "Transparent", false, false);
 
 	// === WIREFRAME PIPELINE ===
 	PipelinePreset& wirePreset = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
@@ -306,10 +319,11 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	createPipeline(PipelineID::ShadowCSM, PipelineCategory::Raster, "ShadowCSM", false, false);
 
-
 	// === COMPUTE PIPELINE SETUP STAGE ===
 	createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
 	createPipeline(PipelineID::ToneMap, PipelineCategory::Compute, "ToneMap");
+	createPipeline(PipelineID::ExposureReduce, PipelineCategory::Compute, "ExposureReduce");
+	createPipeline(PipelineID::ExposureFinalize, PipelineCategory::Compute, "ExposureFinalize");
 	createPipeline(PipelineID::HDRToCubemap, PipelineCategory::Compute, "HDRToCubemap");
 	createPipeline(PipelineID::SpecularPrefilter, PipelineCategory::Compute, "SpecularPrefilter");
 	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
@@ -481,7 +495,7 @@ void PipelineConfigs::multisamplingConfig(
 	multisampling.minSampleShading = 1.0f;
 	multisampling.pSampleMask = nullptr;
 
-	multisampling.alphaToCoverageEnable = VK_TRUE;
+	multisampling.alphaToCoverageEnable = VK_TRUE	;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
 

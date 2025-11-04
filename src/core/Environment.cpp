@@ -308,8 +308,8 @@ void Environment::dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry,
 
 	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
 
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(Environment::CUBEMAP_EXTENTS.width / 16.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(Environment::CUBEMAP_EXTENTS.height / 16.0f));
+	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::CUBEMAP_EXTENTS.width) / 16.0f));
+	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::CUBEMAP_EXTENTS.height) / 16.0f));
 
 	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
 }
@@ -331,8 +331,8 @@ void Environment::dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry e
 
 	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
 
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.width / 8.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.height / 8.0f));
+	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.width) / 8.0f));
+	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.height) / 8.0f));
 
 	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
 }
@@ -367,8 +367,8 @@ void Environment::dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, VkPi
 
 	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
 
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(Environment::LUT_IMAGE_EXTENT.width / 8.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(Environment::LUT_IMAGE_EXTENT.height / 8.0f));
+	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::LUT_IMAGE_EXTENT.width) / 8.0f));
+	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::LUT_IMAGE_EXTENT.height) / 8.0f));
 
 	vkCmdDispatch(cmd, xDispatch, yDispatch, 1);
 }
