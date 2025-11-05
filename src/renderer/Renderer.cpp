@@ -235,7 +235,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	_drawExtent.width = std::min(swp.extent.width, opaque.imageExtent.width);
 	_drawExtent.height = std::min(swp.extent.height, opaque.imageExtent.height);
 
-	const VkExtent2D extent = { _drawExtent.width, _drawExtent.height };
+	const VkExtent2D fullExtent = { _drawExtent.width, _drawExtent.height };
 	const VkExtent3D workgroupSize = { 16u, 16u, 1u };
 
 	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
@@ -343,7 +343,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 			RenderPasses::ComputeDispatchScope ssaoScope;
 			ssaoScope.setPush(&ssaoPc);
-			ssaoScope.extent = extent;
+			ssaoScope.extent = fullExtent;
 			ssaoScope.workgroupSize = workgroupSize;
 
 			RenderPasses::SSAOPass(frameCtx, ssaoScope);
@@ -382,7 +382,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	RenderPasses::beginRendering(
 		frameCtx.cmdBuffer,
 		{ opaqueAttach, depthAttach },
-		{ extent },
+		{ fullExtent },
 		opaqueScope);
 
 	// ===================
@@ -479,7 +479,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		RenderPasses::beginRendering(
 			frameCtx.cmdBuffer,
 			{ transparentAttach, depthAttach },
-			{ extent },
+			{ fullExtent },
 			transparentScope);
 
 		RenderPasses::transparentMeshPass(frameCtx, Pipelines::getHandle(PipelineID::Transparent), profiler);
@@ -492,8 +492,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// === TONE MAP PASS ===
 	{
 		RenderPasses::ComputeDispatchScope expScope;
-		expScope.extent.width = extent.width / 2u;
-		expScope.extent.height = extent.height / 2u;
+		expScope.extent = fullExtent;
 		expScope.workgroupSize = workgroupSize;
 
 		auto linearSampler = ResourceManager::getDefaultSamplerLinear();
@@ -608,7 +607,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		expScope.pushData = nullptr;
 		expScope.pushSize = 0u;
 
-		expScope.extent = extent;
+		expScope.extent = fullExtent;
 		expScope.workgroupSize = workgroupSize;
 		RenderPasses::ToneMapPass(frameCtx, expScope);
 

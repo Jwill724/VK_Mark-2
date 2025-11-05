@@ -106,41 +106,40 @@ float PCFPoisson(sampler2DArray sm, vec2 uv, uint layer, float z, float bias, fl
 	return s * (1.0 / 8.0);
 }
 
-float PCFShadow(sampler2DArray shadowMap, vec2 baseUV, uint layer, float curDepth, float bias, float texelSize, int kernelSize) {
-	float shadow = 0.0;
-	int samples = (2 * kernelSize + 1) * (2 * kernelSize + 1);
-	vec2 texel = vec2(texelSize, texelSize);
-
-	for (int x = -kernelSize; x <= kernelSize; ++x) {
-		for (int y = -kernelSize; y <= kernelSize; ++y) {
-			vec2 offset = vec2(float(x), float(y)) * texel;
-			float sampledDepth = texture(shadowMap, vec3(baseUV + offset, float(layer))).r;
-			if ((curDepth - bias) < sampledDepth) {
-				shadow += 1.0;
-			}
-		}
-	}
-	return shadow / float(samples);
-}
+//float PCFShadow(sampler2DArray shadowMap, vec2 baseUV, uint layer, float curDepth, float bias, float texelSize, int kernelSize) {
+//	float shadow = 0.0;
+//	int samples = (2 * kernelSize + 1) * (2 * kernelSize + 1);
+//	vec2 texel = vec2(texelSize, texelSize);
+//
+//	for (int x = -kernelSize; x <= kernelSize; ++x) {
+//		for (int y = -kernelSize; y <= kernelSize; ++y) {
+//			vec2 offset = vec2(float(x), float(y)) * texel;
+//			float sampledDepth = texture(shadowMap, vec3(baseUV + offset, float(layer))).r;
+//			if ((curDepth - bias) < sampledDepth) {
+//				shadow += 1.0;
+//			}
+//		}
+//	}
+//	return shadow / float(samples);
+//}
 
 void main()
 {
 	// fetch material
 	Material mat = MaterialBuffer(globalAddressTable.addrs[ABT_Material]).materials[inMaterialID];
 
+	vec4 base = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
+	if (base.a < mat.alphaCutoff) discard;
+
 	// geometry basis (world space)
 	vec3 N = normalize(inNormal);
 
 	if (DBG(showNormals)) RET(N * 0.5 + 0.5, 1.0);
 
-	// base data
-	vec4 base   = texture(combinedSamplers[nonuniformEXT(mat.albedoID)], inUV) * mat.colorFactor;
-	float ao    = texture(combinedSamplers[nonuniformEXT(mat.aoID)],     inUV).r * mat.ambientOcclusion;
+	float ao = texture(combinedSamplers[nonuniformEXT(mat.aoID)], inUV).r * mat.ambientOcclusion;
 	float rough = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).g * mat.metalRoughFactors.y;
 	float metal = texture(combinedSamplers[nonuniformEXT(mat.metalRoughnessID)], inUV).b * mat.metalRoughFactors.x;
 	vec3 emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
-
-	if (mat.passType == PASS_OPAQUE && base.a < mat.alphaCutoff) discard;
 
 	vec3 albedo = inColor * base.rgb;
 	vec3 emissive = emissT * mat.emissiveColor * mat.emissiveStrength;

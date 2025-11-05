@@ -310,7 +310,6 @@ void ResourceManager::initRenderTargets(
 		allocator);
 
 	// SSAO pass images
-
 	VkImageUsageFlags ssaoUsages{};
 	ssaoUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 	ssaoUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -652,6 +651,7 @@ void ResourceManager::initTextures(
 	_metalRoughMat.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
 	_metalRoughMat.mipmapped = true;
 
+	// From what I've read about modern GLTF pbr, g is roughness and b is metallic.
 	uint8_t mrPixelData[4] {
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(0.5f * 255), // roughness

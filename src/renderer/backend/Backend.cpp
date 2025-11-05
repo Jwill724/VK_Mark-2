@@ -248,15 +248,8 @@ void Backend::createLogicalDevice() {
 	features14.maintenance5 = VK_TRUE;
 	features14.maintenance6 = VK_TRUE;
 
-	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomicFloatFeatures {
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT
-	};
-	atomicFloatFeatures.shaderBufferFloat32Atomics = VK_TRUE;
-	atomicFloatFeatures.shaderBufferFloat32AtomicAdd = VK_TRUE;
-
 	features14.pNext = nullptr;
-	atomicFloatFeatures.pNext = &features14;
-	features13.pNext = &atomicFloatFeatures;
+	features13.pNext = &features14;
 	features12.pNext = &features13;
 	features11.pNext = &features12;
 	baseFeatures.pNext = &features11;

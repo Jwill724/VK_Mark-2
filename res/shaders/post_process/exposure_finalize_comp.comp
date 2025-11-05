@@ -63,12 +63,12 @@ void main()
 
 		totalLog += sharedSum[0];
 
-		uint pixelCount = max(uint(scene.viewportSize.z) / 4u, 1u);
+		uint pixelCount = max(uint(scene.viewportSize.z), 1u);
 
 		float Lavg = exp(totalLog / float(pixelCount));
 		Lavg = clamp(Lavg, 0.001, 100.0);
 
-		float exposure = 0.22 / Lavg;
+		float exposure = 0.18 / Lavg;
 
 		lBuf.luminanceSums[0] = vec4(exposure, 0.0, 0.0, 0.0);
 	}

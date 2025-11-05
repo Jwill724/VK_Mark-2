@@ -68,7 +68,7 @@ void main() {
 	vec3 normal = normalize(texture(normalTex, uv).xyz * 2.0 - 1.0);
 
 	// Noise rotation (tangent space basis)
-	vec3 randomVec = normalize(texture(noiseTex, uv * pc.screenSize / 4.0).xyz);
+	vec3 randomVec = normalize(texture(noiseTex, uv * (pc.screenSize / 4.0)).xyz);
 	vec3 tangent = normalize(randomVec - normal * dot(randomVec, normal));
 	vec3 bitangent = cross(normal, tangent);
 	mat3 TBN = mat3(tangent, bitangent, normal);
