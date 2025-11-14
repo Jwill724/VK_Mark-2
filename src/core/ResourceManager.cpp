@@ -8,6 +8,7 @@
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
+	EnvironmentSet _environmentSets[MAX_ENV_SETS];
 	GPUEnvMapIndexArray _envMapIdxArray; // uniform
 	glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE]{}; // uniform
 	glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) }; // ssbo
@@ -94,21 +95,11 @@ namespace ResourceManager {
 	const VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
 	const VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
 
-
-	AllocatedImage _skyboxImage;
-	AllocatedImage& getSkyBoxImage() { return _skyboxImage; }
-
 	VkSampler _skyBoxSampler;
 	const VkSampler getSkyBoxSampler() { return _skyBoxSampler; }
 
-	AllocatedImage _specularPrefilterImage;
-	AllocatedImage& getSpecularPrefilterImage() { return _specularPrefilterImage; }
-
 	VkSampler _specularPrefilterSampler;
 	const VkSampler getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
-
-	AllocatedImage _irradianceImage;
-	AllocatedImage& getIrradianceImage() { return _irradianceImage; }
 
 	VkSampler _irradianceSampler;
 	const VkSampler getIrradianceSampler() { return _irradianceSampler; }
@@ -410,7 +401,7 @@ void ResourceManager::initShadowMapImages(
 
 	_shadowMapSampler = ImageUtils::createSampler(
 		device,
-		VK_FILTER_NEAREST,
+		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		0.0f,
 		1.0f,
@@ -481,11 +472,13 @@ void ResourceManager::initRenderSamplers(
 	);
 }
 
-void ResourceManager::initEnvironmentImages(
+EnvironmentSet ResourceManager::initEnvironmentSetImages(
 	const VkDevice device,
 	DeletionQueue& queue,
 	const VmaAllocator allocator)
 {
+	EnvironmentSet env{};
+
 	VkImageUsageFlags usage =
 		VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT |
@@ -495,19 +488,56 @@ void ResourceManager::initEnvironmentImages(
 	VkFormat environmentFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	// SKYBOX
-	_skyboxImage.imageExtent = Environment::CUBEMAP_EXTENTS;
-	_skyboxImage.imageFormat = environmentFormat;
-	_skyboxImage.isCubeMap = true;
-	_skyboxImage.mipmapped = true;
+	env.skybox.imageExtent = Environment::CUBEMAP_EXTENTS;
+	env.skybox.imageFormat = environmentFormat;
+	env.skybox.isCubeMap = true;
+	env.skybox.mipmapped = true;
 
 	ImageUtils::createRenderImage(
 		device,
-		_skyboxImage,
+		env.skybox,
 		usage,
 		samples,
 		queue,
 		allocator);
 
+	// SPECULAR
+	env.specular.imageExtent = Environment::CUBEMAP_EXTENTS;
+	env.specular.imageFormat = environmentFormat;
+	env.specular.isCubeMap = true;
+	env.specular.mipmapped = true;
+	env.specular.perMipStorageViews = true;
+	env.specular.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
+
+	ImageUtils::createRenderImage(
+		device,
+		env.specular,
+		usage,
+		samples,
+		queue,
+		allocator);
+
+	// IRRADIANCE
+	env.irradiance.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
+	env.irradiance.imageFormat = environmentFormat;
+	env.irradiance.isCubeMap = true;
+
+	ImageUtils::createRenderImage(
+		device,
+		env.irradiance,
+		usage,
+		samples,
+		queue,
+		allocator);
+
+	return env;
+}
+
+void ResourceManager::initStaticEnvironmentImages(
+	const VkDevice device,
+	DeletionQueue& queue,
+	const VmaAllocator allocator)
+{
 	_skyBoxSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
@@ -516,41 +546,13 @@ void ResourceManager::initEnvironmentImages(
 		0.0f,
 		&queue);
 
-	_specularPrefilterImage.imageExtent = Environment::CUBEMAP_EXTENTS;
-	_specularPrefilterImage.imageFormat = environmentFormat;
-	_specularPrefilterImage.isCubeMap = true;
-	_specularPrefilterImage.mipmapped = true;
-	_specularPrefilterImage.perMipStorageViews = true;
-	_specularPrefilterImage.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
-
-	ImageUtils::createRenderImage(
-		device,
-		_specularPrefilterImage,
-		usage,
-		samples,
-		queue,
-		allocator);
-
 	_specularPrefilterSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		static_cast<float>(_specularPrefilterImage.mipLevelCount - 1),
+		static_cast<float>(Environment::SPECULAR_PREFILTERED_MIP_LEVELS - 1),
 		0.0f,
 		&queue);
-
-
-	_irradianceImage.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
-	_irradianceImage.imageFormat = environmentFormat;
-	_irradianceImage.isCubeMap = true;
-
-	ImageUtils::createRenderImage(
-		device,
-		_irradianceImage,
-		usage,
-		samples,
-		queue,
-		allocator);
 
 	_irradianceSampler = ImageUtils::createSampler(
 		device,
@@ -570,7 +572,7 @@ void ResourceManager::initEnvironmentImages(
 		VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-		samples,
+		VK_SAMPLE_COUNT_1_BIT,
 		queue,
 		allocator);
 

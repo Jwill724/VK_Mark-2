@@ -554,32 +554,38 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 
 		if (e.samplerCubeIndex != UINT32_MAX && e.samplerCubeIndex < table.samplerCubeViews.size()) {
 			const auto& info = table.samplerCubeViews[e.samplerCubeIndex];
-			/*fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
-				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));*/
+			if (ENABLE_DEBUG_LOGS) {
+				fmt::print("[LUT {}] Pushing SamplerCube: view={}, sampler={}, layout=0x{:08X}\n",
+					i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
+			}
 			samplerCubeDescriptors.push_back(info);
 		}
 		//else {
-		//	fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
+		//	if (ENABLE_DEBUG_LOGS) fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
 		//}
 
 		if (e.storageImageIndex != UINT32_MAX && e.storageImageIndex < table.storageViews.size()) {
 			const auto& info = table.storageViews[e.storageImageIndex];
-			/*fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
-				i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));*/
+			if (ENABLE_DEBUG_LOGS) {
+				fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
+					i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
+			}
 			storageDescriptors.push_back(info);
 		}
 		//else {
-		//	fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
+		//	if (ENABLE_DEBUG_LOGS) fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
 		//}
 
 		if (e.combinedImageIndex != UINT32_MAX && e.combinedImageIndex < table.combinedViews.size()) {
 			const auto& info = table.combinedViews[e.combinedImageIndex];
-			/*fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
-				i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>((uint32_t)info.imageLayout));*/
+			if (ENABLE_DEBUG_LOGS) {
+				fmt::print("[LUT {}] Pushing CombinedImage: view={}, sampler={}, layout=0x{:08X}\n",
+					i, (void*)info.imageView, (void*)info.sampler, static_cast<uint32_t>(info.imageLayout));
+			}
 			combinedDescriptors.push_back(info);
 		}
 		//else {
-		//	fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
+		//	if (ENABLE_DEBUG_LOGS) fmt::print("[LUT {}] Skipped CombinedImage (invalid index = {})\n", i, e.combinedImageIndex);
 		//}
 	}
 }

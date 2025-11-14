@@ -34,6 +34,12 @@ struct ImageLUTEntry {
 	static constexpr ImageLUTEntry SamplerCubeOnly(uint32_t id) {
 		return ImageLUTEntry{ .samplerCubeIndex = id };
 	}
+
+	inline void reset() noexcept {
+		combinedImageIndex = UINT32_MAX;
+		storageImageIndex = UINT32_MAX;
+		samplerCubeIndex = UINT32_MAX;
+	}
 };
 
 struct ImageLUTManager {
@@ -187,6 +193,7 @@ inline uint32_t ImageTable::pushStorage(VkImageView view, ThreadContext* threadC
 	return index;
 }
 
+// Controls bindless image creation, storing indexes
 struct ImageTableManager {
 	ImageTable table;
 
@@ -236,12 +243,28 @@ struct AllocatedImage {
 	bool isCubeMap = false;
 };
 
+struct alignas(16) SpecularPC {
+	float roughness;
+	uint32_t width;
+	uint32_t height;
+	uint32_t sampleCount;
+};
+
+struct EnvironmentSet {
+	AllocatedImage irradiance;
+	AllocatedImage specular;
+	AllocatedImage skybox;
+	uint32_t setIndex = UINT32_MAX;
+	std::vector<SpecularPC> specularPCs{};
+	AllocatedImage equirect; // Temp image
+};
+
 struct ModelDataCounts {
-	uint32_t totalVertexCount = 0;
-	uint32_t totalIndexCount = 0;
-	uint32_t totalMaterialCount = 0;
-	uint32_t totalMeshCount = 0;
-	uint32_t totalTransformCount = 0;
+	uint32_t totalVertexCount = 0u;
+	uint32_t totalIndexCount = 0u;
+	uint32_t totalMaterialCount = 0u;
+	uint32_t totalMeshCount = 0u;
+	uint32_t totalTransformCount = 0u;
 };
 
 
@@ -335,7 +358,7 @@ struct AllocatedBuffer {
 //};
 //static_assert(sizeof(CullingPushConstantsAddrs) == 256);
 
-// Opaque and transparent distinction in shared instance/indirectcmd buffers
+// Opaque and transparent distinction in shared instance/indirect cmd buffers
 struct PassRange {
 	uint32_t first = 0;
 	uint32_t visibleCount = 0;

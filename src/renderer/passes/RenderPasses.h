@@ -14,7 +14,7 @@ namespace RenderPasses {
 	};
 
 	struct ComputeDispatchScope {
-		VkExtent2D extent{ 0u, 0u };
+		VkExtent2D extent{ 0u, 0u }; // Always set extent to storage output
 		VkExtent3D workgroupSize{ 8u, 8u, 1u };
 		uint32_t groupCountX = 0u;
 		uint32_t groupCountY = 0u;
@@ -61,19 +61,11 @@ namespace RenderPasses {
 		const PipelineHandle& pipeHandle,
 		Profiler& profiler);
 
-	void ExposureReducePass(FrameContext& frameCtx,
-		ComputeDispatchScope& expScopee);
-
-	void ExposureFinalizePass(FrameContext& frameCtx,
-		ComputeDispatchScope& expScope);
-
-	void ToneMapPass(FrameContext& frameCtx,
-		ComputeDispatchScope& expScope);
-
 	void dispatchComputePass(
-		FrameContext& frameCtx,
+		VkCommandBuffer cmd,
 		const PipelineHandle& pipeHandle,
-		ComputeDispatchScope& scope);
+		ComputeDispatchScope& scope,
+		DescriptorWriter& writer);
 
 	inline VkRenderingAttachmentInfo makeAttachmentInfo(const AttachmentDesc& desc) {
 		VkRenderingAttachmentInfo info{ VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO };

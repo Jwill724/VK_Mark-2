@@ -8,13 +8,13 @@
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_STORAGE_IMAGE, rg16f) uniform writeonly image2D storageImages[];
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX) writeonly uniform image2D brdfStorage;
 
 const float PI = 3.14159265359;
 
-layout(push_constant) uniform PushConstants {
-	uint mipLevelCount;
-	uint brdfViewIdx;
+layout(push_constant) uniform EnvData {
+	float sampleCountF;
+	uint sampleCountU;
 	uint pad0[2];
 } pc;
 
@@ -90,7 +90,7 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
 	vec3 N = vec3(0.0, 0.0, 1.0);
 
-	const uint SAMPLE_COUNT = pc.mipLevelCount;
+	const uint SAMPLE_COUNT = pc.sampleCountU;
 	for(uint i = 0u; i < SAMPLE_COUNT; ++i)
 	{
 		vec2 Xi = Hammersley(i, SAMPLE_COUNT);
@@ -119,12 +119,12 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 void main()
 {
 	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 imgSize = imageSize(storageImages[nonuniformEXT(pc.brdfViewIdx)]);
+	ivec2 imgSize = imageSize(brdfStorage);
 
 	if (id.x >= imgSize.x || id.y >= imgSize.y) return;
 
 	vec2 TexCoords = (vec2(id) + vec2(0.5)) / vec2(imgSize);
 	vec2 integratedBRDF = IntegrateBRDF(TexCoords.x, TexCoords.y);
 
-	imageStore(storageImages[nonuniformEXT(pc.brdfViewIdx)], id, vec4(integratedBRDF, 0.0, 0.0));
+	imageStore(brdfStorage, id, vec4(integratedBRDF, 0.0, 0.0));
 }

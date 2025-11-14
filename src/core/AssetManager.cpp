@@ -256,18 +256,21 @@ void AssetManager::processMaterials(
 	std::vector<GPUMaterial> materialUploadList;
 	materialUploadList.reserve(totalMatCount);
 
+	const auto defaultLinear = ResourceManager::getDefaultSamplerLinear();
+	const auto defaultNearest = ResourceManager::getDefaultSamplerNearest();
+
 	// Default/fallback images
 	MaterialResources materialResources {
 		.albedoImage = ResourceManager::getWhiteMat(),
-		.albedoSampler = ResourceManager::getDefaultSamplerLinear(),
+		.albedoSampler = defaultLinear,
 		.metalRoughImage = ResourceManager::getMetalRoughMat(),
-		.metalRoughSampler = ResourceManager::getDefaultSamplerNearest(),
+		.metalRoughSampler = defaultNearest,
 		.aoImage = ResourceManager::getAOMat(),
-		.aoSampler = ResourceManager::getDefaultSamplerNearest(),
+		.aoSampler = defaultNearest,
 		.normalImage = ResourceManager::getNormaMat(),
-		.normalSampler = ResourceManager::getDefaultSamplerLinear(),
+		.normalSampler = defaultLinear,
 		.emissiveImage = ResourceManager::getEmissiveMat(),
-		.emissiveSampler = ResourceManager::getDefaultSamplerLinear(),
+		.emissiveSampler = defaultLinear,
 	};
 
 	// Default lut indexes

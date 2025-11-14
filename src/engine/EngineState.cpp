@@ -45,21 +45,18 @@ void EngineState::init() {
 	ResourceManager::initRenderSamplers(device, dQueue);
 	ResourceManager::initShadowMapImages(device, dQueue, mainAllocator);
 	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDQueue(), mainAllocator);
-	ResourceManager::initEnvironmentImages(device, dQueue, mainAllocator);
+	ResourceManager::initStaticEnvironmentImages(device, dQueue, mainAllocator);
 
 	RenderScene::setScene();
 
 	PipelineManager::initPipelines(dQueue);
 
-	// early environment compute work
-	// all work is cleared afterward
-	Environment::dispatchEnvironmentMaps(device, _resources, ResourceManager::_globalImageManager);
+	Environment::dispatchEnvironmentMaps(
+		device,
+		_resources);
 
 	_resources.getTempDQueue().flush();
-
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
-	_resources.clearLUTEntries();
-	ResourceManager::_globalImageManager.clear();
 }
 
 void EngineState::loadAssets(Profiler& engineProfiler) {
@@ -253,63 +250,42 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// CSM image
 	auto& shadowImg = ResourceManager::getShadowMapImage();
 	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, ResourceManager::getShadowMapSampler());
-	_resources.addImageLUTEntry(shadowImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(shadowImg.lutEntry.combinedImageIndex));
 
 	// === ENVIRONMENT IMAGE SETUP ===
-	auto& skyboxImg = ResourceManager::getSkyBoxImage();
 	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
-
-	auto& diffuseImg = ResourceManager::getIrradianceImage();
-	auto diffuseSmpl = ResourceManager::getIrradianceSampler();
-
-	auto& specImg = ResourceManager::getSpecularPrefilterImage();
+	auto irradianceSmpl = ResourceManager::getIrradianceSampler();
 	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
-
 	auto& brdfImg = ResourceManager::getBRDFImage();
 	auto brdfSmpl = ResourceManager::getBRDFSampler();
 
-	// In current implementation the entries must be pushed in proper order
-	// Diffuse -> Specular -> BRDF -> Skybox
-	// Uniforms are strict and environment images work in sets of 4
-	std::vector<ImageLUTEntry> tempEnvMapIdx;
-	diffuseImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(diffuseImg.imageView, diffuseSmpl);
-	tempEnvMapIdx.push_back(diffuseImg.lutEntry);
-	_resources.addImageLUTEntry(diffuseImg.lutEntry);
-
-	specImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specImg.imageView, specSmpl);
-	tempEnvMapIdx.push_back(specImg.lutEntry);
-	_resources.addImageLUTEntry(specImg.lutEntry);
-
 	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.imageView, brdfSmpl);
-	tempEnvMapIdx.push_back(brdfImg.lutEntry);
-	_resources.addImageLUTEntry(brdfImg.lutEntry);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(brdfImg.lutEntry.combinedImageIndex));
 
-	skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
-	tempEnvMapIdx.push_back(skyboxImg.lutEntry);
-	_resources.addImageLUTEntry(skyboxImg.lutEntry);
+	for (auto& env : ResourceManager::_environmentSets) {
+		if (env.setIndex == UINT32_MAX) break;
 
-	ASSERT(tempEnvMapIdx.size() % 4 == 0 && "Environment LUT entries must be in sets of 4");
+		auto& irradianceImg = env.irradiance;
+		auto& specularImg = env.specular;
+		auto& skyboxImg = env.skybox;
 
-	uint32_t setIndex = 0;
-	for (size_t i = 0; i < tempEnvMapIdx.size(); i += 4) {
-		const ImageLUTEntry& diffuse = tempEnvMapIdx[i];
-		const ImageLUTEntry& specular = tempEnvMapIdx[i + 1];
-		const ImageLUTEntry& brdf = tempEnvMapIdx[i + 2];
-		const ImageLUTEntry& skybox = tempEnvMapIdx[i + 3];
+		irradianceImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(irradianceImg.imageView, irradianceSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(irradianceImg.lutEntry.samplerCubeIndex));
 
-		ASSERT(diffuse.samplerCubeIndex != UINT32_MAX);
-		ASSERT(specular.samplerCubeIndex != UINT32_MAX);
-		ASSERT(brdf.combinedImageIndex != UINT32_MAX);
-		ASSERT(skybox.samplerCubeIndex != UINT32_MAX);
+		specularImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specularImg.imageView, specSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(specularImg.lutEntry.samplerCubeIndex));
+
+		skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(skyboxImg.lutEntry.samplerCubeIndex));
 
 		glm::uvec4 envEntry{};
-		envEntry.x = diffuse.samplerCubeIndex;
-		envEntry.y = specular.samplerCubeIndex;
-		envEntry.z = brdf.combinedImageIndex;
-		envEntry.w = skybox.samplerCubeIndex;
+		envEntry.x = irradianceImg.lutEntry.samplerCubeIndex;
+		envEntry.y = specularImg.lutEntry.samplerCubeIndex;
+		envEntry.z = brdfImg.lutEntry.combinedImageIndex;
+		envEntry.w = skyboxImg.lutEntry.samplerCubeIndex;
 
-		ASSERT(setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
-		ResourceManager::_envMapIdxArray.indices[setIndex++] = envEntry;
+		ASSERT(env.setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
+		ResourceManager::_envMapIdxArray.indices[env.setIndex] = envEntry;
 	}
 
 	_resources.envMapIndexBuffer = BufferUtils::createUniformBuffer(ResourceManager::_envMapIdxArray, mainAllocator);

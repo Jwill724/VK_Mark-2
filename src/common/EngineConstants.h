@@ -28,8 +28,8 @@ static constexpr uint32_t MSAACOUNT_2 = 2u;
 constexpr uint32_t MAX_MIP_LEVELS = 12u;
 constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * ivec4(16 bytes)
 constexpr uint32_t MAX_CASCADES = 3u;  // For shadows
-constexpr uint32_t KERNEL_BLOCK_SIZE = 128; // ssao kernel
-constexpr uint32_t MAX_LUMINANCE_GROUPS = 65536;
+constexpr uint32_t KERNEL_BLOCK_SIZE = 128u; // ssao kernel
+constexpr uint32_t MAX_LUMINANCE_GROUPS = 65536u;
 
 // Descriptor info
 constexpr uint32_t GLOBAL_SET = 0u;

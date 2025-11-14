@@ -189,9 +189,10 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	// =================
 	// === MAIN SSAO ===
 	RenderPasses::dispatchComputePass(
-		frameCtx,
+		frameCtx.cmdBuffer,
 		Pipelines::getHandle(PipelineID::SSAO),
-		ssaoScope);
+		ssaoScope,
+		frameCtx.descriptorWriter);
 
 
 	// ============================
@@ -227,9 +228,10 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	);
 
 	RenderPasses::dispatchComputePass(
-		frameCtx,
+		frameCtx.cmdBuffer,
 		Pipelines::getHandle(PipelineID::SSAOBlurH),
-		ssaoScope);
+		ssaoScope,
+		frameCtx.descriptorWriter);
 
 	// ==========================
 	// === SSAO BLUR VERTICAL ===
@@ -263,9 +265,10 @@ void RenderPasses::SSAOPass(FrameContext& frameCtx, ComputeDispatchScope ssaoSco
 	);
 
 	RenderPasses::dispatchComputePass(
-		frameCtx,
+		frameCtx.cmdBuffer,
 		Pipelines::getHandle(PipelineID::SSAOBlurV),
-		ssaoScope);
+		ssaoScope,
+		frameCtx.descriptorWriter);
 
 	// Final transition before lighting
 	// ssaoBlurV final output
@@ -505,27 +508,6 @@ void RenderPasses::CascadeVPLinePass(
 	}
 }
 
-void RenderPasses::ExposureReducePass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
-	RenderPasses::dispatchComputePass(
-		frameCtx,
-		Pipelines::getHandle(PipelineID::ExposureReduce),
-		expScope);
-}
-
-void RenderPasses::ExposureFinalizePass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
-	RenderPasses::dispatchComputePass(
-		frameCtx,
-		Pipelines::getHandle(PipelineID::ExposureFinalize),
-		expScope);
-}
-
-void RenderPasses::ToneMapPass(FrameContext& frameCtx, ComputeDispatchScope& expScope) {
-	RenderPasses::dispatchComputePass(
-		frameCtx,
-		Pipelines::getHandle(PipelineID::ToneMap),
-		expScope);
-}
-
 void RenderPasses::beginRendering(
 	VkCommandBuffer cmd,
 	const std::vector<AttachmentDesc>& images,
@@ -562,17 +544,19 @@ void RenderPasses::beginRendering(
 }
 
 // Agnostic for all compute passes
+// Can take in a dummy writer
 void RenderPasses::dispatchComputePass(
-	FrameContext& frameCtx,
+	VkCommandBuffer cmd,
 	const PipelineHandle& pipeHandle,
-	ComputeDispatchScope& scope)
+	ComputeDispatchScope& scope,
+	DescriptorWriter& writer)
 {
-	vkCmdBindPipeline(frameCtx.cmdBuffer, pipeHandle.bindPoint, pipeHandle.pipeline);
+	vkCmdBindPipeline(cmd, pipeHandle.bindPoint, pipeHandle.pipeline);
 
 	if (scope.pushData && scope.pushSize > 0) {
 		const PipelineLayoutConst globalLayout = Pipelines::_globalLayout;
 		vkCmdPushConstants(
-			frameCtx.cmdBuffer,
+			cmd,
 			globalLayout.layout,
 			globalLayout.pcRange.stageFlags,
 			globalLayout.pcRange.offset,
@@ -580,10 +564,9 @@ void RenderPasses::dispatchComputePass(
 			scope.pushData);
 	}
 
-	auto& writer = frameCtx.descriptorWriter;
 	if (writer.enablePushDescriptor) {
 		writer.updatePushSet(
-			frameCtx.cmdBuffer,
+			cmd,
 			pipeHandle.bindPoint,
 			Pipelines::_globalLayout.layout);
 	}
@@ -591,7 +574,7 @@ void RenderPasses::dispatchComputePass(
 	scope.calculateGroups();
 
 	vkCmdDispatch(
-		frameCtx.cmdBuffer,
+		cmd,
 		scope.groupCountX,
 		scope.groupCountY,
 		scope.groupCountZ);

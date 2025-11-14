@@ -44,7 +44,8 @@ struct DebugToggles {
 
 	uint enableSSAO;
 	uint enableShadows;
-	uint pad0[2];
+	uint activeEnvMap;
+	uint pad0;
 
 	// draw stats
 	uint meshCount;

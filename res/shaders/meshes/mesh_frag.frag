@@ -142,16 +142,16 @@ void main()
 	vec3 emissT = texture(combinedSamplers[nonuniformEXT(mat.emissiveID)], inUV).rgb;
 
 	vec3 albedo = inColor * base.rgb;
-	vec3 emissive = emissT * mat.emissiveColor * mat.emissiveStrength;
+	vec3 emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
 
 	rough = clamp(rough, 0.04, 1.0);
 	metal = clamp(metal, 0.0, 1.0);
 
-	if (DBG(showAlbedo))     RET(albedo, base.a);
-	if (DBG(showEmissive))   RET(emissive, base.a);
-	if (DBG(showAO))         RET(vec3(ao), base.a);
-	if (DBG(showMetallic))   RET(vec3(metal), base.a);
-	if (DBG(showRoughness))  RET(vec3(rough), base.a);
+	if (DBG(showAlbedo))    RET(albedo, base.a);
+	if (DBG(showEmissive))  RET(emissive, base.a);
+	if (DBG(showAO))        RET(vec3(ao), base.a);
+	if (DBG(showMetallic))  RET(vec3(metal), base.a);
+	if (DBG(showRoughness)) RET(vec3(rough), base.a);
 
 	vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
 
@@ -165,7 +165,7 @@ void main()
 
 	// SSAO combine
 	float aoFinal = ao;
-	if (mat.passType == PASS_OPAQUE && DBG(enableSSAO)) {
+	if (DBG(enableSSAO) && mat.passType == PASS_OPAQUE) {
 		float ssaoFactor = texture(ssaoFinal, uv).r;
 		if(DBG(showSSAO)) {
 			RET(vec3(ssaoFactor), 1.0);
@@ -179,9 +179,11 @@ void main()
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(N, V, L, H, F0, rough);
 
-	const uint irrIdx  = envMapSet.indices[0].x;
-	const uint specIdx = envMapSet.indices[0].y;
-	const uint brdfIdx = envMapSet.indices[0].z;
+	// ENVIRONMENT INDICES
+	const uint envMapID = debug.activeEnvMap;
+	const uint irrIdx = envMapSet.indices[envMapID].x;
+	const uint specIdx = envMapSet.indices[envMapID].y;
+	const uint brdfIdx = envMapSet.indices[envMapID].z;
 
 	// multi-scatter energy compensation for direct spec
 	vec2 brdf = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, rough)).rg;
@@ -263,7 +265,7 @@ void main()
 	vec3 direct = (diff + spec) * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL * shadow;
 
 	// IBL ambient
-	vec3 F_ibl  = F_SchlickRoughness(F0, NdotV, rough);
+	vec3 F_ibl = F_SchlickRoughness(F0, NdotV, rough);
 	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);
 
 	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;

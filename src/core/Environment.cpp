@@ -4,42 +4,18 @@
 #include "engine/Engine.h"
 #include "AssetManager.h"
 #include "renderer/Renderer.h"
+#include "renderer/Passes/RenderPasses.h"
 
-struct alignas(16) SpecularPC {
-	float roughness;
-	uint32_t width;
-	uint32_t height;
-	uint32_t sampleCount;
-	uint32_t skyboxViewIdx;
-	uint32_t specularStorageIdx;
-	uint32_t pad[2];
+struct alignas(16) EnvData {
+	float sampleCountF = 0.0f;
+	uint32_t sampleCountU = 0u;
+	uint32_t pad0[2];
 };
 
 // Practically all environment shaders are based off this
 // https://www.williscool.com/technical/environmentMapping.md.html
 
 namespace Environment {
-	void dispatchPrefilterEnvmap(
-		VkCommandBuffer cmd,
-		std::vector<SpecularPC> pushConstants,
-		VkPipeline pipeline,
-		PipelineLayoutConst layout);
-	void dispatchDiffuseIrradiance(
-		VkCommandBuffer cmd,
-		ImageLUTEntry entry,
-		VkPipeline pipeline,
-		PipelineLayoutConst layout);
-	void dispatchHDRToCubemap(
-		VkCommandBuffer cmd,
-		ImageLUTEntry entry,
-		VkPipeline pipeline,
-		PipelineLayoutConst layout);
-	void dispatchBRDFLUT(
-		VkCommandBuffer cmd,
-		ImageLUTEntry entry,
-		VkPipeline pipeline,
-		PipelineLayoutConst layout);
-
 	AllocatedImage loadHDR(
 		const char* hdrPath,
 		VkCommandPool cmdPool,
@@ -57,7 +33,6 @@ AllocatedImage Environment::loadHDR(
 	const VmaAllocator allocator,
 	const VkDevice device)
 {
-
 	int w, h, channels;
 	float* hdrData = stbi_loadf(hdrPath, &w, &h, &channels, 4);
 
@@ -86,201 +61,194 @@ AllocatedImage Environment::loadHDR(
 	return equirect;
 }
 
-// TODO: Enable loading of more than one environment map at once
 void Environment::dispatchEnvironmentMaps(
 	const VkDevice device,
-	GPUResources& resources,
-	ImageTableManager& globalImgTable)
+	GPUResources& resources)
 {
-	AllocatedImage equirect = loadHDR("res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
-		resources.getGraphicsPool(),
-		resources.getTempDQueue(),
-		resources.getTempDQueue(),
-		resources.getAllocator(),
-		device);
+	std::vector<const char*> hdrPaths = {
+		"res/assets/envhdr/san_giuseppe_bridge_4k.hdr",
+		"res/assets/envhdr/rogland_clear_night_4k.hdr",
+		"res/assets/envhdr/meadow_4k.hdr",
+		"res/assets/envhdr/belfast_sunset_puresky_4k.hdr",
+		"res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
+		"res/assets/envhdr/wasteland_clouds_4k.hdr"
+	};
 
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_puresky_4k.hdr",
-	//	resources.getGraphicsPool(),
-	//	resources.getTempDQueue(),
-	//	resources.getTempDQueue(),
-	//	resources.getAllocator(),
-	//	device);
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/meadow_4k.hdr",
-	//	resources.getGraphicsPool(),
-	//	resources.getTempDQueue(),
-	//	resources.getTempDQueue(),
-	//	resources.getAllocator(),
-	//	device);
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/wasteland_clouds_4k.hdr",
-	//	resources.getGraphicsPool(),
-	//	resources.getTempDQueue(),
-	//	resources.getTempDQueue(),
-	//	resources.getAllocator(),
-	//	device);
-
-	// Diffuse sampling is terrible for this,
-	// probably due to sun blotches
-	//AllocatedImage equirect = loadHDR("res/assets/envhdr/san_giuseppe_bridge_4k.hdr",
-	//	resources.getGraphicsPool(),
-	//	resources.getTempDQueue(),
-	//	resources.getTempDQueue(),
-	//	resources.getAllocator(),
-	//	device);
-
-	auto& skyboxImg = ResourceManager::getSkyBoxImage();
 	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
-
-	auto& diffuseImg = ResourceManager::getIrradianceImage();
-	auto diffuseSmpl = ResourceManager::getIrradianceSampler();
-
-	auto& specImg = ResourceManager::getSpecularPrefilterImage();
+	auto irradianceSmpl = ResourceManager::getIrradianceSampler();
 	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
-
 	auto& brdfImg = ResourceManager::getBRDFImage();
 
-	ImageLUTEntry tempEntryEquirect{};
-	ImageLUTEntry tempEntryDiffuse{};
-	ImageLUTEntry tempEntryBRDF{};
-
-	tempEntryEquirect.combinedImageIndex = globalImgTable.addCombinedImage(equirect.imageView, skyboxSmpl);
-	tempEntryEquirect.storageImageIndex = globalImgTable.addStorageImage(skyboxImg.storageView);
-	resources.addImageLUTEntry(tempEntryEquirect);
-
-	tempEntryBRDF.storageImageIndex = globalImgTable.addStorageImage(brdfImg.storageView);
-	resources.addImageLUTEntry(tempEntryBRDF);
-
-	tempEntryDiffuse.samplerCubeIndex = globalImgTable.addCubeImage(skyboxImg.imageView, diffuseSmpl);
-	tempEntryDiffuse.storageImageIndex = globalImgTable.addStorageImage(diffuseImg.storageView);
-	resources.addImageLUTEntry(tempEntryDiffuse);
-
-	// Storage view defined per mip level
-
-	uint32_t skyboxIdx = globalImgTable.addCubeImage(skyboxImg.imageView, specSmpl);
-	const uint32_t specMipLevels = specImg.mipLevelCount;
-
-	std::vector<SpecularPC> specularPushConstants;
-	for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
-		float roughness = static_cast<float>(mip) / static_cast<float>(specMipLevels - 1);
-
-		ImageLUTEntry tempEntrySpecular{};
-		tempEntrySpecular.samplerCubeIndex = skyboxIdx;
-
-		VkImageView mipView = specImg.storageViews[mip];
-		uint32_t storageIdx = globalImgTable.addStorageImage(mipView);
-		tempEntrySpecular.storageImageIndex = storageIdx;
-
-		resources.addImageLUTEntry(tempEntrySpecular);
-
-		SpecularPC pc{};
-		pc.skyboxViewIdx = tempEntrySpecular.samplerCubeIndex;
-		pc.specularStorageIdx = tempEntrySpecular.storageImageIndex;
-
-		pc.sampleCount = PREFILTER_SAMPLE_COUNT;
-		pc.roughness = roughness;
-		pc.width = std::max(1u, specImg.imageExtent.width >> mip);
-		pc.height = std::max(1u, specImg.imageExtent.height >> mip);
-
-		if (ENABLE_DEBUG_LOGS) {
-			fmt::print("\n--- Mip {} Prefilter Setup ---\n", mip);
-			fmt::print("-> Roughness: {:.3f}\n", roughness);
-			fmt::print("-> Skybox Sampler Index: {}\n", skyboxIdx);
-			fmt::print("-> Storage View Handle: {}\n", static_cast<void*>(mipView));
-			fmt::print("-> Pushed Storage Index: {}\n", storageIdx);
-			fmt::print("-> PushConstant: skyboxViewIdx = {}, storageIdx = {}\n", pc.skyboxViewIdx, pc.specularStorageIdx);
-			fmt::print("-> Dispatch Dimensions: {}x{} (SampleCount: {})\n", pc.width, pc.height, pc.sampleCount);
-		}
-
-		specularPushConstants.push_back(pc);
-	}
+	auto& mainDQueue = resources.getMainDQueue();
+	const auto alloc = resources.getAllocator();
 
 	auto& graphicsPool = resources.getGraphicsPool();
 	auto& graphicsQ = Backend::getGraphicsQueue();
+
+	uint32_t setCount = 0u;
+	for (const char* path : hdrPaths) {
+		EnvironmentSet env = ResourceManager::initEnvironmentSetImages(
+			device,
+			mainDQueue,
+			alloc);
+		env.setIndex = setCount;
+
+		env.equirect = loadHDR(path,
+			graphicsPool,
+			resources.getTempDQueue(),
+			resources.getTempDQueue(),
+			alloc,
+			device);
+
+		// Storage view defined per mip level
+		const uint32_t specMipLevels = env.specular.mipLevelCount;
+		env.specularPCs.resize(specMipLevels);
+		for (uint32_t mip = 0; mip < specMipLevels; ++mip) {
+			float roughness = static_cast<float>(mip) / static_cast<float>(specMipLevels - 1);
+
+			env.specularPCs[mip].sampleCount = PREFILTER_SAMPLE_COUNT;
+			env.specularPCs[mip].roughness = roughness;
+			env.specularPCs[mip].width = std::max(1u, env.specular.imageExtent.width >> mip);
+			env.specularPCs[mip].height = std::max(1u, env.specular.imageExtent.height >> mip);
+		}
+
+		ResourceManager::_environmentSets[setCount++] = env;
+	}
+
+	DescriptorWriter writer;
+
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		ImageUtils::transitionImage(cmd,
-			equirect.image,
-			equirect.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		ImageUtils::transitionImage(cmd,
-			skyboxImg.image,
-			skyboxImg.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_GENERAL);
-		ImageUtils::transitionImage(cmd,
-			specImg.image,
-			specImg.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_GENERAL);
-		ImageUtils::transitionImage(cmd,
-			diffuseImg.image,
-			diffuseImg.imageFormat,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_GENERAL);
+		RenderPasses::ComputeDispatchScope envScope;
+		EnvData envData;
+
+		for (auto& env : ResourceManager::_environmentSets) {
+			if (env.setIndex == UINT32_MAX) break;
+
+			auto& equirect = env.equirect;
+			auto& skyboxImg = env.skybox;
+			auto& specularImg = env.specular;
+			auto& irradianceImg = env.irradiance;
+
+			ImageUtils::transitionImage(cmd,
+				equirect.image,
+				equirect.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			ImageUtils::transitionImage(cmd,
+				skyboxImg.image,
+				skyboxImg.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+			ImageUtils::transitionImage(cmd,
+				specularImg.image,
+				specularImg.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+			ImageUtils::transitionImage(cmd,
+				irradianceImg.image,
+				irradianceImg.imageFormat,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_GENERAL);
+
+			// EQUIRECT TO CUBEMAP
+			writer.writePushImage(
+				PUSH_BINDING_INPUT_1_TEX,
+				equirect.imageView,
+				skyboxSmpl);
+			writer.writePushImage(
+				PUSH_BINDING_OUTPUT_TEX,
+				skyboxImg.storageView);
+
+			envScope.setPush(&envData); // Attach pointer once
+			envScope.extent = { skyboxImg.imageExtent.width, skyboxImg.imageExtent.height };
+			envScope.workgroupSize = { 16u, 16u, 6u }; // Only pass that needs 16x16
+
+			RenderPasses::dispatchComputePass(
+				cmd,
+				Pipelines::getHandle(PipelineID::HDRToCubemap),
+				envScope,
+				writer);
+			ImageUtils::transitionImage(cmd,
+				skyboxImg.image,
+				skyboxImg.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			ImageUtils::generateCubemapMiplevels(cmd, skyboxImg);
+
+			// DIFFUSE IRRADIANCE
+			writer.writePushImage(
+				PUSH_BINDING_INPUT_1_TEX,
+				skyboxImg.imageView,
+				irradianceSmpl);
+
+			writer.writePushImage(
+				PUSH_BINDING_OUTPUT_TEX,
+				irradianceImg.storageView);
+
+			envData.sampleCountF = DIFFUSE_SAMPLE_DELTA;
+			envScope.extent = { irradianceImg.imageExtent.width, irradianceImg.imageExtent.height };
+			envScope.workgroupSize = { 8u, 8u, 6u }; // Size for irradiance and specular
+
+			RenderPasses::dispatchComputePass(
+				cmd,
+				Pipelines::getHandle(PipelineID::DiffuseIrradiance),
+				envScope,
+				writer);
+			ImageUtils::transitionImage(cmd,
+				irradianceImg.image,
+				irradianceImg.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			// SPECULAR PREFILTER
+			for (uint32_t i = 0; i < specularImg.mipLevelCount; ++i) {
+				writer.writePushImage(
+					PUSH_BINDING_INPUT_1_TEX,
+					skyboxImg.imageView,
+					specSmpl);
+
+				writer.writePushImage(
+					PUSH_BINDING_OUTPUT_TEX,
+					specularImg.storageViews[i]);
+
+				envScope.extent = { env.specularPCs[i].width, env.specularPCs[i].height };
+				envScope.setPush(&env.specularPCs[i]);
+
+				RenderPasses::dispatchComputePass(
+					cmd,
+					Pipelines::getHandle(PipelineID::SpecularPrefilter),
+					envScope,
+					writer);
+			}
+
+			ImageUtils::transitionImage(cmd,
+				specularImg.image,
+				specularImg.imageFormat,
+				VK_IMAGE_LAYOUT_GENERAL,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+
+		// BRDF
+		writer.writePushImage(
+			PUSH_BINDING_OUTPUT_TEX,
+			brdfImg.storageView);
+
+		envData.sampleCountU = PREFILTER_SAMPLE_COUNT;
+		envScope.setPush(&envData);
+		envScope.workgroupSize = { 8u, 8u, 1u };
+		envScope.extent = { brdfImg.imageExtent.width, brdfImg.imageExtent.height };
+
 		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
 			brdfImg.imageFormat,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
-
-		// Write once
-		auto set = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
-		DescriptorWriter writer;
-		writer.writeFromImageLUT(resources.getLUTManager().getEntries(), globalImgTable.table);
-		writer.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, set);
-		writer.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, set);
-		writer.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, set);
-		writer.updateSet(device, set);
-
-
-		// Bind once
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, Pipelines::_globalLayout.layout, GLOBAL_SET, 1, &set, 0, nullptr);
-
-		dispatchHDRToCubemap(
+		RenderPasses::dispatchComputePass(
 			cmd,
-			tempEntryEquirect,
-			Pipelines::getPipeline(PipelineID::HDRToCubemap),
-			Pipelines::_globalLayout);
-		ImageUtils::transitionImage(cmd,
-			skyboxImg.image,
-			skyboxImg.imageFormat,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		ImageUtils::generateCubemapMiplevels(cmd, skyboxImg);
-
-
-		// DIFFUSE IRRADIANCE
-		dispatchDiffuseIrradiance(
-			cmd,
-			tempEntryDiffuse,
-			Pipelines::getPipeline(PipelineID::DiffuseIrradiance),
-			Pipelines::_globalLayout);
-		ImageUtils::transitionImage(cmd,
-			diffuseImg.image,
-			diffuseImg.imageFormat,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-
-		// SPECULAR PREFILTER
-		dispatchPrefilterEnvmap(
-			cmd,
-			specularPushConstants,
-			Pipelines::getPipeline(PipelineID::SpecularPrefilter),
-			Pipelines::_globalLayout);
-		ImageUtils::transitionImage(cmd,
-			specImg.image,
-			specImg.imageFormat,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-
-		// BRDF
-		dispatchBRDFLUT(
-			cmd,
-			tempEntryBRDF,
-			Pipelines::getPipeline(PipelineID::BRDFLUT),
-			Pipelines::_globalLayout);
+			Pipelines::getHandle(PipelineID::BRDFLUT),
+			envScope,
+			writer
+		);
 		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
 			brdfImg.imageFormat,
@@ -291,84 +259,4 @@ void Environment::dispatchEnvironmentMaps(
 
 	resources.getLastSubmittedFence() = Engine::getState().submitCommandBuffers(graphicsQ);
 	waitAndRecycleLastFence(resources.getLastSubmittedFence(), graphicsQ, device);
-}
-
-void Environment::dispatchHDRToCubemap(VkCommandBuffer cmd, ImageLUTEntry entry, VkPipeline pipeline, PipelineLayoutConst layout) {
-
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-
-	struct alignas(16) PC {
-		uint32_t equirectViewIdx;
-		uint32_t skyboxStorageIdx;
-		uint32_t pad0[2];
-	} pc{};
-
-	pc.equirectViewIdx = entry.combinedImageIndex;
-	pc.skyboxStorageIdx = entry.storageImageIndex;
-
-	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
-
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::CUBEMAP_EXTENTS.width) / 16.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::CUBEMAP_EXTENTS.height) / 16.0f));
-
-	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
-}
-
-void Environment::dispatchDiffuseIrradiance(VkCommandBuffer cmd, ImageLUTEntry entry, VkPipeline pipeline, PipelineLayoutConst layout) {
-
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-
-	struct alignas(16) PC {
-		float sampleCount;
-		uint32_t skyboxViewIdx;
-		uint32_t diffuseStorageIdx;
-		uint32_t pad0;
-	} pc{};
-
-	pc.sampleCount = DIFFUSE_SAMPLE_DELTA;
-	pc.skyboxViewIdx = entry.samplerCubeIndex;
-	pc.diffuseStorageIdx = entry.storageImageIndex;
-
-	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
-
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.width) / 8.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS.height) / 8.0f));
-
-	vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
-}
-
-void Environment::dispatchPrefilterEnvmap(VkCommandBuffer cmd, std::vector<SpecularPC> pushConstants, VkPipeline pipeline,
-	PipelineLayoutConst layout) {
-
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-
-	for (auto& pc : pushConstants) {
-		vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
-
-		const auto xDispatch = (pc.width + 7) / 8;
-		const auto yDispatch = (pc.height + 7) / 8;
-
-		vkCmdDispatch(cmd, xDispatch, yDispatch, 6);
-	}
-}
-
-void Environment::dispatchBRDFLUT(VkCommandBuffer cmd, ImageLUTEntry entry, VkPipeline pipeline, PipelineLayoutConst layout) {
-
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
-
-	struct alignas(16) PC {
-		uint32_t sampleCount;
-		uint32_t brdfViewIdx;
-		uint32_t pad0[2];
-	} pc{};
-
-	pc.sampleCount = PREFILTER_SAMPLE_COUNT;
-	pc.brdfViewIdx = entry.storageImageIndex;
-
-	vkCmdPushConstants(cmd, layout.layout, layout.pcRange.stageFlags, layout.pcRange.offset, layout.pcRange.size, &pc);
-
-	const auto xDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::LUT_IMAGE_EXTENT.width) / 8.0f));
-	const auto yDispatch = static_cast<uint32_t>(std::ceil(static_cast<float>(Environment::LUT_IMAGE_EXTENT.height) / 8.0f));
-
-	vkCmdDispatch(cmd, xDispatch, yDispatch, 1);
 }

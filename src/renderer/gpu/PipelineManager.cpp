@@ -495,7 +495,7 @@ void PipelineConfigs::multisamplingConfig(
 	multisampling.minSampleShading = 1.0f;
 	multisampling.pSampleMask = nullptr;
 
-	multisampling.alphaToCoverageEnable = VK_TRUE	;
+	multisampling.alphaToCoverageEnable = VK_TRUE;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
 

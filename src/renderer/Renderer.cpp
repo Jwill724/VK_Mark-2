@@ -530,7 +530,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		}
 
 		// === EXPOSURE REDUCE ===
-		RenderPasses::ExposureReducePass(frameCtx, expScope);
+		RenderPasses::dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::ExposureReduce),
+			expScope,
+			frameCtx.descriptorWriter);
 
 		const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
 
@@ -560,7 +564,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		} expPush{};
 		expPush.totalTiles = totalTiles;
 		expScope.setPush(&totalTiles);
-		RenderPasses::ExposureFinalizePass(frameCtx, expScope);
+
+		RenderPasses::dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::ExposureFinalize),
+			expScope,
+			frameCtx.descriptorWriter);
 
 		BarrierUtils::releaseComputeWriteQ(
 			frameCtx.cmdBuffer,
@@ -609,7 +618,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		expScope.extent = fullExtent;
 		expScope.workgroupSize = workgroupSize;
-		RenderPasses::ToneMapPass(frameCtx, expScope);
+
+		RenderPasses::dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::ToneMap),
+			expScope,
+			frameCtx.descriptorWriter);
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,

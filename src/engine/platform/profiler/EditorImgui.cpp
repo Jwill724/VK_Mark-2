@@ -160,7 +160,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 	// Debug / Controls
 	if (dbg.enableSettings) {
 		ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
-		ImGui::SetNextWindowSize(ImVec2(380.0f, 425.0f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(435.0f, 450.0f), ImGuiCond_Always);
 		ImGui::Begin("Debug");
 
 		// SHADOWS
@@ -195,6 +195,29 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		//		}
 		//	}
 		//	ImGui::EndChild();
+		}
+
+		// Environment images
+		static int selectedEnv = 0;
+
+		if (ImGui::CollapsingHeader("Environment Maps##settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+			if (ImGui::BeginCombo("Active Environment", fmt::format("Image {}", selectedEnv + 1).c_str())) {
+				for (auto& env : ResourceManager::_environmentSets) {
+					if (env.setIndex == UINT32_MAX) break;
+
+					bool isSelected = (selectedEnv == static_cast<int>(env.setIndex));
+					std::string label = fmt::format("Image {}", env.setIndex + 1);
+
+					if (ImGui::Selectable(label.c_str(), isSelected)) {
+						selectedEnv = env.setIndex;
+						dbg.activeEnvMap = env.setIndex;
+					}
+
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
 		}
 
 		// Lighting
@@ -233,7 +256,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		// SSAO
 		if (ImGui::CollapsingHeader("SSAO##settings", 0)) {
 			bool ssaoOn = dbg.enableSSAO != 0;
-			if (ImGui::Checkbox("Enable SSAO##rt", &ssaoOn))          dbg.enableSSAO = ssaoOn ? 1u : 0u;
+			if (ImGui::Checkbox("Enable SSAO##rt", &ssaoOn)) dbg.enableSSAO = ssaoOn ? 1u : 0u;
 			auto& ssao = profiler.ssaoSettings;
 			ImGui::SliderFloat("Radius##ssao", &ssao.aoRadius, 0.025f, 2.0f, "%.3f");
 			ImGui::SliderFloat("Bias##ssao", &ssao.bias, 0.0f, 0.1f, "%.4f");

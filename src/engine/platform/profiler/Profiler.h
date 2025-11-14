@@ -79,7 +79,8 @@ struct alignas(4) DebugToggles {
 
 	uint32_t enableSSAO = 1;
 	uint32_t enableShadows = 1;
-	uint32_t pad0[2];
+	uint32_t activeEnvMap = 0;
+	uint32_t pad0;
 
 	// draw stats
 	uint32_t meshCount = 0;

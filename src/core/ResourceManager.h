@@ -94,6 +94,7 @@ private:
 
 namespace ResourceManager {
 	extern ImageTableManager _globalImageManager;
+	extern EnvironmentSet _environmentSets[MAX_ENV_SETS];
 	extern GPUEnvMapIndexArray _envMapIdxArray;
 	extern glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE];
 	void initSSAOKernel();
@@ -152,16 +153,19 @@ namespace ResourceManager {
 		DeletionQueue& bufferQueue,
 		const VmaAllocator allocator);
 
-
-	AllocatedImage& getSkyBoxImage();
-	AllocatedImage& getIrradianceImage();
-	AllocatedImage& getSpecularPrefilterImage();
 	AllocatedImage& getBRDFImage();
 	const VkSampler getBRDFSampler();
 	const VkSampler getSpecularPrefilterSampler();
 	const VkSampler getIrradianceSampler();
 	const VkSampler getSkyBoxSampler();
-	void initEnvironmentImages(
+
+	EnvironmentSet initEnvironmentSetImages(
+		const VkDevice device,
+		DeletionQueue& queue,
+		const VmaAllocator allocator);
+
+	// Defines samplers and the brdf
+	void initStaticEnvironmentImages(
 		const VkDevice device,
 		DeletionQueue& queue,
 		const VmaAllocator allocator);
