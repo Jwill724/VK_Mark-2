@@ -15,6 +15,7 @@
 - Ray marched volumetric lights
 - Tonemapping (ACES Film)
 - Push descriptors
+- HI-Z Generation (Depth mip pyramid)
 
 ## Future
 -Render graph
@@ -23,7 +24,7 @@
 -KTX texture format
 -Full compute async
 -Proper multithreading (texture loading, cmd recording)
--Occlusion culling (Hi-Z/HZB)
+-Occlusion culling
 -GPU frustum culling
 -GPU batching and sorting
 -Clustered/Forward+ shading
