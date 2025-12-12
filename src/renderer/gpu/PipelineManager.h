@@ -6,10 +6,12 @@ enum class PipelineID : uint8_t {
 	// === Base (graphics) ===
 	Opaque,
 	Transparent,
+	Skybox,
+
+	// Debug
 	Wireframe,
 	OBBLine,
 	CascadeVPLine,
-	Skybox,
 
 	// === Culling pipeline *inactive (compute) ===
 	Visibility,
@@ -28,11 +30,20 @@ enum class PipelineID : uint8_t {
 	// === DEPTH ===
 	DepthPrepass,  // graphics
 	ShadowCSM,     // graphics
+	DepthPyramid,  // compute
 
-	// === SSAO ===
-	SSAO,          // compute
-	SSAOBlurH,     // compute
-	SSAOBlurV,     // compute
+	// === SSAO (compute) ===
+	SSAO,
+	SSAOBlur,
+
+	// === GTAO (compute) ===
+	GTAO,
+	GTAOFilter,
+
+	// === VOLUMETRIC LIGHTING (compute) ===
+	VolumetricLight,
+	VolumetricLightBlur,
+
 	Count
 };
 

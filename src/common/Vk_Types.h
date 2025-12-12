@@ -108,24 +108,27 @@ struct alignas(16) GPUAddressTable {
 struct alignas(16) GPUSceneData {
 	glm::mat4 view;
 	glm::mat4 proj;
+	glm::mat4 invView;
+	glm::mat4 invProj;
 	glm::mat4 viewproj;
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
-	glm::vec4 cameraPosition;
+	glm::vec4 cameraPos;
+	glm::vec4 cameraClips; // .x near and .y far
 	glm::vec4 viewportSize; // .x and .y for width and height, .z for pixel count
+	glm::vec4 pad0[7]{};
 };
-static_assert(sizeof(GPUSceneData) == 256);
 
 // x = diffuse, y = specular, z = brdf, w = skybox
 struct alignas(16) GPUEnvMapIndexArray {
 	glm::uvec4 indices[MAX_ENV_SETS];
 };
-static_assert(sizeof(GPUEnvMapIndexArray) == MAX_ENV_SETS * sizeof(glm::uvec4));
 
 struct alignas(16) GPUShadowCSM {
-	glm::mat4 cascadeVP[MAX_CASCADES]{0.0f};
+	glm::mat4 cascadeVP[MAX_SHADOW_CASCADES]{0.0f};
 	glm::vec4 cascadeSplits{0.0f};
 	glm::vec4 params{0.0f}; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount, .w/texelSize
+	glm::vec4 cascadeRadii{0.0f};
 };
 
 struct TimelineSync {
@@ -144,6 +147,12 @@ enum class DrawType : uint32_t {
 	DrawMultiStatic, // many baked instances
 	DrawDynamic,     // single instance, dynamic transform
 	DrawMultiDynamic // many instances, dynamic transforms
+};
+
+enum AOMode : uint32_t {
+	AO_OFF = 0,
+	AO_SSAO = 1,
+	AO_GTAO = 2
 };
 
 template<typename T>

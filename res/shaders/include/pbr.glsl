@@ -69,10 +69,8 @@ float SpecularAA(float roughness, vec3 N)
 }
 
 // full microfacet spec term for direct lights
-vec3 BRDF_Specular(vec3 N, vec3 V, vec3 L, vec3 H, vec3 F0, float roughness)
+vec3 BRDF_Specular(float NdotV, float NdotL, vec3 N, vec3 V, vec3 H, vec3 F0, float roughness)
 {
-	float NdotV = saturate(dot(N,V));
-	float NdotL = saturate(dot(N,L));
 	float D = D_GGX(N, H, roughness);
 	float Vv = V_SmithGGXCorrelated(NdotV, NdotL, roughness);
 	vec3 F = F_SCHLICK(V, H, F0);

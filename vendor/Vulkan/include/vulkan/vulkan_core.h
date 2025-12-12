@@ -8830,7 +8830,7 @@ typedef struct VkSwapchainCreateInfoKHR {
     VkSwapchainCreateFlagsKHR        flags;
     VkSurfaceKHR                     surface;
     uint32_t                         minImageCount;
-    VkFormat                         imageFormat;
+    VkFormat                         format;
     VkColorSpaceKHR                  imageColorSpace;
     VkExtent2D                       imageExtent;
     uint32_t                         imageArrayLayers;
@@ -21214,7 +21214,7 @@ typedef struct VkOpticalFlowSessionCreateInfoNV {
     void*                                pNext;
     uint32_t                             width;
     uint32_t                             height;
-    VkFormat                             imageFormat;
+    VkFormat                             format;
     VkFormat                             flowVectorFormat;
     VkFormat                             costFormat;
     VkOpticalFlowGridSizeFlagsNV         outputGridSize;

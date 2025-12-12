@@ -41,7 +41,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				imagesize.height = height;
 				imagesize.depth = 1;
 
-				newImage.imageExtent = imagesize;
+				newImage.extent = imagesize;
 
 				if (width >= 8 && height >= 8) {
 					newImage.mipmapped = true;
@@ -49,7 +49,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				else {
 					newImage.mipmapped = false;
 				}
-				newImage.imageFormat = format;
+				newImage.format = format;
 
 				ImageUtils::createTextureImage(
 					device,
@@ -85,7 +85,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				imagesize.height = height;
 				imagesize.depth = 1;
 
-				newImage.imageExtent = imagesize;
+				newImage.extent = imagesize;
 
 				if (width >= 8 && height >= 8) {
 					newImage.mipmapped = true;
@@ -93,7 +93,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				else {
 					newImage.mipmapped = false;
 				}
-				newImage.imageFormat = format;
+				newImage.format = format;
 
 				ImageUtils::createTextureImage(
 					device,
@@ -133,7 +133,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					if (data && width > 0 && height > 0) {
 
 						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-						newImage.imageExtent = imagesize;
+						newImage.extent = imagesize;
 
 						if (width >= 8 && height >= 8) {
 							newImage.mipmapped = true;
@@ -141,7 +141,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						else {
 							newImage.mipmapped = false;
 						}
-						newImage.imageFormat = format;
+						newImage.format = format;
 
 						ImageUtils::createTextureImage(
 							device,
@@ -191,7 +191,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 					if (data && width > 0 && height > 0) {
 						VkExtent3D imagesize = { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 };
-						newImage.imageExtent = imagesize;
+						newImage.extent = imagesize;
 
 						if (width >= 8 && height >= 8) {
 							newImage.mipmapped = true;
@@ -199,7 +199,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						else {
 							newImage.mipmapped = false;
 						}
-						newImage.imageFormat = format;
+						newImage.format = format;
 
 						ImageUtils::createTextureImage(
 							device,

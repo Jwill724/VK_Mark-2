@@ -57,9 +57,11 @@ void RenderScene::setScene() {
 	_mainCamera._nearClip = 0.1f;
 	_mainCamera._farClip = 500.0f;
 
-	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 2.5f);
-	_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f);
-	_sceneData.sunlightDirection = glm::vec4(-0.01f, 1.0f, -0.01f, 0.0f);
+	_sceneData.cameraClips = glm::vec4(_mainCamera._nearClip, _mainCamera._farClip, 0.0f, 0.0f);
+
+	_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 2.5f);    // golden sun
+	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f); // white
+	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.68f, 0.125f, 0.0f);
 }
 
 static void RenderScene::updateCamera() {
@@ -76,7 +78,7 @@ static void RenderScene::updateCamera() {
 	_sceneData.view = _curCamView;
 	_sceneData.proj = _curCamProj;
 	_sceneData.viewproj = _curCamProj * _curCamView;
-	_sceneData.cameraPosition = glm::vec4(_mainCamera._position, _mainCamera._farClip);
+	_sceneData.cameraPos = glm::vec4(_mainCamera._position, _mainCamera._farClip);
 
 	if (_sceneData.viewportSize.x != width || _sceneData.viewportSize.y != height) {
 		float pixelCount = width * height;
@@ -87,11 +89,18 @@ static void RenderScene::updateCamera() {
 		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
 		_lastViewProj = _sceneData.viewproj;
 		_camChanged = true;
+
+		_sceneData.invView = glm::inverse(_curCamView);
+		_sceneData.invProj = glm::inverse(_curCamProj);
 	}
 	else {
 		_camChanged = false;
 	}
 }
+
+// Two great starting points to learn cascade shadow maps
+// https://learnopengl.com/Guest-Articles/2021/CSM
+// https://www.youtube.com/watch?v=3FMONJ1O39U&list=LL&index=157
 
 // Both GLM_FORCE are enabled globally in hpp within pch
 // #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -101,17 +110,16 @@ static void RenderScene::updateCamera() {
 // CULL MODE: FRONT BIT
 static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	const auto& shadowMap = ResourceManager::getShadowMapImage();
-	const float shadowRes = static_cast<float>(shadowMap.imageExtent.width);
+	const float shadowRes = static_cast<float>(shadowMap.extent.width);
 	// Define all csm parameters once
 	if (_shadowCSM.params.y == 0.0f) {
 		_shadowControl.splitLambda = 0.97f;
-		_shadowControl.depthMaxScale = 2.0f;
-		_shadowControl.depthMinScale = 5.5f;
-		_shadowControl.lightDist = 0.2f;
+		_shadowControl.lightDist = 0.25f;
 		_shadowControl.bias = 0.0001f;
-		_shadowCSM.params.z = static_cast<float>(MAX_CASCADES);
+		_shadowCSM.params.z = static_cast<float>(MAX_SHADOW_CASCADES);
 		_shadowCSM.params.y = static_cast<float>(shadowMap.lutEntry.combinedImageIndex);
 		_shadowCSM.params.w = 1.0f / shadowRes;
+		_shadowCSM.cascadeRadii = { 1.0f, 2.0f, 3.0f, 5.0f };
 	}
 
 	const float aspect = _sceneData.viewportSize.x / _sceneData.viewportSize.y;
@@ -123,8 +131,8 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		const float ratio = farClip / nearClip;
 
 		// Compute split distances in view space (absolute units)
-		for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
-			const float p = (static_cast<float>(i) + 1.0f) / static_cast<float>(MAX_CASCADES);
+		for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
+			const float p = (static_cast<float>(i) + 1.0f) / static_cast<float>(MAX_SHADOW_CASCADES);
 			const float log = nearClip * std::pow(ratio, p);
 			const float uni = nearClip + (clipRange * p);
 			_shadowCSM.cascadeSplits[i] = (_shadowControl.splitLambda * log) + ((1.0f - _shadowControl.splitLambda) * uni);
@@ -132,9 +140,7 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	}
 
 	float lastSplitDist = _mainCamera._nearClip;
-	for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
-		//fmt::println("\nCascade index: {}", i);
-
+	for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
 		const float curSplit = _shadowCSM.cascadeSplits[i];
 
 		// world-space corners of the slice
@@ -158,12 +164,10 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 			glm::vec4 cornerWorld = invVp * v;
 			v = cornerWorld / cornerWorld.w;
 			frustumCenter += glm::vec3(v);
-			//fmt::println("Frustum corner: ({}, {}, {})", v.x, v.y, v.z);
 		}
 
 		// center in world space
 		frustumCenter /= 8.0f;
-		//fmt::println("Frustum center: ({}, {}, {})", frustumCenter.x, frustumCenter.y, frustumCenter.z);
 
 		float radius = 0.0f;
 		for (const auto& v : frustumCorners) {
@@ -176,22 +180,21 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		glm::vec3 min = -max;
 
 		// Light view
-		const glm::vec3 lightPos = frustumCenter + (lightDir * 25.0f);
+		const glm::vec3 lightPos = frustumCenter + lightDir;
 		const glm::mat4 lightView = glm::lookAt(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 
 		// Extend depth range
+		// The scale factors cover edge cases for stability,
+		// depending on distance with the occluder and the view.
 		const float depthRange = max.z - min.z;
-		min.z -= depthRange * _shadowControl.depthMinScale;
-		max.z += depthRange * _shadowControl.depthMaxScale;
-
-		//fmt::println("AABB min: ({}, {}, {})", min.x, min.y, min.z);
-		//fmt::println("AABB max: ({}, {}, {})", max.x, max.y, max.z);
+		min.z -= depthRange * 5.0f;
+		max.z += depthRange * 2.0f;
 
 		// Orthographic projection
 		glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
 		glm::mat4 shadowMatrix = lightProj * lightView;
 
-		// This works beautifully
+		// This works beautifully, it keeps the shadows 100% stable during movement
 		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
 		// scale origin by shadow map size
 		// round it (nearest texel)
@@ -207,15 +210,7 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		_shadowCSM.cascadeVP[i] = shadowMatrix;
 
 		lastSplitDist = curSplit;
-
-		//fmt::println("Cascade view projection matrix");
-		//printMat4(_shadowCSM.cascadeVP[i]);
 	}
-
-	//float split1 = _shadowCSM.cascadeSplits.x;
-	//float split2 = _shadowCSM.cascadeSplits.y;
-	//float split3 = _shadowCSM.cascadeSplits.z;
-	//fmt::println("Cascade splits: ({}, {}, {})\n", split1, split2, split3);
 }
 
 void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug) {
@@ -294,7 +289,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 			frameCtx,
 			meshes,
 			_visibleWorldAABBs,
-			_sceneData.cameraPosition,
+			_sceneData.cameraPos,
 			debug);
 
 		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, gpuResources, _globalTransforms, Backend::getTransferQueue());

@@ -135,37 +135,16 @@ void DescriptorSetOverwatch::initFrameDescriptor(const VkDevice device, Deletion
 void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
-	// depth (sampled)
+	// depth/depth pyramid (sampled)
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_DEPTH_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		COMPUTE_ONLY,
 		1);
 
-	// normal (sampled)
+	// normal/bent normals (sampled)
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_NORMAL_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		IMAGE_STAGES,
-		1);
-
-	// Writable output
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_OUTPUT_TEX,
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		COMPUTE_ONLY,
-		1);
-
-	// Readable input
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_1_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		IMAGE_STAGES,
-		1);
-
-	// Readable input
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_2_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		1);
@@ -175,6 +154,40 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 		PUSH_BINDING_NOISE_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		COMPUTE_ONLY,
+		1);
+
+	// Writable outputs
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_OUTPUT_1_TEX,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		COMPUTE_ONLY,
+		1);
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_OUTPUT_2_TEX,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		COMPUTE_ONLY,
+		1);
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_OUTPUT_3_TEX,
+		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+		COMPUTE_ONLY,
+		1);
+
+	// Readable inputs
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_INPUT_1_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		IMAGE_STAGES,
+		1);
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_INPUT_2_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		IMAGE_STAGES,
+		1);
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_INPUT_3_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		IMAGE_STAGES,
 		1);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createPushSetLayout(device);

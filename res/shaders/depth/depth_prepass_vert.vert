@@ -9,7 +9,7 @@
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 
-layout(location = 0) out vec3 outNormal;
+layout(location = 0) out vec3 outViewNormal;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
 	GPUAddressTable globalAddressTable;
@@ -34,8 +34,9 @@ void main()
 	// fetch transform
 	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
-	vec3 worldNormal = normalize(mat3(model) * vtx.normal);
-	outNormal = worldNormal;
+	// World space -> view space
+	mat3 normalMatrix = mat3(scene.view * model);
+	outViewNormal = normalMatrix * vtx.normal;
 
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	gl_Position = scene.viewproj * worldPos4;

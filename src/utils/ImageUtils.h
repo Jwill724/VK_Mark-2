@@ -37,6 +37,8 @@ namespace ImageUtils {
 		VkFormat format,
 		VkImageLayout currentLayout,
 		VkImageLayout newLayout,
+		uint32_t baseMip = 0,                        // Starting mip
+		uint32_t mipCount = VK_REMAINING_MIP_LEVELS, // How many levels transitioned
 		VkPipelineStageFlags2 dstStageOverride = 0,
 		VkAccessFlags2        dstAccessOverride = 0);
 	void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);

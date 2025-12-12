@@ -1,14 +1,13 @@
 #version 450
 
 #extension GL_ARB_separate_shader_objects : require
-#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
 
 #include "../include/set_bindings.glsl"
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX) writeonly uniform image2D brdfStorage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D brdfStorage;
 
 const float PI = 3.14159265359;
 

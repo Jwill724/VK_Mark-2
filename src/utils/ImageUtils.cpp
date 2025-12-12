@@ -22,9 +22,9 @@ void ImageUtils::createTextureImage(
 	const VmaAllocator allocator,
 	bool skipQueueUsage)
 {
-	size_t pixelBytes = getPixelSize(renderImage.imageFormat);
+	size_t pixelBytes = getPixelSize(renderImage.format);
 
-	size_t dataSize = static_cast<size_t>(renderImage.imageExtent.width) * renderImage.imageExtent.height * pixelBytes;
+	size_t dataSize = static_cast<size_t>(renderImage.extent.width) * renderImage.extent.height * pixelBytes;
 
 	AllocatedBuffer uploadBuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
 	memcpy(uploadBuffer.info.pMappedData, data, dataSize);
@@ -36,7 +36,7 @@ void ImageUtils::createTextureImage(
 		transitionImage(
 			cmd,
 			renderImage.image,
-			renderImage.imageFormat,
+			renderImage.format,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
@@ -48,7 +48,7 @@ void ImageUtils::createTextureImage(
 		copyRegion.imageSubresource.mipLevel = 0;
 		copyRegion.imageSubresource.baseArrayLayer = 0;
 		copyRegion.imageSubresource.layerCount = 1;
-		copyRegion.imageExtent = renderImage.imageExtent;
+		copyRegion.imageExtent = renderImage.extent;
 
 		vkCmdCopyBufferToImage(cmd,
 			uploadBuffer.buffer,
@@ -64,7 +64,7 @@ void ImageUtils::createTextureImage(
 			transitionImage(
 				cmd,
 				renderImage.image,
-				renderImage.imageFormat,
+				renderImage.format,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
@@ -94,8 +94,8 @@ void ImageUtils::createRenderImage(
 	VkImageCreateInfo imgInfo{};
 	imgInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imgInfo.imageType = VK_IMAGE_TYPE_2D;
-	imgInfo.extent = renderImage.imageExtent;
-	imgInfo.format = renderImage.imageFormat;
+	imgInfo.extent = renderImage.extent;
+	imgInfo.format = renderImage.format;
 	imgInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imgInfo.usage = usage;
 	imgInfo.samples = samples;
@@ -110,12 +110,14 @@ void ImageUtils::createRenderImage(
 	// mip count already predefined
 	else if (renderImage.mipLevelCount > 0) {
 		imgInfo.mipLevels = renderImage.mipLevelCount;
+		renderImage.mipmapped = true;
 	}
 	else {
 		imgInfo.mipLevels = 1;
 		renderImage.mipLevelCount = 1;
 	}
 
+	// array/cubemap
 	if (renderImage.isCubeMap) {
 		imgInfo.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
 		imgInfo.arrayLayers = 6;
@@ -133,6 +135,8 @@ void ImageUtils::createRenderImage(
 	imgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	imgAllocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
+	const bool isDepth = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+
 	{
 		std::scoped_lock lock(imageMutex);
 		VK_CHECK(vmaCreateImage(alloc, &imgInfo, &imgAllocInfo, &renderImage.image, &renderImage.allocation, nullptr));
@@ -141,23 +145,22 @@ void ImageUtils::createRenderImage(
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = renderImage.image;
-		viewInfo.format = renderImage.imageFormat;
-		viewInfo.subresourceRange.aspectMask = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
-			? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.format = renderImage.format;
+		viewInfo.subresourceRange.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 		viewInfo.subresourceRange.baseMipLevel = 0;
 		viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
 		viewInfo.subresourceRange.layerCount = renderImage.arrayLayers;
 
 		// First path is meant for shadow maps, using a 2d array
-		if ((usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) && renderImage.arrayLayers > 1) {
+		if (isDepth && renderImage.arrayLayers > 1) {
 			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 			//// Creates a debug image view of all layers
 			//renderImage.layerViews.resize(renderImage.arrayLayers);
 			//for (uint32_t layer = 0; layer < renderImage.arrayLayers; ++layer) {
 			//	VkImageViewCreateInfo layerViewInfo{ VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO };
 			//	layerViewInfo.image = renderImage.image;
-			//	layerViewInfo.format = renderImage.imageFormat;
+			//	layerViewInfo.format = renderImage.format;
 			//	layerViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 			//	layerViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 			//	layerViewInfo.subresourceRange.baseMipLevel = 0;
@@ -175,24 +178,44 @@ void ImageUtils::createRenderImage(
 		VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.imageView));
 
 		// storage view creation
-		if (usage & VK_IMAGE_USAGE_STORAGE_BIT && (samples & VK_SAMPLE_COUNT_1_BIT) != 0) {
-			viewInfo.viewType = (imgInfo.arrayLayers > 1 || renderImage.isCubeMap)
-				? VK_IMAGE_VIEW_TYPE_2D_ARRAY
-				: VK_IMAGE_VIEW_TYPE_2D;
+		if ((usage & VK_IMAGE_USAGE_STORAGE_BIT) && (samples & VK_SAMPLE_COUNT_1_BIT)) {
+			// Per-mip storage views
+			if (imgInfo.mipLevels > 1 && renderImage.perMipStorageViews) {
 
-			VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderImage.storageView));
-
-			if (imgInfo.mipLevels > 1 && renderImage.isCubeMap && renderImage.perMipStorageViews) {
 				renderImage.storageViews.resize(imgInfo.mipLevels);
 
 				for (uint32_t mip = 0; mip < imgInfo.mipLevels; ++mip) {
+
 					VkImageViewCreateInfo mipViewInfo = viewInfo;
 					mipViewInfo.subresourceRange.baseMipLevel = mip;
-					mipViewInfo.subresourceRange.layerCount = 6;
 					mipViewInfo.subresourceRange.levelCount = 1;
 
-					VK_CHECK(vkCreateImageView(device, &mipViewInfo, nullptr, &renderImage.storageViews[mip]));
+					if (renderImage.isCubeMap) {
+						mipViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+						mipViewInfo.subresourceRange.layerCount = 6;
+					}
+					else {
+						mipViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+						mipViewInfo.subresourceRange.layerCount = 1;
+					}
+
+					VK_CHECK(vkCreateImageView(
+						device, &mipViewInfo, nullptr, &renderImage.storageViews[mip]));
 				}
+			}
+			else if (imgInfo.arrayLayers > 1 || renderImage.isCubeMap) {
+				// single image storage view at index 0
+				renderImage.storageViews.resize(1);
+
+				VkImageViewCreateInfo storageViewInfo = viewInfo;
+				storageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+
+				VK_CHECK(
+					vkCreateImageView(
+						device,
+						&storageViewInfo,
+						nullptr,
+						&renderImage.storageViews[0]));
 			}
 		}
 	}
@@ -202,15 +225,12 @@ void ImageUtils::createRenderImage(
 		auto imgAlloc = renderImage.allocation;
 		auto imgView = renderImage.imageView;
 		auto& v_storageViews = renderImage.storageViews;
-		auto storageView = renderImage.storageView;
 		auto& v_layerViews = renderImage.layerViews;
 
 		// the deletion queue needs copies don't try to add destroyImage since it takes it by reference
-		dq.push_function([device, image, alloc, imgView, storageView, v_storageViews, v_layerViews, imgAlloc] {
+		dq.push_function([device, image, alloc, imgView, v_storageViews, v_layerViews, imgAlloc] {
 			if (imgView != VK_NULL_HANDLE)
 				vkDestroyImageView(device, imgView, nullptr);
-			if (storageView != VK_NULL_HANDLE)
-				vkDestroyImageView(device, storageView, nullptr);
 
 			for (auto& view : v_storageViews) {
 				if (view != VK_NULL_HANDLE)
@@ -224,7 +244,7 @@ void ImageUtils::createRenderImage(
 
 			if (image != VK_NULL_HANDLE)
 				vmaDestroyImage(alloc, image, imgAlloc);
-		});
+			});
 	}
 }
 
@@ -233,9 +253,6 @@ void ImageUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAll
 	std::scoped_lock lock(imageMutex);
 	if (img.imageView != VK_NULL_HANDLE)
 		vkDestroyImageView(device, img.imageView, nullptr);
-
-	if (img.storageView != VK_NULL_HANDLE)
-		vkDestroyImageView(device, img.storageView, nullptr);
 
 	for (auto& view : img.storageViews) {
 		if (view != VK_NULL_HANDLE)
@@ -258,6 +275,8 @@ void ImageUtils::transitionImage(
 	VkFormat format,
 	VkImageLayout oldLayout,
 	VkImageLayout newLayout,
+	uint32_t baseMip,
+	uint32_t mipCount,
 	VkPipelineStageFlags2 dstStageOverride,
 	VkAccessFlags2        dstAccessOverride)
 {
@@ -276,7 +295,13 @@ void ImageUtils::transitionImage(
 	else {
 		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 	}
-	b.subresourceRange = { aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS };
+
+	b.subresourceRange.aspectMask = aspect;
+	b.subresourceRange.baseMipLevel = baseMip;
+	b.subresourceRange.levelCount = mipCount;
+	b.subresourceRange.baseArrayLayer = 0;
+	b.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+
 
 	switch (oldLayout) {
 	case VK_IMAGE_LAYOUT_UNDEFINED:
@@ -398,7 +423,7 @@ void ImageUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage d
 }
 
 uint32_t ImageUtils::calculateMipLevels(AllocatedImage& img, uint32_t maxMipCap) {
-	uint32_t mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(img.imageExtent.width, img.imageExtent.height)))) + 1;
+	uint32_t mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(img.extent.width, img.extent.height)))) + 1;
 	return std::min(mipLevels, maxMipCap);
 }
 
@@ -410,8 +435,8 @@ void ImageUtils::generateCubemapMiplevels(VkCommandBuffer cmd, AllocatedImage& i
 	VkImage img = image.image;
 
 	for (uint32_t face = 0; face < faceCount; ++face) {
-		int32_t mipWidth = static_cast<int32_t>(image.imageExtent.width);
-		int32_t mipHeight = static_cast<int32_t>(image.imageExtent.height);
+		int32_t mipWidth = static_cast<int32_t>(image.extent.width);
+		int32_t mipHeight = static_cast<int32_t>(image.extent.height);
 
 		for (uint32_t mip = 1; mip < mipLevels; ++mip) {
 			//fmt::print("    Blitting mip {} -> {}\n", mip - 1, mip);
@@ -626,8 +651,8 @@ void ImageUtils::generateMipmaps(VkCommandBuffer cmd, const AllocatedImage& imag
 	barrier.subresourceRange.layerCount = layerCount;
 
 
-	int32_t mipWidth = static_cast<int32_t>(image.imageExtent.width);
-	int32_t mipHeight = static_cast<int32_t>(image.imageExtent.height);
+	int32_t mipWidth = static_cast<int32_t>(image.extent.width);
+	int32_t mipHeight = static_cast<int32_t>(image.extent.height);
 
 	for (uint32_t i = 1; i < mipLevels; i++) {
 		// Transition mip i - 1 to SRC

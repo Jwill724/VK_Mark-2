@@ -88,7 +88,8 @@ enum class GLTFJobType : uint8_t {
 	DecodeImages,
 	BuildSamplers,
 	ProcessMaterials,
-	ProcessMeshes
+	ProcessMeshes,
+	Count
 };
 
 enum class QueueType : uint8_t {
@@ -335,8 +336,6 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 
 struct ShadowControl {
 	float splitLambda;
-	float depthMinScale;
-	float depthMaxScale;
 	float lightDist;
 	float bias;
 };

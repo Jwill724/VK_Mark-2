@@ -133,12 +133,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 
 		engineProfiler.startTimer();
 
-		// === SAMPLER CREATION ===
-		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
-			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::buildSamplers(threadCtx);
-		});
-
 		// === TEXTURE LOADING ===
 		JobSystem::submitJob([assetQueue, mainAllocator, device, &tempQueue](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
@@ -150,6 +144,15 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 			waitAndRecycleLastFence(threadCtx.lastSubmittedFence, gQueue, device);
 			vkResetCommandPool(device, threadCtx.cmdPool, 0);
 			threadCtx.cmdPool = VK_NULL_HANDLE;
+		});
+
+		JobSystem::wait();
+		JobSystem::flushLogs();
+
+		// === SAMPLER CREATION ===
+		JobSystem::submitJob([assetQueue](ThreadContext& threadCtx) {
+			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
+			AssetManager::buildSamplers(threadCtx);
 		});
 
 		JobSystem::wait();
@@ -187,11 +190,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		JobSystem::flushLogs();
 
 		// === MESH UPLOAD ===
-		JobSystem::submitJob([assetQueue, mainAllocator, device, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
-			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
+		JobSystem::submitJob([mainAllocator, device, &meshes, &totalVertices, &totalIndices](ThreadContext& threadCtx) {
 			threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
-			auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-			ASSERT(queue);
 
 			MeshLoader::uploadMeshes(
 				threadCtx,

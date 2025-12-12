@@ -74,7 +74,7 @@ struct GLTFJobContext {
 	// Set to true when scene is passed into loadedscenes
 	std::atomic<bool> hasRegisteredScene = false;
 
-	std::atomic<bool> jobComplete[sizeof(GLTFJobType)];
+	std::array<std::atomic<bool>, static_cast<size_t>(GLTFJobType::Count)> jobComplete;
 
 	void markJobComplete(GLTFJobType type) {
 		jobComplete[static_cast<size_t>(type)] = true;

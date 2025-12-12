@@ -109,14 +109,21 @@ namespace ResourceManager {
 	AllocatedImage& getMSAAImage();
 	AllocatedImage& getDepthResolvedImage();
 	AllocatedImage& getNormalImage();
-	AllocatedImage& getSSAOImage();
-	AllocatedImage& getSSAOBlurHImage();
-	AllocatedImage& getSSAOBlurVImage();
-	AllocatedImage& getSSAONoiseImage();
+	AllocatedImage& getAORawImage();
+	AllocatedImage& getAOTempImage();
+	AllocatedImage& getVolumetricLightImage();
+	AllocatedImage& getVolumetricBlurImage();
+	AllocatedImage& getVolumetricNoiseImage();
+	AllocatedImage& get4x4NoiseImage();
 	AllocatedImage& getShadowMapImage();
-	const VkSampler getDepthSampler();
-	const VkSampler getSSAOSampler();
-	const VkSampler getNormalSampler();
+	AllocatedImage& getBentNormalImage();
+	AllocatedImage& getDepthPyramidImage();
+	AllocatedImage& getMaterialDataImage();
+	AllocatedImage& getEdgeInfoImage();
+	const VkSampler getNearestClampSampler();
+	const VkSampler getLinearClampSampler();
+	const VkSampler getDepthPyramidSampler();
+	const VkSampler getAOSampler();
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
 

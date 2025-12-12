@@ -8,7 +8,7 @@ struct SwapchainDef {
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	std::vector<VkImage> images{};
 	std::vector<VkImageView> imageViews{};
-	VkFormat imageFormat{};
+	VkFormat format{};
 	VkExtent2D extent{};
 	uint32_t imageCount = UINT32_MAX;
 

@@ -11,6 +11,7 @@
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 #include "../include/pbr.glsl"
+#include "../include/shadow.glsl"
 
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec3 inColor;
@@ -20,6 +21,7 @@ layout(location = 4) in vec4 inViewPos;
 layout(location = 5) flat in uint inMaterialID;
 
 layout(location = 0) out vec4 outFragColor;
+//layout(location = 1) out vec4 outMaterialData;
 
 // === global tables/UBOs ===
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
@@ -48,14 +50,12 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_CSM) uniform ShadowUBO {
 };
 
 // Only used for opaque shading
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D ssaoFinal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_NORMAL_TEX) uniform sampler2D bentNormal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D aoFinal;
 
 const bool FLIP_ENV_Y = true;
 
-// helpers
-#define DBG(x) (debug.x != 0u)
-#define RET(rgb,a) { outFragColor = vec4((rgb), (a)); return; }
-
+// === IBL FUNCTIONS ===
 vec3 sampleIrradiance(vec3 N, uint irrIdx)
 {
 	if (FLIP_ENV_Y) N.y = -N.y;
@@ -68,60 +68,10 @@ vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint spe
 	if (FLIP_ENV_Y) R.y = -R.y;
 
 	int levels = textureQueryLevels(envMaps[nonuniformEXT(specIdx)]);
-	float lod  = clamp(roughness * float(levels - 1), 0.0, float(levels - 1));
+	float lod = clamp(roughness * float(levels - 1), 0.0, float(levels - 1));
 	vec3 prefiltered = textureLod(envMaps[nonuniformEXT(specIdx)], R, lod).rgb;
 	return prefiltered * (F0 * brdf.x + brdf.y);
 }
-
-vec3 cascadeColor(uint i)
-{
-	const vec3 C[4] = vec3[](
-		vec3(1, 0, 0),
-		vec3(0, 1, 0),
-		vec3(0, 0, 1),
-		vec3(1, 1, 0)
-	);
-	return C[min(i, 3u)];
-}
-
-// 8-tap Poisson disk in texels
-const vec2 PD[8] = vec2[](
-  vec2( 0.0, -0.5), vec2( 0.5,  0.0), vec2( 0.0,  0.5), vec2(-0.5,  0.0),
-  vec2( 0.35, 0.35), vec2(-0.35, 0.35), vec2( 0.35,-0.35), vec2(-0.35,-0.35)
-);
-
-float PCFPoisson(sampler2DArray sm, vec2 uv, uint layer, float z, float bias, float texel)
-{
-	// hash
-	float h = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233))) * 43758.5453);
-	float ang = h * 6.2831853;
-	mat2 R = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-
-	float s = 0.0;
-	for (int i = 0; i < 8; ++i) {
-		vec2 o = (R * PD[i]) * texel;
-		float d = texture(sm, vec3(uv + o, float(layer))).r;
-		s += float((z - bias) < d);
-	}
-	return s * (1.0 / 8.0);
-}
-
-//float PCFShadow(sampler2DArray shadowMap, vec2 baseUV, uint layer, float curDepth, float bias, float texelSize, int kernelSize) {
-//	float shadow = 0.0;
-//	int samples = (2 * kernelSize + 1) * (2 * kernelSize + 1);
-//	vec2 texel = vec2(texelSize, texelSize);
-//
-//	for (int x = -kernelSize; x <= kernelSize; ++x) {
-//		for (int y = -kernelSize; y <= kernelSize; ++y) {
-//			vec2 offset = vec2(float(x), float(y)) * texel;
-//			float sampledDepth = texture(shadowMap, vec3(baseUV + offset, float(layer))).r;
-//			if ((curDepth - bias) < sampledDepth) {
-//				shadow += 1.0;
-//			}
-//		}
-//	}
-//	return shadow / float(samples);
-//}
 
 void main()
 {
@@ -149,12 +99,13 @@ void main()
 
 	if (DBG(showAlbedo))    RET(albedo, base.a);
 	if (DBG(showEmissive))  RET(emissive, base.a);
-	if (DBG(showAO))        RET(vec3(ao), base.a);
+	if (DBG(showBakedAO))   RET(vec3(ao), base.a);
 	if (DBG(showMetallic))  RET(vec3(metal), base.a);
 	if (DBG(showRoughness)) RET(vec3(rough), base.a);
 
 	vec2 uv = gl_FragCoord.xy / scene.viewportSize.xy;
 
+	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
 	vec3 V = normalize(scene.cameraPos.xyz - inWorldPos);
 	vec3 L = normalize(scene.sunlightDirection.xyz);
 	vec3 H = normalize(V + L);
@@ -163,34 +114,37 @@ void main()
 	float NdotL = max(dot(N, L), 0.0);
 	float LdotH = max(dot(L, H), 0.0);
 
-	// SSAO combine
-	float aoFinal = ao;
-	if (DBG(enableSSAO) && mat.passType == PASS_OPAQUE) {
-		float ssaoFactor = texture(ssaoFinal, uv).r;
-		if(DBG(showSSAO)) {
-			RET(vec3(ssaoFactor), 1.0);
+	// SSAO/GTAO combine
+	float aoTerm = ao;
+	if (DBG(aoMode) && mat.passType == PASS_OPAQUE) {
+		float aoFactor = texture(aoFinal, uv).r;
+		if(DBG(showAmbientOcclusion)) {
+			RET(vec3(aoFactor), 1.0);
 		}
-		aoFinal *= ssaoFactor;
+		aoTerm *= aoFactor;
 	}
 
 	// Disney/Frostbite direct lighting
 	rough = SpecularAA(rough, N);
 	vec3 F0 = mix(vec3(0.04), albedo, metal);
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
-	vec3 spec = BRDF_Specular(N, V, L, H, F0, rough);
+	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
+
+	//float F0_scalar = max(max(F0.r, F0.g), F0.b);
+	//float specWeight = max(F0, metal);
 
 	// ENVIRONMENT INDICES
 	const uint envMapID = debug.activeEnvMap;
 	const uint irrIdx = envMapSet.indices[envMapID].x;
 	const uint specIdx = envMapSet.indices[envMapID].y;
-	const uint brdfIdx = envMapSet.indices[envMapID].z;
+	const uint brdfIdx = envMapSet.indices[envMapID].z; // All using the same index
 
 	// multi-scatter energy compensation for direct spec
 	vec2 brdf = texture(combinedSamplers[nonuniformEXT(brdfIdx)], vec2(NdotV, rough)).rg;
 	spec *= MultiScatterEnergyComp(F0, brdf);
 
-	if (DBG(showDiffuse))  RET(diff * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL, base.a);
-	if (DBG(showSpecular)) RET(spec * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL, base.a);
+	if (DBG(showDiffuse))  RET(diff * (sunColor) * NdotL, base.a);
+	if (DBG(showSpecular)) RET(spec * (sunColor) * NdotL, base.a);
 
 	// Shadows
 	float shadow = 1.0;
@@ -198,21 +152,15 @@ void main()
 		const uint cascadeCount = uint(csm.params.z);
 		const uint shadowMapID = uint(csm.params.y);
 		const float shadowBias = csm.params.x;
-		const float texelSize = csm.params.w;
+		const float texel = csm.params.w;
 
 		const uint maxCascade = cascadeCount - 1u;
 
 		// Right handed view on the -z
-		const float viewDepth = -inViewPos.z;
+		float viewDepth = -inViewPos.z;
 
 		// cascade index for split
-		uint cascadeIdx = maxCascade;
-		for (uint i = 0u; i < cascadeCount; ++i) {
-			if (viewDepth < csm.cascadeSplits[i]) {
-				cascadeIdx = i;
-				break;
-			}
-		}
+		uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
 
 		// Debug view for cascade splits
 		if (DBG(showCascadeSplits)) {
@@ -234,46 +182,68 @@ void main()
 			  shadowUV.y < 0.0 || shadowUV.y > 1.0  ||
 			  curDepth   < 0.0 || curDepth   > 1.0))
 		{
-			uint nextIdx = min(cascadeIdx + 1u, maxCascade);
+			const float angleScale = 1.0 - NdotL;
+			const float radius = csm.cascadeRadii[cascadeIdx];
+			const float bias = shadowBias * (0.25 + angleScale * 0.65);
 
-			float bias = shadowBias * (1.0 - NdotL) * (1.0 + float(cascadeIdx) * 0.1);
-
-			bool isMaxCascade = false;
-			float texel = texelSize;
-			if (cascadeIdx == maxCascade) {
-				texel *= 2.0; // wider footprint for distant cascade
-				isMaxCascade = true;
-			}
-
-			float sA = PCFPoisson(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, cascadeIdx, curDepth, bias, texel);
+			float sA = PCFPoissonHigh(
+				gl_FragCoord.xy,
+				shadowMap[nonuniformEXT(shadowMapID)],
+				shadowUV,
+				cascadeIdx,
+				curDepth,
+				bias,
+				texel,
+				radius);
 
 			float sB = sA;
-			if (!isMaxCascade) {
-				sB = PCFPoisson(shadowMap[nonuniformEXT(shadowMapID)], shadowUV, nextIdx, curDepth, bias, texel);
+			if (cascadeIdx < maxCascade) {
+				uint nextIdx = min(cascadeIdx + 1u, maxCascade);
+				sB = PCFPoissonHigh(
+					gl_FragCoord.xy,
+					shadowMap[nonuniformEXT(shadowMapID)],
+					shadowUV,
+					nextIdx,
+					curDepth,
+					bias,
+					texel,
+					csm.cascadeRadii[nextIdx]);
 			}
 
 			// Smooth cascade transition
 			float splitFar = csm.cascadeSplits[cascadeIdx];
-			float blendStart = splitFar * 0.99;
-			float blendEnd  = splitFar * 1.1;
-			float blendT = smoothstep(blendStart, blendEnd, viewDepth);
 
+			// These scale factors provide the most stable transition without gaps
+			float blendStart = splitFar * 0.99;
+			float blendEnd = splitFar * 1.1;
+
+			float blendT = smoothstep(blendStart, blendEnd, viewDepth);
 			shadow = mix(sA, sB, clamp(blendT, 0.0, 1.0));
 		}
 	}
 
-	vec3 direct = (diff + spec) * (scene.sunlightColor.rgb * scene.sunlightColor.a) * NdotL * shadow;
+	// Direct sun light
+	vec3 direct = (diff + spec) * (sunColor) * NdotL * shadow;
 
-	// IBL ambient
-	vec3 F_ibl = F_SchlickRoughness(F0, NdotV, rough);
-	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);
-
-	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
+	// IBL specular
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
 
-	float specAO = SpecAO_Conservative(aoFinal, NdotV, rough);
-	vec3 ambient = kD_ibl * iblDiff * aoFinal + iblSpec * specAO;
+	vec3 N_diff = N;
+	// GTAO bent normals
+//	if (debug.aoMode == 2) {
+//		N_diff =  normalize(texture(bentNormal, uv).rgb);
+//	}
+
+	// IBL diffuse
+	vec3 F_ibl = F_SchlickRoughness(F0, NdotV, rough);
+	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);
+	vec3 iblDiff = sampleIrradiance(N_diff, irrIdx) * albedo;
+
+	float specAO = SpecAO_Conservative(aoTerm, NdotV, rough);
+	vec3 ambient = kD_ibl * iblDiff * aoTerm + iblSpec * specAO;
 
 	vec3 color = direct + ambient + emissive;
 	outFragColor = vec4(color, base.a);
+
+	//outMaterialData = vec4(rough, metal, F0_scalar, specWeight);
 }

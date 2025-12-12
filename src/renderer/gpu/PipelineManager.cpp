@@ -109,6 +109,13 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::getPipelinePresentByID(PipelineID::ToneMap).shaderStagesInfo.push_back(toneMapShaderStage);
 
 
+	// === DEPTH PYRAMID ===
+	ShaderStageInfo depthPyramidShaderStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/depth/depth_pyramid_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPyramid).shaderStagesInfo.push_back(depthPyramidShaderStage);
+
 	// === IBL ===
 	ShaderStageInfo cubemapShaderStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -146,21 +153,44 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	// === SSAO ===
 	ShaderStageInfo ssaoStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/ssao_comp.spv"
+		.filePath = "res/shaders/ao/ssao_main_comp.spv"
 	};
 	PipelinePresents::getPipelinePresentByID(PipelineID::SSAO).shaderStagesInfo.push_back(ssaoStage);
 
-	ShaderStageInfo ssaoBlurHStage {
+	ShaderStageInfo ssaoBlurStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/ssao_blurH_comp.spv"
+		.filePath = "res/shaders/ao/ssao_blur_comp.spv"
 	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlurH).shaderStagesInfo.push_back(ssaoBlurHStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlur).shaderStagesInfo.push_back(ssaoBlurStage);
 
-	ShaderStageInfo ssaoBlurVStage {
+
+	// === GTAO ===
+	ShaderStageInfo gtaoStage {
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/ssao_blurV_comp.spv"
+		.filePath = "res/shaders/ao/gtao_main_comp.spv"
 	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlurV).shaderStagesInfo.push_back(ssaoBlurVStage);
+	PipelinePresents::getPipelinePresentByID(PipelineID::GTAO).shaderStagesInfo.push_back(gtaoStage);
+
+	ShaderStageInfo gtaoFilterStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/ao/gtao_filter_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::GTAOFilter).shaderStagesInfo.push_back(gtaoFilterStage);
+
+
+	// === VOLUMETRIC LIGHTING ===
+	ShaderStageInfo volLightStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/volumetric_light_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::VolumetricLight).shaderStagesInfo.push_back(volLightStage);
+
+	ShaderStageInfo volLightBlurStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/volumetric_light_blur_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::VolumetricLightBlur).shaderStagesInfo.push_back(volLightBlurStage);
+
 
 	// Pipeline shaders defined, good to setup
 	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
@@ -298,7 +328,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === DEPTH RESOLVED PIPELINE ===
 	PipelinePreset& depthPrePreset = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
-	depthPrePreset.colorFormat = VK_FORMAT_UNDEFINED;
+	depthPrePreset.colorFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	depthPrePreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	depthPrePreset.depthCompareOp = VK_COMPARE_OP_LESS;
 	depthPrePreset.cullMode = VK_CULL_MODE_BACK_BIT;
@@ -315,7 +345,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	//csmPreset.depthBiasConstant = 1.25f;
 	//csmPreset.depthBiasSlope = 1.75f;
 	//csmPreset.depthBiasClamp = 0.0f;
-	csmPreset.viewMask = (1u << MAX_CASCADES) - 1u;
+	csmPreset.viewMask = (1u << MAX_SHADOW_CASCADES) - 1u;
 
 	createPipeline(PipelineID::ShadowCSM, PipelineCategory::Raster, "ShadowCSM", false, false);
 
@@ -329,8 +359,12 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
 	createPipeline(PipelineID::BRDFLUT, PipelineCategory::Compute, "BRDFLUT");
 	createPipeline(PipelineID::SSAO, PipelineCategory::Compute, "SSAO");
-	createPipeline(PipelineID::SSAOBlurH, PipelineCategory::Compute, "SSAOBlurH");
-	createPipeline(PipelineID::SSAOBlurV, PipelineCategory::Compute, "SSAOBlurV");
+	createPipeline(PipelineID::SSAOBlur, PipelineCategory::Compute, "SSAOBlur");
+	createPipeline(PipelineID::GTAO, PipelineCategory::Compute, "GTAO");
+	createPipeline(PipelineID::GTAOFilter, PipelineCategory::Compute, "GTAOFilter");
+	createPipeline(PipelineID::DepthPyramid, PipelineCategory::Compute, "DepthPyramid");
+	createPipeline(PipelineID::VolumetricLight, PipelineCategory::Compute, "VolumetricLight");
+	createPipeline(PipelineID::VolumetricLightBlur, PipelineCategory::Compute, "VolumetricLightBlur");
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 

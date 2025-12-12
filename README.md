@@ -10,7 +10,9 @@
 - ImGui debugging tools
 - MSAA (up to 8x)
 - Cascaded shadow mapping
+- GTAO
 - SSAO
+- Ray marched volumetric lights
 - Tonemapping (ACES Film)
 - Push descriptors
 

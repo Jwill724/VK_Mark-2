@@ -61,14 +61,6 @@ struct PipelineOverride {
 	PipelineID selectedID = PipelineID::Wireframe;
 };
 
-struct SSAOSettings {
-	uint32_t sampleCount = 64;
-	float aoRadius = 1.2f;
-	float bias = 0.05f;
-	float intensity = 1.0f;
-	int blurRadius = 5;
-};
-
 // inline uniform block in global set 0
 struct alignas(4) DebugToggles {
 	// Higher level toggles
@@ -77,10 +69,10 @@ struct alignas(4) DebugToggles {
 	uint32_t enableSettings = 1;
 	uint32_t enableStats = 1;
 
-	uint32_t enableSSAO = 1;
+	uint32_t aoMode = AO_GTAO;
 	uint32_t enableShadows = 1;
-	uint32_t activeEnvMap = 0;
-	uint32_t pad0;
+	uint32_t enableVolumetrics = 1;
+	uint32_t activeEnvMap = 0; // Indexes into an array
 
 	// draw stats
 	uint32_t meshCount = 0;
@@ -89,7 +81,9 @@ struct alignas(4) DebugToggles {
 	uint32_t vertexCount = 0;
 
 	uint32_t indexCount = 0;
-	uint32_t pad1[3]{};
+	uint32_t enableLensFlare = 0;
+	uint32_t enableChromaticAberration = 0;
+	uint32_t pad0 = 0;
 
 	// fragment shader outputs
 	uint32_t showAlbedo = 0;
@@ -97,14 +91,14 @@ struct alignas(4) DebugToggles {
 	uint32_t showRoughness = 0;
 	uint32_t showMetallic = 0;
 
-	uint32_t showSSAO = 0;
+	uint32_t showAmbientOcclusion = 0;
 	uint32_t showSpecular = 0;
 	uint32_t showDiffuse = 0;
 	uint32_t showCascadeSplits = 0;
 
 	uint32_t showEmissive = 0;
-	uint32_t showAO = 0;
-	uint32_t pad2[2]{};
+	uint32_t showBakedAO = 0;
+	uint32_t pad1{};
 };
 
 
@@ -157,7 +151,9 @@ public:
 
 	DebugToggles debugToggles;
 	PipelineOverride pipeOverride;
-	SSAOSettings ssaoSettings;
+	SSAOPush ssaoSettings;
+	GTAOPush gtaoSettings;
+	VolumetricPush volLightSettings;
 
 	VRAMStats GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 

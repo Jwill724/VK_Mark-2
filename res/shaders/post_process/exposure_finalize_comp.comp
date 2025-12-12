@@ -9,6 +9,9 @@
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
 
+// Amazing resource on why exposure is important
+// https://bruop.github.io/exposure/
+
 layout(local_size_x = 256) in;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) buffer GlobalAddressTableBuffer {

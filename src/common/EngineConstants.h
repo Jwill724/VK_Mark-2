@@ -27,9 +27,10 @@ static constexpr uint32_t MSAACOUNT_4 = 4u;
 static constexpr uint32_t MSAACOUNT_2 = 2u;
 constexpr uint32_t MAX_MIP_LEVELS = 12u;
 constexpr uint32_t MAX_ENV_SETS = 16u; // 256 uniform alignment 16 * ivec4(16 bytes)
-constexpr uint32_t MAX_CASCADES = 3u;  // For shadows
+constexpr uint32_t MAX_SHADOW_CASCADES = 4u;
 constexpr uint32_t KERNEL_BLOCK_SIZE = 128u; // ssao kernel
 constexpr uint32_t MAX_LUMINANCE_GROUPS = 65536u;
+constexpr uint32_t DEPTH_PYRAMID_MIP_COUNT = 5u;
 
 // Descriptor info
 constexpr uint32_t GLOBAL_SET = 0u;
@@ -54,10 +55,13 @@ constexpr uint32_t FRAME_BINDING_CSM = 2u;
 // Push bindings
 constexpr uint32_t PUSH_BINDING_DEPTH_TEX = 0u;
 constexpr uint32_t PUSH_BINDING_NORMAL_TEX = 1u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_TEX = 2u;
-constexpr uint32_t PUSH_BINDING_INPUT_1_TEX = 3u;
-constexpr uint32_t PUSH_BINDING_INPUT_2_TEX = 4u;
-constexpr uint32_t PUSH_BINDING_NOISE_TEX = 5u;
+constexpr uint32_t PUSH_BINDING_NOISE_TEX = 2u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_1_TEX = 3u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_2_TEX = 4u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_3_TEX = 5u;
+constexpr uint32_t PUSH_BINDING_INPUT_1_TEX = 6u;
+constexpr uint32_t PUSH_BINDING_INPUT_2_TEX = 7u;
+constexpr uint32_t PUSH_BINDING_INPUT_3_TEX = 8u;
 
 // Image array sizes
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100u;

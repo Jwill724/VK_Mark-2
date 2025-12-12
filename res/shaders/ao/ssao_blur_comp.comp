@@ -8,19 +8,19 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(push_constant) uniform SSAOPush {
-	mat4 invProj;
 	vec2 screenSize;
 	vec2 invScreenSize;
 	float aoRadius;
 	float bias;
 	float intensity;
 	int blurRadius;
+	vec2 blurDirection;
 	uint sampleCount;
-	float pad0[3];
+	float pad0;
 } pc;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D ssaoInput;
-layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_TEX, r8) uniform image2D blurV;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D blur;
 
 void main() {
 	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
@@ -29,9 +29,9 @@ void main() {
 	float result = 0.0;
 	float weightSum = 0.0;
 
-	// Gaussian blur, vertical
+	// Gaussian blur
 	for (int i = -pc.blurRadius; i <= pc.blurRadius; i++) {
-		vec2 offset = vec2(0.0, float(i)) * pc.invScreenSize;
+		vec2 offset = pc.blurDirection * float(i) * pc.invScreenSize;
 		float ssaoSample = texture(ssaoInput, uv + offset).r;
 
 		float weight = exp(-0.5 * (i * i) / float(pc.blurRadius * pc.blurRadius));
@@ -41,5 +41,5 @@ void main() {
 
 	result /= weightSum;
 
-	imageStore(blurV, pix, vec4(result, 0.0, 0.0, 1.0));
+	imageStore(blur, pix, vec4(result, 0.0, 0.0, 1.0));
 }

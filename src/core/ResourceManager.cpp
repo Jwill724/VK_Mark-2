@@ -28,14 +28,15 @@ namespace ResourceManager {
 	AllocatedImage _depthResolvedImage;
 	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
 
-	VkSampler _depthSampler;
-	const VkSampler getDepthSampler() { return _depthSampler; }
+	// Max lod = mip count
+	VkSampler _depthPyramidSampler;
+	const VkSampler getDepthPyramidSampler() { return _depthPyramidSampler; }
 
-	VkSampler _ssaoSampler;
-	const VkSampler getSSAOSampler() { return _ssaoSampler; }
+	AllocatedImage _depthPyramidImage;
+	AllocatedImage& getDepthPyramidImage() { return _depthPyramidImage; }
 
-	VkSampler _normalSampler;
-	const VkSampler getNormalSampler() { return _normalSampler; }
+	VkSampler _aoSampler;
+	const VkSampler getAOSampler() { return _aoSampler; }
 
 	VkSampler _noiseSampler;
 	const VkSampler getNoiseSampler() { return _noiseSampler; }
@@ -43,18 +44,32 @@ namespace ResourceManager {
 	AllocatedImage _normalImage;
 	AllocatedImage& getNormalImage() { return _normalImage; }
 
-	// ssao images
-	AllocatedImage _ssaoImage;
-	AllocatedImage& getSSAOImage() { return _ssaoImage; }
+	AllocatedImage _bentNormalImage;
+	AllocatedImage& getBentNormalImage() { return _bentNormalImage; }
 
-	AllocatedImage _ssaoBlurHImage;
-	AllocatedImage& getSSAOBlurHImage() { return _ssaoBlurHImage; }
+	AllocatedImage _materialDataImage;
+	AllocatedImage& getMaterialDataImage() { return _materialDataImage; }
 
-	AllocatedImage _ssaoBlurVImage;
-	AllocatedImage& getSSAOBlurVImage() { return _ssaoBlurVImage; }
+	AllocatedImage _edgeInfoImage;
+	AllocatedImage& getEdgeInfoImage() { return _edgeInfoImage; }
 
-	AllocatedImage _ssaoNoiseImage;
-	AllocatedImage& getSSAONoiseImage() { return _ssaoNoiseImage; }
+	AllocatedImage _aoRawImage;
+	AllocatedImage& getAORawImage() { return _aoRawImage; }
+
+	AllocatedImage _aoTempImage;
+	AllocatedImage& getAOTempImage() { return _aoTempImage; }
+
+	AllocatedImage _volumetricLightImage;
+	AllocatedImage& getVolumetricLightImage() { return _volumetricLightImage; }
+
+	AllocatedImage _volumetricBlurImage;
+	AllocatedImage& getVolumetricBlurImage() { return _volumetricBlurImage; }
+
+	AllocatedImage _volumetricNoiseImage;
+	AllocatedImage& getVolumetricNoiseImage() { return _volumetricNoiseImage; }
+
+	AllocatedImage _4x4NoiseImage;
+	AllocatedImage& get4x4NoiseImage() { return _4x4NoiseImage; }
 
 	AllocatedImage _shadowMapImage;
 	AllocatedImage& getShadowMapImage() { return _shadowMapImage; }
@@ -91,9 +106,16 @@ namespace ResourceManager {
 	AllocatedImage& getDummyTransparent() { return _dummyTransparent; }
 
 	VkSampler _defaultSamplerLinear;
-	VkSampler _defaultSamplerNearest;
 	const VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
+
+	VkSampler _defaultSamplerNearest;
 	const VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+
+	VkSampler _nearestClampSampler;
+	const VkSampler getNearestClampSampler() { return _nearestClampSampler; }
+
+	VkSampler _linearClampSampler;
+	const VkSampler getLinearClampSampler() { return _linearClampSampler; }
 
 	VkSampler _skyBoxSampler;
 	const VkSampler getSkyBoxSampler() { return _skyBoxSampler; }
@@ -207,7 +229,7 @@ void ResourceManager::initSSAOKernel() {
 
 		// bias: closer samples more dense, farther ones less
 		float scale = static_cast<float>(i) / 64.0f;
-		scale = lerp(0.1f, 0.9f, (scale * scale));
+		scale = lerp(0.1f, 1.0f, (scale * scale));
 		sample *= scale;
 
 		_ssaoKernelBlock[i] = glm::vec4(sample, 0.0f);
@@ -220,9 +242,11 @@ void ResourceManager::initRenderTargets(
 	const VmaAllocator allocator,
 	const VkExtent3D drawExtent)
 {
-	// Opaque
-	_opaqueImage.imageFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-	_opaqueImage.imageExtent = drawExtent;
+	VkImageUsageFlags baseComputeUsages{};
+	baseComputeUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	baseComputeUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	baseComputeUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	baseComputeUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	VkImageUsageFlags drawImageUsages{};
 	drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -230,6 +254,14 @@ void ResourceManager::initRenderTargets(
 	drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 	drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	drawImageUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	VkImageUsageFlags computeMinimalUsages{};
+	computeMinimalUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+	computeMinimalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	// Opaque
+	_opaqueImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_opaqueImage.extent = drawExtent;
 
 	ImageUtils::createRenderImage(
 		device,
@@ -240,8 +272,8 @@ void ResourceManager::initRenderTargets(
 		allocator);
 
 	// Transparent
-	_transparentImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_transparentImage.imageExtent = drawExtent;
+	_transparentImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_transparentImage.extent = drawExtent;
 
 	ImageUtils::createRenderImage(
 		device,
@@ -255,8 +287,8 @@ void ResourceManager::initRenderTargets(
 	// MSAA
 	VkSampleCountFlagBits sampleCount = !MSAA_ENABLED ? VK_SAMPLE_COUNT_1_BIT : static_cast<VkSampleCountFlagBits>(CURRENT_MSAA_LVL);
 
-	_msaaImage.imageFormat = _opaqueImage.imageFormat;
-	_msaaImage.imageExtent = drawExtent;
+	_msaaImage.format = _opaqueImage.format;
+	_msaaImage.extent = drawExtent;
 
 	VkImageUsageFlags msaaImageUsages{};
 	msaaImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -272,8 +304,8 @@ void ResourceManager::initRenderTargets(
 		allocator);
 
 	// Base depth image
-	_depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_depthImage.imageExtent = drawExtent;
+	_depthImage.format = VK_FORMAT_D32_SFLOAT;
+	_depthImage.extent = drawExtent;
 	_depthImage.initialLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 	VkImageUsageFlags depthImageUsages{};
 	depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -286,8 +318,8 @@ void ResourceManager::initRenderTargets(
 		allocator);
 
 	// Depth resolved image
-	_depthResolvedImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_depthResolvedImage.imageExtent = drawExtent;
+	_depthResolvedImage.format = VK_FORMAT_D32_SFLOAT;
+	_depthResolvedImage.extent = drawExtent;
 
 	VkImageUsageFlags depthResolvedUsages{};
 	depthResolvedUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
@@ -300,49 +332,45 @@ void ResourceManager::initRenderTargets(
 		targetQueue,
 		allocator);
 
-	// SSAO pass images
-	VkImageUsageFlags ssaoUsages{};
-	ssaoUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	ssaoUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	// ao pass images
+	_aoRawImage.format = VK_FORMAT_R8_UNORM;
+	_aoRawImage.extent = drawExtent;
 
-	_ssaoImage.imageFormat = VK_FORMAT_R8_UNORM;
-	_ssaoImage.imageExtent = drawExtent;
-
-	// base ssao image
+	// base ao image
 	ImageUtils::createRenderImage(
 		device,
-		_ssaoImage,
-		ssaoUsages,
+		_aoRawImage,
+		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
-	// bi-lateral blur images
-	_ssaoBlurHImage.imageFormat = VK_FORMAT_R8_UNORM;
-	_ssaoBlurHImage.imageExtent = drawExtent;
+	_aoTempImage.format = VK_FORMAT_R8_UNORM;
+	_aoTempImage.extent = drawExtent;
 
 	ImageUtils::createRenderImage(
 		device,
-		_ssaoBlurHImage,
-		ssaoUsages,
+		_aoTempImage,
+		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
-	_ssaoBlurVImage.imageFormat = VK_FORMAT_R8_UNORM;
-	_ssaoBlurVImage.imageExtent = drawExtent;
-
+	// Edge image
+	_edgeInfoImage.format = VK_FORMAT_R8_UNORM;
+	_edgeInfoImage.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
-		_ssaoBlurVImage,
-		ssaoUsages,
+		_edgeInfoImage,
+		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
-		allocator);
+		allocator
+	);
 
 	// Normal
-	_normalImage.imageFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-	_normalImage.imageExtent = drawExtent;
+	_normalImage.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	_normalImage.extent = drawExtent;
 
 	VkImageUsageFlags normalUsages{};
 	normalUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -358,21 +386,89 @@ void ResourceManager::initRenderTargets(
 	);
 
 	// Tone map
-	_toneMapImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_toneMapImage.imageExtent = drawExtent;
-	VkImageUsageFlags toneMapUsages{};
-	toneMapUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-	toneMapUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	toneMapUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	_toneMapImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_toneMapImage.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
 		_toneMapImage,
-		toneMapUsages,
+		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
+
+	// Depth pyramid
+	_depthPyramidImage.format = VK_FORMAT_R16_SFLOAT;
+	_depthPyramidImage.extent = drawExtent;
+	_depthPyramidImage.mipLevelCount = DEPTH_PYRAMID_MIP_COUNT;
+	_depthPyramidImage.perMipStorageViews = true;
+	ImageUtils::createRenderImage(
+		device,
+		_depthPyramidImage,
+		baseComputeUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	// Bent normals
+	_bentNormalImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_bentNormalImage.extent = drawExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_bentNormalImage,
+		baseComputeUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	// Volumetric light images
+	VkExtent3D halfExtent = {
+		(drawExtent.width + 1u) / 2u,
+		(drawExtent.height + 1u) / 2u,
+		1u
+	};
+
+	_volumetricLightImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_volumetricLightImage.extent = halfExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_volumetricLightImage,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+	_volumetricBlurImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_volumetricBlurImage.extent = halfExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_volumetricBlurImage,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+
+	// Material data
+	// Use for SSR
+	//_materialDataImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	//_materialDataImage.extent = drawExtent;
+	//VkImageUsageFlags matDataUsages{};
+	//matDataUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	//matDataUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	//matDataUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	//matDataUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	//ImageUtils::createRenderImage(
+	//	device,
+	//	_materialDataImage,
+	//	matDataUsages,
+	//	VK_SAMPLE_COUNT_1_BIT,
+	//	targetQueue,
+	//	allocator
+	//);
 }
 
 void ResourceManager::initShadowMapImages(
@@ -381,10 +477,10 @@ void ResourceManager::initShadowMapImages(
 	const VmaAllocator allocator)
 {
 	// Shadow map image
-	_shadowMapImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-	_shadowMapImage.imageExtent = { 4096, 4096, 1 };
-	//_shadowMapImage.imageExtent = { 2048, 2048, 1 };
-	_shadowMapImage.arrayLayers = MAX_CASCADES;
+	_shadowMapImage.format = VK_FORMAT_D32_SFLOAT;
+	_shadowMapImage.extent = { 4096, 4096, 1 };
+	//_shadowMapImage.extent = { 2048, 2048, 1 };
+	_shadowMapImage.arrayLayers = MAX_SHADOW_CASCADES;
 
 	VkImageUsageFlags shadowUsages =
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
@@ -409,8 +505,8 @@ void ResourceManager::initShadowMapImages(
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
 
-	//_shadowMapDescriptors.resize(MAX_CASCADES);
-	//for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
+	//_shadowMapDescriptors.resize(MAX_SHADOW_CASCADES);
+	//for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
 	//	_shadowMapDescriptors[i] = ImGui_ImplVulkan_AddTexture(
 	//		_shadowMapSampler,
 	//		_shadowMapImage.layerViews[i],
@@ -431,21 +527,11 @@ void ResourceManager::initRenderSamplers(
 	const VkDevice device,
 	DeletionQueue& queue)
 {
-	_depthSampler = ImageUtils::createSampler(
+	_depthPyramidSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		0.0f,
-		1.0f,
-		&queue,
-		VK_SAMPLER_MIPMAP_MODE_NEAREST
-	);
-
-	_normalSampler = ImageUtils::createSampler(
-		device,
-		VK_FILTER_NEAREST,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		0.0f,
+		static_cast<float>(DEPTH_PYRAMID_MIP_COUNT - 1),
 		1.0f,
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
@@ -461,7 +547,7 @@ void ResourceManager::initRenderSamplers(
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
 
-	_ssaoSampler = ImageUtils::createSampler(
+	_aoSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -488,8 +574,8 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 	VkFormat environmentFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 	// SKYBOX
-	env.skybox.imageExtent = Environment::CUBEMAP_EXTENTS;
-	env.skybox.imageFormat = environmentFormat;
+	env.skybox.extent = Environment::CUBEMAP_EXTENTS;
+	env.skybox.format = environmentFormat;
 	env.skybox.isCubeMap = true;
 	env.skybox.mipmapped = true;
 
@@ -502,10 +588,9 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 		allocator);
 
 	// SPECULAR
-	env.specular.imageExtent = Environment::CUBEMAP_EXTENTS;
-	env.specular.imageFormat = environmentFormat;
+	env.specular.extent = Environment::CUBEMAP_EXTENTS;
+	env.specular.format = environmentFormat;
 	env.specular.isCubeMap = true;
-	env.specular.mipmapped = true;
 	env.specular.perMipStorageViews = true;
 	env.specular.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
 
@@ -518,8 +603,8 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 		allocator);
 
 	// IRRADIANCE
-	env.irradiance.imageExtent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
-	env.irradiance.imageFormat = environmentFormat;
+	env.irradiance.extent = Environment::DIFFUSE_IRRADIANCE_BASE_EXTENTS;
+	env.irradiance.format = environmentFormat;
 	env.irradiance.isCubeMap = true;
 
 	ImageUtils::createRenderImage(
@@ -563,8 +648,8 @@ void ResourceManager::initStaticEnvironmentImages(
 		&queue);
 
 
-	_brdfLutImage.imageExtent = Environment::LUT_IMAGE_EXTENT;
-	_brdfLutImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
+	_brdfLutImage.extent = Environment::LUT_IMAGE_EXTENT;
+	_brdfLutImage.format = VK_FORMAT_R16G16_SFLOAT;
 
 	ImageUtils::createRenderImage(
 		device,
@@ -600,8 +685,8 @@ void ResourceManager::initTextures(
 	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
 
 
-	_aoMat.imageExtent = texExtent;
-	_aoMat.imageFormat = VK_FORMAT_R8_UNORM;
+	_aoMat.extent = texExtent;
+	_aoMat.format = VK_FORMAT_R8_UNORM;
 	_aoMat.mipmapped = true;
 
 	uint8_t aoPixel = static_cast<uint8_t>(1.0f * 255); // full ambient lighting
@@ -616,8 +701,8 @@ void ResourceManager::initTextures(
 		bufferQueue,
 		allocator);
 
-	_normalMat.imageExtent = texExtent;
-	_normalMat.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	_normalMat.extent = texExtent;
+	_normalMat.format = VK_FORMAT_R8G8B8A8_UNORM;
 	_normalMat.mipmapped = true;
 
 	uint32_t flatNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)); // X = 128, Y = 128, Z = 255, A = 255
@@ -633,8 +718,8 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_emissiveMat.imageExtent = texExtent;
-	_emissiveMat.imageFormat = format;
+	_emissiveMat.extent = texExtent;
+	_emissiveMat.format = format;
 	_emissiveMat.mipmapped = true;
 
 	uint32_t blackEmissive = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1)); // No emission
@@ -649,8 +734,8 @@ void ResourceManager::initTextures(
 		bufferQueue,
 		allocator);
 
-	_metalRoughMat.imageExtent = texExtent;
-	_metalRoughMat.imageFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	_metalRoughMat.extent = texExtent;
+	_metalRoughMat.format = VK_FORMAT_R8G8B8A8_UNORM;
 	_metalRoughMat.mipmapped = true;
 
 	// From what I've read about modern GLTF pbr, g is roughness and b is metallic.
@@ -672,8 +757,8 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_dummyTransparent.imageExtent = texExtent;
-	_dummyTransparent.imageFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_dummyTransparent.extent = texExtent;
+	_dummyTransparent.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 	_dummyTransparent.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	glm::vec4 transparentBlack = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -690,8 +775,8 @@ void ResourceManager::initTextures(
 	);
 
 
-	_whiteMat.imageExtent = texExtent;
-	_whiteMat.imageFormat = format;
+	_whiteMat.extent = texExtent;
+	_whiteMat.format = format;
 	_whiteMat.mipmapped = true;
 
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
@@ -717,8 +802,8 @@ void ResourceManager::initTextures(
 
 	VkExtent3D checkerboardedImageExtent{ 16, 16, 1 };
 
-	_errorCheckerboardTex.imageExtent = checkerboardedImageExtent;
-	_errorCheckerboardTex.imageFormat = format;
+	_errorCheckerboardTex.extent = checkerboardedImageExtent;
+	_errorCheckerboardTex.format = format;
 	_errorCheckerboardTex.mipmapped = true;
 	ImageUtils::createTextureImage(
 		device,
@@ -731,21 +816,24 @@ void ResourceManager::initTextures(
 		bufferQueue,
 		allocator);
 
-	// SSAO noise texture
+	// noise texture
 	std::vector<glm::vec2> noiseData;
 	noiseData.reserve(16);
 
 	std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 	std::default_random_engine rng;
 
-	for (unsigned int i = 0; i < 16; i++) {
-		glm::vec2 noise(dist(rng), dist(rng));
-		noise = glm::normalize(noise); // keep it unit length
+	for (uint32_t i = 0; i < 16; i++) {
+		glm::vec2 noise(
+			dist(rng),
+			dist(rng)
+		);
+
 		noiseData.push_back(noise);
 	}
 
-	_ssaoNoiseImage.imageFormat = VK_FORMAT_R16G16_SFLOAT;
-	_ssaoNoiseImage.imageExtent = { 4, 4, 1 };
+	_4x4NoiseImage.format = VK_FORMAT_R16G16_SFLOAT;
+	_4x4NoiseImage.extent = { 4, 4, 1 };
 
 	VkImageUsageFlags noiseUsages{};
 	noiseUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
@@ -755,7 +843,33 @@ void ResourceManager::initTextures(
 		device,
 		cmdPool,
 		noiseData.data(),
-		_ssaoNoiseImage,
+		_4x4NoiseImage,
+		noiseUsages,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator);
+
+	// volumetric noise texture
+	const uint32_t noiseWidth = 64;
+	const uint32_t noiseHeight = 64;
+
+	std::vector<uint8_t> volNoise(noiseWidth * noiseHeight);
+
+	std::mt19937 rngVol(1234);
+	std::uniform_int_distribution<int> distVol(0, 255);
+
+	for (uint32_t i = 0; i < noiseWidth * noiseHeight; ++i) {
+		volNoise[i] = static_cast<uint8_t>(distVol(rngVol));
+	}
+
+	_volumetricNoiseImage.format = VK_FORMAT_R8_UNORM;
+	_volumetricNoiseImage.extent = { noiseWidth, noiseHeight, 1 };
+	ImageUtils::createTextureImage(
+		device,
+		cmdPool,
+		volNoise.data(),
+		_volumetricNoiseImage,
 		noiseUsages,
 		samples,
 		imageQueue,
@@ -778,4 +892,24 @@ void ResourceManager::initTextures(
 		FLT_MAX,
 		1.0f,
 		&imageQueue);
+
+	_nearestClampSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		FLT_MAX,
+		1.0f,
+		&imageQueue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	_linearClampSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		FLT_MAX,
+		1.0f,
+		&imageQueue,
+		VK_SAMPLER_MIPMAP_MODE_LINEAR
+	);
 }

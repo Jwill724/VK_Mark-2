@@ -5,14 +5,22 @@
 #ifndef GPU_SCENE_STRUCTURES_GLSL
 #define GPU_SCENE_STRUCTURES_GLSL
 
+// debug helpers
+#define DBG(x) (debug.x != 0u)
+#define RET(rgb, a) { outFragColor = vec4((rgb), (a)); return; }
+
 struct SceneData {
 	mat4 view;
 	mat4 proj;
+	mat4 invView;
+	mat4 invProj;
 	mat4 viewproj;
 	vec4 sunlightDirection; // .w = power
 	vec4 sunlightColor;
 	vec4 cameraPos; // .z camFar
+	vec4 cameraClips; // .x near and .y far
 	vec4 viewportSize; // .x screenwidth, .y screenheight .z pixelcount
+	vec4 pad0[7];
 };
 
 // Number of env sets stored in the buffer (must match C++ side)
@@ -26,14 +34,6 @@ struct EnvMapIndexArray {
 	// w = skyboxMapIndex
 };
 
-const uint MAX_CASCADES = 3u;
-
-struct ShadowCSM {
-	mat4 cascadeVP[MAX_CASCADES];
-	vec4 cascadeSplits;
-	vec4 params; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount, .w/texelSize
-};
-
 // inline uniform block
 struct DebugToggles {
 	// Higher level toggles
@@ -42,10 +42,10 @@ struct DebugToggles {
 	uint enableSettings;
 	uint enableStats;
 
-	uint enableSSAO;
+	uint aoMode; // 0 off, 1 ssao, 2 gtao
 	uint enableShadows;
-	uint activeEnvMap;
-	uint pad0;
+	uint enableVolumetrics;
+	uint activeEnvMap; // Indexes environment indices
 
 	// draw stats
 	uint meshCount;
@@ -54,7 +54,9 @@ struct DebugToggles {
 	uint vertexCount;
 
 	uint indexCount;
-	uint pad1[3];
+	uint enableLensFlare;
+	uint enableChromaticAberration;
+	uint pad0;
 
 	// fragment shader outputs
 	uint showAlbedo;
@@ -62,14 +64,14 @@ struct DebugToggles {
 	uint showRoughness;
 	uint showMetallic;
 
-	uint showSSAO;
+	uint showAmbientOcclusion;
 	uint showSpecular;
 	uint showDiffuse;
 	uint showCascadeSplits;
 
 	uint showEmissive;
-	uint showAO;
-	uint pad2[2];
+	uint showBakedAO;
+	uint pad1[2];
 };
 
 struct AABB {

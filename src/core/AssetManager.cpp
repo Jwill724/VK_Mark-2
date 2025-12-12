@@ -34,11 +34,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
 
-	std::string duckPath{ "res/assets/Duck.glb" };
-	auto duckFile = loadGltfFiles(duckPath);
-	ASSERT(duckFile.has_value());
-	duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
-	queue->push(duckFile.value());
+	//std::string duckPath{ "res/assets/Duck.glb" };
+	//auto duckFile = loadGltfFiles(duckPath);
+	//ASSERT(duckFile.has_value());
+	//duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	//queue->push(duckFile.value());
 
 	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
@@ -52,18 +52,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
 
-	//std::string cityPath{ "res/assets/city/town4new.glb" };
-	//auto cityFile = loadGltfFiles(cityPath);
-	//ASSERT(cityFile.has_value());
-	//cityFile.value()->scene->sceneName = SceneNames.at(SceneID::City);
-	//queue->push(cityFile.value());
-
-	//std::string structurePath{ "res/assets/structure.glb" };
-	//auto structureFile = loadGltfFiles(structurePath);
-	//ASSERT(structureFile.has_value());
-	//structureFile.value()->scene->sceneName = SceneNames.at(SceneID::Structure);
-	//queue->push(structureFile.value());
-
 	//std::string emissPath{ "res/assets/EmissiveStrengthTest.glb" };
 	//auto emissFile = loadGltfFiles(emissPath);
 	//ASSERT(emissFile.has_value());
@@ -75,6 +63,18 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//ASSERT(wrathDragonFile.has_value());
 	//wrathDragonFile.value()->scene->sceneName = SceneNames.at(SceneID::WrathDragon);
 	//queue->push(wrathDragonFile.value());
+
+	//std::string cityPath{ "res/assets/city/town4new.glb" };
+	//auto cityFile = loadGltfFiles(cityPath);
+	//ASSERT(cityFile.has_value());
+	//cityFile.value()->scene->sceneName = SceneNames.at(SceneID::City);
+	//queue->push(cityFile.value());
+
+	//std::string structurePath{ "res/assets/structure.glb" };
+	//auto structureFile = loadGltfFiles(structurePath);
+	//ASSERT(structureFile.has_value());
+	//structureFile.value()->scene->sceneName = SceneNames.at(SceneID::Structure);
+	//queue->push(structureFile.value());
 
 	if (!queue->empty()) {
 		return true;
@@ -138,13 +138,12 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 	return context;
 }
 
-// TODO: Multithread the shit out of this
-// Largest bottle neck in the asset loading pipeline
 void AssetManager::decodeImages(
 	ThreadContext& threadCtx,
 	const VmaAllocator allocator,
 	DeletionQueue& bufferQueue,
-	const VkDevice device) {
+	const VkDevice device)
+{
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
@@ -439,7 +438,6 @@ void AssetManager::processMaterials(
 		context->markJobComplete(GLTFJobType::ProcessMaterials);
 	}
 
-	// TODO: Possible threading issue where previous jobs textures and samplers dont occur.
 	ASSERT(!materialUploadList.empty() && "Material list is invalid.");
 
 	// Upload flattened materials
@@ -700,8 +698,8 @@ void AssetManager::buildSceneGraph(
 	uint32_t firstTransform = 0;
 
 	int gridCols = 4;       // how many models per row
-	float spacingX = 50.0f; // horizontal spacing
-	float spacingZ = 50.0f; // depth spacing
+	float spacingX = 80.0f; // horizontal spacing
+	float spacingZ = 80.0f; // depth spacing
 
 	// Increasing y of model spawns
 	float yOffsetPerInstance = 2.5f;
@@ -797,13 +795,14 @@ void AssetManager::buildSceneGraph(
 		gblInst.perInstanceStride = static_cast<uint32_t>(bakedInstances.size());
 		gblInst.transformCount = static_cast<uint32_t>(modelAsset.runtime.uniqueNodeIDs.size());
 
-		//int row = instanceCounter / gridCols;
-		//int col = instanceCounter % gridCols;
+		// Placing assets on top of eachother
+		//float currentY = instanceCounter * yOffsetPerInstance;
+		//gblInst.modelOffset = glm::vec3(0.0f, currentY, 0.0f);
 
-		float currentY = instanceCounter * yOffsetPerInstance;
-		gblInst.modelOffset = glm::vec3(0.0f, currentY, 0.0f);
-
-		//gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
+		// Spreads out assets in even planes as grids
+		int row = instanceCounter / gridCols;
+		int col = instanceCounter % gridCols;
+		gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
 
 		// === Push unique transforms into the global list ===
 		gblInst.firstTransform = firstTransform;

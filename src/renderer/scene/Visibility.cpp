@@ -228,7 +228,7 @@ void Visibility::bakeCoreSceneMeshes(
 	uint32_t& outFirst,
 	uint32_t& outCount)
 {
-	const uint32_t stride = gi.perInstanceStride; // == bakedInstances.size()
+	const uint32_t stride = gi.perInstanceStride; // = bakedInstances.size()
 	const uint32_t copies = gi.usedCopies;        // includes base
 	ASSERT(stride == asset.runtime.bakedInstances.size());
 	ASSERT(copies >= 1);
@@ -567,6 +567,8 @@ void Visibility::refitBVH(
 }
 
 
+// Note: With the addition of shadows, the 8 points on the frustum over-complicated the design
+// due to overdraw occuring with the extension of the frustum planes facing light.
 
 // === CORE CULL FUNCTIONS AND WORLD AABB/FRUSTUM SETUP ===
 

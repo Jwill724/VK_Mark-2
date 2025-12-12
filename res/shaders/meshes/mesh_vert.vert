@@ -47,8 +47,7 @@ void main()
 	outViewPos = scene.view * vec4(worldPos4.xyz, 1.0);
 	gl_Position = scene.viewproj * worldPos4;
 
-	mat3 normalMatrix = transpose(inverse(mat3(model)));
-	outNormal = normalize(normalMatrix * vtx.normal);
+	outNormal = mat3(model) * vtx.normal;
 	outColor = vtx.color.xyz;
 	outUV = vtx.uv;
 }

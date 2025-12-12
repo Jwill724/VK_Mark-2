@@ -30,6 +30,7 @@
     <Filter Include="res\shaders\depth" />
     <Filter Include="res\shaders\environment" />
     <Filter Include="res\shaders\visibility" />
+    <Filter Include="res\shaders\ao" />
     <Filter Include="res\shaders\debug" />
     <Filter Include="res\shaders\post_process" />
     <!-- vendor / third-party -->
@@ -363,14 +364,17 @@
     <None Include="res\shaders\visibility\visibility_comp.comp">
       <Filter>res\shaders\visibility</Filter>
     </None>
-    <None Include="res\shaders\post_process\ssao_comp.comp">
-      <Filter>res\shaders\post_process</Filter>
+    <None Include="res\shaders\ao\ssao_blur_comp.comp">
+      <Filter>res\shaders\ao</Filter>
     </None>
-    <None Include="res\shaders\post_process\ssao_blurH_comp.comp">
-      <Filter>res\shaders\post_process</Filter>
+    <None Include="res\shaders\ao\gtao_main_comp.comp">
+      <Filter>res\shaders\ao</Filter>
     </None>
-    <None Include="res\shaders\post_process\ssao_blurV_comp.comp">
-      <Filter>res\shaders\post_process</Filter>
+    <None Include="res\shaders\ao\gtao_filter_comp.comp">
+      <Filter>res\shaders\ao</Filter>
+    </None>
+    <None Include="res\shaders\depth\depth_pyramid_comp.comp">
+      <Filter>res\shaders\depth</Filter>
     </None>
     <None Include="res\shaders\depth\depth_prepass_frag.frag">
       <Filter>res\shaders\depth</Filter>
@@ -392,6 +396,21 @@
     </None>
     <None Include="res\shaders\post_process\exposure_finalize_comp.comp">
       <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\volumetric_light_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\volumetric_light_blur_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\include\shadow.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\depth.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\ao\ssao_main_comp.comp">
+      <Filter>res\shaders\ao</Filter>
     </None>
   </ItemGroup>
 </Project>

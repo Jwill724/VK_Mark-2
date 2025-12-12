@@ -42,8 +42,8 @@ AllocatedImage Environment::loadHDR(
 	}
 
 	AllocatedImage equirect{};
-	equirect.imageExtent = { uint32_t(w), uint32_t(h), 1 };
-	equirect.imageFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+	equirect.extent = { uint32_t(w), uint32_t(h), 1 };
+	equirect.format = VK_FORMAT_R32G32B32A32_SFLOAT;
 
 	ImageUtils::createTextureImage(
 		device,
@@ -108,8 +108,8 @@ void Environment::dispatchEnvironmentMaps(
 
 			env.specularPCs[mip].sampleCount = PREFILTER_SAMPLE_COUNT;
 			env.specularPCs[mip].roughness = roughness;
-			env.specularPCs[mip].width = std::max(1u, env.specular.imageExtent.width >> mip);
-			env.specularPCs[mip].height = std::max(1u, env.specular.imageExtent.height >> mip);
+			env.specularPCs[mip].width = std::max(1u, env.specular.extent.width >> mip);
+			env.specularPCs[mip].height = std::max(1u, env.specular.extent.height >> mip);
 		}
 
 		ResourceManager::_environmentSets[setCount++] = env;
@@ -131,22 +131,22 @@ void Environment::dispatchEnvironmentMaps(
 
 			ImageUtils::transitionImage(cmd,
 				equirect.image,
-				equirect.imageFormat,
+				equirect.format,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			ImageUtils::transitionImage(cmd,
 				skyboxImg.image,
-				skyboxImg.imageFormat,
+				skyboxImg.format,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_GENERAL);
 			ImageUtils::transitionImage(cmd,
 				specularImg.image,
-				specularImg.imageFormat,
+				specularImg.format,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_GENERAL);
 			ImageUtils::transitionImage(cmd,
 				irradianceImg.image,
-				irradianceImg.imageFormat,
+				irradianceImg.format,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_GENERAL);
 
@@ -156,11 +156,11 @@ void Environment::dispatchEnvironmentMaps(
 				equirect.imageView,
 				skyboxSmpl);
 			writer.writePushImage(
-				PUSH_BINDING_OUTPUT_TEX,
-				skyboxImg.storageView);
+				PUSH_BINDING_OUTPUT_1_TEX,
+				skyboxImg.storageViews[0]);
 
 			envScope.setPush(&envData); // Attach pointer once
-			envScope.extent = { skyboxImg.imageExtent.width, skyboxImg.imageExtent.height };
+			envScope.extent = { skyboxImg.extent.width, skyboxImg.extent.height };
 			envScope.workgroupSize = { 16u, 16u, 6u }; // Only pass that needs 16x16
 
 			RenderPasses::dispatchComputePass(
@@ -170,7 +170,7 @@ void Environment::dispatchEnvironmentMaps(
 				writer);
 			ImageUtils::transitionImage(cmd,
 				skyboxImg.image,
-				skyboxImg.imageFormat,
+				skyboxImg.format,
 				VK_IMAGE_LAYOUT_GENERAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			ImageUtils::generateCubemapMiplevels(cmd, skyboxImg);
@@ -182,11 +182,11 @@ void Environment::dispatchEnvironmentMaps(
 				irradianceSmpl);
 
 			writer.writePushImage(
-				PUSH_BINDING_OUTPUT_TEX,
-				irradianceImg.storageView);
+				PUSH_BINDING_OUTPUT_1_TEX,
+				irradianceImg.storageViews[0]);
 
 			envData.sampleCountF = DIFFUSE_SAMPLE_DELTA;
-			envScope.extent = { irradianceImg.imageExtent.width, irradianceImg.imageExtent.height };
+			envScope.extent = { irradianceImg.extent.width, irradianceImg.extent.height };
 			envScope.workgroupSize = { 8u, 8u, 6u }; // Size for irradiance and specular
 
 			RenderPasses::dispatchComputePass(
@@ -196,7 +196,7 @@ void Environment::dispatchEnvironmentMaps(
 				writer);
 			ImageUtils::transitionImage(cmd,
 				irradianceImg.image,
-				irradianceImg.imageFormat,
+				irradianceImg.format,
 				VK_IMAGE_LAYOUT_GENERAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -208,7 +208,7 @@ void Environment::dispatchEnvironmentMaps(
 					specSmpl);
 
 				writer.writePushImage(
-					PUSH_BINDING_OUTPUT_TEX,
+					PUSH_BINDING_OUTPUT_1_TEX,
 					specularImg.storageViews[i]);
 
 				envScope.extent = { env.specularPCs[i].width, env.specularPCs[i].height };
@@ -223,24 +223,24 @@ void Environment::dispatchEnvironmentMaps(
 
 			ImageUtils::transitionImage(cmd,
 				specularImg.image,
-				specularImg.imageFormat,
+				specularImg.format,
 				VK_IMAGE_LAYOUT_GENERAL,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
 
 		// BRDF
 		writer.writePushImage(
-			PUSH_BINDING_OUTPUT_TEX,
-			brdfImg.storageView);
+			PUSH_BINDING_OUTPUT_1_TEX,
+			brdfImg.imageView);
 
 		envData.sampleCountU = PREFILTER_SAMPLE_COUNT;
 		envScope.setPush(&envData);
 		envScope.workgroupSize = { 8u, 8u, 1u };
-		envScope.extent = { brdfImg.imageExtent.width, brdfImg.imageExtent.height };
+		envScope.extent = { brdfImg.extent.width, brdfImg.extent.height };
 
 		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
-			brdfImg.imageFormat,
+			brdfImg.format,
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_GENERAL);
 		RenderPasses::dispatchComputePass(
@@ -251,7 +251,7 @@ void Environment::dispatchEnvironmentMaps(
 		);
 		ImageUtils::transitionImage(cmd,
 			brdfImg.image,
-			brdfImg.imageFormat,
+			brdfImg.format,
 			VK_IMAGE_LAYOUT_GENERAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 

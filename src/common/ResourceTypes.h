@@ -218,13 +218,11 @@ struct ImageTableManager {
 
 struct AllocatedImage {
 	VkImage image = VK_NULL_HANDLE;
-	// Only real distinction between imageview and storageview is imagetype
-	VkImageView imageView = VK_NULL_HANDLE; // VK_IMAGE_TYPE_2D
-	VkImageView storageView = VK_NULL_HANDLE; // VK_IMAGE_TYPE_2D_ARRAY
+	VkImageView imageView = VK_NULL_HANDLE;
 	std::vector<VkImageView> storageViews{};
 	bool perMipStorageViews = false;
-	VkFormat imageFormat = VK_FORMAT_UNDEFINED;
-	VkExtent3D imageExtent{};
+	VkFormat format = VK_FORMAT_UNDEFINED;
+	VkExtent3D extent{};
 	uint32_t mipLevelCount = 0;
 	uint32_t arrayLayers = 1;
 	std::vector<VkImageView> layerViews{}; // Visual debugging a 2d array
@@ -297,12 +295,13 @@ struct DescriptorInfo {
 
 enum class PipelineCategory {
 	Raster,  // Vertex/frag traditional
-	Compute  // Comptue shader
+	Compute, // Comptue shader
+	Count
 };
 
 struct PipelineHandle {
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	PipelineCategory type;
+	PipelineCategory type = PipelineCategory::Count;
 	std::string name;
 	bool swappable = false;
 	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
@@ -454,4 +453,68 @@ struct AttachmentDesc {
 	VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	VkClearValue clearValue{};
+};
+
+// === RENDER PASS PUSH CONSTANTS ===
+
+// Ambient occlusion method push constants
+struct alignas(16) SSAOPush {
+	glm::vec2 screenSize{ 0.0f };
+	glm::vec2 invScreenSize{ 0.0f };
+	float aoRadius = 0.5f;
+	float bias = 0.01f;
+	float intensity = 1.5f;
+	int blurRadius = 5;
+	glm::vec2 blurDirection;
+	uint32_t sampleCount = 64;
+	float pad0;
+};
+struct alignas(16) GTAOPush {
+	glm::vec2 ndcToViewMul{ 0.0f };
+	glm::vec2 tanHalfFov{};
+
+	glm::vec2 ndcToViewAdd{ 0.0f };
+	glm::vec2 pixelSize{ 0.0f };
+
+	float effectRadius = 0.225f;
+	float radiusMultiplier = 1.457f;
+	float effectFalloffRange = 0.615f;
+	float sampleDistributionPower = 2.0f;
+
+	float thinOccluderCompensation = 0.1f;
+	float depthMipSamplingOffset = 3.3f;
+	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
+
+	uint32_t sliceCount = 8;
+	uint32_t stepsPerSliceCount = 4;
+	// Alongside pixelSize, needed during filtering
+	float sharpness = 2.0;
+	float radius = 4.0;
+
+	glm::vec2 blurDirection;
+	glm::vec2 pad0{};
+};
+
+struct alignas(16) VolumetricPush {
+	float density = 0.05f;
+	float scatteringStrength = 5.0f;
+	float extinction = 0.08f;
+	float heightFalloff = 0.04f;
+
+	float maxDistance = 100.0f;
+	float jitterStrength = 0.8f;
+	int stepCount = 32;
+	uint32_t frameIndex = 0;
+
+	float asymmetryFactor = 0.9f;
+	float minTransmittance = 0.9f;
+	glm::vec2 pixelSize{0.0f};
+
+	int beamPower = 2;
+	float blurRadius = 2.5f;
+	float blurDepthSigma = 1.5f;
+	float blurWeightSigma = 5.0f;
+
+	glm::vec2 blurDirection{ 0.0f };
+	glm::vec2 pad0{};
 };

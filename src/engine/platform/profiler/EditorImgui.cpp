@@ -61,7 +61,7 @@ void EditorImgui::initImgui(DeletionQueue& queue) {
 	//dynamic rendering parameters for imgui to use
 	init_info.PipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 	init_info.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &Backend::getSwapchainDef().imageFormat;
+	init_info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &Backend::getSwapchainDef().format;
 
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
@@ -176,15 +176,13 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			auto& shadowControl = RenderScene::_shadowControl;
 			//ImGui::SliderFloat("Split lamba##rt", &shadowControl.splitLambda, 0.0f, 1.0f);
 			ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
-			//ImGui::SliderFloat("Depth min scale##rt", &shadowControl.depthMinScale, 0.0f, 10.0f);
-			//ImGui::SliderFloat("Depth max scale##rt", &shadowControl.depthMaxScale, 0.0f, 10.0f);
 			//ImGui::SliderFloat("Frustum plane scale##rt", &shadowControl.lightDist, 0.0f, 5.0f);
 
 		//	if (ImGui::BeginChild("ShadowMapBox", ImVec2(0, 270), true, ImGuiWindowFlags_NoScrollbar)) {
 		//		const float previewSize = 125.0f;
 		//		int imagesPerRow = 2;
 
-		//		for (uint32_t i = 0; i < MAX_CASCADES; ++i) {
+		//		for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
 		//			if (i > 0 && (i % imagesPerRow) != 0) {
 		//				ImGui::SameLine();
 		//			}
@@ -232,8 +230,175 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			ImGui::SliderFloat("Sun Intensity##light", &sunI, 0.0f, 5.0f);
 
 			scene.sunlightColor = glm::vec4(sunCol, sunI);
-			//scene.sunlightDirection = glm::normalize(glm::vec4(sunDir, 0.0f));
 			scene.sunlightDirection = glm::vec4(sunDir, 0.0f);
+		}
+
+		// Volumetrics
+		if (ImGui::CollapsingHeader("Volumetrics##settings"))
+		{
+			bool volumetrics = dbg.enableVolumetrics != 0;
+			auto& volSettings = profiler.volLightSettings;
+
+			if (ImGui::Checkbox("Enable Volumetrics##vol", &volumetrics))
+			{
+				dbg.enableVolumetrics = volumetrics ? 1u : 0u;
+			}
+
+			ImGui::Separator();
+			ImGui::TextUnformatted("Fog");
+			ImGui::Separator();
+
+			ImGui::SliderFloat(
+				"Density##vol",
+				&volSettings.density,
+				0.0f,
+				0.25f,
+				"%.3f"
+			);
+
+			ImGui::SliderFloat(
+				"Scattering##vol",
+				&volSettings.scatteringStrength,
+				0.0f,
+				15.0f
+			);
+
+			ImGui::SliderFloat(
+				"Extinction##vol",
+				&volSettings.extinction,
+				0.0f,
+				1.0f
+			);
+
+			ImGui::SliderFloat(
+				"Asymmetry Factor##vol",
+				&volSettings.asymmetryFactor,
+				0.0f,
+				0.95f,
+				"%.2f"
+			);
+
+			ImGui::SliderFloat(
+				"Height Falloff##vol",
+				&volSettings.heightFalloff,
+				0.0f,
+				0.1f,
+				"%.2f"
+			);
+
+			ImGui::Separator();
+			ImGui::TextUnformatted("Ray March");
+			ImGui::Separator();
+
+			ImGui::SliderFloat(
+				"Max Distance##vol",
+				&volSettings.maxDistance,
+				10.0f,
+				150.0f
+			);
+
+			ImGui::SliderFloat(
+				"Min Transmittance##vol",
+				&volSettings.minTransmittance,
+				0.9f,
+				1.0f,
+				"%.2f"
+			);
+
+			ImGui::SliderInt(
+				"Beam Power##vol",
+				&volSettings.beamPower,
+				2,
+				6
+			);
+
+			ImGui::SliderFloat(
+				"Jitter Strength##vol",
+				&volSettings.jitterStrength,
+				0.0f,
+				1.0f
+			);
+
+			ImGui::SliderInt(
+				"Step Count##vol",
+				&volSettings.stepCount,
+				8,
+				128
+			);
+
+			ImGui::Separator();
+			ImGui::TextUnformatted("Blur");
+			ImGui::Separator();
+
+			ImGui::SliderFloat(
+				"Blur Radius##vol",
+				&volSettings.blurRadius,
+				1.0f,
+				10.0f
+			);
+
+			ImGui::SliderFloat(
+				"Blur Depth Sigma##vol",
+				&volSettings.blurDepthSigma,
+				0.0f,
+				5.0f
+			);
+
+			ImGui::SliderFloat(
+				"Blur Weight Sigma##vol",
+				&volSettings.blurWeightSigma,
+				0.5f,
+				5.0f
+			);
+		}
+
+		// Ambient occlusion
+		if (ImGui::CollapsingHeader("Ambient Occlusion##settings")) {
+			const char* aoModes[] = { "Off", "SSAO", "GTAO" };
+			int current = dbg.aoMode;
+
+			if (ImGui::Combo("AO Method", &current, aoModes, IM_ARRAYSIZE(aoModes)))
+				dbg.aoMode = static_cast<uint32_t>(current);
+
+			if (dbg.aoMode == AO_SSAO)
+			{
+				auto& ssao = profiler.ssaoSettings;
+				ImGui::SliderFloat("Radius##ssao", &ssao.aoRadius, 0.25f, 4.0f, "%.3f");
+				ImGui::SliderFloat("Bias##ssao", &ssao.bias, 0.01f, 0.1f);
+				ImGui::SliderFloat("Intensity##ssao", &ssao.intensity, 0.1f, 5.0f);
+				ImGui::SliderInt("Blur Radius##ssao", &ssao.blurRadius, 1, 8);
+				ImGui::SliderInt("Samples##ssao", (int*)&ssao.sampleCount, 8, KERNEL_BLOCK_SIZE);
+			}
+
+			if (dbg.aoMode == AO_GTAO)
+			{
+				auto& g = profiler.gtaoSettings;
+
+				// AO shape
+				ImGui::SliderFloat("Radius##gtao",
+					&g.effectRadius, 0.02f, 0.30f, "%.3f");
+				ImGui::SliderFloat("Falloff Range##gtao",
+					&g.effectFalloffRange, 0.30f, 1.0f, "%.2f");
+				ImGui::SliderFloat("Distribution##gtao",
+					&g.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
+
+				// thickness
+				ImGui::SliderFloat("Thin Occluder Comp##gtao",
+					&g.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
+
+				// sampling quality
+				ImGui::SliderInt("Slice Count##gtao",
+					reinterpret_cast<int*>(&g.sliceCount), 4, 12);
+				ImGui::SliderInt("Steps Per Slice##gtao",
+					reinterpret_cast<int*>(&g.stepsPerSliceCount), 2, 8);
+
+				// filter
+				ImGui::SliderFloat("Filter Sharpness##gtao",
+					&g.sharpness, 0.5f, 5.0f);
+				ImGui::SliderFloat("Filter Radius##gtao",
+					&g.radius, 1.0f, 6.0f);
+			}
+
 		}
 
 		// Pipeline override
@@ -253,48 +418,36 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			}
 		}
 
-		// SSAO
-		if (ImGui::CollapsingHeader("SSAO##settings", 0)) {
-			bool ssaoOn = dbg.enableSSAO != 0;
-			if (ImGui::Checkbox("Enable SSAO##rt", &ssaoOn)) dbg.enableSSAO = ssaoOn ? 1u : 0u;
-			auto& ssao = profiler.ssaoSettings;
-			ImGui::SliderFloat("Radius##ssao", &ssao.aoRadius, 0.025f, 2.0f, "%.3f");
-			ImGui::SliderFloat("Bias##ssao", &ssao.bias, 0.0f, 0.1f, "%.4f");
-			ImGui::SliderFloat("Intensity##ssao", &ssao.intensity, 0.10f, 1.5f, "%.2f");
-			ImGui::SliderInt("BlurRadius##ssao", &ssao.blurRadius, 1, 8);
-			ImGui::SliderInt("Samples##ssao", (int*)&ssao.sampleCount, 8, KERNEL_BLOCK_SIZE);
-		}
-
 		// Fragment debug overlays
 		if (ImGui::CollapsingHeader("Shading Overlay##overlay", ImGuiTreeNodeFlags_DefaultOpen)) {
 			enum Overlay {
-				O_Complete, O_Normals, O_Albedo, O_Emissive, O_AO, O_SSAO,
+				O_Complete, O_Normals, O_Albedo, O_Emissive, O_BakedAO, O_AO,
 				O_Specular, O_Diffuse, O_Metallic, O_Roughness
 			};
 
 			auto pickFromToggles = [&] {
-				if (dbg.showNormals)       return O_Normals;
-				if (dbg.showAlbedo)        return O_Albedo;
-				if (dbg.showEmissive)      return O_Emissive;
-				if (dbg.showAO)            return O_AO;
-				if (dbg.showSSAO)          return O_SSAO;
-				if (dbg.showSpecular)      return O_Specular;
-				if (dbg.showDiffuse)       return O_Diffuse;
-				if (dbg.showMetallic)      return O_Metallic;
-				if (dbg.showRoughness)     return O_Roughness;
+				if (dbg.showNormals)          return O_Normals;
+				if (dbg.showAlbedo)           return O_Albedo;
+				if (dbg.showEmissive)         return O_Emissive;
+				if (dbg.showBakedAO)          return O_BakedAO;
+				if (dbg.showAmbientOcclusion) return O_AO;
+				if (dbg.showSpecular)         return O_Specular;
+				if (dbg.showDiffuse)          return O_Diffuse;
+				if (dbg.showMetallic)         return O_Metallic;
+				if (dbg.showRoughness)        return O_Roughness;
 				return O_Complete;
 				};
 
 			auto applyOverlay = [&](int o) {
 				dbg.showNormals = dbg.showAlbedo = dbg.showEmissive = 0;
-				dbg.showAO = dbg.showSSAO = dbg.showSpecular = dbg.showDiffuse = 0;
+				dbg.showBakedAO = dbg.showAmbientOcclusion = dbg.showSpecular = dbg.showDiffuse = 0;
 				dbg.showMetallic = dbg.showRoughness = dbg.showCascadeSplits = 0;
 				switch (o) {
 				case O_Normals:   dbg.showNormals = 1; break;
 				case O_Albedo:    dbg.showAlbedo = 1; break;
 				case O_Emissive:  dbg.showEmissive = 1; break;
-				case O_AO:        dbg.showAO = 1; break;
-				case O_SSAO:      dbg.showSSAO = 1; break;
+				case O_BakedAO:   dbg.showBakedAO = 1; break;
+				case O_AO:        dbg.showAmbientOcclusion = 1; break;
 				case O_Specular:  dbg.showSpecular = 1; break;
 				case O_Diffuse:   dbg.showDiffuse = 1; break;
 				case O_Metallic:  dbg.showMetallic = 1; break;
@@ -324,7 +477,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::RadioButton("Metallic##ov", &overlay, O_Metallic))
 				applyOverlay(overlay);
 			ImGui::SameLine();
-			if (ImGui::RadioButton("SSAO##ov", &overlay, O_SSAO))
+			if (ImGui::RadioButton("Ambient Occlusion##ov", &overlay, O_AO))
 				applyOverlay(overlay);
 			ImGui::SameLine();
 			if (ImGui::RadioButton("Specular##ov", &overlay, O_Specular))
@@ -340,7 +493,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::RadioButton("Emissive##ov", &overlay, O_Emissive))
 				applyOverlay(overlay);
 			ImGui::SameLine();
-			if (ImGui::RadioButton("AO##ov", &overlay, O_AO))
+			if (ImGui::RadioButton("Baked AO##ov", &overlay, O_BakedAO))
 				applyOverlay(overlay);
 		}
 

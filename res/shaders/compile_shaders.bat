@@ -11,6 +11,7 @@ set INCLUDE_PATH=^
  -Ires/shaders/meshes/^
  -Ires/shaders/depth/^
  -Ires/shaders/post_process/^
+ -Ires/shaders/ao/^
  -Ires/shaders/visibility/
 
 if not exist "%VULKAN_BIN%\glslangValidator.exe" (

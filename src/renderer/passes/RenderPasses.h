@@ -41,7 +41,15 @@ namespace RenderPasses {
 	void shadowCSMPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle);
 	void SSAOPass(FrameContext& frameCtx,
-		ComputeDispatchScope ssaoScope);
+		ComputeDispatchScope ssaoScope,
+		Profiler& profiler);
+	void GTAOPass(FrameContext& frameCtx,
+		ComputeDispatchScope gtaoScope,
+		Profiler& profiler);
+	void depthPyramidPass(FrameContext& frameCtx);
+	void volumetricLightingPass(FrameContext& frameCtx,
+		ComputeDispatchScope volLightScope,
+		Profiler& profiler);
 
 	void opaqueMeshPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,

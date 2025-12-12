@@ -272,10 +272,17 @@
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
+    <None Include="res\shaders\ao\gtao_filter_comp.comp" />
+    <None Include="res\shaders\ao\gtao_main_comp.comp" />
+    <None Include="res\shaders\ao\ssao_blur_comp.comp" />
+    <None Include="res\shaders\ao\ssao_main_comp.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\debug\cascadevp_line_frag.frag" />
     <None Include="res\shaders\debug\cascadevp_line_vert.vert" />
     <None Include="res\shaders\depth\csm_depth_vert.vert" />
+    <None Include="res\shaders\depth\depth_pyramid_comp.comp" />
+    <None Include="res\shaders\include\depth.glsl" />
+    <None Include="res\shaders\include\shadow.glsl" />
     <None Include="res\shaders\meshes\mesh_vert.vert" />
     <None Include="res\shaders\meshes\mesh_frag.frag" />
     <None Include="res\shaders\environment\hdr2cubemap_comp.comp" />
@@ -287,13 +294,12 @@
     <None Include="res\shaders\depth\depth_prepass_frag.frag" />
     <None Include="res\shaders\depth\depth_prepass_vert.vert" />
     <None Include="res\shaders\post_process\exposure_finalize_comp.comp" />
-    <None Include="res\shaders\post_process\ssao_blurH_comp.comp" />
-    <None Include="res\shaders\post_process\ssao_blurV_comp.comp" />
-    <None Include="res\shaders\post_process\ssao_comp.comp" />
     <None Include="res\shaders\post_process\exposure_reduce_comp.comp" />
     <None Include="res\shaders\debug\obb_line_vert.vert" />
     <None Include="res\shaders\debug\obb_line_frag.frag" />
     <None Include="res\shaders\post_process\tone_map_comp.comp" />
+    <None Include="res\shaders\post_process\volumetric_light_blur_comp.comp" />
+    <None Include="res\shaders\post_process\volumetric_light_comp.comp" />
     <None Include="res\shaders\visibility\visibility_comp.comp" />
     <None Include="res\shaders\include\set_bindings.glsl" />
     <None Include="res\shaders\include\pbr.glsl" />

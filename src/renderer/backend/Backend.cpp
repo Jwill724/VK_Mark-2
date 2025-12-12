@@ -310,7 +310,7 @@ void Backend::createSwapchain() {
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	createInfo.surface = _surface;
 	createInfo.minImageCount = imageCount;
-	createInfo.imageFormat = surfaceFormat.format;
+	createInfo.format = surfaceFormat.format;
 	createInfo.imageColorSpace = surfaceFormat.colorSpace;
 	createInfo.imageExtent = extent;
 	createInfo.imageArrayLayers = 1;
@@ -353,7 +353,7 @@ void Backend::createSwapchain() {
 	_swapchainDef.imageCount = imageCount;
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, _swapchainDef.images.data());
 
-	_swapchainDef.imageFormat = surfaceFormat.format;
+	_swapchainDef.format = surfaceFormat.format;
 	_swapchainDef.extent = extent;
 
 	_swapchainDef.imageAvailableSemaphores.resize(imageCount);
@@ -369,7 +369,7 @@ void Backend::createSwapchain() {
 		_swapchainDef.imageViews[i] = ImageUtils::createImageView(
 			_device,
 			_swapchainDef.images[i],
-			_swapchainDef.imageFormat,
+			_swapchainDef.format,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			1
 		);

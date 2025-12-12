@@ -9,6 +9,7 @@
 
 #include "../include/set_bindings.glsl"
 #include "../include/gpu_scene_structures.glsl"
+#include "../include/shadow.glsl"
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
 	GPUAddressTable globalAddressTable;

@@ -3,6 +3,9 @@
 #include <common/EngineTypes.h>
 #include <common/ResourceTypes.h>
 
+// https://vkguide.dev/docs/new_chapter_4/descriptor_abstractions/
+// The core influence of my descriptor allocation setup, a great starting point
+
 struct DescriptorsCentral {
 	VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 	VkDescriptorSetLayout descriptorLayout = VK_NULL_HANDLE;
