@@ -39,10 +39,15 @@ enum class PipelineID : uint8_t {
 	// === GTAO (compute) ===
 	GTAO,
 	GTAOFilter,
+	GTAOTemporalResolve,
 
 	// === VOLUMETRIC LIGHTING (compute) ===
 	VolumetricLight,
 	VolumetricLightBlur,
+
+	// === LENS FLARE (compute) ===
+	FlareBright,
+	FlareGen,
 
 	Count
 };
@@ -97,6 +102,6 @@ namespace PipelineConfigs {
 	void multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling, const std::vector<VkSampleCountFlags>& samples,
 		uint32_t chosenMSAACount, bool sampleShadingEnabled);
 	void colorBlendingConfig(VkPipelineColorBlendAttachmentState& colorBlend, VkColorComponentFlags colorComponents, bool blendEnabled, VkBlendFactor blendFactor);
-	void setColorAttachmentAndDepthFormat(VkFormat& colorAttachmentFormat, VkFormat colorFormat, VkPipelineRenderingCreateInfo& renderInfo, VkFormat depthFormat);
+	void setColorAttachmentAndDepthFormat(std::vector<VkFormat>& colorFormats, VkPipelineRenderingCreateInfo& renderInfo, VkFormat depthFormat);
 	void depthStencilConfig(VkPipelineDepthStencilStateCreateInfo& depthStencil, bool depthTestEnabled, bool depthWriteEnabled, bool depthBoundsTestEnabled, bool stencilTestEnabled, VkCompareOp depthCompare);
 }

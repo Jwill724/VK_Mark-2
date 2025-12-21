@@ -41,9 +41,9 @@ namespace RenderScene {
 
 	const Camera getCamera();
 
-	void setScene();
+	void setScene(bool assetsLoaded);
 
-	void cleanScene();
+	void cleanScene(GPUAddressTable& globalTable);
 
 	void updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug);
 }

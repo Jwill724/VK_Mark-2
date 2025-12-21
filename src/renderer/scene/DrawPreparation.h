@@ -25,6 +25,7 @@ namespace DrawPreparation {
 		FrameContext& frameCtx,
 		GPUResources& gpuResources,
 		const std::vector<glm::mat4>& transforms,
+		const std::vector<glm::mat4>& prevTransforms,
 		GPUQueue& transferQueue);
 
 	void buildAndSortIndirectDraws(

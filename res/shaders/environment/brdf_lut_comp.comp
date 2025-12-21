@@ -4,19 +4,17 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../include/set_bindings.glsl"
+#include "../include/pbr.glsl"
 
 layout (local_size_x = 8, local_size_y = 8) in;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D brdfStorage;
-
-const float PI = 3.14159265359;
 
 layout(push_constant) uniform EnvData {
 	float sampleCountF;
 	uint sampleCountU;
 	uint pad0[2];
 } pc;
-
 
 float RadicalInverse_VdC(uint bits)
 {
@@ -56,27 +54,6 @@ vec3 ImportanceSampleGGX(vec2 Xi, vec3 N, float roughness)
 	return normalize(sampleVec);
 }
 
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-	float a = roughness;
-	float k = (a * a) / 2.0;
-
-	float nom   = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
-
-	return nom / denom;
-}
-
-float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
-{
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-	float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-	return ggx1 * ggx2;
-}
-
 vec2 IntegrateBRDF(float NdotV, float roughness)
 {
 	vec3 V;
@@ -93,8 +70,8 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 	for(uint i = 0u; i < SAMPLE_COUNT; ++i)
 	{
 		vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-		vec3 H  = ImportanceSampleGGX(Xi, N, roughness);
-		vec3 L  = normalize(2.0 * dot(V, H) * H - V);
+		vec3 H = ImportanceSampleGGX(Xi, N, roughness);
+		vec3 L = normalize(2.0 * dot(V, H) * H - V);
 
 		float NdotL = max(L.z, 0.0);
 		float NdotH = max(H.z, 0.0);
@@ -102,10 +79,9 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
 
 		if(NdotL > 0.0)
 		{
-			float G = GeometrySmith(N, V, L, roughness);
-			float G_Vis = (G * VdotH) / (NdotH * NdotV);
+			float Vv = V_SmithGGXCorrelated(NdotV, NdotL, roughness);
+			float G_Vis = (4.0 * NdotL * Vv * VdotH) / NdotH;
 			float Fc = pow(1.0 - VdotH, 5.0);
-
 			A += (1.0 - Fc) * G_Vis;
 			B += Fc * G_Vis;
 		}

@@ -46,11 +46,11 @@ struct Vertex {
 };
 
 struct GPUInstance {
-	uint32_t meshID = UINT32_MAX; // global meshBuffer
-	uint32_t materialID = UINT32_MAX; // global material buffer
-	uint32_t transformID = UINT32_MAX; // global transform buffer
-	uint32_t drawType = UINT32_MAX; // static/dynamic and multi draws
-	uint32_t passType = UINT32_MAX; // opaque/transparent
+	uint32_t meshID = UINT32_MAX;      // global meshBuffer
+	uint32_t materialID = UINT32_MAX;  // global material buffer
+	uint32_t transformID = UINT32_MAX; // global transform/prevTransform buffer
+	uint32_t drawType = UINT32_MAX;    // static/dynamic and multi draws
+	uint32_t passType = UINT32_MAX;    // opaque/transparent
 };
 
 // Meshes, materials all gpu ready at render
@@ -87,6 +87,7 @@ enum class AddressBufferType : uint8_t {
 	VisibleInstances, // frame
 	IndirectDraws,    // frame
 	Transforms,       // global
+	PrevTransforms,   // global
 	Material,         // global
 	Mesh,             // global
 	Vertex,           // global
@@ -96,12 +97,42 @@ enum class AddressBufferType : uint8_t {
 };
 
 // 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
-// Buffers stored in this table, the barrier sync can be fully handled by this main address table buffer (globalFrame).
+// Upload address table buffer after new addresses are attached or removed to the table.
 struct alignas(16) GPUAddressTable {
-	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs;
-	void setAddress(AddressBufferType t, VkDeviceAddress addr) {
-		addrs[static_cast<size_t>(t)] = addr;
+	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs{};
+
+	void setAddress(AddressBufferType type, VkDeviceAddress address) {
+		const size_t index = static_cast<size_t>(type);
+
+		if (addrs[index] == address) {
+			return;
+		}
+
+		addrs[index] = address;
+		addressTableDirty = true;
 	}
+
+	void removeAddress(AddressBufferType type) {
+		const size_t index = static_cast<size_t>(type);
+
+		if (addrs[index] == 0) {
+			return;
+		}
+
+		addrs[index] = 0;
+		addressTableDirty = true;
+	}
+
+	bool isTableDirty() const {
+		return addressTableDirty;
+	}
+
+	void clearTableDirty() {
+		addressTableDirty = false;
+	}
+
+private:
+	bool addressTableDirty = false;
 };
 
 // UNIFORM BUFFER TYPES
@@ -111,12 +142,14 @@ struct alignas(16) GPUSceneData {
 	glm::mat4 invView;
 	glm::mat4 invProj;
 	glm::mat4 viewproj;
+	glm::mat4 prevViewproj;
+	glm::uvec4 temporal;         // x = frameIndex, y = historyValid (0/1)
 	glm::vec4 sunlightDirection; // w for sun power
 	glm::vec4 sunlightColor;
 	glm::vec4 cameraPos;
-	glm::vec4 cameraClips; // .x near and .y far
-	glm::vec4 viewportSize; // .x and .y for width and height, .z for pixel count
-	glm::vec4 pad0[7]{};
+	glm::vec4 cameraClips;       // .x near and .y far
+	glm::vec4 viewportSize;      // .x and .y for width and height, .z for pixel count
+	glm::vec4 pad0[2]{};
 };
 
 // x = diffuse, y = specular, z = brdf, w = skybox

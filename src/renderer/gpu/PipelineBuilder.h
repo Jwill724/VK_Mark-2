@@ -15,7 +15,7 @@ struct PipelineBuilder {
 	VkPipelineRenderingCreateInfo _renderInfo{};
 	VkFormat _colorAttachmentformat{};
 
-	VkFormat colorFormat;
+	std::vector<VkFormat> colorFormats;
 	VkFormat depthFormat;
 
 	void initializePipelineSTypes();

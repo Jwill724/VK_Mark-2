@@ -123,8 +123,8 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
 
-	// Instances can be written to in compute shader
-	if (AddressBufferType::VisibleInstances == addressBufferType)
+	// Instances can be written to in compute shader, and transforms are copied into previous transforms buffer
+	if (AddressBufferType::VisibleInstances == addressBufferType || AddressBufferType::Transforms == addressBufferType)
 	{
 		usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	}
@@ -137,6 +137,7 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		true // gpu buffers will be shared among queues
 	);
 
+	// Marks the table dirty with each addition
 	addressTable.setAddress(addressBufferType, buffer.address);
 
 	return buffer;

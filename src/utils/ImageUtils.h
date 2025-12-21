@@ -41,7 +41,13 @@ namespace ImageUtils {
 		uint32_t mipCount = VK_REMAINING_MIP_LEVELS, // How many levels transitioned
 		VkPipelineStageFlags2 dstStageOverride = 0,
 		VkAccessFlags2        dstAccessOverride = 0);
-	void copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize);
+	void copyImageToImage(
+		VkCommandBuffer cmd,
+		VkImage source,
+		VkImage destination,
+		VkExtent2D srcSize,
+		VkExtent2D dstSize,
+		VkFormat format);
 
 	uint32_t calculateMipLevels(AllocatedImage& img, uint32_t maxMipCap = UINT32_MAX);
 

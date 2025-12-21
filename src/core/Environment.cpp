@@ -159,7 +159,7 @@ void Environment::dispatchEnvironmentMaps(
 				PUSH_BINDING_OUTPUT_1_TEX,
 				skyboxImg.storageViews[0]);
 
-			envScope.setPush(&envData); // Attach pointer once
+			envScope.setPush(envData); // Attach pointer once
 			envScope.extent = { skyboxImg.extent.width, skyboxImg.extent.height };
 			envScope.workgroupSize = { 16u, 16u, 6u }; // Only pass that needs 16x16
 
@@ -212,7 +212,7 @@ void Environment::dispatchEnvironmentMaps(
 					specularImg.storageViews[i]);
 
 				envScope.extent = { env.specularPCs[i].width, env.specularPCs[i].height };
-				envScope.setPush(&env.specularPCs[i]);
+				envScope.setPush(env.specularPCs[i]);
 
 				RenderPasses::dispatchComputePass(
 					cmd,
@@ -234,7 +234,7 @@ void Environment::dispatchEnvironmentMaps(
 			brdfImg.imageView);
 
 		envData.sampleCountU = PREFILTER_SAMPLE_COUNT;
-		envScope.setPush(&envData);
+		envScope.setPush(envData);
 		envScope.workgroupSize = { 8u, 8u, 1u };
 		envScope.extent = { brdfImg.extent.width, brdfImg.extent.height };
 

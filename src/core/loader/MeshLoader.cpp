@@ -127,8 +127,6 @@ void MeshLoader::uploadMeshes(
 
 	}, threadCtx.cmdPool, QueueType::Transfer, device);
 
-	resources.updateAddressTableMapped(threadCtx.cmdPool);
-
 	auto& tQueue = Backend::getTransferQueue();
 	threadCtx.lastSubmittedFence = Engine::getState().submitCommandBuffers(tQueue);
 	waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);

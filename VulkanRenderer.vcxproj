@@ -274,6 +274,7 @@
   <ItemGroup>
     <None Include="res\shaders\ao\gtao_filter_comp.comp" />
     <None Include="res\shaders\ao\gtao_main_comp.comp" />
+    <None Include="res\shaders\ao\gtao_temporal_resolve_comp.comp" />
     <None Include="res\shaders\ao\ssao_blur_comp.comp" />
     <None Include="res\shaders\ao\ssao_main_comp.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
@@ -297,6 +298,8 @@
     <None Include="res\shaders\post_process\exposure_reduce_comp.comp" />
     <None Include="res\shaders\debug\obb_line_vert.vert" />
     <None Include="res\shaders\debug\obb_line_frag.frag" />
+    <None Include="res\shaders\post_process\flare_bright_comp.comp" />
+    <None Include="res\shaders\post_process\flare_gen_comp.comp" />
     <None Include="res\shaders\post_process\tone_map_comp.comp" />
     <None Include="res\shaders\post_process\volumetric_light_blur_comp.comp" />
     <None Include="res\shaders\post_process\volumetric_light_comp.comp" />

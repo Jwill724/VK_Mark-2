@@ -466,8 +466,6 @@ void AssetManager::processMaterials(
 		vkCmdCopyBuffer(cmd, materialStaging.buffer, materialBuffer.buffer, 1, &copyRegion);
 	}, threadCtx.cmdPool, QueueType::Transfer, device);
 
-	resources.updateAddressTableMapped(threadCtx.cmdPool);
-
 	auto matBuf = materialStaging.buffer;
 	auto matAlloc = materialStaging.allocation;
 	resources.getTempDQueue().push_function([matBuf, matAlloc, allocator]() mutable {
@@ -697,9 +695,9 @@ void AssetManager::buildSceneGraph(
 	uint32_t instanceCounter = 0;
 	uint32_t firstTransform = 0;
 
-	int gridCols = 4;       // how many models per row
-	float spacingX = 80.0f; // horizontal spacing
-	float spacingZ = 80.0f; // depth spacing
+	int gridCols = 2;       // how many models per row
+	float spacingX = 100.0f; // horizontal spacing
+	float spacingZ = 100.0f; // depth spacing
 
 	// Increasing y of model spawns
 	float yOffsetPerInstance = 2.5f;

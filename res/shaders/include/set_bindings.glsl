@@ -24,11 +24,13 @@ const uint FRAME_BINDING_CSM = 2u;
 const uint PUSH_BINDING_DEPTH_TEX = 0u;
 const uint PUSH_BINDING_NORMAL_TEX = 1u;
 const uint PUSH_BINDING_NOISE_TEX = 2u;
-const uint PUSH_BINDING_OUTPUT_1_TEX = 3u;
-const uint PUSH_BINDING_OUTPUT_2_TEX = 4u;
-const uint PUSH_BINDING_OUTPUT_3_TEX = 5u;
-const uint PUSH_BINDING_INPUT_1_TEX = 6u;
-const uint PUSH_BINDING_INPUT_2_TEX = 7u;
-const uint PUSH_BINDING_INPUT_3_TEX = 8u;
+const uint PUSH_BINDING_VELOCITY_TEX = 3u;
+const uint PUSH_BINDING_OUTPUT_1_TEX = 4u;
+const uint PUSH_BINDING_OUTPUT_2_TEX = 5u;
+const uint PUSH_BINDING_OUTPUT_3_TEX = 6u;
+const uint PUSH_BINDING_INPUT_1_TEX = 7u;
+const uint PUSH_BINDING_INPUT_2_TEX = 8u;
+const uint PUSH_BINDING_INPUT_3_TEX = 9u;
+const uint PUSH_BINDING_INPUT_4_TEX = 10u;
 
 #endif

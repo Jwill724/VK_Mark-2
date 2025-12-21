@@ -20,7 +20,7 @@ namespace RenderPasses {
 		uint32_t groupCountY = 0u;
 		uint32_t groupCountZ = 1u;
 
-		const void* pushData = nullptr;
+		void* pushData = nullptr;
 		size_t pushSize = 0;
 
 		inline void calculateGroups() noexcept {
@@ -30,26 +30,52 @@ namespace RenderPasses {
 		}
 
 		template<typename T>
-		inline void setPush(const T* data) {
-			pushData = data;
+		inline void setPush(T& data) noexcept
+		{
+			static_assert(std::is_trivially_copyable_v<T>);
+			pushData = &data;
 			pushSize = sizeof(T);
+		}
+
+		inline void clearPush() noexcept {
+			pushData = nullptr;
+			pushSize = 0u;
+		}
+
+		template <typename T, typename Fn>
+		inline void editPush(Fn&& fn) noexcept {
+			ASSERT(pushData != nullptr);
+			ASSERT(pushSize == sizeof(T));
+			ASSERT((reinterpret_cast<uintptr_t>(pushData) % alignof(T)) == 0);
+
+			T* push = static_cast<T*>(pushData);
+			fn(*push);
 		}
 	};
 
 	void depthPrePass(FrameContext& frameCtx,
-		const PipelineHandle& pipeHandle);
+		const PipelineHandle& pipeHandle,
+		const bool isTemporalValid);
 	void shadowCSMPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle);
 	void SSAOPass(FrameContext& frameCtx,
-		ComputeDispatchScope ssaoScope,
-		Profiler& profiler);
+		ComputeDispatchScope ssaoScope);
 	void GTAOPass(FrameContext& frameCtx,
 		ComputeDispatchScope gtaoScope,
-		Profiler& profiler);
+		const bool isTemporalValid);
 	void depthPyramidPass(FrameContext& frameCtx);
 	void volumetricLightingPass(FrameContext& frameCtx,
-		ComputeDispatchScope volLightScope,
-		Profiler& profiler);
+		ComputeDispatchScope volLightScope);
+	void exposurePass(FrameContext& frameCtx,
+		ComputeDispatchScope exposureScope,
+		const AllocatedBuffer& luminanceBuf,
+		const bool transparentVisible);
+	void lensFlarePass(FrameContext& frameCtx,
+		ComputeDispatchScope lensFlareScope,
+		const bool transparentVisible);
+	void toneMapPass(FrameContext& frameCtx,
+		ComputeDispatchScope toneMapScope,
+		const bool transparentVisible);
 
 	void opaqueMeshPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,

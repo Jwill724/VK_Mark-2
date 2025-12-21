@@ -35,7 +35,7 @@ void EngineState::init() {
 	DescriptorSetOverwatch::initDescriptors(device, dQueue);
 
 	const auto& winExtent = Engine::getWindowExtent();
-	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1 });
+	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1u });
 
 	ResourceManager::initRenderTargets(
 		device,
@@ -46,8 +46,6 @@ void EngineState::init() {
 	ResourceManager::initShadowMapImages(device, dQueue, mainAllocator);
 	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDQueue(), mainAllocator);
 	ResourceManager::initStaticEnvironmentImages(device, dQueue, mainAllocator);
-
-	RenderScene::setScene();
 
 	PipelineManager::initPipelines(dQueue);
 
@@ -98,6 +96,8 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		mainAllocator
 	);
 	_resources.addGPUBufferToGlobalAddress(AddressBufferType::Luminance, luminanceBuffer);
+	// Conditionally the only global buffer that doesn't require assets to work, so it's upload occurs first.
+	_resources.updateAddressTableMapped();
 
 	auto lBuf = luminanceStaging.buffer;
 	auto lAlloc = luminanceStaging.allocation;
@@ -242,15 +242,24 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	// flush any setup temp data like staging buffers
 	tempQueue.flush();
 
-	engineProfiler.assetsLoaded = availableAssets;
+	_resources.assetsLoaded = availableAssets;
 
-	// Define static images in global image table manager
+
+	// === GLOBAL DESCRIPTOR SETUP ===
+
 	auto& globalImgManager = ResourceManager::_globalImageManager;
 
 	// CSM image
 	auto& shadowImg = ResourceManager::getShadowMapImage();
 	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, ResourceManager::getShadowMapSampler());
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(shadowImg.lutEntry.combinedImageIndex));
+
+	// Rainbow LUT
+	auto& rainbowLut = ResourceManager::getRainbowLUTImage();
+	rainbowLut.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(rainbowLut.imageView, ResourceManager::getLinearClampSampler());
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(rainbowLut.lutEntry.combinedImageIndex));
+	engineProfiler.lensFlareSettings.rainbowLUTIndex = rainbowLut.lutEntry.combinedImageIndex;
+
 
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
@@ -340,6 +349,8 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 		engineProfiler
 	);
 
+	RenderScene::setScene(_resources.assetsLoaded);
+
 	// GPU name
 	// This can be defined whenever before render
 	engineProfiler.getStats().gpuName = Backend::getDeviceName();
@@ -380,7 +391,7 @@ void EngineState::shutdown() {
 
 	JobSystem::shutdownScheduler();
 
-	RenderScene::cleanScene();
+	RenderScene::cleanScene(_resources.getAddressTable());
 
 	JobSystem::getThreadPoolManager().cleanup(device);
 

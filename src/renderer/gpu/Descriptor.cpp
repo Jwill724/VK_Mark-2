@@ -156,6 +156,13 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 		COMPUTE_ONLY,
 		1);
 
+	// velocity texture
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_VELOCITY_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		COMPUTE_ONLY,
+		1);
+
 	// Writable outputs
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_OUTPUT_1_TEX,
@@ -186,6 +193,12 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 		1);
 	mainDescriptorManager.addBinding(
 		PUSH_BINDING_INPUT_3_TEX,
+		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		IMAGE_STAGES,
+		1);
+
+	mainDescriptorManager.addBinding(
+		PUSH_BINDING_INPUT_4_TEX,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		1);

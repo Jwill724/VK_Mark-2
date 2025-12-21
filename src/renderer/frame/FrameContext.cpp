@@ -29,7 +29,8 @@ std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
 		totalGPUStagingSize =
 			INSTANCE_SIZE_BYTES +
 			INDIRECT_SIZE_BYTES +
-			TRANSFORMS_SIZE_BYTES +
+			TRANSFORMS_SIZE_BYTES +  // Current transforms
+			TRANSFORMS_SIZE_BYTES +  // Would be previous transforms
 			sizeof(GPUAddressTable);
 	}
 
@@ -128,8 +129,7 @@ void FrameContext::freeStashedCmds(const VkDevice device) {
 void FrameContext::writeFrameDescriptors(const VkDevice device) {
 	constexpr size_t offset = 0;
 
-	// Only write the table if updated
-	if (addressTableDirty) {
+	if (visibleCount > 0) {
 		descriptorWriter.writeBuffer(
 			ADDRESS_TABLE_BINDING,
 			addressTableBuffer.buffer,
@@ -139,7 +139,14 @@ void FrameContext::writeFrameDescriptors(const VkDevice device) {
 			set
 		);
 
-		addressTableDirty = false;
+		descriptorWriter.writeBuffer(
+			FRAME_BINDING_CSM,
+			shadowCSMBuffer.buffer,
+			sizeof(GPUShadowCSM),
+			offset,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			set
+		);
 	}
 
 	descriptorWriter.writeBuffer(
@@ -150,17 +157,6 @@ void FrameContext::writeFrameDescriptors(const VkDevice device) {
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 		set
 	);
-
-	if (visibleCount > 0) {
-		descriptorWriter.writeBuffer(
-			FRAME_BINDING_CSM,
-			shadowCSMBuffer.buffer,
-			sizeof(GPUShadowCSM),
-			offset,
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			set
-		);
-	}
 
 	descriptorWriter.updateSet(device, set);
 }
@@ -176,6 +172,9 @@ void cleanupFrameContexts(
 		auto& frame = *framePtr;
 
 		frame.cpuDeletion.flush();
+
+		frame.addressTable.removeAddress(AddressBufferType::VisibleInstances);
+		frame.addressTable.removeAddress(AddressBufferType::IndirectDraws);
 
 		for (auto& buf : frame.persistentGPUBuffers)
 			BufferUtils::destroyAllocatedBuffer(buf, alloc);

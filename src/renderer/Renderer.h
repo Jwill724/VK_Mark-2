@@ -25,7 +25,7 @@ namespace Renderer {
 	void initRenderer(
 		const VkDevice device,
 		const VkDescriptorSetLayout frameLayout,
-		GPUResources& gpuResouces,
+		GPUResources& gpuResources,
 		Profiler& profiler);
 
 	void recordRenderCommand(FrameContext& frameCtx, Profiler& profiler);

@@ -50,7 +50,6 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_CSM) uniform ShadowUBO {
 };
 
 // Only used for opaque shading
-layout(set = PUSH_SET, binding = PUSH_BINDING_NORMAL_TEX) uniform sampler2D bentNormal;
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D aoFinal;
 
 const bool FLIP_ENV_Y = true;
@@ -71,6 +70,18 @@ vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint spe
 	float lod = clamp(roughness * float(levels - 1), 0.0, float(levels - 1));
 	vec3 prefiltered = textureLod(envMaps[nonuniformEXT(specIdx)], R, lod).rgb;
 	return prefiltered * (F0 * brdf.x + brdf.y);
+}
+
+// Specular AA
+// Reduce sparkling/aliasing of specular highlights caused by
+// high-frequency normal variation
+float SpecularAA(float roughness, vec3 N)
+{
+	vec3 dndx = dFdx(N);
+	vec3 dndy = dFdy(N);
+	float variance = max(dot(dndx,dndx), dot(dndy,dndy));
+	float r2 = roughness * roughness + variance;
+	return sqrt(saturate(r2));
 }
 
 void main()
@@ -223,21 +234,15 @@ void main()
 	}
 
 	// Direct sun light
-	vec3 direct = (diff + spec) * (sunColor) * NdotL * shadow;
+	vec3 direct = (diff + spec) * sunColor * NdotL * shadow;
 
 	// IBL specular
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
 
-	vec3 N_diff = N;
-	// GTAO bent normals
-//	if (debug.aoMode == 2) {
-//		N_diff =  normalize(texture(bentNormal, uv).rgb);
-//	}
-
 	// IBL diffuse
 	vec3 F_ibl = F_SchlickRoughness(F0, NdotV, rough);
 	vec3 kD_ibl = (1.0 - F_ibl) * (1.0 - metal);
-	vec3 iblDiff = sampleIrradiance(N_diff, irrIdx) * albedo;
+	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
 
 	float specAO = SpecAO_Conservative(aoTerm, NdotV, rough);
 	vec3 ambient = kD_ibl * iblDiff * aoTerm + iblSpec * specAO;

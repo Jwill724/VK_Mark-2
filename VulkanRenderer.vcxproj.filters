@@ -412,5 +412,14 @@
     <None Include="res\shaders\ao\ssao_main_comp.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
+    <None Include="res\shaders\ao\gtao_temporal_resolve_comp.comp">
+      <Filter>res\shaders\ao</Filter>
+    </None>
+    <None Include="res\shaders\post_process\flare_bright_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\flare_gen_comp.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
   </ItemGroup>
 </Project>

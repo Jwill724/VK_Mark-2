@@ -29,9 +29,31 @@ void main() {
 	dir.y = -dir.y;
 
 	uint skyboxIdx = envMapSet.indices[debug.activeEnvMap].w;
-
-	// fetch the HDR color
 	vec3 skyColor = texture(envMaps[nonuniformEXT(skyboxIdx)], dir).rgb;
+
+	vec3 sunDir = normalize(scene.sunlightDirection.xyz);
+	sunDir.y = -sunDir.y;
+
+	float cosTheta = dot(dir, sunDir);
+
+	const float sunRadiusDeg = 0.9;
+	const float sunSoftEdge = 0.25;
+
+	float innerAngle = radians(sunRadiusDeg);
+	float outerAngle = radians(sunRadiusDeg * (1.0 + sunSoftEdge));
+
+	float cosInner = cos(innerAngle);
+	float cosOuter = cos(outerAngle);
+
+	float sunCore = smoothstep(cosOuter, cosInner, cosTheta);
+	float sunGlow = pow(clamp(cosTheta, 0.0, 1.0), 1024.0);
+
+	const float coreIntensity = 80.0;
+	const float glowIntensity = 300.0;
+
+	vec3 sunColor = vec3(1.0, 0.95, 0.85);
+
+	skyColor += sunColor * (sunCore * coreIntensity + sunGlow * glowIntensity);
 
 	outColor = vec4(skyColor, 1.0);
 }

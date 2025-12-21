@@ -10,6 +10,9 @@
 #include "../include/gpu_scene_structures.glsl"
 
 layout(location = 0) out vec3 outViewNormal;
+layout(location = 1) out vec4 outCurrClipPos;
+layout(location = 2) out vec4 outPrevClipPos;
+layout(location = 4) flat out uint outTemporalValidation;
 
 layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
 	GPUAddressTable globalAddressTable;
@@ -34,10 +37,21 @@ void main()
 	// fetch transform
 	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
 
+	mat4 prevModel = model;
+	if (scene.temporal.y == 1) {
+		prevModel = PrevTransformsBuffer(globalAddressTable.addrs[ABT_PrevTransforms]).prevTransforms[inst.transformID];
+	}
+	outTemporalValidation = scene.temporal.y;
+
 	// World space -> view space
 	mat3 normalMatrix = mat3(scene.view * model);
 	outViewNormal = normalMatrix * vtx.normal;
 
-	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
-	gl_Position = scene.viewproj * worldPos4;
+	vec4 worldPos = model * vec4(vtx.position, 1.0);
+	vec4 prevWorldPos = prevModel * vec4(vtx.position, 1.0);
+
+	outCurrClipPos = scene.viewProj * worldPos;
+	outPrevClipPos = scene.prevViewProj * prevWorldPos;
+
+	gl_Position = outCurrClipPos;
 }

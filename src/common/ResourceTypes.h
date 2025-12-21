@@ -328,7 +328,7 @@ struct PipelinePreset {
 
 	uint32_t viewMask = 0;
 
-	VkFormat colorFormat = VK_FORMAT_UNDEFINED;
+	std::vector<VkFormat>colorFormats;
 	VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 
 	std::vector<ShaderStageInfo> shaderStagesInfo;
@@ -467,21 +467,21 @@ struct alignas(16) SSAOPush {
 	int blurRadius = 5;
 	glm::vec2 blurDirection;
 	uint32_t sampleCount = 64;
-	float pad0;
+	float pad0{ 0.0f };
 };
 struct alignas(16) GTAOPush {
 	glm::vec2 ndcToViewMul{ 0.0f };
-	glm::vec2 tanHalfFov{};
+	glm::vec2 tanHalfFov{0.0f};
 
 	glm::vec2 ndcToViewAdd{ 0.0f };
 	glm::vec2 pixelSize{ 0.0f };
 
-	float effectRadius = 0.225f;
+	float effectRadius = 0.2f;
 	float radiusMultiplier = 1.457f;
-	float effectFalloffRange = 0.615f;
-	float sampleDistributionPower = 2.0f;
+	float effectFalloffRange = 0.7f;
+	float sampleDistributionPower = 2.5f;
 
-	float thinOccluderCompensation = 0.1f;
+	float thinOccluderCompensation = 0.5f;
 	float depthMipSamplingOffset = 3.3f;
 	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
 
@@ -491,8 +491,8 @@ struct alignas(16) GTAOPush {
 	float sharpness = 2.0;
 	float radius = 4.0;
 
-	glm::vec2 blurDirection;
-	glm::vec2 pad0{};
+	glm::vec2 blurDirection{ 0.0f };
+	glm::vec2 pad0{ 0.0f };
 };
 
 struct alignas(16) VolumetricPush {
@@ -504,11 +504,11 @@ struct alignas(16) VolumetricPush {
 	float maxDistance = 100.0f;
 	float jitterStrength = 0.8f;
 	int stepCount = 32;
-	uint32_t frameIndex = 0;
+	float pad0{ 0.0f };
 
 	float asymmetryFactor = 0.9f;
 	float minTransmittance = 0.9f;
-	glm::vec2 pixelSize{0.0f};
+	glm::vec2 pixelSize{ 0.0f };
 
 	int beamPower = 2;
 	float blurRadius = 2.5f;
@@ -516,5 +516,42 @@ struct alignas(16) VolumetricPush {
 	float blurWeightSigma = 5.0f;
 
 	glm::vec2 blurDirection{ 0.0f };
-	glm::vec2 pad0{};
+	glm::vec2 pad1{ 0.0f };
+};
+
+struct alignas(16) LensFlarePush {
+	glm::vec2 fullRes{ 0.0f };
+	glm::vec2 invFullRes{ 0.0f };
+
+	// Quarter res
+	glm::vec2 outputRes{ 0.0f };
+	glm::vec2 invOutputRes{ 0.0f };
+
+	glm::vec2 sunUv{ 0.5f, 0.5f };
+	float sunVisible = 1.0f;
+	uint32_t rainbowLUTIndex = 0u;
+
+	// Bright-pass params (FlareBright)
+	float brightThreshold = 15.0f;
+	float brightKnee = 7.5f; // 0.5 * threshold
+	float brightIntensity = 1.0f;
+	float pad0{ 0.0f };
+
+	// Ring params (FlareGen)
+	float ringInnerRadius = 0.11f;
+	float ringOuterRadius = 0.17f;
+	float chromaStrength = 1.0f;
+	float pad1{ 0.0f };
+
+	// Streak params (FlareGen)
+	float streakStrength = 0.1f;
+	float streakWidth = 0.001f; // UV units
+	float streakLength = 0.05f; // UV units
+	float pad2{ 0.0f };
+
+	// Hi-Z occlusion params (FlareGen)
+	float occlusionRadiusPixels = 0.01f;  // full-res pixels
+	float occlusionDepthBias = 0.01f;     // linear depth bias
+	float occlusionFade = 8.0f;           // higher = harder fade
+	float pad3{ 0.0f };
 };

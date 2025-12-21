@@ -143,12 +143,12 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	PipelinePresents::getPipelinePresentByID(PipelineID::BRDFLUT).shaderStagesInfo.push_back(brdfLutShaderStage);
 
 
-	// gpu frustum culling
-	ShaderStageInfo visibilityShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/visibility/visibility_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
+	//// gpu frustum culling
+	//ShaderStageInfo visibilityShaderStage {
+	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+	//	.filePath = "res/shaders/visibility/visibility_comp.spv"
+	//};
+	//PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
 
 	// === SSAO ===
 	ShaderStageInfo ssaoStage {
@@ -177,6 +177,12 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 	};
 	PipelinePresents::getPipelinePresentByID(PipelineID::GTAOFilter).shaderStagesInfo.push_back(gtaoFilterStage);
 
+	ShaderStageInfo gtaoTempResolveStage{
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/ao/gtao_temporal_resolve_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::GTAOTemporalResolve).shaderStagesInfo.push_back(gtaoTempResolveStage);
+
 
 	// === VOLUMETRIC LIGHTING ===
 	ShaderStageInfo volLightStage {
@@ -190,6 +196,19 @@ void PipelineManager::initShaders(DeletionQueue& dq) {
 		.filePath = "res/shaders/post_process/volumetric_light_blur_comp.spv"
 	};
 	PipelinePresents::getPipelinePresentByID(PipelineID::VolumetricLightBlur).shaderStagesInfo.push_back(volLightBlurStage);
+
+	// === LENS FLARE ===
+	ShaderStageInfo flareBrightStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/flare_bright_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::FlareBright).shaderStagesInfo.push_back(flareBrightStage);
+
+	ShaderStageInfo flareGenStage {
+		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
+		.filePath = "res/shaders/post_process/flare_gen_comp.spv"
+	};
+	PipelinePresents::getPipelinePresentByID(PipelineID::FlareGen).shaderStagesInfo.push_back(flareGenStage);
 
 
 	// Pipeline shaders defined, good to setup
@@ -245,7 +264,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelineBuilder builder;
 	builder._pipelineLayout = Pipelines::_globalLayout.layout;
 
-	builder.colorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	builder.colorFormats.push_back(VK_FORMAT_B10G11R11_UFLOAT_PACK32);
 	builder.depthFormat = VK_FORMAT_D32_SFLOAT;
 
 	auto createPipeline = [&](
@@ -261,9 +280,10 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 		if (type == PipelineCategory::Raster) {
 			builder.initializePipelineSTypes();
+			// Defaults to primary builder formats,
 			// can overwrite the format if wanted
-			if (present.colorFormat == VK_FORMAT_UNDEFINED && present.depthFormat == VK_FORMAT_UNDEFINED) {
-				present.colorFormat = builder.colorFormat;
+			if (present.colorFormats.empty() && present.depthFormat == VK_FORMAT_UNDEFINED) {
+				present.colorFormats = builder.colorFormats;
 				present.depthFormat = builder.depthFormat;
 			}
 			setupPipelineConfig(builder, present, mssaOn);
@@ -289,7 +309,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === TRANSPARENT PIPELINE ===
 	PipelinePreset& transparentPreset = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
-	transparentPreset.colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
 	transparentPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	transparentPreset.enableBlending = true;
 	transparentPreset.enableDepthWrite = false;
@@ -328,7 +348,8 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === DEPTH RESOLVED PIPELINE ===
 	PipelinePreset& depthPrePreset = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
-	depthPrePreset.colorFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	depthPrePreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // Normals
+	depthPrePreset.colorFormats.push_back(VK_FORMAT_R16G16_SFLOAT);            // Velocity
 	depthPrePreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	depthPrePreset.depthCompareOp = VK_COMPARE_OP_LESS;
 	depthPrePreset.cullMode = VK_CULL_MODE_BACK_BIT;
@@ -337,7 +358,6 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === CSM PIPELINE ===
 	PipelinePreset& csmPreset = PipelinePresents::getPipelinePresentByID(PipelineID::ShadowCSM);
-	csmPreset.colorFormat = VK_FORMAT_UNDEFINED;
 	csmPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	csmPreset.depthCompareOp = VK_COMPARE_OP_LESS;
 	csmPreset.cullMode = VK_CULL_MODE_FRONT_BIT;
@@ -350,10 +370,12 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	createPipeline(PipelineID::ShadowCSM, PipelineCategory::Raster, "ShadowCSM", false, false);
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
-	createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
+	//createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
 	createPipeline(PipelineID::ToneMap, PipelineCategory::Compute, "ToneMap");
 	createPipeline(PipelineID::ExposureReduce, PipelineCategory::Compute, "ExposureReduce");
 	createPipeline(PipelineID::ExposureFinalize, PipelineCategory::Compute, "ExposureFinalize");
+	createPipeline(PipelineID::FlareBright, PipelineCategory::Compute, "FlareBright");
+	createPipeline(PipelineID::FlareGen, PipelineCategory::Compute, "FlareGen");
 	createPipeline(PipelineID::HDRToCubemap, PipelineCategory::Compute, "HDRToCubemap");
 	createPipeline(PipelineID::SpecularPrefilter, PipelineCategory::Compute, "SpecularPrefilter");
 	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
@@ -362,6 +384,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	createPipeline(PipelineID::SSAOBlur, PipelineCategory::Compute, "SSAOBlur");
 	createPipeline(PipelineID::GTAO, PipelineCategory::Compute, "GTAO");
 	createPipeline(PipelineID::GTAOFilter, PipelineCategory::Compute, "GTAOFilter");
+	createPipeline(PipelineID::GTAOTemporalResolve, PipelineCategory::Compute, "GTAOTemporalResolve");
 	createPipeline(PipelineID::DepthPyramid, PipelineCategory::Compute, "DepthPyramid");
 	createPipeline(PipelineID::VolumetricLight, PipelineCategory::Compute, "VolumetricLight");
 	createPipeline(PipelineID::VolumetricLightBlur, PipelineCategory::Compute, "VolumetricLightBlur");
@@ -470,8 +493,7 @@ void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePre
 
 
 	pipeline._renderInfo.viewMask = settings.viewMask;
-	PipelineConfigs::setColorAttachmentAndDepthFormat(pipeline._colorAttachmentformat,
-		settings.colorFormat, pipeline._renderInfo, settings.depthFormat);
+	PipelineConfigs::setColorAttachmentAndDepthFormat(settings.colorFormats, pipeline._renderInfo, settings.depthFormat);
 }
 
 // PIPELINE CONFIGURATION
@@ -550,18 +572,16 @@ void PipelineConfigs::colorBlendingConfig(
 }
 
 void PipelineConfigs::setColorAttachmentAndDepthFormat(
-	VkFormat& colorAttachmentFormat,
-	VkFormat colorFormat,
+	std::vector<VkFormat>& colorFormats,
 	VkPipelineRenderingCreateInfo& renderInfo,
 	VkFormat depthFormat)
 {
-	colorAttachmentFormat = colorFormat;
-
-	if (colorFormat != VK_FORMAT_UNDEFINED) {
-		renderInfo.colorAttachmentCount = 1;
-		renderInfo.pColorAttachmentFormats = &colorAttachmentFormat;
+	if (!colorFormats.empty()) {
+		renderInfo.colorAttachmentCount = static_cast<uint32_t>(colorFormats.size());
+		renderInfo.pColorAttachmentFormats = colorFormats.data();
 	}
 	else {
+		colorFormats.push_back(VK_FORMAT_UNDEFINED); // No color attachment defined
 		renderInfo.colorAttachmentCount = 0;
 		renderInfo.pColorAttachmentFormats = nullptr;
 	}

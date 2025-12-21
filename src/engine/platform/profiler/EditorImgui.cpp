@@ -164,7 +164,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 		ImGui::Begin("Debug");
 
 		// SHADOWS
-		if (ImGui::CollapsingHeader("Shadow settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (ImGui::CollapsingHeader("Shadow settings")) {
 			bool shadows = dbg.enableShadows != 0;
 			bool cascadeVP = dbg.enableCascadeVPs != 0;
 			bool cascadeSplitView = dbg.showCascadeSplits != 0;
@@ -173,9 +173,9 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (ImGui::Checkbox("Draw CascadeVPs##rt", &cascadeVP)) dbg.enableCascadeVPs = cascadeVP ? 1u : 0u;
 			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
 
-			auto& shadowControl = RenderScene::_shadowControl;
+			//auto& shadowControl = RenderScene::_shadowControl;
 			//ImGui::SliderFloat("Split lamba##rt", &shadowControl.splitLambda, 0.0f, 1.0f);
-			ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
+			//ImGui::SliderFloat("Bias##rt", &shadowControl.bias, 0.0000f, 0.0100f, "%.4f");
 			//ImGui::SliderFloat("Frustum plane scale##rt", &shadowControl.lightDist, 0.0f, 5.0f);
 
 		//	if (ImGui::BeginChild("ShadowMapBox", ImVec2(0, 270), true, ImGuiWindowFlags_NoScrollbar)) {
@@ -373,10 +373,16 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 			if (dbg.aoMode == AO_GTAO)
 			{
 				auto& g = profiler.gtaoSettings;
+				//bool temporal = dbg.enableTemporal != 0u;
+
+				//if (ImGui::Checkbox("Enable Temporal##vol", &temporal))
+				//{
+				//	dbg.enableTemporal = temporal ? 1u : 0u;
+				//}
 
 				// AO shape
 				ImGui::SliderFloat("Radius##gtao",
-					&g.effectRadius, 0.02f, 0.30f, "%.3f");
+					&g.effectRadius, 0.1f, 0.30f, "%.3f");
 				ImGui::SliderFloat("Falloff Range##gtao",
 					&g.effectFalloffRange, 0.30f, 1.0f, "%.2f");
 				ImGui::SliderFloat("Distribution##gtao",
@@ -398,7 +404,68 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 				ImGui::SliderFloat("Filter Radius##gtao",
 					&g.radius, 1.0f, 6.0f);
 			}
+		}
 
+		// Chromatic aberration
+		bool ca = dbg.enableChromaticAberration != 0u;
+		if (ImGui::Checkbox("Enable Chromatic Aberration##vol", &ca))
+		{
+			dbg.enableChromaticAberration = ca ? 1u : 0u;
+		}
+
+		// Lens flare
+		if (ImGui::CollapsingHeader("Lens Flare##settings")) {
+			auto& flareSettings = profiler.lensFlareSettings;
+			bool flareOn = dbg.enableLensFlare != 0u;
+
+			if (ImGui::Checkbox("Enable Lens Flare##vol", &flareOn))
+			{
+				dbg.enableLensFlare = flareOn ? 1u : 0u;
+			}
+
+			ImGui::SeparatorText("Ring");
+
+			ImGui::SliderFloat(
+				"Inner Radius##lf",
+				&flareSettings.ringInnerRadius,
+				0.0001f,
+				0.3f,
+				"%.5f"
+			);
+
+			ImGui::SliderFloat(
+				"Outer Radius##lf",
+				&flareSettings.ringOuterRadius,
+				0.001f,
+				0.3f,
+				"%.5f"
+			);
+
+			ImGui::SeparatorText("Streaks");
+
+			ImGui::SliderFloat(
+				"Streak Strength##lf",
+				&flareSettings.streakStrength,
+				0.0f,
+				0.5f,
+				"%.2f"
+			);
+
+			ImGui::SliderFloat(
+				"Streak Width##lf",
+				&flareSettings.streakWidth,
+				0.0001f,
+				0.05f,
+				"%.5f"
+			);
+
+			ImGui::SliderFloat(
+				"Streak Length##lf",
+				&flareSettings.streakLength,
+				0.0f,
+				0.5f,
+				"%.3f"
+			);
 		}
 
 		// Pipeline override

@@ -56,12 +56,14 @@ constexpr uint32_t FRAME_BINDING_CSM = 2u;
 constexpr uint32_t PUSH_BINDING_DEPTH_TEX = 0u;
 constexpr uint32_t PUSH_BINDING_NORMAL_TEX = 1u;
 constexpr uint32_t PUSH_BINDING_NOISE_TEX = 2u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_1_TEX = 3u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_2_TEX = 4u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_3_TEX = 5u;
-constexpr uint32_t PUSH_BINDING_INPUT_1_TEX = 6u;
-constexpr uint32_t PUSH_BINDING_INPUT_2_TEX = 7u;
-constexpr uint32_t PUSH_BINDING_INPUT_3_TEX = 8u;
+constexpr uint32_t PUSH_BINDING_VELOCITY_TEX = 3u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_1_TEX = 4u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_2_TEX = 5u;
+constexpr uint32_t PUSH_BINDING_OUTPUT_3_TEX = 6u;
+constexpr uint32_t PUSH_BINDING_INPUT_1_TEX = 7u;
+constexpr uint32_t PUSH_BINDING_INPUT_2_TEX = 8u;
+constexpr uint32_t PUSH_BINDING_INPUT_3_TEX = 9u;
+constexpr uint32_t PUSH_BINDING_INPUT_4_TEX = 10u;
 
 // Image array sizes
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES = 100u;

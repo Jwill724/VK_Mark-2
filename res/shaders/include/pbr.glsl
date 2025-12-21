@@ -6,6 +6,11 @@ const float PI = 3.14159265359;
 float saturate(float x) { return clamp(x, 0.0, 1.0); }
 float linearRough(float r) { return max(r * r, 0.001); }
 
+float luminance(vec3 color)
+{
+	return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+}
+
 // GGX (Trowbridge-Reitz) NDF
 float D_GGX(vec3 N, vec3 H, float roughness)
 {
@@ -55,18 +60,6 @@ vec3 DisneyDiffuse(vec3 albedo, float linearRoughness, float NdotV, float NdotL,
 }
 
 vec3 Lambert(vec3 kD, vec3 albedo) { return kD * albedo / PI; }
-
-// Specular AA
-// Reduce sparkling/aliasing of specular highlights caused by
-// high-frequency normal variation
-float SpecularAA(float roughness, vec3 N)
-{
-	vec3 dndx = dFdx(N);
-	vec3 dndy = dFdy(N);
-	float variance = max(dot(dndx,dndx), dot(dndy,dndy));
-	float r2 = roughness * roughness + variance;
-	return sqrt(saturate(r2));
-}
 
 // full microfacet spec term for direct lights
 vec3 BRDF_Specular(float NdotV, float NdotL, vec3 N, vec3 V, vec3 H, vec3 F0, float roughness)

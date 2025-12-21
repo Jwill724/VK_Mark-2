@@ -73,8 +73,6 @@ struct FrameContext {
 
 	// Descriptor use
 	GPUAddressTable addressTable{};
-	// Determines if a write is required, set to false during set write
-	bool addressTableDirty = false; // Always set to true when frame address table is updated
 	AllocatedBuffer addressTableBuffer;
 
 	AllocatedBuffer shadowCSMBuffer;

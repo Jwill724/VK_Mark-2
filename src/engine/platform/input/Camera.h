@@ -20,7 +20,7 @@ struct Camera {
 	glm::mat4 getViewMatrix() const;
 	glm::mat4 getRotationMatrix() const;
 
-	void processInput(GLFWwindow* window, Profiler& profiler);
+	void processInput(GLFWwindow* window, Profiler& profiler, bool& isTemporalInvalid);
 
 	void reset();
 };

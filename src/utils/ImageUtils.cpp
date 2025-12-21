@@ -7,6 +7,29 @@
 #include "VulkanUtils.h"
 #include "renderer/backend/Backend.h"
 
+static VkImageAspectFlags getAspectMaskFromFormat(const VkFormat format) {
+	switch (format) {
+		// Depth only
+	case VK_FORMAT_D16_UNORM:
+	case VK_FORMAT_X8_D24_UNORM_PACK32:
+	case VK_FORMAT_D32_SFLOAT:
+		return VK_IMAGE_ASPECT_DEPTH_BIT;
+
+		// Stencil only
+	case VK_FORMAT_S8_UINT:
+		return VK_IMAGE_ASPECT_STENCIL_BIT;
+
+		// Depth + stencil
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+
+	default:
+		return VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+}
+
 // TODO: When I get a better image loading library (ktx),
 // I'll rework this to be able to create large staging buffers for many textures into a single cmd
 // TODO: Change this function, the most spaghetti part of the code-base.
@@ -135,7 +158,8 @@ void ImageUtils::createRenderImage(
 	imgAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	imgAllocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-	const bool isDepth = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0;
+	const bool isDepth = (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ||
+		renderImage.format == VK_FORMAT_D32_SFLOAT) != 0;
 
 	{
 		std::scoped_lock lock(imageMutex);
@@ -146,7 +170,7 @@ void ImageUtils::createRenderImage(
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = renderImage.image;
 		viewInfo.format = renderImage.format;
-		viewInfo.subresourceRange.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.aspectMask = getAspectMaskFromFormat(renderImage.format);
 		viewInfo.subresourceRange.baseMipLevel = 0;
 		viewInfo.subresourceRange.levelCount = imgInfo.mipLevels;
 		viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -268,7 +292,6 @@ void ImageUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAll
 		vmaDestroyImage(allocator, img.image, img.allocation);
 }
 
-
 void ImageUtils::transitionImage(
 	VkCommandBuffer cmd,
 	VkImage image,
@@ -285,18 +308,7 @@ void ImageUtils::transitionImage(
 	b.newLayout = newLayout;
 	b.image = image;
 
-	VkImageAspectFlags aspect = 0;
-	if (format == VK_FORMAT_D16_UNORM || format == VK_FORMAT_X8_D24_UNORM_PACK32 ||
-		format == VK_FORMAT_D32_SFLOAT || format == VK_FORMAT_S8_UINT ||
-		format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT) {
-		if (VulkanUtils::hasStencilComponent(format)) aspect |= VK_IMAGE_ASPECT_STENCIL_BIT;
-		aspect |= VK_IMAGE_ASPECT_DEPTH_BIT;
-	}
-	else {
-		aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-	}
-
-	b.subresourceRange.aspectMask = aspect;
+	b.subresourceRange.aspectMask = getAspectMaskFromFormat(format);
 	b.subresourceRange.baseMipLevel = baseMip;
 	b.subresourceRange.levelCount = mipCount;
 	b.subresourceRange.baseArrayLayer = 0;
@@ -384,7 +396,16 @@ void ImageUtils::transitionImage(
 	vkCmdPipelineBarrier2(cmd, &dep);
 }
 
-void ImageUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage destination, VkExtent2D srcSize, VkExtent2D dstSize) {
+void ImageUtils::copyImageToImage(
+	VkCommandBuffer cmd,
+	VkImage source,
+	VkImage destination,
+	VkExtent2D srcSize,
+	VkExtent2D dstSize,
+	VkFormat format)
+{
+	VkImageAspectFlags aspectMask = getAspectMaskFromFormat(format);
+
 	VkImageBlit2 blitRegion{};
 	blitRegion.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
 	blitRegion.pNext = nullptr;
@@ -397,12 +418,12 @@ void ImageUtils::copyImageToImage(VkCommandBuffer cmd, VkImage source, VkImage d
 	blitRegion.dstOffsets[1].y = dstSize.height;
 	blitRegion.dstOffsets[1].z = 1;
 
-	blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.srcSubresource.aspectMask = aspectMask;
 	blitRegion.srcSubresource.baseArrayLayer = 0;
 	blitRegion.srcSubresource.layerCount = 1;
 	blitRegion.srcSubresource.mipLevel = 0;
 
-	blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blitRegion.dstSubresource.aspectMask = aspectMask;
 	blitRegion.dstSubresource.baseArrayLayer = 0;
 	blitRegion.dstSubresource.layerCount = 1;
 	blitRegion.dstSubresource.mipLevel = 0;
@@ -747,6 +768,7 @@ VkSampler ImageUtils::createSampler(
 	samplerInfo.maxLod = maxLod;
 	samplerInfo.magFilter = filter;
 	samplerInfo.minFilter = filter;
+	samplerInfo.mipLodBias = 0.0f;
 
 	ASSERT(maxAnisotropy <= Backend::getDeviceLimits().maxSamplerAnisotropy &&
 		"[Sampler] Requested anisotropy exceeds device limits");
@@ -764,6 +786,9 @@ VkSampler ImageUtils::createSampler(
 	samplerInfo.addressModeV = addressMode;
 	samplerInfo.addressModeW = addressMode;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+	samplerInfo.compareEnable = VK_FALSE;
+	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 
 	if (compareEnabled) {
 		samplerInfo.compareEnable = VK_TRUE;

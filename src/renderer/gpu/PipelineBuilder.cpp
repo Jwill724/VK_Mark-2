@@ -41,14 +41,22 @@ void PipelineBuilder::createPipeline(PipelineHandle& pipelineObj, const Pipeline
 		viewportState.viewportCount = 1;
 		viewportState.scissorCount = 1;
 
+		const uint32_t attachmentCount = static_cast<uint32_t>(pipelineSettings.colorFormats.size());
+
+		std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
+		blendAttachments.resize(attachmentCount);
+
+		for (uint32_t i = 0; i < attachmentCount; ++i) {
+			blendAttachments[i] = _colorBlendAttachment;
+		}
+
 		VkPipelineColorBlendStateCreateInfo colorBlending = {};
 		colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 		colorBlending.pNext = nullptr;
-
 		colorBlending.logicOpEnable = VK_FALSE;
 		colorBlending.logicOp = VK_LOGIC_OP_COPY;
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &_colorBlendAttachment;
+		colorBlending.attachmentCount = attachmentCount;
+		colorBlending.pAttachments = attachmentCount > 0 ? blendAttachments.data() : nullptr;
 
 		VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
 

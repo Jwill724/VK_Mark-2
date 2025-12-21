@@ -1,0 +1,153 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+// NOTE: This shit doesn't work at all.
+
+#include "../include/set_bindings.glsl"
+#include "../include/depth.glsl"
+#include "../include/gpu_scene_structures.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_DEPTH_TEX)       uniform sampler2D inCurDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_VELOCITY_TEX)    uniform sampler2D inVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX)     uniform sampler2D inAoFinal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX)     uniform sampler2D inAoHistoryRead;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_3_TEX)     uniform sampler2D inPrevDepth;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outAoHistoryWrite;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+
+float fetchAO(ivec2 pixel)
+{
+	return texelFetch(inAoFinal, pixel, 0).r;
+}
+
+float fetchDepth(ivec2 pixel)
+{
+	return texelFetch(inCurDepth, pixel, 0).r;
+}
+
+float fetchPrevDepth(ivec2 pixel)
+{
+	return texelFetch(inPrevDepth, pixel, 0).r;
+}
+
+void main()
+{
+	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	const ivec2 resolution = ivec2(scene.viewportSize.xy);
+
+	if (pixel.x >= resolution.x || pixel.y >= resolution.y) {
+		return;
+	}
+
+	float aoCurrent = fetchAO(pixel);
+
+	// If temporal invalid, just seed history with current.
+	if (scene.temporal.y != 1u) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// --- UVs ---
+	vec2 invResolution = 1.0 / scene.viewportSize.xy;
+	vec2 currUV = (vec2(pixel) + vec2(0.5)) * invResolution;
+
+	// Velocity is UV delta in [0..1] units (your velocity output shader does that)
+	vec2 velocityUV = texelFetch(inVelocity, pixel, 0).xy;
+	vec2 prevUV = currUV - velocityUV;
+
+	// Off-screen reprojection -> reject
+	if (prevUV.x <= 0.0 || prevUV.x >= 1.0 || prevUV.y <= 0.0 || prevUV.y >= 1.0) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// Convert prevUV to pixel (use nearest reprojection for stability)
+	vec2 prevPixelF = prevUV * scene.viewportSize.xy - vec2(0.5);
+	ivec2 prevPixel = ivec2(round(prevPixelF));
+	prevPixel = clamp(prevPixel, ivec2(0), resolution - ivec2(1));
+
+	// --- History samples ---
+	float aoHistory = texelFetch(inAoHistoryRead, prevPixel, 0).r;
+
+	//float aoHistory = texture(inAoHistoryRead, prevUV).r;
+	//float prevDepth01 = texture(inPrevDepth, prevUV).r;
+
+	float curDepth01  = fetchDepth(pixel);
+	float prevDepth01 = fetchPrevDepth(prevPixel);
+
+	// If depth is invalid (sky / cleared), reject.
+	if (curDepth01 >= 1.0 || prevDepth01 >= 1.0) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	float curZ  = linearizeDepth(curDepth01,  scene.cameraClips.x, scene.cameraClips.y);
+	float prevZ = linearizeDepth(prevDepth01, scene.cameraClips.x, scene.cameraClips.y);
+
+	// --- Disocclusion threshold based on local depth slope ---
+	// Estimate depth slope from current frame (compute-safe: sample neighbors).
+	ivec2 px1 = clamp(pixel + ivec2(1, 0), ivec2(0), resolution - ivec2(1));
+	ivec2 py1 = clamp(pixel + ivec2(0, 1), ivec2(0), resolution - ivec2(1));
+
+	float curZx = linearizeDepth(fetchDepth(px1), scene.cameraClips.x, scene.cameraClips.y);
+	float curZy = linearizeDepth(fetchDepth(py1), scene.cameraClips.x, scene.cameraClips.y);
+
+	float slope = max(abs(curZx - curZ), abs(curZy - curZ));
+
+	// Base + slope-scaled threshold (tune these; start here)
+	float baseThreshold = 0.02 * curZ;       // relative depth tolerance
+	float slopeThreshold = 2.0 * slope;      // allow more on steep edges
+	float threshold = max(baseThreshold, slopeThreshold);
+
+	float depthDiff = abs(curZ - prevZ);
+	if (depthDiff > threshold) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// --- Neighborhood clamp (kills “history bleeding” / ghosting) ---
+	float minAO = aoCurrent;
+	float maxAO = aoCurrent;
+
+	// 3x3 min/max from current AO
+	for (int oy = -1; oy <= 1; ++oy) {
+		for (int ox = -1; ox <= 1; ++ox) {
+			ivec2 p = clamp(pixel + ivec2(ox, oy), ivec2(0), resolution - ivec2(1));
+			float v = fetchAO(p);
+			minAO = min(minAO, v);
+			maxAO = max(maxAO, v);
+		}
+	}
+
+	// Slight expansion so we don’t “crush” detail
+	float expand = 0.02;
+	minAO = max(0.0, minAO - expand);
+	maxAO = min(1.0, maxAO + expand);
+
+	aoHistory = clamp(aoHistory, minAO, maxAO);
+
+	// --- Dynamic history weight ---
+	vec2 velocityPx = velocityUV * scene.viewportSize.xy;
+	float speedPx = length(velocityPx);
+
+	// More motion => trust current more
+	float maxHistoryWeight = 0.99;
+	float minHistoryWeight = 0.7;
+
+	float motionK = 0.8; // tune (bigger = less history sooner)
+	float historyWeight = maxHistoryWeight * exp(-motionK * speedPx);
+	historyWeight = clamp(historyWeight, minHistoryWeight, maxHistoryWeight);
+
+	float aoOut = mix(aoCurrent, aoHistory, historyWeight);
+
+	imageStore(outAoHistoryWrite, pixel, vec4(aoOut, 0.0, 0.0, 0.0));
+}

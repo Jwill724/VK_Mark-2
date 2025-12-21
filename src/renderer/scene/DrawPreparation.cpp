@@ -8,12 +8,14 @@ struct CombinedUploadPlan {
 	// frame-local
 	size_t visOff = 0, visSize = 0; // visible instances
 	size_t indOff = 0, indSize = 0; // indirect draws
+
+	// transforms
+	size_t curTransformOff = 0, curTransformSize = 0;
+	size_t prevTransformOff = 0, prevTransformSize = 0;
+
+	// Only required when visibles and draw buffers are created or destroyed.
 	// per-frame address table (frameCtx.addressTableBuffer)
 	size_t fAddrOff = 0, fAddrSize = 0;
-
-	// global address table and transforms
-	size_t gAddrOff = 0, gAddrSize = 0;
-	size_t transformOff = 0, transformSize = 0;
 };
 
 struct TransparentEntry {
@@ -119,14 +121,13 @@ void DrawPreparation::buildAndSortIndirectDraws(
 }
 
 inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
-	const GPUAddressTable& globalAddrTable,
-	const std::vector<glm::mat4>& transforms,
+	const std::vector<glm::mat4>& curTransforms,
+	const std::vector<glm::mat4>& prevTransforms,
 	VmaAllocator alloc)
 {
 	CombinedUploadPlan plan{};
 	auto* mapped = static_cast<uint8_t*>(frame.combinedGPUStaging.info.pMappedData);
 	const size_t cap = frame.combinedGPUStaging.info.size;
-	const size_t addrBytes = sizeof(GPUAddressTable);
 
 	// visible instances
 	plan.visSize = frame.visibleInstances.size() * sizeof(GPUInstance);
@@ -140,23 +141,25 @@ inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 	memcpy(mapped + plan.indOff, frame.indirectDraws.data(), plan.indSize);
 	BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.indOff, plan.indSize, alloc);
 
-	// frame address table
-	plan.fAddrSize = addrBytes;
-	plan.fAddrOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.fAddrSize);
-	memcpy(mapped + plan.fAddrOff, &frame.addressTable, plan.fAddrSize);
-	BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.fAddrOff, plan.fAddrSize, alloc);
-
-	// transforms + global address table
+	// transforms
 	if (frame.transformsBufferUploadNeeded) {
-		plan.transformSize = transforms.size() * sizeof(glm::mat4);
-		plan.transformOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.transformSize);
-		memcpy(mapped + plan.transformOff, transforms.data(), plan.transformSize);
-		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.transformOff, plan.transformSize, alloc);
+		plan.curTransformSize = curTransforms.size() * sizeof(glm::mat4);
+		plan.curTransformOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.curTransformSize);
+		memcpy(mapped + plan.curTransformOff, curTransforms.data(), plan.curTransformSize);
+		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.curTransformOff, plan.curTransformSize, alloc);
 
-		plan.gAddrSize = addrBytes;
-		plan.gAddrOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.gAddrSize);
-		memcpy(mapped + plan.gAddrOff, &globalAddrTable, plan.gAddrSize);
-		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.gAddrOff, plan.gAddrSize, alloc);
+		plan.prevTransformSize = prevTransforms.size() * sizeof(glm::mat4);
+		plan.prevTransformOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.prevTransformSize);
+		memcpy(mapped + plan.prevTransformOff, prevTransforms.data(), plan.prevTransformSize);
+		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.prevTransformOff, plan.prevTransformSize, alloc);
+	}
+
+	// frame address table
+	if (frame.addressTable.isTableDirty()) {
+		plan.fAddrSize = sizeof(GPUAddressTable);
+		plan.fAddrOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.fAddrSize);
+		memcpy(mapped + plan.fAddrOff, &frame.addressTable, plan.fAddrSize);
+		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.fAddrOff, plan.fAddrSize, alloc);
 	}
 
 	return plan;
@@ -166,18 +169,16 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 	FrameContext& frameCtx,
 	GPUResources& gpuResources,
 	const std::vector<glm::mat4>& transforms,
+	const std::vector<glm::mat4>& prevTransforms,
 	GPUQueue& transferQueue)
 {
 	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
 		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 
-	const auto& globalAddrTable = gpuResources.getAddressTable();
-
-	CombinedUploadPlan plan = stageCombinedUploads(frameCtx, globalAddrTable, transforms, gpuResources.getAllocator());
+	CombinedUploadPlan plan = stageCombinedUploads(frameCtx, transforms, prevTransforms, gpuResources.getAllocator());
 
 	// Record big transfer copies for indirect, instance, frame address table buffer, and global transforms/global address table
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-
 		// visible instance data
 		VkBufferCopy visInstCpy{};
 		visInstCpy.srcOffset = plan.visOff;
@@ -200,47 +201,53 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			1,
 			&indirectDrawsCpy);
 
-		// GPU address table copy
-		VkBufferCopy addressCpy{};
-		addressCpy.srcOffset = plan.fAddrOff;
-		addressCpy.dstOffset = 0;
-		addressCpy.size = plan.fAddrSize;
-		vkCmdCopyBuffer(cmd,
-			frameCtx.combinedGPUStaging.buffer,
-			frameCtx.addressTableBuffer.buffer,
-			1,
-			&addressCpy);
-		// Always mark dirty with copy
-		frameCtx.addressTableDirty = true;
+		BarrierUtils::releaseTransferToShaderReadQ(cmd, frameCtx.visibleInstancesBuffer);
+		BarrierUtils::releaseTransferToIndirectQ(cmd, frameCtx.indirectDrawsBuffer);
 
 		if (frameCtx.transformsBufferUploadNeeded) {
-			const auto& globalAddrTableBuf = gpuResources.getAddressTableBuffer();
-			const auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms).buffer;
+			const auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
+			const auto& prevTransformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::PrevTransforms);
 
-			VkBufferCopy transformsCpy{};
-			transformsCpy.srcOffset = plan.transformOff;
-			transformsCpy.dstOffset = 0;
-			transformsCpy.size = plan.transformSize;
+			// Current transforms
+			VkBufferCopy curTransformsCpy{};
+			curTransformsCpy.srcOffset = plan.curTransformOff;
+			curTransformsCpy.dstOffset = 0;
+			curTransformsCpy.size = plan.curTransformSize;
 			vkCmdCopyBuffer(cmd,
 				frameCtx.combinedGPUStaging.buffer,
-				transformsBuf,
+				transformsBuf.buffer,
 				1,
-				&transformsCpy);
+				&curTransformsCpy);
 
-			VkBufferCopy addressTableCpy{};
-			addressTableCpy.srcOffset = plan.gAddrOff;
-			addressTableCpy.dstOffset = 0;
-			addressTableCpy.size = plan.gAddrSize;
+			// Previous transforms
+			VkBufferCopy prevTransformsCpy{};
+			prevTransformsCpy.srcOffset = plan.prevTransformOff;
+			prevTransformsCpy.dstOffset = 0;
+			prevTransformsCpy.size = plan.prevTransformSize;
 			vkCmdCopyBuffer(cmd,
 				frameCtx.combinedGPUStaging.buffer,
-				globalAddrTableBuf.buffer,
+				prevTransformsBuf.buffer,
 				1,
-				&addressTableCpy);
+				&prevTransformsCpy);
 
-			BarrierUtils::releaseTransferToShaderReadQ(cmd, globalAddrTableBuf);
+			BarrierUtils::releaseTransferToShaderReadQ(cmd, transformsBuf);
+			BarrierUtils::releaseTransferToShaderReadQ(cmd, prevTransformsBuf);
 		}
 
-		BarrierUtils::releaseTransferToShaderReadQ(cmd, frameCtx.addressTableBuffer);
+		if (frameCtx.addressTable.isTableDirty()) {
+			// frame GPU address table copy
+			VkBufferCopy frameAddressTableCpy{};
+			frameAddressTableCpy.srcOffset = plan.fAddrOff;
+			frameAddressTableCpy.dstOffset = 0;
+			frameAddressTableCpy.size = plan.fAddrSize;
+			vkCmdCopyBuffer(cmd,
+				frameCtx.combinedGPUStaging.buffer,
+				frameCtx.addressTableBuffer.buffer,
+				1,
+				&frameAddressTableCpy);
+
+			frameCtx.addressTable.clearTableDirty();
+		}
 
 	}, frameCtx.transferPool, QueueType::Transfer, Backend::getDevice());
 
@@ -291,7 +298,7 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 				// Spin in place around local pivot
 				glm::vec3 pivot = glm::vec3(M[3]); // Extract world space position
 				glm::mat4 T = glm::translate(glm::mat4(1.0f), pivot);
-				glm::mat4 R = glm::rotate(glm::mat4(1.0f), 0.005f, glm::vec3(0.0f, 1.0f, 0.0f));
+				glm::mat4 R = glm::rotate(glm::mat4(1.0f), 0.01f, glm::vec3(0.0f, 1.0f, 0.0f));
 				glm::mat4 T_inv = glm::translate(glm::mat4(1.0f), -pivot);
 
 				M = T * R * T_inv * M;
@@ -339,7 +346,8 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 	}
 
 	// First time creation on frame 0
-	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms)) {
+	if (!gpuResources.containsGPUBuffer(AddressBufferType::Transforms) &&
+		!gpuResources.containsGPUBuffer(AddressBufferType::PrevTransforms)) {
 		auto& globalAddrsTable = gpuResources.getAddressTable();
 		const auto allocator = gpuResources.getAllocator();
 
@@ -350,8 +358,16 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			globalAddrsTable,
 			transformsBytes,
 			allocator);
+
+		AllocatedBuffer newPrevTransformBuf = BufferUtils::createGPUAddressBuffer(
+			AddressBufferType::PrevTransforms,
+			globalAddrsTable,
+			transformsBytes,
+			allocator);
+
 		// Note: The current global address table gets marked dirty, only the internal upload function marks it back to false.
 		gpuResources.addGPUBufferToGlobalAddress(AddressBufferType::Transforms, newTransformBuf);
+		gpuResources.addGPUBufferToGlobalAddress(AddressBufferType::PrevTransforms, newPrevTransformBuf);
 
 		frameCtx.transformsBufferUploadNeeded = true;
 	}

@@ -36,10 +36,9 @@ public:
 	void addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
 	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
 
-	// Table is marked dirty if a gpu address is updated, returns to clean afterward
-	// Setting force to 'true' will update the table without having to directly update the individual addresses,
-	// like extending a current address
-	void updateAddressTableMapped(VkCommandPool transferCommandPool, bool force = false);
+	// Marked dirty whenever new addresses are added and clean when this function finishes its upload.
+	// This is designed for the global address table only.
+	void updateAddressTableMapped();
 
 	// All submesh access
 	// Maps meshes to their vertex/index buffer regions for indirect drawing
@@ -63,6 +62,8 @@ public:
 
 	void cleanup(VkDevice device);
 
+	bool assetsLoaded = false;
+
 private:
 	GPUAddressTable gpuAddresses{};
 	AllocatedBuffer addressTableBuffer; // descriptor written buffer, mapped from gpuaddresses
@@ -70,11 +71,6 @@ private:
 	mutable std::mutex addressTableMutex;
 
 	MeshRegistry registeredMeshes;
-
-	bool addressTableDirty = false;
-	void markAddressTableDirty() {
-		addressTableDirty = true;
-	}
 
 	ImageLUTManager lutManager{};
 
@@ -108,9 +104,18 @@ namespace ResourceManager {
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
 	AllocatedImage& getDepthResolvedImage();
+	AllocatedImage& getPrevDepthResolvedImage();
 	AllocatedImage& getNormalImage();
 	AllocatedImage& getAORawImage();
 	AllocatedImage& getAOTempImage();
+	AllocatedImage& getAOHistoryRead();
+	AllocatedImage& getAOHistoryWrite();
+	void flipAOHistory();
+	void resetAOHistoryIndex();
+	AllocatedImage& getFlareBrightImage();
+	AllocatedImage& getLensFlareColorImage();
+	AllocatedImage& getRainbowLUTImage();
+	AllocatedImage& getVelocityImage();
 	AllocatedImage& getVolumetricLightImage();
 	AllocatedImage& getVolumetricBlurImage();
 	AllocatedImage& getVolumetricNoiseImage();

@@ -45,7 +45,7 @@ void main()
 	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
 	outWorldPos = worldPos4.xyz;
 	outViewPos = scene.view * vec4(worldPos4.xyz, 1.0);
-	gl_Position = scene.viewproj * worldPos4;
+	gl_Position = scene.viewProj * worldPos4;
 
 	outNormal = mat3(model) * vtx.normal;
 	outColor = vtx.color.xyz;

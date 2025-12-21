@@ -96,9 +96,7 @@ float PCFPoissonHigh(
 
 // Right handed view looks down -Z
 uint cascadeViewDepthSplit(float viewDepth, uint cascadeCount, vec4 cascadeSplits) {
-	const uint maxCascade = cascadeCount - 1u;
-
-	uint cascadeIdx = maxCascade;
+	uint cascadeIdx = cascadeCount - 1u;
 	for (uint i = 0u; i < cascadeCount; ++i) {
 		if (viewDepth < cascadeSplits[i]) {
 			cascadeIdx = i;

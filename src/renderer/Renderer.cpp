@@ -38,7 +38,7 @@ namespace Renderer {
 void Renderer::initRenderer(
 	const VkDevice device,
 	const VkDescriptorSetLayout frameLayout,
-	GPUResources& gpuResouces,
+	GPUResources& gpuResources,
 	Profiler& profiler)
 {
 	SyncUtils::createTimelineSemaphore(_transferSync, device);
@@ -50,13 +50,13 @@ void Renderer::initRenderer(
 	_frameContexts = initFrameContexts(
 		device,
 		frameLayout,
-		gpuResouces.getAllocator(),
+		gpuResources.getAllocator(),
 		_framesInFlight,
-		profiler.assetsLoaded
+		gpuResources.assetsLoaded
 	);
 
 	auto& debug = profiler.debugToggles;
-	const auto& modelDataCounts = gpuResouces.modelDataCounts;
+	const auto& modelDataCounts = gpuResources.modelDataCounts;
 
 	debug.indexCount = modelDataCounts.totalIndexCount;
 	debug.vertexCount = modelDataCounts.totalVertexCount;
@@ -218,29 +218,36 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 
 // ==============================================
 // === MAIN GRAPHICS RECORDING FOR ALL PASSES ===
+// ==============================================
+// All recorded in a single graphics queue
 
 void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	const auto device = Backend::getDevice();
 	const auto& swp = Backend::getSwapchainDef();
 	const auto& opaque = ResourceManager::getOpaqueImage();
 	const auto& transparent = ResourceManager::getTransparentImage();
-	const auto& dummyTransparent = ResourceManager::getDummyTransparent();
 	const auto& toneMap = ResourceManager::getToneMapImage();
 	const auto& msaa = ResourceManager::getMSAAImage();
 	const auto& depth = ResourceManager::getDepthImage();
-	const auto& ao = ResourceManager::getAORawImage();
-	const auto& bentNormal = ResourceManager::getBentNormalImage();
-	const auto normalSampler = ResourceManager::getNearestClampSampler();
+	const auto& aoFinal = ResourceManager::getAORawImage();
 	const auto aoSampler = ResourceManager::getAOSampler();
 	const auto& depthResolved = ResourceManager::getDepthResolvedImage();
 	const auto& volLight = ResourceManager::getVolumetricLightImage();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
-	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
 
-	const auto& debug = profiler.debugToggles;
+	auto& debug = profiler.debugToggles;
 
-	_drawExtent.width = std::min(swp.extent.width, opaque.extent.width);
-	_drawExtent.height = std::min(swp.extent.height, opaque.extent.height);
+	// Small hack to fix dumb gpu validation layer issues.
+	// Fix some time later...
+	if (_frameNumber < 2) {
+		if (_frameNumber == 0) {
+			debug.aoMode = AO_OFF;
+			debug.enableShadows = 0;
+		}
+		else {
+			debug.aoMode = AO_GTAO;
+			debug.enableShadows = 1;
+		}
+	}
 
 	const VkExtent2D fullExtent = { _drawExtent.width, _drawExtent.height };
 	const VkExtent3D workgroupSize = { 16u, 16u, 1u };
@@ -257,7 +264,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	const auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
 
+	auto& scene = RenderScene::getCurrentSceneData();
+
 	bool hasVisibles = frameCtx.visibleCount > 0;
+
+	bool isTemporalValid = (_frameNumber > 0 && scene.temporal.y == 1);
 
 	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
 		// Update the global set for transforms
@@ -282,12 +293,16 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
 	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
-		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, globalAddrsTableBuf);
+		const auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
+		const auto& prevTransformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::PrevTransforms);
+		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, transformsBuf);
+		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, prevTransformsBuf);
 		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
 	}
 
 	if (hasVisibles) {
-		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, frameCtx.addressTableBuffer);
+		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, frameCtx.visibleInstancesBuffer);
+		BarrierUtils::acquireIndirectQ(frameCtx.cmdBuffer, frameCtx.indirectDrawsBuffer);
 	}
 
 	vkCmdBindDescriptorSets(frameCtx.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -311,18 +326,21 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		// =====================
 		// === DEPTH PREPASS ===
-		RenderPasses::depthPrePass(frameCtx, Pipelines::getHandle(PipelineID::DepthPrepass));
+		RenderPasses::depthPrePass(
+			frameCtx,
+			Pipelines::getHandle(PipelineID::DepthPrepass),
+			isTemporalValid);
+
+		// ==========================
+		// === DEPTH PYRAMID PASS ===
+		RenderPasses::depthPyramidPass(frameCtx);
 
 		// =================
 		// === GTAO PASS ===
 		if (debug.aoMode == AO_GTAO) {
-			// ==========================
-			// === DEPTH PYRAMID PASS ===
-			RenderPasses::depthPyramidPass(frameCtx);
-
 			auto& gtaoPush = profiler.gtaoSettings;
 
-			const auto& proj = RenderScene::getCurrentSceneData().proj;
+			const auto& proj = scene.proj;
 
 			gtaoPush.tanHalfFov.x = 1.0f / proj[0][0];
 			gtaoPush.tanHalfFov.y = 1.0f / proj[1][1];
@@ -338,11 +356,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			gtaoPush.ndcToViewMul_x_PixelSize = gtaoPush.ndcToViewMul * gtaoPush.pixelSize;
 
 			RenderPasses::ComputeDispatchScope gtaoScope;
-			gtaoScope.setPush(&gtaoPush);
+			gtaoScope.setPush(gtaoPush);
 			gtaoScope.extent = fullExtent;
 			gtaoScope.workgroupSize = workgroupSize;
 
-			RenderPasses::GTAOPass(frameCtx, gtaoScope, profiler);
+			RenderPasses::GTAOPass(frameCtx, gtaoScope, isTemporalValid);
 		}
 		// =================
 		// === SSAO PASS ===
@@ -355,32 +373,18 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			ssaoPush.invScreenSize = 1.0f / ssaoPush.screenSize;
 
 			RenderPasses::ComputeDispatchScope ssaoScope;
-			ssaoScope.setPush(&ssaoPush);
+			ssaoScope.setPush(ssaoPush);
 			ssaoScope.extent = fullExtent;
 			ssaoScope.workgroupSize = workgroupSize;
 
-			RenderPasses::SSAOPass(frameCtx, ssaoScope, profiler);
-
-			// Bent normal image still needs empty transition
-			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
-				bentNormal.image,
-				bentNormal.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			RenderPasses::SSAOPass(frameCtx, ssaoScope);
 		}
 		// AO OFF
 		else {
 			ImageUtils::transitionImage(
 				frameCtx.cmdBuffer,
-				ao.image,
-				ao.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
-				bentNormal.image,
-				bentNormal.format,
+				aoFinal.image,
+				aoFinal.format,
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
@@ -445,17 +449,22 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
 		}
 
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			ao.imageView,
-			aoSampler
-		);
-
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_NORMAL_TEX,
-			bentNormal.imageView,
-			normalSampler
-		);
+		if (debug.aoMode == AO_GTAO && isTemporalValid) {
+			// Temporally stabilized
+			const auto& aoTemporal = ResourceManager::getAOHistoryWrite();
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_BINDING_INPUT_1_TEX,
+				aoTemporal.imageView,
+				aoSampler
+			);
+		}
+		else {
+			frameCtx.descriptorWriter.writePushImage(
+				PUSH_BINDING_INPUT_1_TEX,
+				aoFinal.imageView,
+				aoSampler
+			);
+		}
 
 		RenderPasses::opaqueMeshPass(frameCtx, pipeline, profiler);
 
@@ -474,6 +483,13 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	RenderPasses::endRendering(frameCtx.cmdBuffer);
 
+	ImageUtils::transitionImage(
+		frameCtx.cmdBuffer,
+		opaque.image,
+		opaque.format,
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
 
 	// ================================
 	// === VOLUMETRIC LIGHTING PASS ===
@@ -481,18 +497,17 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		glm::uvec2 halfRes{ volLight.extent.width, volLight.extent.height };
 
 		auto& volLightPush = profiler.volLightSettings;
-		volLightPush.frameIndex = frameCtx.frameIndex;
 		volLightPush.pixelSize = {
 			1.0f / static_cast<float>(halfRes.x),
 			1.0f / static_cast<float>(halfRes.y)
 		};
 
 		RenderPasses::ComputeDispatchScope volLightScope;
-		volLightScope.setPush(&volLightPush);
+		volLightScope.setPush(volLightPush);
 		volLightScope.extent = { halfRes.x, halfRes.y };
 		volLightScope.workgroupSize = workgroupSize;
 
-		RenderPasses::volumetricLightingPass(frameCtx, volLightScope, profiler);
+		RenderPasses::volumetricLightingPass(frameCtx, volLightScope);
 	}
 	else {
 		// Empty transition
@@ -550,172 +565,91 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		RenderPasses::transparentMeshPass(frameCtx, Pipelines::getHandle(PipelineID::Transparent), profiler);
 
 		RenderPasses::endRendering(frameCtx.cmdBuffer);
-	}
-
-
-	// Currently still fully preformed in graphics queue
-	// =====================
-	// === TONE MAP PASS ===
-	{
-		RenderPasses::ComputeDispatchScope expScope;
-		expScope.extent = fullExtent;
-		expScope.workgroupSize = workgroupSize;
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
-			opaque.image,
-			opaque.format,
+			transparent.image,
+			transparent.format,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			opaque.imageView,
-			linearSampler);
-
-		if (transparentVisible) {
-			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
-				transparent.image,
-				transparent.format,
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				transparent.imageView,
-				linearSampler);
-		}
-		else {
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				dummyTransparent.imageView,
-				linearSampler);
-		}
-
-		// === EXPOSURE REDUCE ===
-		RenderPasses::dispatchComputePass(
-			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::ExposureReduce),
-			expScope,
-			frameCtx.descriptorWriter);
-
-		const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
-
-		BarrierUtils::releaseComputeWriteQ(
-			frameCtx.cmdBuffer,
-			luminanceBuf,
-			QueueType::Graphics);
-		BarrierUtils::acquireBufferQ(
-			frameCtx.cmdBuffer,
-			luminanceBuf,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-			VK_ACCESS_2_SHADER_READ_BIT,
-			QueueType::Graphics,
-			QueueType::Graphics);
-
-		// === EXPOSURE FINALIZE ===
-		uint32_t tilesX = expScope.extent.width / 16u;
-		uint32_t tilesY = expScope.extent.height / 16u;
-		uint32_t totalTiles = tilesX * tilesY;
-		expScope.extent.width = totalTiles; // total number of luminance tiles
-		expScope.extent.height = 1u;
-		expScope.workgroupSize = { 256u, 1u, 1u };
-
-		struct alignas(16) ExposurePush {
-			uint32_t totalTiles;
-			uint32_t pad0[3]{};
-		} expPush{};
-		expPush.totalTiles = totalTiles;
-		expScope.setPush(&totalTiles);
-
-		RenderPasses::dispatchComputePass(
-			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::ExposureFinalize),
-			expScope,
-			frameCtx.descriptorWriter);
-
-		BarrierUtils::releaseComputeWriteQ(
-			frameCtx.cmdBuffer,
-			luminanceBuf,
-			QueueType::Graphics);
-		BarrierUtils::acquireBufferQ(
-			frameCtx.cmdBuffer,
-			luminanceBuf,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-			VK_ACCESS_2_SHADER_READ_BIT,
-			QueueType::Graphics,
-			QueueType::Graphics);
-
-		// === TONE MAPPING ===
-		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			toneMap.image,
-			toneMap.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_GENERAL);
-
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_OUTPUT_1_TEX,
-			toneMap.imageView);
-
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			opaque.imageView,
-			linearSampler);
-
-		if (transparentVisible) {
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				transparent.imageView,
-				linearSampler);
-		}
-		else {
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				dummyTransparent.imageView,
-				linearSampler);
-		}
-
-		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			volLight.imageView,
-			linearClampSampler);
-
-		expScope.pushData = nullptr;
-		expScope.pushSize = 0u;
-
-		expScope.extent = fullExtent;
-		expScope.workgroupSize = workgroupSize;
-
-		RenderPasses::dispatchComputePass(
-			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::ToneMap),
-			expScope,
-			frameCtx.descriptorWriter);
-
-		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			toneMap.image,
-			toneMap.format,
-			VK_IMAGE_LAYOUT_GENERAL,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-
-		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
-			swp.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-		ImageUtils::copyImageToImage(
-			frameCtx.cmdBuffer,
-			toneMap.image,
-			swp.images[frameCtx.swapchainImageIndex],
-			{ _drawExtent.width, _drawExtent.height },
-			swp.extent
-		);
 	}
+
+	// =====================
+	// === EXPOSURE PASS ===
+	RenderPasses::ComputeDispatchScope defaultScope;
+	defaultScope.extent = fullExtent;
+	defaultScope.workgroupSize = workgroupSize;
+	const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
+	RenderPasses::exposurePass(frameCtx, defaultScope, luminanceBuf, transparentVisible);
+
+	// =======================
+	// === LENS FLARE PASS ===
+	if (debug.enableLensFlare) {
+		auto& lensFlarePush = profiler.lensFlareSettings;
+		const auto& brightFlare = ResourceManager::getFlareBrightImage();
+		VkExtent2D quarterRes = {
+			brightFlare.extent.width,
+			brightFlare.extent.height
+		};
+
+		lensFlarePush.fullRes = glm::vec2(
+			static_cast<float>(winExtent.width),
+			static_cast<float>(winExtent.height)
+		);
+		lensFlarePush.invFullRes = 1.0f / lensFlarePush.fullRes;
+
+		lensFlarePush.outputRes = glm::vec2(
+			static_cast<float>(quarterRes.width),
+			static_cast<float>(quarterRes.height)
+		);
+		lensFlarePush.invOutputRes = 1.0f / lensFlarePush.outputRes;
+
+		glm::vec3 cameraWorldPos = glm::vec3(scene.cameraPos);
+		glm::vec3 sunDirWorld = glm::normalize(glm::vec3(scene.sunlightDirection));
+		glm::vec3 sunWorldPos = cameraWorldPos + sunDirWorld * 10000.0f;
+		glm::vec4 clip = scene.proj * scene.view * glm::vec4(sunWorldPos, 1.0f);
+		bool inFront = (clip.w > 0.0f);
+
+		glm::vec3 ndc = glm::vec3(clip) / clip.w;
+		glm::vec2 uv{};
+		uv.x = ndc.x * 0.5f + 0.5f;
+		uv.y = 0.5f - ndc.y * 0.5f;
+
+		bool onScreen =
+			(uv.x >= 0.0f && uv.x <= 1.0f) &&
+			(uv.y >= 0.0f && uv.y <= 1.0f);
+
+		lensFlarePush.sunUv = uv;
+		lensFlarePush.sunVisible = (inFront && onScreen) ? 1.0f : 0.0f;
+
+		RenderPasses::ComputeDispatchScope lensFlareScope;
+		lensFlareScope.setPush(lensFlarePush);
+		lensFlareScope.extent = quarterRes;
+		lensFlareScope.workgroupSize = workgroupSize;
+
+		RenderPasses::lensFlarePass(frameCtx, lensFlareScope, transparentVisible);
+	}
+
+
+	// =====================
+	// === TONE MAP PASS ===
+	RenderPasses::toneMapPass(frameCtx, defaultScope, transparentVisible);
+
+	ImageUtils::transitionImage(
+		frameCtx.cmdBuffer,
+		swp.images[frameCtx.swapchainImageIndex],
+		swp.format,
+		VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+	ImageUtils::copyImageToImage(
+		frameCtx.cmdBuffer,
+		toneMap.image,
+		swp.images[frameCtx.swapchainImageIndex],
+		fullExtent,
+		swp.extent,
+		swp.format
+	);
 
 	if (debug.enableSettings || debug.enableStats) {
 		ImageUtils::transitionImage(

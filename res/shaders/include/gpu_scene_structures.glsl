@@ -14,13 +14,15 @@ struct SceneData {
 	mat4 proj;
 	mat4 invView;
 	mat4 invProj;
-	mat4 viewproj;
+	mat4 viewProj;
+	mat4 prevViewProj;
+	uvec4 temporal;         // .x = frameIndex, .y = historyValid (0/1)
 	vec4 sunlightDirection; // .w = power
 	vec4 sunlightColor;
-	vec4 cameraPos; // .z camFar
-	vec4 cameraClips; // .x near and .y far
-	vec4 viewportSize; // .x screenwidth, .y screenheight .z pixelcount
-	vec4 pad0[7];
+	vec4 cameraPos;         // .z camFar
+	vec4 cameraClips;       // .x near and .y far
+	vec4 viewportSize;      // .x screenwidth, .y screenheight .z pixelcount
+	vec4 pad0[2];
 };
 
 // Number of env sets stored in the buffer (must match C++ side)
@@ -71,7 +73,8 @@ struct DebugToggles {
 
 	uint showEmissive;
 	uint showBakedAO;
-	uint pad1[2];
+	uint enableTemporal;
+	uint pad1;
 };
 
 struct AABB {
@@ -137,12 +140,13 @@ struct Instance {
 const uint ABT_VisibleInstances  = 0u; // frame
 const uint ABT_IndirectDraws     = 1u; // frame
 const uint ABT_Transforms        = 2u; // global
-const uint ABT_Material          = 3u; // global
-const uint ABT_Mesh              = 4u; // global
-const uint ABT_Vertex            = 5u; // global
-const uint ABT_Index             = 6u; // global
-const uint ABT_Luminance         = 7u; // global
-const uint ABT_Count             = 8u;
+const uint ABT_PrevTransforms    = 3u; // global
+const uint ABT_Material          = 4u; // global
+const uint ABT_Mesh              = 5u; // global
+const uint ABT_Vertex            = 6u; // global
+const uint ABT_Index             = 7u; // global
+const uint ABT_Luminance         = 8u; // global
+const uint ABT_Count             = 9u;
 
 struct GPUAddressTable {
 	uint64_t addrs[ABT_Count];
@@ -156,7 +160,7 @@ struct IndirectDrawCmd {
 	uint firstInstance;
 };
 
-const uint MAX_LUMINANCE_GROUPS = 65536;
+const uint MAX_LUMINANCE_GROUPS = 65536u;
 
 // GPU-only buffers
 
@@ -184,6 +188,10 @@ layout(buffer_reference, scalar) readonly buffer IndexBuffer {
 
 layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
 	mat4 transforms[];
+};
+
+layout(buffer_reference, scalar) readonly buffer PrevTransformsBuffer {
+	mat4 prevTransforms[];
 };
 
 layout(buffer_reference, scalar) readonly buffer MeshBuffer {

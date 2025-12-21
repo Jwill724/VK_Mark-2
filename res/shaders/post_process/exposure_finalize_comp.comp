@@ -22,10 +22,6 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 	SceneData scene;
 };
 
-// Samplers not in use here but binding is defined within this context
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D opaqueImage;
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D transparentImage;
-
 layout(push_constant) uniform ExposurePush {
 	uint totalTiles;
 	uint pad0[3];

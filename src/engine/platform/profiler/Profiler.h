@@ -81,8 +81,8 @@ struct alignas(4) DebugToggles {
 	uint32_t vertexCount = 0;
 
 	uint32_t indexCount = 0;
-	uint32_t enableLensFlare = 0;
-	uint32_t enableChromaticAberration = 0;
+	uint32_t enableLensFlare = 1;
+	uint32_t enableChromaticAberration = 1;
 	uint32_t pad0 = 0;
 
 	// fragment shader outputs
@@ -98,6 +98,7 @@ struct alignas(4) DebugToggles {
 
 	uint32_t showEmissive = 0;
 	uint32_t showBakedAO = 0;
+	uint32_t enableTemporal = 0;
 	uint32_t pad1{};
 };
 
@@ -114,8 +115,6 @@ public:
 	inline float endTimerSec() const {
 		return endTimerMS() / 1000.0f;
 	}
-
-	bool assetsLoaded{ false };
 
 	FrameStats& getStats() { return _stats; }
 
@@ -154,6 +153,7 @@ public:
 	SSAOPush ssaoSettings;
 	GTAOPush gtaoSettings;
 	VolumetricPush volLightSettings;
+	LensFlarePush lensFlareSettings;
 
 	VRAMStats GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
 

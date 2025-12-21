@@ -21,7 +21,7 @@ layout(push_constant) uniform VolumetricPush
 	float maxDistance;         // max ray length in world/view units
 	float jitterStrength;      // scales step jitter for banding hiding
 	int stepCount;             // march steps
-	uint frameIndex;           // for animated jitter / dither
+	float pad0;
 
 	float asymmetryFactor;     // phase function asymmetry factor
 	float minTransmittance;    // minimum remaining light before fully attenuated
@@ -34,7 +34,7 @@ layout(push_constant) uniform VolumetricPush
 	float blurWeightSigma;     // Gaussian width
 
 	vec2 blurDirection;        // (1,0) for horizontal, (0,1) for vertical
-	vec2 pad0;
+	vec2 pad1;
 } pc;
 
 void main()

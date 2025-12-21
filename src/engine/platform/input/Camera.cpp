@@ -3,7 +3,7 @@
 #include "Camera.h"
 #include "engine/platform/profiler/EditorImgui.h"
 
-void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
+void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTemporalInvalid) {
 	using namespace UserInput;
 
 	updateLocalInput(window);
@@ -67,7 +67,10 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler) {
 	// scale speed on whole axis while frame independent
 	_velocity = (horiz + vert) * moveSpeed;
 
-	if (keyboard.isPressed(GLFW_KEY_R)) reset();
+	if (keyboard.isPressed(GLFW_KEY_R)) {
+		reset();
+		isTemporalInvalid = true;
+	}
 
 	_position += _velocity;
 }

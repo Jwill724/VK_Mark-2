@@ -18,6 +18,9 @@ namespace RenderScene {
 
 	std::vector<GlobalInstance> _globalInstances;
 	std::vector<glm::mat4> _globalTransforms;
+	static std::vector<glm::mat4> _prevTransforms;
+
+	bool _initializeTransformCopy = true;
 
 	static Visibility::VisibilityState _visState;
 	static std::vector<AABB> _visibleWorldAABBs;
@@ -44,9 +47,15 @@ namespace RenderScene {
 
 	static bool _assetsLoaded = false;
 	bool _camChanged = false;
+
+	bool _isTemporalInvalid = false;
+
+	static void createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc);
 }
 
-void RenderScene::setScene() {
+void RenderScene::setScene(bool assetsLoaded) {
+	_assetsLoaded = assetsLoaded;
+
 	_mainCamera._velocity = glm::vec3(0.0f);
 	_mainCamera._position = SPAWNPOINT;
 
@@ -55,7 +64,7 @@ void RenderScene::setScene() {
 
 	_mainCamera._fovY = 90.0f;
 	_mainCamera._nearClip = 0.1f;
-	_mainCamera._farClip = 500.0f;
+	_mainCamera._farClip = 1000.0f;
 
 	_sceneData.cameraClips = glm::vec4(_mainCamera._nearClip, _mainCamera._farClip, 0.0f, 0.0f);
 
@@ -70,19 +79,22 @@ static void RenderScene::updateCamera() {
 	float height = static_cast<float>(extent.height);
 	float aspect = width / height;
 
-	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler());
+	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler(), _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
 	_curCamProj = glm::perspective(glm::radians(_mainCamera._fovY), aspect, _mainCamera._nearClip, _mainCamera._farClip);
 
 	_sceneData.view = _curCamView;
 	_sceneData.proj = _curCamProj;
+	_sceneData.prevViewproj = _lastViewProj;
 	_sceneData.viewproj = _curCamProj * _curCamView;
 	_sceneData.cameraPos = glm::vec4(_mainCamera._position, _mainCamera._farClip);
 
 	if (_sceneData.viewportSize.x != width || _sceneData.viewportSize.y != height) {
 		float pixelCount = width * height;
 		_sceneData.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
+
+		_isTemporalInvalid = true;
 	}
 
 	if (_sceneData.viewproj != _lastViewProj) {
@@ -106,7 +118,6 @@ static void RenderScene::updateCamera() {
 // #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 // #define GLM_FORCE_RIGHT_HANDED
 // Pipeline depth compare LESS
-// Shadow resolution is 4096x4096
 // CULL MODE: FRONT BIT
 static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	const auto& shadowMap = ResourceManager::getShadowMapImage();
@@ -213,21 +224,34 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	}
 }
 
+static void RenderScene::createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc) {
+	frameCtx.sceneDataBuffer = BufferUtils::createUniformBuffer(_sceneData, alloc);
+
+	frameCtx.cpuDeletion.push_function([&, alloc]() mutable {
+		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneDataBuffer, alloc);
+	});
+}
+
 void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug) {
+	_isTemporalInvalid = false; // Assume clean start each frame
+
 	updateCamera();
 
 	const auto allocator = gpuResources.getAllocator();
 
-	frameCtx.sceneDataBuffer = BufferUtils::createUniformBuffer(_sceneData, allocator);
-
-	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
-		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneDataBuffer, allocator);
-	});
-
 	// No scene loaded in
-	if (_loadedScenes.empty()) return;
+	if (!_assetsLoaded) {
+		_sceneData.temporal.x = frameCtx.frameIndex;
+		_sceneData.temporal.y = 0u;
+		createSceneBuffer(frameCtx, allocator);
+		return;
+	}
 
 	auto& meshes = gpuResources.getResgisteredMeshes().meshData;
+
+	// Start of each frame copy the current transforms into previous.
+	// Frame 0 this will just be empty.
+	_prevTransforms = _globalTransforms;
 
 	DrawPreparation::syncGlobalInstancesAndTransforms(
 		frameCtx,
@@ -235,6 +259,24 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		_sceneProfiles,
 		_globalInstances,
 		_globalTransforms);
+
+	// The command for this upload is uploaded during frame 0 initialization upload for transforms,
+	// Including all previous asset global loaded buffers.
+	// Could also occur if any buffer is destoryed internally.
+	gpuResources.updateAddressTableMapped();
+
+	// First time intialization copy
+	if (_initializeTransformCopy) {
+		_prevTransforms = _globalTransforms;
+		_initializeTransformCopy = false;
+		_isTemporalInvalid = true;
+	}
+
+	// Instances with transforms counts could be increases or shrunk during the sync
+	if (_globalTransforms.size() != _prevTransforms.size()) {
+		_isTemporalInvalid = true;
+		_prevTransforms = _globalTransforms;
+	}
 
 	frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
 		_visState,
@@ -292,12 +334,26 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 			_sceneData.cameraPos,
 			debug);
 
-		DrawPreparation::uploadGPUBuffersForFrame(frameCtx, gpuResources, _globalTransforms, Backend::getTransferQueue());
+		DrawPreparation::uploadGPUBuffersForFrame(
+			frameCtx,
+			gpuResources,
+			_globalTransforms,
+			_prevTransforms,
+			Backend::getTransferQueue());
 
 		if (debug.enableShadows && _updateShadows) {
 			updateShadowCSM(lightDir);
 		}
 	}
+
+	_sceneData.temporal.x = frameCtx.frameIndex;
+	if (debug.enableTemporal) {
+		_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
+	}
+	else {
+		_sceneData.temporal.y = 0u;
+	}
+	createSceneBuffer(frameCtx, allocator);
 
 	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.
 	frameCtx.shadowCSMBuffer = BufferUtils::createUniformBuffer(_shadowCSM, allocator);
@@ -320,7 +376,12 @@ void RenderScene::extendFrustumByLightDirection(Frustum& frus, const glm::vec3& 
 	}
 }
 
-void RenderScene::cleanScene() {
+void RenderScene::cleanScene(GPUAddressTable& globalTable) {
 	_loadedScenes.clear();
 	_visState.cleanup();
+	_globalTransforms.clear();
+	_prevTransforms.clear();
+	globalTable.removeAddress(AddressBufferType::Transforms);
+	globalTable.removeAddress(AddressBufferType::PrevTransforms);
+	_initializeTransformCopy = true;
 }

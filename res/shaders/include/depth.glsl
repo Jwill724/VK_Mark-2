@@ -19,7 +19,7 @@ float sampleHiZDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
 	// mip level ~ log2(footprint)
 	float mipLevel = log2(fullResRadius);
 
-	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_COUNT));
+	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_COUNT - 1u));
 	return textureLod(hiZ, uv, mipLevel).r;
 }
 

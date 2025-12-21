@@ -5,12 +5,13 @@
 #include "utils/VulkanUtils.h"
 #include "renderer/Renderer.h"
 #include "Environment.h"
+#include "engine/engine.h"
 
 namespace ResourceManager {
 	ImageTableManager _globalImageManager;
 	EnvironmentSet _environmentSets[MAX_ENV_SETS];
 	GPUEnvMapIndexArray _envMapIdxArray; // uniform
-	glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE]{}; // uniform
+	glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE] = { glm::vec4(0.0f) }; // uniform
 	glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) }; // ssbo
 
 	// primary render image
@@ -27,6 +28,9 @@ namespace ResourceManager {
 
 	AllocatedImage _depthResolvedImage;
 	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
+
+	AllocatedImage _prevDepthResolvedImage;
+	AllocatedImage& getPrevDepthResolvedImage() { return _prevDepthResolvedImage; }
 
 	// Max lod = mip count
 	VkSampler _depthPyramidSampler;
@@ -58,6 +62,29 @@ namespace ResourceManager {
 
 	AllocatedImage _aoTempImage;
 	AllocatedImage& getAOTempImage() { return _aoTempImage; }
+
+	uint32_t _aoHistoryIndex = 0;
+	AllocatedImage _aoHistoryImages[2];
+	AllocatedImage& getAOHistoryRead() {
+		return _aoHistoryImages[_aoHistoryIndex];
+	}
+	AllocatedImage& getAOHistoryWrite() {
+		return _aoHistoryImages[_aoHistoryIndex ^ 1u];
+	}
+	void flipAOHistory() { _aoHistoryIndex ^= 1u; }
+	void resetAOHistoryIndex() { _aoHistoryIndex = 0; }
+
+	AllocatedImage _flareBrightImage;
+	AllocatedImage& getFlareBrightImage() { return _flareBrightImage; }
+
+	AllocatedImage _lensFlareColorImage;
+	AllocatedImage& getLensFlareColorImage() { return _lensFlareColorImage; }
+
+	AllocatedImage _rainbowLUTImage;
+	AllocatedImage& getRainbowLUTImage() { return _rainbowLUTImage; }
+
+	AllocatedImage _velocityImage;
+	AllocatedImage& getVelocityImage() { return _velocityImage; }
 
 	AllocatedImage _volumetricLightImage;
 	AllocatedImage& getVolumetricLightImage() { return _volumetricLightImage; }
@@ -141,11 +168,10 @@ void GPUResources::init(const VkDevice device) {
 	computePool = CommandBuffer::createCommandPool(device, Backend::getComputeQueue().familyIndex);
 }
 
-void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, bool force) {
+void GPUResources::updateAddressTableMapped() {
 	std::scoped_lock lock(addressTableMutex);
 
-	// Early out if not forced and no changes detected
-	if (!force && !addressTableDirty) return;
+	if (!gpuAddresses.isTableDirty()) return;
 
 	if (addressTableStagingBuffer.buffer == VK_NULL_HANDLE) {
 		addressTableStagingBuffer = BufferUtils::createBuffer(
@@ -161,17 +187,29 @@ void GPUResources::updateAddressTableMapped(VkCommandPool transferCommandPool, b
 	memcpy(addressTableStagingBuffer.info.pMappedData, &gpuAddresses, sizeof(GPUAddressTable));
 
 	ASSERT(addressTableBuffer.buffer != VK_NULL_HANDLE);
+	ASSERT(transferPool != VK_NULL_HANDLE);
+
+	const auto device = Backend::getDevice();
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
 		copyRegion.size = sizeof(GPUAddressTable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.buffer, addressTableBuffer.buffer, 1, &copyRegion);
-	}, transferCommandPool, QueueType::Transfer, Backend::getDevice());
+	}, transferPool, QueueType::Transfer, device);
 
-	addressTableDirty = false;
+	auto& tQueue = Backend::getTransferQueue();
+	lastSubmittedFence = Engine::getState().submitCommandBuffers(tQueue);
+	waitAndRecycleLastFence(lastSubmittedFence, tQueue, device);
+
+	gpuAddresses.clearTableDirty();
 }
 
 void GPUResources::cleanup(VkDevice device) {
+	for (uint32_t i = 0; i < static_cast<uint32_t>(AddressBufferType::Count); ++i) {
+		AddressBufferType bufferType = static_cast<AddressBufferType>(i);
+		gpuAddresses.removeAddress(bufferType);
+	}
+
 	for (auto& [name, buf] : gpuBuffers) {
 		if (buf.buffer != VK_NULL_HANDLE)
 			BufferUtils::destroyAllocatedBuffer(buf, allocator);
@@ -207,7 +245,6 @@ void GPUResources::cleanup(VkDevice device) {
 
 void GPUResources::addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer) {
 	gpuBuffers[addressBufferType] = gpuBuffer;
-	markAddressTableDirty();
 }
 
 inline static float lerp(float a, float b, float f) {
@@ -258,6 +295,10 @@ void ResourceManager::initRenderTargets(
 	VkImageUsageFlags computeMinimalUsages{};
 	computeMinimalUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
 	computeMinimalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	VkImageUsageFlags mrtColorUsages{};
+	mrtColorUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	mrtColorUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
 
 	// Opaque
 	_opaqueImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
@@ -320,10 +361,11 @@ void ResourceManager::initRenderTargets(
 	// Depth resolved image
 	_depthResolvedImage.format = VK_FORMAT_D32_SFLOAT;
 	_depthResolvedImage.extent = drawExtent;
-
 	VkImageUsageFlags depthResolvedUsages{};
 	depthResolvedUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	depthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	depthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	depthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	ImageUtils::createRenderImage(
 		device,
 		_depthResolvedImage,
@@ -332,11 +374,24 @@ void ResourceManager::initRenderTargets(
 		targetQueue,
 		allocator);
 
-	// ao pass images
-	_aoRawImage.format = VK_FORMAT_R8_UNORM;
-	_aoRawImage.extent = drawExtent;
+	// Previous depth resolved image
+	_prevDepthResolvedImage.format = VK_FORMAT_D32_SFLOAT;
+	_prevDepthResolvedImage.extent = drawExtent;
+	VkImageUsageFlags prevDepthResolvedUsages{};
+	prevDepthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	prevDepthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	prevDepthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	ImageUtils::createRenderImage(
+		device,
+		_prevDepthResolvedImage,
+		prevDepthResolvedUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator);
 
 	// base ao image
+	_aoRawImage.format = VK_FORMAT_R8_UNORM;
+	_aoRawImage.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
 		_aoRawImage,
@@ -345,9 +400,9 @@ void ResourceManager::initRenderTargets(
 		targetQueue,
 		allocator);
 
+	// ao temp
 	_aoTempImage.format = VK_FORMAT_R8_UNORM;
 	_aoTempImage.extent = drawExtent;
-
 	ImageUtils::createRenderImage(
 		device,
 		_aoTempImage,
@@ -355,6 +410,25 @@ void ResourceManager::initRenderTargets(
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
+
+	// ao history images
+	for (uint32_t i = 0; i < 2; ++i) {
+		_aoHistoryImages[i].format = VK_FORMAT_R8_UNORM;
+		_aoHistoryImages[i].extent = drawExtent;
+
+		VkImageUsageFlags historyUsages{};
+		historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+		historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+		historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+		ImageUtils::createRenderImage(
+			device,
+			_aoHistoryImages[i],
+			historyUsages,
+			VK_SAMPLE_COUNT_1_BIT,
+			targetQueue,
+			allocator);
+	}
 
 	// Edge image
 	_edgeInfoImage.format = VK_FORMAT_R8_UNORM;
@@ -368,18 +442,26 @@ void ResourceManager::initRenderTargets(
 		allocator
 	);
 
+	// Velocity
+	_velocityImage.format = VK_FORMAT_R16G16_SFLOAT;
+	_velocityImage.extent = drawExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_velocityImage,
+		mrtColorUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+
 	// Normal
 	_normalImage.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	_normalImage.extent = drawExtent;
-
-	VkImageUsageFlags normalUsages{};
-	normalUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	normalUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-
 	ImageUtils::createRenderImage(
 		device,
 		_normalImage,
-		normalUsages,
+		mrtColorUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
@@ -411,22 +493,10 @@ void ResourceManager::initRenderTargets(
 		allocator
 	);
 
-	// Bent normals
-	_bentNormalImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_bentNormalImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
-		device,
-		_bentNormalImage,
-		baseComputeUsages,
-		VK_SAMPLE_COUNT_1_BIT,
-		targetQueue,
-		allocator
-	);
-
 	// Volumetric light images
 	VkExtent3D halfExtent = {
-		(drawExtent.width + 1u) / 2u,
-		(drawExtent.height + 1u) / 2u,
+		(drawExtent.width + 1u) >> 1,
+		(drawExtent.height + 1u) >> 1,
 		1u
 	};
 
@@ -451,6 +521,45 @@ void ResourceManager::initRenderTargets(
 		allocator
 	);
 
+
+	// Lens flare images
+	VkExtent3D quarterExtent = {
+		(drawExtent.width + 3u) >> 2,
+		(drawExtent.height + 3u) >> 2,
+		1u
+	};
+	_flareBrightImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_flareBrightImage.extent = quarterExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_flareBrightImage,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+	_lensFlareColorImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_lensFlareColorImage.extent = quarterExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_lensFlareColorImage,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	//// Bent normals
+	//_bentNormalImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	//_bentNormalImage.extent = drawExtent;
+	//ImageUtils::createRenderImage(
+	//	device,
+	//	_bentNormalImage,
+	//	baseComputeUsages,
+	//	VK_SAMPLE_COUNT_1_BIT,
+	//	targetQueue,
+	//	allocator
+	//);
 
 	// Material data
 	// Use for SSR
@@ -555,6 +664,43 @@ void ResourceManager::initRenderSamplers(
 		1.0f,
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	// Default samplers
+	_defaultSamplerLinear = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		FLT_MAX,
+		CURRENT_AF_LVL,
+		&queue);
+
+	_defaultSamplerNearest = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		FLT_MAX,
+		1.0f,
+		&queue);
+
+	_nearestClampSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_NEAREST,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		FLT_MAX,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+	);
+
+	_linearClampSampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		FLT_MAX,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_LINEAR
 	);
 }
 
@@ -668,6 +814,26 @@ void ResourceManager::initStaticEnvironmentImages(
 		VK_LOD_CLAMP_NONE,
 		0.0f,
 		&queue);
+}
+
+static glm::vec3 hsvToRgb(const float hue01, const float sat, const float val)
+{
+	const float hue = hue01 - floor(hue01); // wrap [0,1)
+	const float c = val * sat;
+	const float h6 = hue * 6.0f;
+	const float x = c * (1.0f - fabsf(fmodf(h6, 2.0f) - 1.0f));
+	const float m = val - c;
+
+	glm::vec3 rgb(0.0f);
+
+	if (h6 < 1.0f) rgb = glm::vec3(c, x, 0.0f);
+	else if (h6 < 2.0f) rgb = glm::vec3(x, c, 0.0f);
+	else if (h6 < 3.0f) rgb = glm::vec3(0.0f, c, x);
+	else if (h6 < 4.0f) rgb = glm::vec3(0.0f, x, c);
+	else if (h6 < 5.0f) rgb = glm::vec3(x, 0.0f, c);
+	else rgb = glm::vec3(c, 0.0f, x);
+
+	return rgb + glm::vec3(m);
 }
 
 void ResourceManager::initTextures(
@@ -876,40 +1042,43 @@ void ResourceManager::initTextures(
 		bufferQueue,
 		allocator);
 
-	// Default samplers
-	_defaultSamplerLinear = ImageUtils::createSampler(
-		device,
-		VK_FILTER_LINEAR,
-		VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX,
-		CURRENT_AF_LVL,
-		&imageQueue);
+	// Rainbow lut
+	const uint32_t lutWidth = 256u;
+	const uint32_t lutHeight = 1u;
 
-	_defaultSamplerNearest = ImageUtils::createSampler(
-		device,
-		VK_FILTER_NEAREST,
-		VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX,
-		1.0f,
-		&imageQueue);
+	std::vector<uint32_t> lutPixels;
+	lutPixels.resize(static_cast<size_t>(lutWidth) * lutHeight);
 
-	_nearestClampSampler = ImageUtils::createSampler(
-		device,
-		VK_FILTER_NEAREST,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		FLT_MAX,
-		1.0f,
-		&imageQueue,
-		VK_SAMPLER_MIPMAP_MODE_NEAREST
-	);
+	for (uint32_t x = 0; x < lutWidth; ++x) {
+		const float t = static_cast<float>(x) / static_cast<float>(lutWidth - 1);
 
-	_linearClampSampler = ImageUtils::createSampler(
+		float hue = 0.02f + 0.90f * t;
+		hue = hue - 0.06f;
+		hue = hue - std::floor(hue);
+
+		glm::vec3 rgb = hsvToRgb(hue, 0.95f, 1.0f);
+
+		const glm::vec4 rgba(rgb, 1.0);
+		lutPixels[static_cast<size_t>(x)] = glm::packUnorm4x8(rgba);
+	}
+
+
+	_rainbowLUTImage.format = VK_FORMAT_R8G8B8A8_UNORM;
+	_rainbowLUTImage.extent = { lutWidth, lutHeight, 1u };
+
+	VkImageUsageFlags lutUsages{};
+	lutUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+	lutUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+
+	ImageUtils::createTextureImage(
 		device,
-		VK_FILTER_LINEAR,
-		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		FLT_MAX,
-		1.0f,
-		&imageQueue,
-		VK_SAMPLER_MIPMAP_MODE_LINEAR
+		cmdPool,
+		lutPixels.data(),
+		_rainbowLUTImage,
+		lutUsages,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator
 	);
 }
