@@ -16,6 +16,8 @@
 - Tonemapping (ACES Film)
 - Push descriptors
 - HI-Z Generation (Depth mip pyramid)
+- Lens Flare
+- Chromatic Aberration
 
 ## Future
 -Render graph
