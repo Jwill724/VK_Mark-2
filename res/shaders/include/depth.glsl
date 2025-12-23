@@ -11,7 +11,7 @@ struct ViewReconstructResult
 	float viewDepth;
 };
 
-float sampleHiZDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
+float sampleHiZMinDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
 {
 	// convert to approximate full-res footprint
 	float fullResRadius = max(radiusHalfRes * 2.0, 1.0);

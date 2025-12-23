@@ -509,16 +509,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		RenderPasses::volumetricLightingPass(frameCtx, volLightScope);
 	}
-	else {
-		// Empty transition
-		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			volLight.image,
-			volLight.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	}
-
 
 	// ========================
 	// === TRANSPARENT PASS ===
@@ -584,7 +574,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// =======================
 	// === LENS FLARE PASS ===
-	if (debug.enableLensFlare) {
+	if (debug.enableLensFlare && hasVisibles) {
 		auto& lensFlarePush = profiler.lensFlareSettings;
 		const auto& brightFlare = ResourceManager::getFlareBrightImage();
 		VkExtent2D quarterRes = {
@@ -630,10 +620,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		RenderPasses::lensFlarePass(frameCtx, lensFlareScope, transparentVisible);
 	}
 
-
 	// =====================
 	// === TONE MAP PASS ===
-	RenderPasses::toneMapPass(frameCtx, defaultScope, transparentVisible);
+	RenderPasses::toneMapPass(frameCtx, defaultScope,
+		transparentVisible,
+		hasVisibles,
+		debug);
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,

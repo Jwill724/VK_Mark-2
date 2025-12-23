@@ -264,14 +264,14 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 	frameCtx.transferWaitValue = signalValue;
 }
 
-//static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing) {
-//	uint32_t gridSize = static_cast<uint32_t>(std::ceil(std::sqrt(count)));
-//	uint32_t x = index % gridSize;
-//	uint32_t z = index / gridSize;
-//
-//	glm::vec3 translation = glm::vec3(x * spacing, 0.0f, z * spacing);
-//	return glm::translate(glm::mat4(1.0f), translation);
-//}
+static glm::mat4 makeGridTransform(uint32_t index, uint32_t count, float spacing) {
+	uint32_t gridSize = static_cast<uint32_t>(std::ceil(std::sqrt(count)));
+	uint32_t x = index % gridSize;
+	uint32_t z = index / gridSize;
+
+	glm::vec3 translation = glm::vec3(x * spacing, 0.0f, z * spacing);
+	return glm::translate(glm::mat4(1.0f), translation);
+}
 
 void DrawPreparation::syncGlobalInstancesAndTransforms(
 	FrameContext& frameCtx,
@@ -308,37 +308,39 @@ void DrawPreparation::syncGlobalInstancesAndTransforms(
 			}
 		}
 
+		// TODO: ADD SUPPORT FOR MULTI-DYNAMIC
+
 		// Defined from copy values append list or decrease list
 		// on first run this will always be an append
-		//if (profile.drawType == DrawType::DrawMultiStatic || profile.instanceCount > 1) {
-		//	// If instance count didn't change, skip
-		//	if (inst.capacityCopies + 1 == profile.instanceCount) {
-		//		continue;
-		//	}
+		if (profile.drawType == DrawType::DrawMultiStatic || profile.instanceCount > 1) {
+			// If instance count didn't change, skip
+			if (inst.capacityCopies == profile.instanceCount) {
+				continue;
+			}
 
-		//	inst.drawType = DrawType::DrawMultiStatic;
+			inst.drawType = profile.drawType;
 
-		//	glm::mat4 baseTransform = globalTransforms[inst.firstTransform];
-		//	uint32_t currentCopies = inst.capacityCopies;
-		//	uint32_t neededCopies = profile.instanceCount;
+			glm::mat4 baseTransform = globalTransforms[inst.firstTransform];
+			uint32_t currentCopies = inst.capacityCopies;
+			uint32_t neededCopies = profile.instanceCount;
 
-		//	fmt::print("[syncGI] multistatic: currentCopies={} neededCopies={} baseT={} staticTfSize(before)={}\n",
-		//		currentCopies, neededCopies, inst.firstTransform, globalTransforms.size());
+			fmt::print("[syncGI] multistatic: currentCopies={} neededCopies={} baseT={} staticTfSize(before)={}\n",
+				currentCopies, neededCopies, inst.firstTransform, globalTransforms.size());
 
-		//	if (neededCopies > currentCopies) {
-		//		// Append new transforms
-		//		for (uint32_t i = currentCopies; i < neededCopies; ++i) {
-		//			glm::mat4 offset = makeGridTransform(i, neededCopies, 2.0f);
-		//			globalTransforms.push_back(offset * baseTransform);
-		//		}
-		//		fmt::print("[syncGI] appended {} transforms, staticTfSize(after)={}\n",
-		//			neededCopies - currentCopies, globalTransforms.size());
-		//	}
-		//	inst.capacityCopies = neededCopies;
-		//	inst.transformCount = profile.instanceCount;
+			if (neededCopies > currentCopies) {
+				// Append new transforms
+				for (uint32_t i = currentCopies; i < neededCopies; ++i) {
+					glm::mat4 offset = makeGridTransform(i, neededCopies, 2.0f);
+					globalTransforms.push_back(offset * baseTransform);
+				}
+				fmt::print("[syncGI] appended {} transforms, staticTfSize(after)={}\n",
+					neededCopies - currentCopies, globalTransforms.size());
+			}
+			inst.capacityCopies = neededCopies;
+			inst.transformCount = profile.instanceCount;
 
-		//	frameCtx.transformsBufferUploadNeeded = true;
-		//}
+			frameCtx.transformsBufferUploadNeeded = true;
+		}
 	}
 
 	if (anyTransformChanged) {

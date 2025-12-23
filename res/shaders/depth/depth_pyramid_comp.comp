@@ -12,7 +12,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 // Input depth (mip0 or previous mip)
 layout(set = PUSH_SET, binding = PUSH_BINDING_DEPTH_TEX) uniform sampler2D inDepth;
 
-// current pyramid mip, r16
+// current pyramid mip, rg32
 layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outMip;
 
 layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
@@ -60,7 +60,7 @@ void main()
 			scene.cameraClips.y
 		);
 
-		imageStore(outMip, dstCoord, vec4(linearDepth, 0.0, 0.0, 0.0));
+		imageStore(outMip, dstCoord, vec4(linearDepth, rawDepth, 0.0, 0.0));
 	}
 	else {
 		// Mip N: Downsample from mip N - 1
@@ -73,13 +73,17 @@ void main()
 		ivec2 c01 = clamp(srcCoordBase + ivec2(0, 1), ivec2(0), maxSrcCoord);
 		ivec2 c11 = clamp(srcCoordBase + ivec2(1, 1), ivec2(0), maxSrcCoord);
 
-		float d00 = texelFetch(inDepth, c00, 0).r;
-		float d10 = texelFetch(inDepth, c10, 0).r;
-		float d01 = texelFetch(inDepth, c01, 0).r;
-		float d11 = texelFetch(inDepth, c11, 0).r;
+		vec2 d00 = texelFetch(inDepth, c00, 0).rg;
+		vec2 d10 = texelFetch(inDepth, c10, 0).rg;
+		vec2 d01 = texelFetch(inDepth, c01, 0).rg;
+		vec2 d11 = texelFetch(inDepth, c11, 0).rg;
 
-		float minDepth = min(min(d00, d10), min(d01, d11));
+		// R: near linear = MIN
+		float nearLinear = min(min(d00.x, d10.x), min(d01.x, d11.x));
 
-		imageStore(outMip, dstCoord, vec4(minDepth, 0.0, 0.0, 0.0));
+		// G: far raw (standard depth) = MAX
+		float farRaw = max(max(d00.y, d10.y), max(d01.y, d11.y));
+
+		imageStore(outMip, dstCoord, vec4(nearLinear, farRaw, 0.0, 0.0));
 	}
 }

@@ -867,7 +867,7 @@ void RenderPasses::exposurePass(
 {
 	const auto& opaque = ResourceManager::getOpaqueImage();
 	const auto& transparent = ResourceManager::getTransparentImage();
-	const auto& dummyTransparent = ResourceManager::getDummyTransparent();
+	const auto& dummy = ResourceManager::getDummyImage();
 	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
 
 	frameCtx.descriptorWriter.writePushImage(
@@ -884,7 +884,7 @@ void RenderPasses::exposurePass(
 	else {
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_INPUT_2_TEX,
-			dummyTransparent.imageView,
+			dummy.imageView,
 			linearSampler);
 	}
 
@@ -945,11 +945,13 @@ void RenderPasses::exposurePass(
 void RenderPasses::toneMapPass(
 	FrameContext& frameCtx,
 	ComputeDispatchScope toneMapScope,
-	const bool transparentVisible)
+	const bool transparentVisible,
+	const bool hasVisibles,
+	const DebugToggles& debug)
 {
 	const auto& opaque = ResourceManager::getOpaqueImage();
 	const auto& transparent = ResourceManager::getTransparentImage();
-	const auto& dummyTransparent = ResourceManager::getDummyTransparent();
+	const auto& dummy = ResourceManager::getDummyImage();
 	const auto& toneMap = ResourceManager::getToneMapImage();
 	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
 	const auto& volLight = ResourceManager::getVolumetricLightImage();
@@ -981,19 +983,35 @@ void RenderPasses::toneMapPass(
 	else {
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_INPUT_2_TEX,
-			dummyTransparent.imageView,
+			dummy.imageView,
 			linearSampler);
 	}
 
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_3_TEX,
-		volLight.imageView,
-		linearClampSampler);
+	if (hasVisibles && debug.enableVolumetrics && debug.enableShadows) {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_3_TEX,
+			volLight.imageView,
+			linearClampSampler);
+	}
+	else {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_3_TEX,
+			dummy.imageView,
+			linearClampSampler);
+	}
 
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_4_TEX,
-		lensFlareColor.imageView,
-		linearClampSampler);
+	if (hasVisibles && debug.enableLensFlare) {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_4_TEX,
+			lensFlareColor.imageView,
+			linearClampSampler);
+	}
+	else {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_4_TEX,
+			dummy.imageView,
+			linearClampSampler);
+	}
 
 	RenderPasses::dispatchComputePass(
 		frameCtx.cmdBuffer,
@@ -1015,7 +1033,7 @@ void RenderPasses::lensFlarePass(FrameContext& frameCtx,
 {
 	const auto& opaque = ResourceManager::getOpaqueImage();
 	const auto& transparent = ResourceManager::getTransparentImage();
-	const auto& dummyTransparent = ResourceManager::getDummyTransparent();
+	const auto& dummy = ResourceManager::getDummyImage();
 	const auto& flareBright = ResourceManager::getFlareBrightImage();
 	const auto& lensFlareColor = ResourceManager::getLensFlareColorImage();
 	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
@@ -1057,7 +1075,7 @@ void RenderPasses::lensFlarePass(FrameContext& frameCtx,
 	else {
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_INPUT_2_TEX,
-			dummyTransparent.imageView,
+			dummy.imageView,
 			linearSampler);
 	}
 

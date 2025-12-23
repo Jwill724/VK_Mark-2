@@ -75,7 +75,9 @@ namespace RenderPasses {
 		const bool transparentVisible);
 	void toneMapPass(FrameContext& frameCtx,
 		ComputeDispatchScope toneMapScope,
-		const bool transparentVisible);
+		const bool transparentVisible,
+		const bool hasVisibles,
+		const DebugToggles& debug);
 
 	void opaqueMeshPass(FrameContext& frameCtx,
 		const PipelineHandle& pipeHandle,

@@ -194,7 +194,7 @@ float computeSunOcclusion(vec2 sunUv)
 			vec2 tapUv = sunUv + vec2(float(x), float(y)) * tapSpacingUv;
 			tapUv = clamp(tapUv, vec2(0.0), vec2(1.0));
 
-			float minLinearDepth = sampleHiZDepth(inHiZ, tapUv, radiusHalfRes);
+			float minLinearDepth = sampleHiZMinDepth(inHiZ, tapUv, radiusHalfRes);
 			minLinearDepth += pc.occlusionDepthBias;
 
 			float vis = smoothstep(farPlane - fade, farPlane, minLinearDepth);

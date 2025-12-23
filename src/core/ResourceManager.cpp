@@ -129,8 +129,8 @@ namespace ResourceManager {
 	AllocatedImage _errorCheckerboardTex;
 	AllocatedImage& getCheckboardTex() { return _errorCheckerboardTex; }
 
-	AllocatedImage _dummyTransparent;
-	AllocatedImage& getDummyTransparent() { return _dummyTransparent; }
+	AllocatedImage _dummyImage;
+	AllocatedImage& getDummyImage() { return _dummyImage; }
 
 	VkSampler _defaultSamplerLinear;
 	const VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
@@ -480,7 +480,7 @@ void ResourceManager::initRenderTargets(
 	);
 
 	// Depth pyramid
-	_depthPyramidImage.format = VK_FORMAT_R16_SFLOAT;
+	_depthPyramidImage.format = VK_FORMAT_R32G32_SFLOAT;
 	_depthPyramidImage.extent = drawExtent;
 	_depthPyramidImage.mipLevelCount = DEPTH_PYRAMID_MIP_COUNT;
 	_depthPyramidImage.perMipStorageViews = true;
@@ -923,23 +923,22 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_dummyTransparent.extent = texExtent;
-	_dummyTransparent.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-	_dummyTransparent.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	_dummyImage.extent = texExtent;
+	_dummyImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_dummyImage.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	glm::vec4 transparentBlack = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
 	ImageUtils::createTextureImage(
 		device,
 		cmdPool,
-		(void*)&transparentBlack,
-		_dummyTransparent,
+		(void*)&black,
+		_dummyImage,
 		VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 		VK_SAMPLE_COUNT_1_BIT,
 		imageQueue,
 		bufferQueue,
 		allocator
 	);
-
 
 	_whiteMat.extent = texExtent;
 	_whiteMat.format = format;

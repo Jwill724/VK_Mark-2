@@ -99,7 +99,6 @@ namespace ResourceManager {
 
 	AllocatedImage& getOpaqueImage();
 	AllocatedImage& getTransparentImage();
-	AllocatedImage& getDummyTransparent();
 	AllocatedImage& getToneMapImage();
 	AllocatedImage& getDepthImage();
 	AllocatedImage& getMSAAImage();
@@ -131,6 +130,9 @@ namespace ResourceManager {
 	const VkSampler getAOSampler();
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
+
+	// Empty black image
+	AllocatedImage& getDummyImage();
 
 	//std::vector<VkDescriptorSet>& getShadowMapDescriptors();
 

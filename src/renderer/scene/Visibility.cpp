@@ -87,31 +87,31 @@ namespace Visibility {
 	//	const std::vector<GPUMeshData>& meshData,
 	//	const std::vector<glm::mat4>& transforms);
 
-	//// Append ONLY newly-realized copies for a scene (multi draw slider increased).
-	//// Fills core rows, transformIDs, worldAABBs for the new range and activates them.
-	//// Returns the appended slice [outFirst, outFirst + outCount).
-	//static void appendSceneCopies(
-	//	VisibilityState& vs,
-	//	const GlobalInstance& gi,
-	//	uint32_t oldCopies,
-	//	const ModelAsset& asset,
-	//	const std::vector<GPUMeshData>& meshData,
-	//	const std::vector<glm::mat4>& transforms,
-	//	uint32_t& outFirst,
-	//	uint32_t& outCount);
+	// Append ONLY newly-realized copies for a scene (multi draw slider increased).
+	// Fills core rows, transformIDs, worldAABBs for the new range and activates them.
+	// Returns the appended slice [outFirst, outFirst + outCount).
+	static void appendSceneCopies(
+		VisibilityState& vs,
+		const GlobalInstance& gi,
+		uint32_t oldCopies,
+		const ModelAsset& asset,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms,
+		uint32_t& outFirst,
+		uint32_t& outCount);
 
-	//// Lazy shrink (slider decreased). No memory reclamation; just reduce usedCopies
-	//// and rebuild the 'active' list. Call buildBVH() after this (topology changed).
-	//static void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
+	// Lazy shrink (slider decreased). No memory reclamation; just reduce usedCopies
+	// and rebuild the 'active' list. Call buildBVH() after this (topology changed).
+	static void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
 
-	//// Transform slab moved (firstTransform changed) but copy count is the same.
-	//// Rewrites the scene's slice with new transformIDs and worldAABBs. Then refitBVH().
-	//static void rewriteSceneSlice(
-	//	VisibilityState& vs,
-	//	const GlobalInstance& gi,
-	//	const ModelAsset& asset,
-	//	const std::vector<GPUMeshData>& meshData,
-	//	const std::vector<glm::mat4>& transforms);
+	// Transform slab moved (firstTransform changed) but copy count is the same.
+	// Rewrites the scene's slice with new transformIDs and worldAABBs. Then refitBVH().
+	static void rewriteSceneSlice(
+		VisibilityState& vs,
+		const GlobalInstance& gi,
+		const ModelAsset& asset,
+		const std::vector<GPUMeshData>& meshData,
+		const std::vector<glm::mat4>& transforms);
 
 	static void rebuildActive(VisibilityState& vs);
 }
@@ -151,7 +151,7 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 
 		anyRefit |= updateWorldAABBsForDynamic(vs, gi, meshData, transforms);
 
-		//CoreSlab& slab = slabIt->second;
+		CoreSlab& slab = slabIt->second;
 		//if (gi.drawType == DrawType::DrawDynamic ||
 		//	gi.drawType == DrawType::DrawMultiDynamic)
 		//{
@@ -185,32 +185,32 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 		//	}
 		//}
 
-		//// New copies added
-		//if (gi.usedCopies > slab.usedCopies) {
-		//	const uint32_t oldCopies = slab.usedCopies;
-		//	uint32_t f = 0, c = 0;
-		//	appendSceneCopies(vs, gi, oldCopies, asset, meshData, transforms, f, c);
-		//	needRebuildActive = true;
-		//	res.topologyChanged = true;
-		//	continue;
-		//}
-		//// Copies reduced
-		//if (gi.usedCopies < slab.usedCopies) {
-		//	shrinkSceneCopiesLazy(vs, sid, gi.usedCopies);
-		//	needRebuildActive = false;
-		//	res.topologyChanged = true;
-		//	continue;
-		//}
+		// New copies added
+		if (gi.usedCopies > slab.usedCopies) {
+			const uint32_t oldCopies = slab.usedCopies;
+			uint32_t f = 0, c = 0;
+			appendSceneCopies(vs, gi, oldCopies, asset, meshData, transforms, f, c);
+			needRebuildActive = true;
+			res.topologyChanged = true;
+			continue;
+		}
+		// Copies reduced
+		if (gi.usedCopies < slab.usedCopies) {
+			shrinkSceneCopiesLazy(vs, sid, gi.usedCopies);
+			needRebuildActive = false;
+			res.topologyChanged = true;
+			continue;
+		}
 
-		//// Nothing has changed, but other models might've shifted
-		//if (slab.usedCopies > 0) {
-		//	const uint32_t expectedFirstTID = gi.firstTransform; // first copy, local = 0
-		//	const uint32_t haveFirstTID = vs.instances[slab.first].transformID;
-		//	if (haveFirstTID != expectedFirstTID) {
-		//		rewriteSceneSlice(vs, gi, asset, meshData, transforms);
-		//		res.refitOnly = true;
-		//	}
-		//}
+		// Nothing has changed, but other models might've shifted
+		if (slab.usedCopies > 0) {
+			const uint32_t expectedFirstTID = gi.firstTransform; // first copy, local = 0
+			const uint32_t haveFirstTID = vs.instances[slab.first].transformID;
+			if (haveFirstTID != expectedFirstTID) {
+				rewriteSceneSlice(vs, gi, asset, meshData, transforms);
+				res.refitOnly = true;
+			}
+		}
 	}
 
 	if (needRebuildActive) rebuildActive(vs);
@@ -296,88 +296,88 @@ bool Visibility::updateWorldAABBsForDynamic(
 	return rowCount > 0;
 }
 
-//void Visibility::appendSceneCopies(
-//	VisibilityState& vs,
-//	const GlobalInstance& gi,
-//	uint32_t oldCopies,
-//	const ModelAsset& asset,
-//	const std::vector<GPUMeshData>& meshData,
-//	const std::vector<glm::mat4>& transforms,
-//	uint32_t& outFirst,
-//	uint32_t& outCount)
-//{
-//	const uint32_t stride = gi.perInstanceStride;
-//	const uint32_t newCopies = gi.usedCopies;
-//	if (newCopies <= oldCopies) { outFirst = outCount = 0; return; }
-//
-//	ASSERT(stride == asset.runtime.bakedInstances.size());
-//
-//	outFirst = static_cast<uint32_t>(vs.instances.size());
-//	outCount = (newCopies - oldCopies) * stride;
-//
-//	const size_t newSize = static_cast<size_t>(outFirst + outCount);
-//	vs.instances.resize(newSize);
-//	vs.transformIDs.resize(newSize);
-//	vs.worldAABBs.resize(newSize);
-//
-//	uint32_t w = outFirst;
-//	for (uint32_t c = oldCopies; c < newCopies; ++c) {
-//		for (uint32_t local = 0; local < stride; ++local, ++w) {
-//			const GPUInstance& baked = asset.runtime.bakedInstances[local];
-//			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
-//			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
-//
-//			vs.instances[w] = makeRow(baked, tid, gi.drawType);
-//			vs.transformIDs[w] = tid;
-//
-//			const uint32_t meshID = baked.meshID;
-//			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
-//		}
-//	}
-//
-//	auto& slab = vs.slabs.at(static_cast<SceneID>(gi.sceneID));
-//	slab.usedCopies = newCopies;
-//	slab.stride = stride;
-//}
-//
-//void Visibility::shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies) {
-//	auto it = vs.slabs.find(sid);
-//	if (it == vs.slabs.end()) return;
-//	it->second.usedCopies = newCopies; // keep memory; we just rebuild 'active'
-//	vs.active.clear();
-//	for (auto& [sid2, slab] : vs.slabs) {
-//		for (uint32_t c = 0; c < slab.usedCopies; ++c)
-//			for (uint32_t local = 0; local < slab.stride; ++local)
-//				vs.active.push_back(slab.first + c * slab.stride + local);
-//	}
-//}
+void Visibility::appendSceneCopies(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	uint32_t oldCopies,
+	const ModelAsset& asset,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms,
+	uint32_t& outFirst,
+	uint32_t& outCount)
+{
+	const uint32_t stride = gi.perInstanceStride;
+	const uint32_t newCopies = gi.usedCopies;
+	if (newCopies <= oldCopies) { outFirst = outCount = 0; return; }
 
-//void Visibility::rewriteSceneSlice(
-//	VisibilityState& vs,
-//	const GlobalInstance& gi,
-//	const ModelAsset& asset,
-//	const std::vector<GPUMeshData>& meshData,
-//	const std::vector<glm::mat4>& transforms)
-//{
-//	auto it = vs.slabs.find(static_cast<SceneID>(gi.sceneID));
-//	if (it == vs.slabs.end()) return;
-//	const CoreSlab& slab = it->second;
-//
-//	uint32_t w = slab.first;
-//	for (uint32_t c = 0; c < slab.usedCopies; ++c) {
-//		for (uint32_t local = 0; local < slab.stride; ++local, ++w) {
-//			const GPUInstance& baked = asset.runtime.bakedInstances[local];
-//			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
-//			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
-//
-//			vs.instances[w].transformID = tid; // keep mesh/material/pass as baked
-//			vs.transformIDs[w] = tid;
-//
-//			const uint32_t meshID = baked.meshID;
-//			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
-//		}
-//	}
-//}
+	ASSERT(stride == asset.runtime.bakedInstances.size());
+
+	outFirst = static_cast<uint32_t>(vs.instances.size());
+	outCount = (newCopies - oldCopies) * stride;
+
+	const size_t newSize = static_cast<size_t>(outFirst + outCount);
+	vs.instances.resize(newSize);
+	vs.transformIDs.resize(newSize);
+	vs.worldAABBs.resize(newSize);
+
+	uint32_t w = outFirst;
+	for (uint32_t c = oldCopies; c < newCopies; ++c) {
+		for (uint32_t local = 0; local < stride; ++local, ++w) {
+			const GPUInstance& baked = asset.runtime.bakedInstances[local];
+			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
+			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
+
+			vs.instances[w] = makeRow(baked, tid, gi.drawType);
+			vs.transformIDs[w] = tid;
+
+			const uint32_t meshID = baked.meshID;
+			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+		}
+	}
+
+	auto& slab = vs.slabs.at(static_cast<SceneID>(gi.sceneID));
+	slab.usedCopies = newCopies;
+	slab.stride = stride;
+}
+
+void Visibility::shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies) {
+	auto it = vs.slabs.find(sid);
+	if (it == vs.slabs.end()) return;
+	it->second.usedCopies = newCopies; // keep memory; we just rebuild 'active'
+	vs.active.clear();
+	for (auto& [sid2, slab] : vs.slabs) {
+		for (uint32_t c = 0; c < slab.usedCopies; ++c)
+			for (uint32_t local = 0; local < slab.stride; ++local)
+				vs.active.push_back(slab.first + c * slab.stride + local);
+	}
+}
+
+void Visibility::rewriteSceneSlice(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	const ModelAsset& asset,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms)
+{
+	auto it = vs.slabs.find(static_cast<SceneID>(gi.sceneID));
+	if (it == vs.slabs.end()) return;
+	const CoreSlab& slab = it->second;
+
+	uint32_t w = slab.first;
+	for (uint32_t c = 0; c < slab.usedCopies; ++c) {
+		for (uint32_t local = 0; local < slab.stride; ++local, ++w) {
+			const GPUInstance& baked = asset.runtime.bakedInstances[local];
+			const uint32_t nodeSlot = static_cast<uint32_t>(asset.runtime.localToNodeSlot[local]);
+			const uint32_t tid = transformIDFor(gi, c, nodeSlot);
+
+			vs.instances[w].transformID = tid; // keep mesh/material/pass as baked
+			vs.transformIDs[w] = tid;
+
+			const uint32_t meshID = baked.meshID;
+			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+		}
+	}
+}
 
 void Visibility::rebuildActive(VisibilityState& vs) {
 	vs.active.clear();
@@ -444,7 +444,7 @@ void Visibility::cullBVHCollect(
 	visibleWorldAABBs.reserve(vs.active.size());
 
 	std::vector<uint32_t> stack;
-	stack.reserve(128);
+	stack.reserve(128u);
 	stack.push_back(0u); // root
 
 	while (!stack.empty()) {
