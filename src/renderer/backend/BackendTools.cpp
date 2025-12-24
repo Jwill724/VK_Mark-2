@@ -4,7 +4,7 @@
 #include "utils/VulkanUtils.h"
 
 namespace BackendTools {
-	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+	VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
 		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -17,7 +17,7 @@ namespace BackendTools {
 		return VK_FALSE;
 	}
 
-	static VkResult CreateDebugUtilsMessengerEXT(
+	VkResult CreateDebugUtilsMessengerEXT(
 			VkInstance instance,
 			const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 			const VkAllocationCallbacks* pAllocator,

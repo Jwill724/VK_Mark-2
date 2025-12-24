@@ -5,27 +5,27 @@
 
 namespace Visibility {
 	// === HELPERS ===
-	static glm::vec3 centerOf(const AABB& a) { return a.origin; }
+	glm::vec3 centerOf(const AABB& a) { return a.origin; }
 
 	// min/max-only union
-	static inline void growMinMax(AABB& dst, const AABB& src) {
+	inline void growMinMax(AABB& dst, const AABB& src) {
 		dst.vmin = glm::min(dst.vmin, src.vmin);
 		dst.vmax = glm::max(dst.vmax, src.vmax);
 	}
 
 	// finalize origin/extent/sphere once, after unions
-	static inline void finalizeFromMinMax(AABB& b) {
+	inline void finalizeFromMinMax(AABB& b) {
 		b.origin = 0.5f * (b.vmin + b.vmax);
 		b.extent = 0.5f * (b.vmax - b.vmin);
 		b.sphereRadius = glm::length(b.extent);
 	}
 
-	static inline uint32_t transformIDFor(const GlobalInstance& gi, uint32_t copy, uint32_t localSlot) {
+	inline uint32_t transformIDFor(const GlobalInstance& gi, uint32_t copy, uint32_t localSlot) {
 		return gi.firstTransform + copy * gi.transformCount + localSlot;
 	}
 
 	// Build a GPUInstance row from the model's baked template
-	static inline GPUInstance makeRow(
+	inline GPUInstance makeRow(
 		const GPUInstance& baked,
 		uint32_t transformID,
 		DrawType drawType)
@@ -40,7 +40,7 @@ namespace Visibility {
 	}
 
 	// === CORE FUNCTIONS ===
-	static uint32_t buildMedianBVHRecursive(
+	uint32_t buildMedianBVHRecursive(
 		const std::vector<AABB>& world,
 		std::vector<uint32_t>& leafIndex,
 		std::vector<BVHNode>& nodes,
@@ -65,7 +65,7 @@ namespace Visibility {
 	// Base bake (per scene)
 	// Creates the initial rows (mesh X copies) for one scene and fills worldAABB.
 	// Returns the slice [outFirst, outFirst + outCount) it wrote.
-	static void bakeCoreSceneMeshes(
+	void bakeCoreSceneMeshes(
 		VisibilityState& vs,
 		const GlobalInstance& gi,
 		const ModelAsset& asset,
@@ -74,7 +74,7 @@ namespace Visibility {
 		uint32_t& outFirst,
 		uint32_t& outCount);
 
-	static bool updateWorldAABBsForDynamic(
+	bool updateWorldAABBsForDynamic(
 		VisibilityState& vs,
 		const GlobalInstance& gi,
 		const std::vector<GPUMeshData>& meshData,
@@ -90,7 +90,7 @@ namespace Visibility {
 	// Append ONLY newly-realized copies for a scene (multi draw slider increased).
 	// Fills core rows, transformIDs, worldAABBs for the new range and activates them.
 	// Returns the appended slice [outFirst, outFirst + outCount).
-	static void appendSceneCopies(
+	void appendSceneCopies(
 		VisibilityState& vs,
 		const GlobalInstance& gi,
 		uint32_t oldCopies,
@@ -102,18 +102,18 @@ namespace Visibility {
 
 	// Lazy shrink (slider decreased). No memory reclamation; just reduce usedCopies
 	// and rebuild the 'active' list. Call buildBVH() after this (topology changed).
-	static void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
+	void shrinkSceneCopiesLazy(VisibilityState& vs, SceneID sid, uint32_t newCopies);
 
 	// Transform slab moved (firstTransform changed) but copy count is the same.
 	// Rewrites the scene's slice with new transformIDs and worldAABBs. Then refitBVH().
-	static void rewriteSceneSlice(
+	void rewriteSceneSlice(
 		VisibilityState& vs,
 		const GlobalInstance& gi,
 		const ModelAsset& asset,
 		const std::vector<GPUMeshData>& meshData,
 		const std::vector<glm::mat4>& transforms);
 
-	static void rebuildActive(VisibilityState& vs);
+	void rebuildActive(VisibilityState& vs);
 }
 
 

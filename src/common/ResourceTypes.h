@@ -319,7 +319,7 @@ struct PipelinePreset {
 	bool enableBlending = false;
 	bool enableDepthTest = true;
 	bool enableDepthWrite = true;
-	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+	VkCompareOp depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
 
 	bool enableDepthBias = false;
 	float depthBiasConstant = 0.0f;
@@ -452,7 +452,7 @@ struct AttachmentDesc {
 	VkImageLayout resolveLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	VkClearValue clearValue{};
+	VkClearValue clearValue{ 0.0f };
 };
 
 // === RENDER PASS PUSH CONSTANTS ===
@@ -476,9 +476,9 @@ struct alignas(16) GTAOPush {
 	glm::vec2 ndcToViewAdd{ 0.0f };
 	glm::vec2 pixelSize{ 0.0f };
 
-	float effectRadius = 0.2f;
+	float effectRadius = 0.25f;
 	float radiusMultiplier = 1.457f;
-	float effectFalloffRange = 0.7f;
+	float effectFalloffRange = 0.4f;
 	float sampleDistributionPower = 2.5f;
 
 	float thinOccluderCompensation = 0.5f;
@@ -501,7 +501,7 @@ struct alignas(16) VolumetricPush {
 	float extinction = 0.08f;
 	float heightFalloff = 0.04f;
 
-	float maxDistance = 100.0f;
+	float maxDistance = 150.0f;
 	float jitterStrength = 0.8f;
 	int stepCount = 32;
 	float pad0{ 0.0f };

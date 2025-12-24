@@ -180,7 +180,7 @@ void main()
 	vec3 vPos = reconstructViewPos(uv, centerZ);
 	vec3 viewVec = normalize(-vPos);
 
-	// centerZ is your positive view-space depth
+	// centerZ is positive view-space depth
 	float depthVS = centerZ;
 
 	// Depth fade for GTAO

@@ -55,10 +55,7 @@ void main()
 	vec3 hdrTransparent = texelFetch(transparentImage, pid, 0).rgb;
 	vec3 hdrScene = hdrOpaque + hdrTransparent;
 
-	vec3 volumetricLight = vec3(0.0);
-	if (DBG(enableVolumetrics) && DBG(enableShadows)) {
-		volumetricLight = texture(volumetricLightImage, uvFull).rgb;
-	}
+	vec3 volumetricLight = texture(volumetricLightImage, uvFull).rgb;
 
 	vec3 lensFlare = vec3(0.0);
 	if (DBG(enableLensFlare)) {

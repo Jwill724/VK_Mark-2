@@ -83,18 +83,18 @@ float streakAxisPixels(
 	vec2 axis = normalize(dir);
 	vec2 perp = vec2(-axis.y, axis.x);
 
-	float alongUv  = abs(dot(deltaUv, axis));
+	float alongUv = abs(dot(deltaUv, axis));
 	float acrossUv = abs(dot(deltaUv, perp));
 
 	float minDim = min(outputRes.x, outputRes.y);
 
-	float widthPixels  = max(widthUv  * minDim, 0.85);
+	float widthPixels = max(widthUv  * minDim, 0.85);
 	float lengthPixels = max(lengthUv * minDim, 2.0);
 
-	float alongPixels  = alongUv  * minDim;
+	float alongPixels = alongUv  * minDim;
 	float acrossPixels = acrossUv * minDim;
 
-	float gauss   = exp(-(acrossPixels * acrossPixels) / (2.0 * widthPixels * widthPixels));
+	float gauss = exp(-(acrossPixels * acrossPixels) / (2.0 * widthPixels * widthPixels));
 	float falloff = exp(-alongPixels / lengthPixels);
 
 	return gauss * falloff;

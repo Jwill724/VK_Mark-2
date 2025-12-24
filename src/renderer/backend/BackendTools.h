@@ -44,12 +44,12 @@ namespace BackendTools {
 		std::vector<VkPresentModeKHR> presentModes;
 	};
 
-	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+	VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
 		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
 		void* pUserData);
-	static VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
+	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance,
 		const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 		const VkAllocationCallbacks* pAllocator,
 		VkDebugUtilsMessengerEXT* pDebugMessenger);

@@ -7,7 +7,7 @@
 
 namespace PipelinePresents {
 	inline std::array<PipelinePreset, (size_t)PipelineID::Count> pipelinePresentBuilder;
-	static inline PipelinePreset& getPipelinePresentByID(PipelineID id) {
+	inline PipelinePreset& getPipelinePresentByID(PipelineID id) {
 		return pipelinePresentBuilder[static_cast<size_t>(id)];
 	}
 }
@@ -318,7 +318,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	// === WIREFRAME PIPELINE ===
 	PipelinePreset& wirePreset = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
 	wirePreset.polygonMode = VK_POLYGON_MODE_LINE;
-	wirePreset.depthCompareOp = VK_COMPARE_OP_LESS;
+	wirePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
 
 	createPipeline(PipelineID::Wireframe, PipelineCategory::Raster, "Wireframe", true);
 
@@ -327,7 +327,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	lineDebugPreset.polygonMode = VK_POLYGON_MODE_LINE;
 	lineDebugPreset.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 	lineDebugPreset.enableDepthWrite = false;
-	lineDebugPreset.depthCompareOp = VK_COMPARE_OP_LESS;
+	lineDebugPreset.depthCompareOp = VK_COMPARE_OP_GREATER;
 
 	createPipeline(PipelineID::OBBLine, PipelineCategory::Raster, "OBBLine");
 
@@ -336,7 +336,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	cascadeVPLinePreset.polygonMode = VK_POLYGON_MODE_LINE;
 	cascadeVPLinePreset.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 	cascadeVPLinePreset.enableDepthWrite = false;
-	cascadeVPLinePreset.depthCompareOp = VK_COMPARE_OP_LESS;
+	cascadeVPLinePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
 
 	createPipeline(PipelineID::CascadeVPLine, PipelineCategory::Raster, "CascadeVPLine");
 
@@ -351,7 +351,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	depthPrePreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // Normals
 	depthPrePreset.colorFormats.push_back(VK_FORMAT_R16G16_SFLOAT);            // Velocity
 	depthPrePreset.depthFormat = VK_FORMAT_D32_SFLOAT;
-	depthPrePreset.depthCompareOp = VK_COMPARE_OP_LESS;
+	depthPrePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
 	depthPrePreset.cullMode = VK_CULL_MODE_BACK_BIT;
 
 	createPipeline(PipelineID::DepthPrepass, PipelineCategory::Raster, "DepthPrepass", false, false);

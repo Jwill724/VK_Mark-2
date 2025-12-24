@@ -1056,6 +1056,7 @@ void ResourceManager::initTextures(
 		hue = hue - std::floor(hue);
 
 		glm::vec3 rgb = hsvToRgb(hue, 0.95f, 1.0f);
+		rgb.g *= 0.9f;
 
 		const glm::vec4 rgba(rgb, 1.0);
 		lutPixels[static_cast<size_t>(x)] = glm::packUnorm4x8(rgba);

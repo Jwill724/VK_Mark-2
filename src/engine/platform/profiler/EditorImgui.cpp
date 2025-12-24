@@ -294,7 +294,7 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 				"Max Distance##vol",
 				&volSettings.maxDistance,
 				10.0f,
-				150.0f
+				250.0f
 			);
 
 			ImGui::SliderFloat(
@@ -382,9 +382,9 @@ void EditorImgui::renderImgui(Profiler& profiler) {
 
 				// AO shape
 				ImGui::SliderFloat("Radius##gtao",
-					&g.effectRadius, 0.1f, 0.30f, "%.3f");
+					&g.effectRadius, 0.1f, 0.50f, "%.3f");
 				ImGui::SliderFloat("Falloff Range##gtao",
-					&g.effectFalloffRange, 0.30f, 1.0f, "%.2f");
+					&g.effectFalloffRange, 0.20f, 1.0f, "%.2f");
 				ImGui::SliderFloat("Distribution##gtao",
 					&g.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
 

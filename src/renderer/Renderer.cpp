@@ -421,7 +421,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthAttach.clearValue.depthStencil.depth = 1.0f;
+	depthAttach.clearValue.depthStencil.depth = 0.0f;
 
 	RenderPasses::GraphicsRenderScope opaqueScope;
 
@@ -617,7 +617,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		lensFlareScope.extent = quarterRes;
 		lensFlareScope.workgroupSize = workgroupSize;
 
-		RenderPasses::lensFlarePass(frameCtx, lensFlareScope, transparentVisible);
+		RenderPasses::lensFlarePass(frameCtx, lensFlareScope,
+			transparentVisible,
+			hasVisibles,
+			debug);
 	}
 
 	// =====================

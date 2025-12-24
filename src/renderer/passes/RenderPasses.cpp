@@ -151,7 +151,7 @@ void RenderPasses::depthPrePass(
 	prepassDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 	prepassDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	prepassDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	prepassDepth.clearValue.depthStencil.depth = 1.0f;
+	prepassDepth.clearValue.depthStencil.depth = 0.0f;
 
 	AttachmentDesc prepassNormal{};
 	prepassNormal.imageView = normal.imageView;
@@ -1029,7 +1029,9 @@ void RenderPasses::toneMapPass(
 
 void RenderPasses::lensFlarePass(FrameContext& frameCtx,
 	ComputeDispatchScope lensFlareScope,
-	const bool transparentVisible)
+	const bool transparentVisible,
+	const bool hasVisibles,
+	const DebugToggles& debug)
 {
 	const auto& opaque = ResourceManager::getOpaqueImage();
 	const auto& transparent = ResourceManager::getTransparentImage();
@@ -1079,10 +1081,18 @@ void RenderPasses::lensFlarePass(FrameContext& frameCtx,
 			linearSampler);
 	}
 
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_3_TEX,
-		volLight.imageView,
-		linearClampSampler);
+	if (hasVisibles && debug.enableVolumetrics && debug.enableShadows) {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_3_TEX,
+			volLight.imageView,
+			linearClampSampler);
+	}
+	else {
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_3_TEX,
+			dummy.imageView,
+			linearClampSampler);
+	}
 
 	RenderPasses::dispatchComputePass(
 		frameCtx.cmdBuffer,

@@ -81,9 +81,9 @@ void main()
 		// R: near linear = MIN
 		float nearLinear = min(min(d00.x, d10.x), min(d01.x, d11.x));
 
-		// G: far raw (standard depth) = MAX
-		float farRaw = max(max(d00.y, d10.y), max(d01.y, d11.y));
+		// G: far raw (reversed z) = MAX
+		float nearRaw = max(max(d00.y, d10.y), max(d01.y, d11.y));
 
-		imageStore(outMip, dstCoord, vec4(nearLinear, farRaw, 0.0, 0.0));
+		imageStore(outMip, dstCoord, vec4(nearLinear, nearRaw, 0.0, 0.0));
 	}
 }

@@ -11,8 +11,8 @@ namespace Backend {
 	VkInstance _instance = VK_NULL_HANDLE;
 	VkInstance getInstance() { return _instance; }
 
-	static VkPhysicalDeviceProperties _deviceProps{};
-	static VkPhysicalDeviceLimits _deviceLimits{};
+	VkPhysicalDeviceProperties _deviceProps{};
+	VkPhysicalDeviceLimits _deviceLimits{};
 
 	const VkPhysicalDeviceLimits getDeviceLimits() {
 		return _deviceLimits;

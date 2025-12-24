@@ -101,10 +101,8 @@ void main()
 
 	vec3 hdrScene = hdrOpaque + hdrTransparent;
 
-	if (DBG(enableVolumetrics) && DBG(enableShadows)) {
-		vec3 volumetricLight = texture(inVolumetricLight, uv).rgb;
-		hdrScene += volumetricLight;
-	}
+	vec3 volumetricLight = texture(inVolumetricLight, uv).rgb;
+	hdrScene += volumetricLight;
 
 	float exposure = LuminanceBuffer(globalAddressTable.addrs[ABT_Luminance]).luminanceSums[0].x;
 	exposure = max(exposure, 1e-4);

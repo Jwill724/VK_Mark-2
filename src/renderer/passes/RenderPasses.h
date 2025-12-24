@@ -72,7 +72,9 @@ namespace RenderPasses {
 		const bool transparentVisible);
 	void lensFlarePass(FrameContext& frameCtx,
 		ComputeDispatchScope lensFlareScope,
-		const bool transparentVisible);
+		const bool transparentVisible,
+		const bool hasVisibles,
+		const DebugToggles& debug);
 	void toneMapPass(FrameContext& frameCtx,
 		ComputeDispatchScope toneMapScope,
 		const bool transparentVisible,

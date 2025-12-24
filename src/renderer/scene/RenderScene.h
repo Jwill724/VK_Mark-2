@@ -21,7 +21,7 @@ namespace RenderScene {
 
 	inline std::unordered_map<SceneID, std::shared_ptr<ModelAsset>> _loadedScenes;
 
-	inline static std::unordered_map<SceneID, SceneProfileEntry> _sceneProfiles {
+	inline std::unordered_map<SceneID, SceneProfileEntry> _sceneProfiles {
 		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1, 1, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
@@ -39,7 +39,7 @@ namespace RenderScene {
 
 	extern ShadowControl _shadowControl;
 
-	const Camera getCamera();
+	const Camera& getCamera();
 
 	void setScene(bool assetsLoaded);
 

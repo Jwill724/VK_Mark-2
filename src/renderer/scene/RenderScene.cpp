@@ -18,39 +18,39 @@ namespace RenderScene {
 
 	std::vector<GlobalInstance> _globalInstances;
 	std::vector<glm::mat4> _globalTransforms;
-	static std::vector<glm::mat4> _prevTransforms;
+	std::vector<glm::mat4> _prevTransforms;
 
 	bool _initializeTransformCopy = true;
 
-	static Visibility::VisibilityState _visState;
-	static std::vector<AABB> _visibleWorldAABBs;
+	Visibility::VisibilityState _visState;
+	std::vector<AABB> _visibleWorldAABBs;
 
 	Camera _mainCamera;
-	static glm::mat4 _curCamView;
-	static glm::mat4 _curCamProj;
+	glm::mat4 _curCamView;
+	glm::mat4 _curCamProj;
 
-	const Camera getCamera() { return _mainCamera; }
+	const Camera& getCamera() { return _mainCamera; }
 
 	// Only wanna extract a new frustum if viewproj changes
-	static glm::mat4 _lastViewProj = glm::mat4(1.0f);
-	static glm::vec3 _lastLightDir = glm::vec3(0.0f);
+	glm::mat4 _lastViewProj = glm::mat4(1.0f);
+	glm::vec3 _lastLightDir = glm::vec3(0.0f);
 
-	static float _cachedAspectRatio = 0.0f;
+	float _cachedAspectRatio = 0.0f;
 
-	static Frustum _currentFrustum;
+	Frustum _currentFrustum;
 
-	static void updateCamera();
-	static void updateShadowCSM(const glm::vec3& lightDir);
-	static void extendFrustumByLightDirection(Frustum& frus, const glm::vec3& lightDir, float extensionDist);
+	void updateCamera();
+	void updateShadowCSM(const glm::vec3& lightDir);
+	void extendFrustumByLightDirection(Frustum& frus, const glm::vec3& lightDir, float extensionDist);
 	bool _updateShadows = false;
 	bool _shadowsOn = false;
 
-	static bool _assetsLoaded = false;
+	bool _assetsLoaded = false;
 	bool _camChanged = false;
 
 	bool _isTemporalInvalid = false;
 
-	static void createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc);
+	void createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc);
 }
 
 void RenderScene::setScene(bool assetsLoaded) {
@@ -73,7 +73,7 @@ void RenderScene::setScene(bool assetsLoaded) {
 	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.68f, 0.125f, 0.0f);
 }
 
-static void RenderScene::updateCamera() {
+void RenderScene::updateCamera() {
 	const auto extent = Renderer::getDrawExtent();
 	float width = static_cast<float>(extent.width);
 	float height = static_cast<float>(extent.height);
@@ -82,13 +82,13 @@ static void RenderScene::updateCamera() {
 	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler(), _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
-	_curCamProj = glm::perspective(glm::radians(_mainCamera._fovY), aspect, _mainCamera._nearClip, _mainCamera._farClip);
+	_curCamProj = glm::perspectiveRH_ZO(glm::radians(_mainCamera._fovY), aspect, _mainCamera._farClip, _mainCamera._nearClip);
 
 	_sceneData.view = _curCamView;
 	_sceneData.proj = _curCamProj;
 	_sceneData.prevViewproj = _lastViewProj;
 	_sceneData.viewproj = _curCamProj * _curCamView;
-	_sceneData.cameraPos = glm::vec4(_mainCamera._position, _mainCamera._farClip);
+	_sceneData.cameraPos = glm::vec4(_mainCamera._position, 0.0f);
 
 	if (_sceneData.viewportSize.x != width || _sceneData.viewportSize.y != height) {
 		float pixelCount = width * height;
@@ -119,7 +119,7 @@ static void RenderScene::updateCamera() {
 // #define GLM_FORCE_RIGHT_HANDED
 // Pipeline depth compare LESS
 // CULL MODE: FRONT BIT
-static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
+void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	const auto& shadowMap = ResourceManager::getShadowMapImage();
 	const float shadowRes = static_cast<float>(shadowMap.extent.width);
 	// Define all csm parameters once
@@ -224,7 +224,7 @@ static void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	}
 }
 
-static void RenderScene::createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc) {
+void RenderScene::createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc) {
 	frameCtx.sceneDataBuffer = BufferUtils::createUniformBuffer(_sceneData, alloc);
 
 	frameCtx.cpuDeletion.push_function([&, alloc]() mutable {

@@ -60,7 +60,7 @@ void main()
 
 	// === Depth ===
 	float depth = texture(depthTex, uv).r;
-	if (depth >= 1.0) {
+	if (depth <= DEPTH_EPSILON_REVERSED_Z) {
 		imageStore(ssaoOut, pix, vec4(1.0, 0.0, 0.0, 1.0));
 		return;
 	}
@@ -106,7 +106,7 @@ void main()
 			continue;
 
 		float sampleDepth = texture(depthTex, sampleUV).r;
-		if (sampleDepth >= 1.0) continue;
+		if (sampleDepth <= DEPTH_EPSILON_REVERSED_Z) continue;
 
 		ViewReconstructResult sampleSurf = reconstructViewSpaceFromDepth(
 			sampleUV,

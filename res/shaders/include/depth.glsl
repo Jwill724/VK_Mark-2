@@ -4,6 +4,8 @@
 const uint HI_Z_MIP_COUNT = 5u;
 
 // Depth conventions in renderer are ZERO_TO_ONE and RIGHT_HANDED
+// Reversed Z depth is standard
+const float DEPTH_EPSILON_REVERSED_Z = 1e-6;
 
 struct ViewReconstructResult
 {
@@ -24,16 +26,15 @@ float sampleHiZMinDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
 }
 
 float linearizeDepth(float depth, float nearPlane, float farPlane) {
-	return (nearPlane * farPlane) / (farPlane - depth * (farPlane - nearPlane));
+	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
 }
 
-// Volumetric light needs depth at [-1, 1] to be consistent
 ViewReconstructResult reconstructWorldPosFromDepth(vec2 uv, float depthValue, mat4 invProj, mat4 invView)
 {
 	vec4 ndc;
 	ndc.x = uv.x * 2.0 - 1.0;
 	ndc.y = (1.0 - uv.y) * 2.0 - 1.0; // Inverts projection
-	ndc.z = depthValue * 2.0 - 1.0;
+	ndc.z = depthValue;
 	ndc.w = 1.0;
 
 	vec4 viewPos = invProj * ndc;

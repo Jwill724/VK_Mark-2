@@ -76,12 +76,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//structureFile.value()->scene->sceneName = SceneNames.at(SceneID::Structure);
 	//queue->push(structureFile.value());
 
-	if (!queue->empty()) {
-		return true;
-	}
-	else {
-		return false;
-	}
+	return !queue->empty();
 }
 
 std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::string_view filePath) {

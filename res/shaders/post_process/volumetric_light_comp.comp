@@ -163,7 +163,7 @@ void main()
 	// Only march until geometry is hit
 	float distanceToSurface = length(viewRay);
 	float maxRayDistance = pc.maxDistance;
-	bool hasHitGeometry = depthValue < 1.0;
+	bool hasHitGeometry = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 	if (hasHitGeometry) {
 		maxRayDistance = min(maxRayDistance, distanceToSurface);
 	}
