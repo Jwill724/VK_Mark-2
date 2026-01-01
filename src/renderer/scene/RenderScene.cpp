@@ -247,7 +247,9 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		return;
 	}
 
-	auto& meshes = gpuResources.getResgisteredMeshes().meshData;
+	frameCtx.clearRenderData();
+
+	auto& meshes = gpuResources.getResgisteredMeshes();
 
 	// Start of each frame copy the current transforms into previous.
 	// Frame 0 this will just be empty.
@@ -259,6 +261,7 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		_sceneProfiles,
 		_globalInstances,
 		_globalTransforms);
+
 
 	// The command for this upload is uploaded during frame 0 initialization upload for transforms,
 	// Including all previous asset global loaded buffers.
@@ -282,14 +285,12 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		_visState,
 		_globalInstances,
 		_loadedScenes,
-		meshes,
+		meshes.meshData,
 		_globalTransforms);
 
 	Visibility::applySyncResult(
 		_visState,
 		frameCtx.visSyncResult);
-
-	frameCtx.clearRenderData();
 
 	const glm::vec3 lightDir = glm::normalize(glm::vec3(_sceneData.sunlightDirection));
 	if (debug.enableShadows) {
@@ -329,9 +330,11 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 
 		DrawPreparation::buildAndSortIndirectDraws(
 			frameCtx,
-			meshes,
+			meshes.meshData,
+			meshes.meshLODs,
 			_visibleWorldAABBs,
 			_sceneData.cameraPos,
+			_sceneData.proj,
 			debug);
 
 		DrawPreparation::uploadGPUBuffersForFrame(

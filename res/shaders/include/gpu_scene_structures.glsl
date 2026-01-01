@@ -1,6 +1,8 @@
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_ARB_gpu_shader_int64 : require
+#extension GL_EXT_shader_16bit_storage : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
 
 #ifndef GPU_SCENE_STRUCTURES_GLSL
 #define GPU_SCENE_STRUCTURES_GLSL
@@ -87,10 +89,40 @@ struct AABB {
 
 struct Vertex {
 	vec3 position;
-	vec3 normal;
-	vec2 uv;
-	vec4 color;
+	int16_t normalX;
+	int16_t normalY;
+	uint16_t uvX;
+	uint16_t uvY;
+	uint colorRGBA8;
 };
+
+vec3 octDecode(vec2 e) {
+	vec3 v = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+
+	if (v.z < 0.0) {
+		vec2 signNotZero = vec2(
+			(v.x >= 0.0) ? 1.0 : -1.0,
+			(v.y >= 0.0) ? 1.0 : -1.0
+		);
+		v.xy = (vec2(1.0) - abs(v.yx)) * signNotZero;
+	}
+
+	return normalize(v);
+}
+
+float snorm16ToFloat(int16_t v) {
+	// maps [-32767..32767] to [-1..1]
+	return clamp(float(v) / 32767.0, -1.0, 1.0);
+}
+
+vec2 unpackUV(uint16_t uvX, uint16_t uvY) {
+	uint packed = (uint(uvY) << 16) | uint(uvX);
+	return unpackHalf2x16(packed);
+}
+
+vec4 unpackRGBA8(uint packedRGBA8) {
+	return unpackUnorm4x8(packedRGBA8);
+}
 
 const uint PASS_OPAQUE      = 0u;
 const uint PASS_TRANSPARENT = 1u;

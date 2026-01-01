@@ -5,13 +5,10 @@
 #include "renderer/frame/FrameContext.h"
 #include "engine/platform/input/Camera.h"
 
-// User view and control over scene instance data
 struct SceneProfileEntry {
 	std::string name;
 	DrawType drawType;
-	uint32_t instanceCount;   // total active instances
-	uint32_t reservedCopies;  // capacity
-	uint32_t usedCopies;      // currently realized
+	uint32_t instanceCount = 1;
 };
 
 // Holds and controls scene data
@@ -22,16 +19,16 @@ namespace RenderScene {
 	inline std::unordered_map<SceneID, std::shared_ptr<ModelAsset>> _loadedScenes;
 
 	inline std::unordered_map<SceneID, SceneProfileEntry> _sceneProfiles {
-		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::Duck, { "Duck", DrawType::DrawDynamic, 1, 1, 1 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::City, { "City", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1, 1, 1 } },
-		{ SceneID::WrathDragon, { "WrathDragon", DrawType::DrawStatic, 1, 1, 1 } },
+		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1 } },
+		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1 } },
+		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1 } },
+		{ SceneID::Duck, { "Duck", DrawType::DrawMultiStatic, 1000 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawMultiStatic, 100 } },
+		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1 } },
+		{ SceneID::City, { "City", DrawType::DrawStatic, 1 } },
+		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1 } },
+		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1 } },
+		{ SceneID::WrathDragon, { "WrathDragon", DrawType::DrawStatic, 1 } },
 	};
 
 	extern std::vector<GlobalInstance> _globalInstances;

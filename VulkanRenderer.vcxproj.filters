@@ -139,6 +139,9 @@
     <ClCompile Include="src\core\ResourceManager.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\Renderer.cpp">
+      <Filter>src\renderer</Filter>
+    </ClCompile>
     <!-- common (PCH unit, etc.) -->
     <ClCompile Include="src\common\pch.cpp">
       <Filter>src\common</Filter>
@@ -186,8 +189,53 @@
     <ClCompile Include="vendor\fmt\format.cc">
       <Filter>vendor</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\Renderer.cpp">
-      <Filter>src\renderer</Filter>
+    <ClCompile Include="vendor\meshoptimizer\allocator.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\clusterizer.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexanalyzer.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexcodec.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexgenerator.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\overdrawoptimizer.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\partition.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\quantization.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\rasterizer.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\simplifier.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\spatialorder.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\stripifier.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vcacheoptimizer.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vertexcodec.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vertexfilter.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vfetchoptimizer.cpp">
+      <Filter>vendor</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

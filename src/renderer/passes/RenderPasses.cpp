@@ -57,7 +57,7 @@ void RenderPasses::shadowCSMPass(FrameContext& frameCtx, const PipelineHandle& p
 	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
-		frameCtx.opaqueRange.visibleCount,
+		frameCtx.opaqueRange.commandCount,
 		drawCmdSize);
 
 	RenderPasses::endRendering(frameCtx.cmdBuffer);
@@ -179,9 +179,8 @@ void RenderPasses::depthPrePass(
 	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
-		frameCtx.opaqueRange.visibleCount,
-		drawCmdSize
-	);
+		frameCtx.opaqueRange.commandCount,
+		drawCmdSize);
 
 	RenderPasses::endRendering(frameCtx.cmdBuffer);
 
@@ -1170,7 +1169,7 @@ void RenderPasses::opaqueMeshPass(FrameContext& frameCtx, const PipelineHandle& 
 	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.opaqueRange.first * drawCmdSize,
-		frameCtx.opaqueRange.visibleCount,
+		frameCtx.opaqueRange.commandCount,
 		drawCmdSize
 	);
 
@@ -1178,7 +1177,7 @@ void RenderPasses::opaqueMeshPass(FrameContext& frameCtx, const PipelineHandle& 
 		const uint64_t trisOpaque = sumTrianglesIndirectRange(
 			frameCtx.indirectDraws,
 			frameCtx.opaqueRange.first,
-			frameCtx.opaqueRange.visibleCount,
+			frameCtx.opaqueRange.commandCount,
 			pipeHandle.topology);
 
 		profiler.addOpaqueIndirect(/*commands*/1,
@@ -1196,7 +1195,7 @@ void RenderPasses::transparentMeshPass(FrameContext& frameCtx, const PipelineHan
 	vkCmdDrawIndexedIndirect(frameCtx.cmdBuffer,
 		frameCtx.indirectDrawsBuffer.buffer,
 		frameCtx.transparentRange.first * drawCmdSize,
-		frameCtx.transparentRange.visibleCount,
+		frameCtx.transparentRange.commandCount,
 		drawCmdSize
 	);
 
@@ -1204,7 +1203,7 @@ void RenderPasses::transparentMeshPass(FrameContext& frameCtx, const PipelineHan
 		const uint64_t trisTransparent = sumTrianglesIndirectRange(
 			frameCtx.indirectDraws,
 			frameCtx.transparentRange.first,
-			frameCtx.transparentRange.visibleCount,
+			frameCtx.transparentRange.commandCount,
 			pipeHandle.topology);
 
 		profiler.addTransparentIndirect(/*commands*/1,

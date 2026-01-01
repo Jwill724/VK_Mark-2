@@ -38,6 +38,13 @@ void main()
 
 	// fetch vertex
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
+	vec2 octEnc;
+	octEnc.x = snorm16ToFloat(vtx.normalX);
+	octEnc.y = snorm16ToFloat(vtx.normalY);
+
+	vec3 normal = octDecode(octEnc);
+	vec2 uv = unpackUV(vtx.uvX, vtx.uvY);
+	vec4 color = unpackRGBA8(vtx.colorRGBA8);
 
 	// fetch transform
 	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
@@ -47,7 +54,7 @@ void main()
 	outViewPos = scene.view * vec4(worldPos4.xyz, 1.0);
 	gl_Position = scene.viewProj * worldPos4;
 
-	outNormal = mat3(model) * vtx.normal;
-	outColor = vtx.color.xyz;
-	outUV = vtx.uv;
+	outNormal = mat3(model) * normal;
+	outColor = color.xyz;
+	outUV = uv;
 }

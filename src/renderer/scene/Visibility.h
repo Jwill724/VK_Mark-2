@@ -4,7 +4,11 @@
 #include "core/AssetManager.h"
 
 namespace Visibility {
-	struct CoreSlab { uint32_t first, stride, usedCopies; };
+	struct CoreSlab {
+		uint32_t first = 0u;
+		uint32_t stride = 0u;
+		uint32_t usedCopies = 0u;
+	};
 
 	struct BVHNode {
 		AABB box; // node bounds
@@ -17,6 +21,7 @@ namespace Visibility {
 	// Instances in VisibilityState go into one row per cullable unit,
 	// that can be drawm = mesh x copy.
 	// Built when copies change (multi-static slider), not per-frame.
+
 	struct VisibilityState {
 		std::vector<GPUInstance> instances; // per mesh X copy
 		std::vector<AABB> worldAABBs;       // parallel to coreStatic
@@ -57,22 +62,7 @@ namespace Visibility {
 	//	const std::vector<GPUMeshData>& meshData,
 	//	const std::vector<glm::mat4>& transforms);
 
-	inline void applySyncResult(
-		VisibilityState& vs,
-		const VisibilitySyncResult& sync)
-	{
-		// Early out: nothing changed, BVH still valid
-		if (!sync.topologyChanged && !sync.refitOnly) return;
-
-		if (sync.topologyChanged) {
-			// BVH topology changed (new or fewer nodes) -> rebuild from scratch
-			buildBVH(vs);
-		}
-		// Topology stable but transforms moved -> cheap refit
-		else if (sync.refitOnly) {
-			refitBVH(vs.worldAABBs, vs.leafIndex, vs.bvh);
-		}
-	}
+	void applySyncResult(VisibilityState& vs, const VisibilitySyncResult& sync);
 
 	void cullBVHCollect(
 		const VisibilityState& vs,

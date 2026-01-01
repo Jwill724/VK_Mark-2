@@ -211,7 +211,7 @@ inline uint64_t sumTrianglesIndirectRange(const std::vector<VkDrawIndexedIndirec
 	uint64_t total = 0;
 	const size_t base = first;
 	for (uint32_t i = 0; i < count; ++i) {
-		const auto& d = cmds[base + i];
+		const auto& d = cmds[base + static_cast<size_t>(i)];
 		total += trianglesFromIndexed(topo, d.indexCount, d.instanceCount);
 	}
 	return total;

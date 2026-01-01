@@ -34,11 +34,11 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
 
-	//std::string duckPath{ "res/assets/Duck.glb" };
-	//auto duckFile = loadGltfFiles(duckPath);
-	//ASSERT(duckFile.has_value());
-	//duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
-	//queue->push(duckFile.value());
+	std::string duckPath{ "res/assets/Duck.glb" };
+	auto duckFile = loadGltfFiles(duckPath);
+	ASSERT(duckFile.has_value());
+	duckFile.value()->scene->sceneName = SceneNames.at(SceneID::Duck);
+	queue->push(duckFile.value());
 
 	//std::string damagedHelmetPath{ "res/assets/DamagedHelmet.glb" };
 	//auto damagedHelmetFile = loadGltfFiles(damagedHelmetPath);
@@ -472,10 +472,10 @@ void AssetManager::processMaterials(
 // A global meshes registry holds the mesh vector that'll be uploaded.
 // meshbuffer holds each localaabb and the range data into vertex and index buffers,
 void AssetManager::processMeshes(
-	ThreadContext & threadCtx,
-	MeshRegistry & meshes,
-	std::vector<Vertex>&vertices,
-	std::vector<uint32_t>&indices,
+	ThreadContext& threadCtx,
+	MeshRegistry& meshes,
+	std::vector<Vertex>& vertices,
+	std::vector<uint32_t>& indices,
 	ModelDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
@@ -526,6 +526,9 @@ void AssetManager::processMeshes(
 	vertices.resize(totalVertexCount);
 	indices.resize(totalIndexCount);
 
+	std::vector<Vertex> optimizedVertices;
+	std::vector<uint32_t> lodIndex;
+	std::vector<uint32_t> baseIndexCopy;
 
 	// Fill pass
 	for (auto& context : gltfJobs) {
@@ -568,27 +571,100 @@ void AssetManager::processMeshes(
 						vertices[vtxOff + i] = vtx;
 					});
 
-				// Fill other attributes
 				if (auto normals = p.findAttribute("NORMAL"); normals != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
 						[&](glm::vec3 v, size_t i) {
-							vertices[vtxOff + i].normal = v;
+							Vertex& vertex = vertices[vtxOff + i];
+
+							glm::vec3 normal = glm::normalize(v);
+
+							// Oct encode
+							glm::vec3 oct = normal / (abs(normal.x) + abs(normal.y) + abs(normal.z));
+							glm::vec2 enc = glm::vec2(oct.x, oct.y);
+
+							if (oct.z < 0.0f) {
+								glm::vec2 signNotZero = glm::vec2(
+									(enc.x >= 0.0f) ? 1.0f : -1.0f,
+									(enc.y >= 0.0f) ? 1.0f : -1.0f
+								);
+
+								enc = (glm::vec2(1.0f) - glm::abs(glm::vec2(enc.y, enc.x))) * signNotZero;
+							}
+
+							auto toSnorm16 = [](float value) -> int16_t {
+								float clamped = glm::clamp(value, -1.0f, 1.0f);
+								int32_t scaled = static_cast<int32_t>(std::round(clamped * 32767.0f));
+								scaled = std::min<int32_t>(32767, std::max<int32_t>(-32767, scaled));
+								return static_cast<int16_t>(scaled);
+							};
+
+							vertex.normalX = toSnorm16(enc.x);
+							vertex.normalY = toSnorm16(enc.y);
 						});
 				}
+
 				if (auto uv = p.findAttribute("TEXCOORD_0"); uv != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[uv->accessorIndex],
 						[&](glm::vec2 v, size_t i) {
-							vertices[vtxOff + i].uv = v;
+							Vertex& vertex = vertices[vtxOff + i];
+
+							// Store UV as FP16 bits
+							auto floatToHalfBits = [](float value) -> uint16_t {
+								// minimal float->half conversion (IEEE 754), no dependencies
+								union { uint32_t u; float f; } in{};
+								in.f = value;
+
+								uint32_t sign = (in.u >> 31) & 1u;
+								int32_t exp = static_cast<int32_t>((in.u >> 23) & 0xFFu) - 127;
+								uint32_t mantissa = in.u & 0x7FFFFFu;
+
+								if (exp > 15) {
+									return static_cast<uint16_t>((sign << 15) | (0x1Fu << 10)); // inf
+								}
+								if (exp < -14) {
+									if (exp < -24) {
+										return static_cast<uint16_t>(sign << 15); // 0
+									}
+									mantissa |= 0x800000u;
+									uint32_t shift = static_cast<uint32_t>(-exp - 14);
+									uint32_t halfMantissa = mantissa >> (shift + 13);
+									return static_cast<uint16_t>((sign << 15) | halfMantissa);
+								}
+
+								uint16_t halfExp = static_cast<uint16_t>(exp + 15);
+								uint16_t halfMantissa = static_cast<uint16_t>(mantissa >> 13);
+								return static_cast<uint16_t>((sign << 15) | (halfExp << 10) | halfMantissa);
+							};
+
+							vertex.uvX = floatToHalfBits(v.x);
+							vertex.uvY = floatToHalfBits(v.y);
 						});
 				}
+
 				if (auto colors = p.findAttribute("COLOR_0"); colors != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[colors->accessorIndex],
 						[&](glm::vec4 v, size_t i) {
-							vertices[vtxOff + i].color = v;
+							Vertex& vertex = vertices[vtxOff + i];
+
+							glm::vec4 c = glm::clamp(v, 0.0f, 1.0f);
+
+							auto toUnorm8 = [](float value) -> uint32_t {
+								float clamped = glm::clamp(value, 0.0f, 1.0f);
+								return static_cast<uint32_t>(std::round(clamped * 255.0f));
+								};
+
+							uint32_t r = toUnorm8(c.r);
+							uint32_t g = toUnorm8(c.g);
+							uint32_t b = toUnorm8(c.b);
+							uint32_t a = toUnorm8(c.a);
+
+							vertex.colorRGBA8 = (r) | (g << 8) | (b << 16) | (a << 24);
 						});
 				}
 
 				// Indices
+				ASSERT(p.indicesAccessor.has_value() && "[processMeshes] primitive missing indices accessor.");
+
 				const auto& indexAccessor = gltf.accessors[p.indicesAccessor.value()];
 				const uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
 
@@ -597,15 +673,70 @@ void AssetManager::processMeshes(
 				uint32_t maxIndex = 0;
 				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, indexAccessor,
 					[&](uint32_t idx, size_t j) {
+						ASSERT(idxOff + j < indices.size());
 						indices[idxOff + j] = idx;
 						maxIndex = std::max(maxIndex, idx);
 					});
 
-				ASSERT(vtxOff + maxIndex < vertices.size() &&
-					"Index buffer is referencing a vertex out of bounds!");
+				ASSERT(maxIndex < vertexCount &&
+					"Index buffer is referencing a vertex out of bounds for this primitive!");
+
+				uint32_t* indexData = indices.data() + idxOff;
+				Vertex* vertexData = vertices.data() + vtxOff;
+
+				meshopt_optimizeVertexCache(
+					indexData,
+					indexData,
+					static_cast<size_t>(indexCount),
+					static_cast<size_t>(vertexCount));
+
+				const float* positionPtr = nullptr;
+
+				if ((indexCount % 3u) == 0u) {
+					positionPtr = reinterpret_cast<const float*>(
+						reinterpret_cast<const uint8_t*>(vertexData) + offsetof(Vertex, position));
+
+					meshopt_optimizeOverdraw(
+						indexData,
+						indexData,
+						static_cast<size_t>(indexCount),
+						positionPtr,
+						static_cast<size_t>(vertexCount),
+						sizeof(Vertex),
+						1.05f);
+				}
+
+				optimizedVertices.resize(static_cast<size_t>(vertexCount));
+
+				meshopt_optimizeVertexFetch(
+					optimizedVertices.data(),
+					indexData,
+					static_cast<size_t>(indexCount),
+					vertexData,
+					static_cast<size_t>(vertexCount),
+					sizeof(Vertex));
+
+				std::memcpy(
+					vertexData,
+					optimizedVertices.data(),
+					static_cast<size_t>(vertexCount) * sizeof(Vertex));
+
+			#ifndef NDEBUG
+				uint32_t optimizedMaxIndex = 0;
+				for (uint32_t k = 0; k < indexCount; ++k) {
+					optimizedMaxIndex = std::max(optimizedMaxIndex, indexData[k]);
+				}
+				ASSERT(optimizedMaxIndex < vertexCount && "[meshopt] optimized indices out of bounds.");
+			#endif
+
+				baseIndexCopy.resize(static_cast<size_t>(indexCount));
+				std::memcpy(
+					baseIndexCopy.data(),
+					indexData,
+					static_cast<size_t>(indexCount) * sizeof(uint32_t));
 
 				// Register mesh
-				GPUMeshData newMesh {
+				GPUMeshData newMesh{
 					.firstIndex = static_cast<uint32_t>(idxOff),
 					.indexCount = indexCount,
 					.vertexOffset = static_cast<uint32_t>(vtxOff),
@@ -644,7 +775,94 @@ void AssetManager::processMeshes(
 				}
 				ASSERT(newInst.materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
 
+				// Mesh ID registration
 				newInst.meshID = meshes.registerMesh(newMesh);
+
+				// Mesh LOD setup
+				if ((indexCount % 3u) == 0u && positionPtr != nullptr) {
+					if (meshes.meshLODs.size() < meshes.meshData.size()) {
+						meshes.meshLODs.resize(meshes.meshData.size());
+					}
+
+					const float simplifyScale = meshopt_simplifyScale(
+						positionPtr,
+						static_cast<size_t>(vertexCount),
+						sizeof(Vertex));
+
+					auto buildLOD = [&](float ratio, float error) -> uint32_t {
+						size_t targetIndexCount = static_cast<size_t>(static_cast<float>(indexCount) * ratio);
+						targetIndexCount = (targetIndexCount / 3u) * 3u;
+						targetIndexCount = std::max<size_t>(3u, targetIndexCount);
+
+						if (targetIndexCount >= static_cast<size_t>(indexCount)) {
+							return UINT32_MAX;
+						}
+
+						lodIndex.resize(static_cast<size_t>(indexCount));
+
+						const float targetError = error * simplifyScale;
+
+						const size_t lodIndexCount = meshopt_simplify(
+							lodIndex.data(),
+							baseIndexCopy.data(),
+							static_cast<size_t>(indexCount),
+							positionPtr,
+							static_cast<size_t>(vertexCount),
+							sizeof(Vertex),
+							targetIndexCount,
+							targetError);
+
+						if (lodIndexCount < 3u || (lodIndexCount % 3u) != 0u) {
+							return UINT32_MAX;
+						}
+
+						lodIndex.resize(lodIndexCount);
+
+						meshopt_optimizeVertexCache(
+							lodIndex.data(),
+							lodIndex.data(),
+							lodIndexCount,
+							static_cast<size_t>(vertexCount));
+
+						meshopt_optimizeOverdraw(
+							lodIndex.data(),
+							lodIndex.data(),
+							lodIndexCount,
+							positionPtr,
+							static_cast<size_t>(vertexCount),
+							sizeof(Vertex),
+							1.05f);
+
+					#ifndef NDEBUG
+						uint32_t lodMaxIndex = 0;
+						for (size_t k = 0; k < lodIndexCount; ++k) {
+							lodMaxIndex = std::max(lodMaxIndex, lodIndex[k]);
+						}
+						ASSERT(lodMaxIndex < vertexCount && "[meshopt] LOD indices out of bounds.");
+					#endif
+
+						const size_t lodIdxOff = indices.size();
+						indices.insert(indices.end(), lodIndex.begin(), lodIndex.end());
+
+						GPUMeshData lodMesh = newMesh;
+						lodMesh.firstIndex = static_cast<uint32_t>(lodIdxOff);
+						lodMesh.indexCount = static_cast<uint32_t>(lodIndexCount);
+
+						return meshes.registerMesh(lodMesh);
+					};
+
+					const uint32_t lod0MeshID = newInst.meshID;
+
+					const uint32_t lod1 = buildLOD(0.45f, 0.01f);
+					const uint32_t lod2 = buildLOD(0.25f, 0.02f);
+					const uint32_t lod3 = buildLOD(0.10f, 0.04f);
+
+					meshes.meshLODs[lod0MeshID].lod0 = lod0MeshID;
+					meshes.meshLODs[lod0MeshID].lod1 = (lod1 != UINT32_MAX) ? lod1 : lod0MeshID;
+					meshes.meshLODs[lod0MeshID].lod2 = (lod2 != UINT32_MAX) ? lod2 : meshes.meshLODs[lod0MeshID].lod1;
+					meshes.meshLODs[lod0MeshID].lod3 = (lod3 != UINT32_MAX) ? lod3 : meshes.meshLODs[lod0MeshID].lod2;
+				}
+
 				scene.runtime.bakedInstances.push_back(newInst);
 				scene.runtime.bakedNodeIDs.push_back(nodeIdx);
 
@@ -667,6 +885,8 @@ void AssetManager::processMeshes(
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
 	}
 
+	modelDataCounts.totalVertexCount = static_cast<uint32_t>(vertices.size());
+	modelDataCounts.totalIndexCount = static_cast<uint32_t>(indices.size());
 	modelDataCounts.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
 
 	ASSERT(modelDataCounts.totalMeshCount > 0 &&
@@ -690,7 +910,7 @@ void AssetManager::buildSceneGraph(
 	uint32_t instanceCounter = 0;
 	uint32_t firstTransform = 0;
 
-	int gridCols = 2;       // how many models per row
+	int gridCols = 4;       // how many models per row
 	float spacingX = 100.0f; // horizontal spacing
 	float spacingZ = 100.0f; // depth spacing
 

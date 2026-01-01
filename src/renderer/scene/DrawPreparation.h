@@ -31,8 +31,10 @@ namespace DrawPreparation {
 	void buildAndSortIndirectDraws(
 		FrameContext& frameCtx,
 		const std::vector<GPUMeshData>& meshes,
+		const std::vector<MeshLODs>& meshLods,
 		const std::vector<AABB>& worldAABBs,
-		const glm::vec4 cameraPos,
+		const glm::vec4& cameraPos,
+		const glm::mat4& cameraProj,
 		const DebugToggles& meshStats);
 
 	void syncGlobalInstancesAndTransforms(

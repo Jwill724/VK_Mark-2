@@ -359,13 +359,18 @@ struct AllocatedBuffer {
 
 // Opaque and transparent distinction in shared instance/indirect cmd buffers
 struct PassRange {
-	uint32_t first = 0;
-	uint32_t visibleCount = 0;
+	uint32_t first = 0;          // first indirect command index in frameCtx.indirectDraws
+	uint32_t commandCount = 0;   // number of VkDrawIndexedIndirectCommand entries for this pass
+	uint32_t visibleCount = 0;   // number of visible instances (sum of cmd.instanceCount)
 };
+
 
 // TODO: Make this range shit clearer
 // world aabb rows within VisibilityState
-struct DirtyRange { uint32_t offset; uint32_t count; };
+struct DirtyRange {
+	uint32_t offset = 0;
+	uint32_t count = 0;
+};
 
 // === Per-frame sync ===
 // Compares current GlobalInstance.usedCopies/firstTransform to visState.slabs and decides:
@@ -382,16 +387,18 @@ struct VisibilitySyncResult {
 
 // Virtual control over instances, enables true instancing with unique transforms
 struct GlobalInstance {
-	uint32_t instanceID = UINT32_MAX; // flat list
-	uint8_t sceneID = UINT8_MAX;      // unordered map id
-	DrawType drawType = DrawType::DrawStatic;
-	glm::vec3 modelOffset{ 0.0f };
+	uint32_t instanceID = UINT32_MAX;         // The singular model index tag
+	uint8_t sceneID = UINT8_MAX;              // Unordered map id to map this back to loadedScenes
+	DrawType drawType = DrawType::DrawStatic; // Controls how an asset is treated in drawing
+	glm::vec3 modelOffset{ 0.0f };            // Divides spacing in world space between models
 
-	uint32_t firstTransform = 0;    // slab start in the global list
-	uint32_t transformCount = 0;    // unique transforms
-	uint32_t perInstanceStride = 0; // rows/primitives
-	uint32_t usedCopies = 1;        // realized copies in this slab
-	uint32_t capacityCopies = 1;    // reserved copies in this slab
+	// Only first transform should change at runtime to move through the global transform vector
+	uint32_t firstTransform = 0;    // start of this instance's transform slab (copy 0, slot 0)
+	uint32_t transformCount = 0;    // transforms PER COPY (unique node slots)
+	uint32_t perInstanceStride = 0; // rows PER COPY (meshes/primitives in bakedInstances)
+
+	uint32_t usedCopies = 1;        // active copies (drawn / in VisibilityState)
+	uint32_t capacityCopies = 1;    // allocated copies in transform slab (contiguous storage)
 };
 
 // In mesh setup all model vertices/indices are collected
@@ -401,8 +408,16 @@ struct UploadMeshContext {
 	std::vector<Vertex> globalVertices;
 };
 
+struct MeshLODs {
+	uint32_t lod0 = UINT32_MAX;
+	uint32_t lod1 = UINT32_MAX;
+	uint32_t lod2 = UINT32_MAX;
+	uint32_t lod3 = UINT32_MAX;
+};
+
 struct MeshRegistry {
 	std::vector<GPUMeshData> meshData;
+	std::vector<MeshLODs> meshLODs;
 
 	// holds a linear list of meshIDs for gpu access
 	AllocatedBuffer meshIDBuffer;
@@ -423,6 +438,14 @@ struct MeshRegistry {
 		ASSERT(id != std::numeric_limits<uint32_t>::max() && "MeshRegistry: MeshID overflow!");
 
 		meshData.push_back(data);
+
+		MeshLODs lods{};
+		lods.lod0 = id;
+		lods.lod1 = id;
+		lods.lod2 = id;
+		lods.lod3 = id;
+		meshLODs.push_back(lods);
+
 		return id;
 	}
 };
@@ -499,7 +522,7 @@ struct alignas(16) VolumetricPush {
 	float density = 0.05f;
 	float scatteringStrength = 5.0f;
 	float extinction = 0.08f;
-	float heightFalloff = 0.04f;
+	float heightFalloff = 0.01f;
 
 	float maxDistance = 150.0f;
 	float jitterStrength = 0.8f;
@@ -539,14 +562,14 @@ struct alignas(16) LensFlarePush {
 
 	// Ring params (FlareGen)
 	float ringInnerRadius = 0.11f;
-	float ringOuterRadius = 0.17f;
+	float ringOuterRadius = 0.22f;
 	float chromaStrength = 1.0f;
 	float pad1{ 0.0f };
 
 	// Streak params (FlareGen)
-	float streakStrength = 0.1f;
-	float streakWidth = 0.001f; // UV units
-	float streakLength = 0.05f; // UV units
+	float streakStrength = 0.2f;
+	float streakWidth = 0.01f; // UV units
+	float streakLength = 0.1f; // UV units
 	float pad2{ 0.0f };
 
 	// Hi-Z occlusion params (FlareGen)

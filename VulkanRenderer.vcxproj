@@ -39,7 +39,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -51,7 +51,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -213,6 +213,54 @@
     <ClCompile Include="vendor\simdjson\simdjson.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\allocator.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\clusterizer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexanalyzer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexcodec.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\indexgenerator.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\overdrawoptimizer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\partition.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\quantization.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\rasterizer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\simplifier.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\spatialorder.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\stripifier.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vcacheoptimizer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vertexcodec.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vertexfilter.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="vendor\meshoptimizer\vfetchoptimizer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="vendor\fmt\format.cc">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MultiThreadedDLL</RuntimeLibrary>
@@ -310,7 +358,7 @@
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->
-    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)vendor\Vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(IncludePath)</IncludePath>
     <!-- Library Directories for project-wide usage -->
     <LibraryPath>$(ProjectDir)vendor\GLFW\lib;$(ProjectDir)vendor\Vulkan\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>

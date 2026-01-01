@@ -36,15 +36,21 @@ struct AABB {
 	float sphereRadius;
 };
 
-
 // SSBOs
+
 struct Vertex {
-	glm::vec3 position = glm::vec3{0.0f};
-	glm::vec3 normal = glm::vec3(1.0f, 0.0f, 0.0f);
-	glm::vec2 uv = glm::vec2(0.0f);
-	glm::vec4 color = glm::vec4(1.0f);
+	glm::vec3 position = glm::vec3(0.0f);
+
+	int16_t normalX = 0;
+	int16_t normalY = 0;
+
+	uint16_t uvX = 0;
+	uint16_t uvY = 0;
+
+	uint32_t colorRGBA8 = 0xFFFFFFFFu;
 };
 
+// An instance basically = mesh
 struct GPUInstance {
 	uint32_t meshID = UINT32_MAX;      // global meshBuffer
 	uint32_t materialID = UINT32_MAX;  // global material buffer

@@ -271,7 +271,7 @@ void main()
 
 	vec3 ringColor = mix(vec3(1.0), rainbowLut, saturate(pc.chromaStrength));
 
-	const float ringOpacity = 0.08;
+	const float ringOpacity = 0.2;
 
 	float ringMid = 1.0 - abs(ringT * 2.0 - 1.0);
 	ringMid = pow(saturate(ringMid), 0.75);

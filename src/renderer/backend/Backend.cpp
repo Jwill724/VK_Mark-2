@@ -203,13 +203,14 @@ void Backend::createLogicalDevice() {
 	baseFeatures.features.occlusionQueryPrecise = VK_TRUE;
 	baseFeatures.features.shaderStorageImageExtendedFormats = VK_TRUE;
 	baseFeatures.features.robustBufferAccess = VK_TRUE;
-
+	baseFeatures.features.shaderInt16 = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	features11.shaderDrawParameters = VK_TRUE;                         // InstanceIndex
 	features11.variablePointers = VK_TRUE;
 	features11.variablePointersStorageBuffer = VK_TRUE;
 	features11.multiview = VK_TRUE;                                    // Render into shadow map in one pass
+	features11.storageBuffer16BitAccess = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features features12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	features12.bufferDeviceAddress = VK_TRUE;                          // GPU pointers

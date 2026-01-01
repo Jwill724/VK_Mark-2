@@ -33,6 +33,11 @@ void main()
 
 	// fetch vertex
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
+	vec2 octEnc;
+	octEnc.x = snorm16ToFloat(vtx.normalX);
+	octEnc.y = snorm16ToFloat(vtx.normalY);
+
+	vec3 normal = octDecode(octEnc);
 
 	// fetch transform
 	mat4 model = TransformsBuffer(globalAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
@@ -45,7 +50,7 @@ void main()
 
 	// World space -> view space
 	mat3 normalMatrix = mat3(scene.view * model);
-	outViewNormal = normalMatrix * vtx.normal;
+	outViewNormal = normalMatrix * normal;
 
 	vec4 worldPos = model * vec4(vtx.position, 1.0);
 	vec4 prevWorldPos = prevModel * vec4(vtx.position, 1.0);

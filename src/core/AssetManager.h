@@ -33,6 +33,11 @@ enum class SceneID : uint8_t {
 };
 
 struct ModelAsset {
+	// At creation bakes meshes, materials, pass types for each instance.
+	// Stores all vertex and index data to access those buffers.
+	// The ORIGINAL DATA of a model is kept here untouched as a singular entity,
+	// no transformID or draw type is known in here as thats handled at runtime.
+	// Nodes = the transform count in an asset.
 	struct GPUData {
 		std::vector<GPUInstance> bakedInstances;
 		size_t vertexOffset = 0;

@@ -18,6 +18,7 @@
 - HI-Z Generation (Depth mip pyramid)
 - Lens Flare
 - Chromatic Aberration
+- Mesh optimizer
 
 ## Future
 -Render graph
@@ -36,6 +37,7 @@
 ![Bistro](res/screenshots/bistro.png)
 ![Helmet](res/screenshots/helmet.png)
 ![Material test](res/screenshots/mrspheres.png)
+![1000 Ducks](res/screenshots/ducks.png)
 
 ## Controls
 - `W A S D` ‐ Move forward, left, back, right  

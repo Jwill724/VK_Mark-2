@@ -3,8 +3,9 @@
 #include <functional>
 
 // General Engine Limits
-constexpr uint32_t MAX_DRAWS = 16384u;
-//constexpr uint32_t MAX_DRAWS = 65536u;
+//constexpr uint32_t MAX_DRAWS = 16384u;
+constexpr uint32_t MAX_DRAWS = 65536u;
+//constexpr uint32_t MAX_DRAWS = 131072u;
 constexpr uint32_t MAX_VISIBLE_TRANSFORMS = MAX_DRAWS;
 constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 3u;
 
