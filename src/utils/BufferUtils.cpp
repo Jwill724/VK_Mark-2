@@ -64,11 +64,16 @@ AllocatedBuffer BufferUtils::createBuffer(
 
 	if (memoryUsage == VMA_MEMORY_USAGE_CPU_ONLY ||
 		memoryUsage == VMA_MEMORY_USAGE_CPU_TO_GPU ||
-		memoryUsage == VMA_MEMORY_USAGE_GPU_TO_CPU ||
 		memoryUsage == VMA_MEMORY_USAGE_AUTO_PREFER_HOST)
 	{
 		vmaallocInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT |
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+	}
+
+	if (memoryUsage == VMA_MEMORY_USAGE_GPU_TO_CPU)
+	{
+		vmaallocInfo.flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT |
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
 	}
 
 	if (memoryUsage == VMA_MEMORY_USAGE_GPU_ONLY ||
@@ -111,7 +116,8 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
-	if (AddressBufferType::IndirectDraws == addressBufferType) {
+	if (AddressBufferType::IndirectDraws == addressBufferType ||
+		AddressBufferType::DispatchIndirectArgs == addressBufferType) {
 		usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 	}
 
@@ -123,9 +129,8 @@ AllocatedBuffer BufferUtils::createGPUAddressBuffer(AddressBufferType addressBuf
 		usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
 	}
 
-	// Instances can be written to in compute shader, and transforms are copied into previous transforms buffer
-	if (AddressBufferType::VisibleInstances == addressBufferType || AddressBufferType::Transforms == addressBufferType)
-	{
+	// Transforms copies into previous transforms
+	if (AddressBufferType::Transforms == addressBufferType) {
 		usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	}
 

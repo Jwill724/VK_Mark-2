@@ -9,87 +9,42 @@ namespace BarrierUtils {
 	// Map a QueueType to its family index (from Backend)
 	uint32_t queueFamilyIndex(QueueType q);
 
-	void releaseBuffer(
+	void bufferComputeWriteToComputeRead(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		VkPipelineStageFlags2 srcStage,
-		VkAccessFlags2        srcAccess,
-		uint32_t              srcFamily,
-		uint32_t              dstFamily);
+		const AllocatedBuffer& buf);
+	void bufferComputeWriteToComputeRW(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
 
-	void acquireBuffer(
+	// After an indirect dispatch is preformed
+	void bufferComputeWriteToIndirectDispatchRead(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		VkPipelineStageFlags2  dstStage,
-		VkAccessFlags2         dstAccess,
-		uint32_t               srcFamily,
-		uint32_t               dstFamily);
+		const AllocatedBuffer& buf);
 
-	void releaseBufferQ(
+	void bufferFillToComputeRW(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		VkPipelineStageFlags2  srcStage,
-		VkAccessFlags2         srcAccess,
-		QueueType              srcQ,
-		QueueType              dstQ);
+		const AllocatedBuffer& buf);
 
-	void acquireBufferQ(
+	void bufferComputeWriteToFragmentRead(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		VkPipelineStageFlags2  dstStage,
-		VkAccessFlags2         dstAccess,
-		QueueType              srcQ,
-		QueueType              dstQ);
+		const AllocatedBuffer& buf);
 
-	// convenience: transfer writes -> shader reads (uniform/storage)
-	void releaseTransferToShaderReadQ(
+	void bufferTransferWriteToGraphicsRead(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
+		const AllocatedBuffer& buf);
 
-	void acquireShaderReadQ(
+	void bufferTransferWriteToIndirectRead(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
+		const AllocatedBuffer& buf);
 
-	// convenience: transfer writes -> indirect draw reads
-	void releaseTransferToIndirectQ(
+	// Transfer queue buffer releases
+	void bufferTransferReleaseOnIndirect(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
-
-	void acquireIndirectQ(
+		const AllocatedBuffer& buf);
+	void bufferTransferReleaseOnCompute(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
-
-	// convenience: transfer writes -> vertex/index reads
-	void releaseTransferToVertexIndexQ(
+		const AllocatedBuffer& buf);
+	void bufferTransferReleaseOnGraphics(
 		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
-
-	void acquireVertexIndexQ(
-		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Transfer,
-		QueueType dstQ = QueueType::Graphics);
-
-	// compute producers
-	void releaseComputeWriteQ(
-		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Compute,
-		QueueType dstQ = QueueType::Graphics);
-
-	void releaseComputeToIndirectQ(
-		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		QueueType srcQ = QueueType::Compute,
-		QueueType dstQ = QueueType::Graphics);
+		const AllocatedBuffer& buf);
 }

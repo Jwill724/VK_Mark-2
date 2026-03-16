@@ -4,6 +4,7 @@
 #include "core/ResourceManager.h"
 #include "renderer/frame/FrameContext.h"
 #include "engine/platform/input/Camera.h"
+#include "LightingSystem.h"
 
 struct SceneProfileEntry {
 	std::string name;
@@ -22,8 +23,8 @@ namespace RenderScene {
 		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1 } },
 		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1 } },
 		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1 } },
-		{ SceneID::Duck, { "Duck", DrawType::DrawMultiStatic, 1000 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawMultiStatic, 100 } },
+		{ SceneID::Duck, { "Duck", DrawType::DrawDynamic, 1 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1 } },
 		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1 } },
 		{ SceneID::City, { "City", DrawType::DrawStatic, 1 } },
 		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1 } },
@@ -36,11 +37,17 @@ namespace RenderScene {
 
 	extern ShadowControl _shadowControl;
 
+	extern DispatchList _dispatchListSSS;
+
 	const Camera& getCamera();
+	const Frustum& getMainFrustum();
 
 	void setScene(bool assetsLoaded);
 
-	void cleanScene(GPUAddressTable& globalTable);
+	void cleanScene();
 
-	void updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug);
+	void updateScene(
+		FrameContext& frameCtx,
+		GPUResources& gpuResources,
+		const DebugToggles& debug);
 }

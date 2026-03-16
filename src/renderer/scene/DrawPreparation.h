@@ -20,13 +20,30 @@ struct OpaqueBatchKeyHash {
 	}
 };
 
+struct ShadowBatchKey {
+	uint32_t meshID;
+
+	bool operator==(const ShadowBatchKey& other) const {
+		return meshID == other.meshID;
+	}
+};
+
+struct ShadowBatchKeyHash {
+	std::size_t operator()(const ShadowBatchKey& k) const {
+		return std::hash<uint32_t>{}(k.meshID);
+	}
+};
+
+
 namespace DrawPreparation {
 	void uploadGPUBuffersForFrame(
 		FrameContext& frameCtx,
 		GPUResources& gpuResources,
 		const std::vector<glm::mat4>& transforms,
-		const std::vector<glm::mat4>& prevTransforms,
-		GPUQueue& transferQueue);
+		const std::vector<LocalLight>& lights,
+		GPUQueue& transferQueue,
+		bool isTemporalValid,
+		bool isGPUAccelOn);
 
 	void buildAndSortIndirectDraws(
 		FrameContext& frameCtx,
@@ -35,12 +52,11 @@ namespace DrawPreparation {
 		const std::vector<AABB>& worldAABBs,
 		const glm::vec4& cameraPos,
 		const glm::mat4& cameraProj,
-		const DebugToggles& meshStats);
+		const DebugToggles& dbg);
 
-	void syncGlobalInstancesAndTransforms(
-		FrameContext& frameCtx,
-		GPUResources& gpuResources,
+	bool syncGlobalInstancesAndTransforms(
 		std::unordered_map<SceneID, SceneProfileEntry>& sceneProfiles,
 		std::vector<GlobalInstance>& globalInstances,
-		std::vector<glm::mat4>& globalTransforms);
+		std::vector<glm::mat4>& globalTransforms,
+		const double deltaTime);
 }

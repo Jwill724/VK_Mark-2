@@ -71,10 +71,12 @@ namespace Visibility {
 		std::vector<AABB>& visibleWorldAABBs,
 		bool disableCulling = false);
 
-	bool isVisible(const AABB& aabb, const Frustum& frus);
-	bool boxInFrustum(const AABB& aabb, const Frustum& frus);
-	AABB transformAABB(const AABB& localBox, const glm::mat4& transform);
-	Frustum extractFrustum(const glm::mat4& viewproj);
-	std::vector<glm::vec3> GetAABBVertices(const AABB& box);
-	std::vector<glm::vec3> GetOBBVertices(const AABB& localBox, const glm::mat4& modelMatrix);
+	void cullBVHCollectShadowCasters(
+		const VisibilityState& vs,
+		const Frustum& frus,
+		std::vector<GPUInstance>& visibleInstances,
+		const std::vector<uint32_t>& flagsByMaterialID,
+		bool allowAlphaMasked);
+
+	bool boxInFrustum(const AABB& aabb, const Frustum& frus, bool useCorners = false);
 }

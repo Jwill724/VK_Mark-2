@@ -1,9 +1,10 @@
 #ifndef PBR_GLSL
 #define PBR_GLSL
 
-const float PI = 3.14159265359;
+const float PI = 3.1415926535897932384626433832795;
+const float HALF_PI = 1.5707963267948966192313216916398;
 
-float saturate(float x) { return clamp(x, 0.0, 1.0); }
+float saturatePBR(float x) { return clamp(x, 0.0, 1.0); }
 float linearRough(float r) { return max(r * r, 0.001); }
 
 float luminance(vec3 color)
@@ -16,14 +17,13 @@ float D_GGX(vec3 N, vec3 H, float roughness)
 {
 	float a = linearRough(roughness);
 	float a2 = a * a;
-	float NdotH  = saturate(dot(N,H));
+	float NdotH  = saturatePBR(dot(N,H));
 	float NdotH2 = NdotH*NdotH;
 	float denom  = (NdotH2 * (a2 - 1.0) + 1.0);
 	return a2 / max(PI * denom * denom, 1e-6);
 }
 
-// Height-correlated Smith GGX visibility (Frostbite/UE style)
-// Returns G2 / (4 * NdotV * NdotL), i.e. the "V" factor you multiply by D and F.
+// Height-correlated Smith GGX visibility (Frostbite/UE style).
 float V_SmithGGXCorrelated(float NdotV, float NdotL, float roughness)
 {
 	float a = linearRough(roughness);
@@ -42,7 +42,7 @@ float FRESNEL_POWER_UNREAL(vec3 V, vec3 H) {
 vec3 F_SCHLICK(vec3 V, vec3 H, vec3 F0)
 {
 	return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
-	//return F0 + (1.0 - F0) * pow(1.0 - saturate(dot(V,H)), 5.0);
+	//return F0 + (1.0 - F0) * pow(1.0 - saturatePBR(dot(V,H)), 5.0);
 }
 
 // Disney/Burley diffuse (what frostbite uses)
@@ -83,7 +83,7 @@ float SpecAO_Conservative(float ao, float NdotV, float rough)
 	float p = mix(4.0, 1.5, rough);
 	float v = max(NdotV, 0.1);
 	// never < ao and =1 when ao=1
-	float t = pow(saturate(ao + v - 1.0 + ao), p);
+	float t = pow(saturatePBR(ao + v - 1.0 + ao), p);
 	return clamp(max(t, ao), 0.0, 1.0);
 }
 
@@ -94,6 +94,19 @@ vec3 MultiScatterEnergyComp(vec3 F0, vec2 brdf)
 	vec3 E_ss  = F0 * brdf.x + brdf.y;
 	vec3 F_avg = F0 + (1.0 - F0) * 0.047619;
 	return 1.0 + F_avg * (1.0 - E_ss) / max(E_ss, 1e-3);
+}
+
+float MicroShadowVisibility(float NdotL, float occlusion)
+{
+	float ao = clamp(occlusion, 0.0, 1.0);
+	float visibility = (NdotL + ao) / (1.0 + ao);
+	return clamp(visibility, 0.0, 1.0);
+}
+
+vec3 Spec_BlinnPhong(vec3 F0, float shininess, float NdotH)
+{
+	float specPow = pow(max(NdotH, 0.0), shininess);
+	return F0 * specPow;
 }
 
 #endif

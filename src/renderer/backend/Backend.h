@@ -7,6 +7,8 @@
 namespace Backend {
 	const VkPhysicalDeviceLimits getDeviceLimits();
 	const size_t getNonCoherentAtomSize();
+	const float getTimestampPeriod();
+	bool queueSupportsTimestamps(const GPUQueue& queue);
 
 	VkInstance getInstance();
 	VkSurfaceKHR getSurface();
@@ -16,6 +18,9 @@ namespace Backend {
 	const std::string getDeviceName();
 
 	SwapchainDef& getSwapchainDef();
+
+	const bool isComputeAvailable();
+	//const bool isTransferAvailable();
 
 	QueueFamilyIndices getQueueFamilyIndices();
 	GPUQueue& getGraphicsQueue();

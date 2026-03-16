@@ -1,0 +1,67 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+
+// smaa implementation mine is based off
+// https://github.com/dmnsgn/glsl-smaa/tree/main?tab=readme-ov-file
+// https://github.com/iryoku/smaa
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inTonemap;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inSmaaBlendWeights;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outSmaaColor;
+
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+void main() {
+	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 viewportSize = ivec2(scene.viewportSize.xy);
+	if (pix.x >= viewportSize.x || pix.y >= viewportSize.y) return;
+
+	vec2 texelSize = scene.pixelSizes.xy;
+	vec2 uv = (vec2(pix) + 0.5) * texelSize;
+
+	vec4 uvxyxy = vec4(uv, uv);
+	vec4 texel = vec4(texelSize, texelSize);
+	vec4 offset = mad(texel, vec4(1.0, 0.0, 0.0, 1.0), uvxyxy);
+
+	vec4 color;
+
+	// Fetch the blending weights for current pixel:
+	vec4 a;
+	a.x = texture(inSmaaBlendWeights, offset.xy).a; // Right
+	a.y = texture(inSmaaBlendWeights, offset.zw).g; // Top
+	a.wz = texture(inSmaaBlendWeights, uv).xz;      // Bottom / Left
+
+	// Is there any blending weight with a greater value than 0.0?
+	if (dot(a, vec4(1.0, 1.0, 1.0, 1.0)) <= 1e-5) {
+		color = texture(inTonemap, uv);
+	}
+	else {
+		bool h = max(a.x, a.z) > max(a.y, a.w); // max(horizontal) > max(vertical)
+
+		// Calculate the blending offsets:
+		vec4 blendingOffset = vec4(0.0, a.y, 0.0, a.w);
+		vec2 blendingWeight = a.yw;
+		SMAAMovc(bvec4(h), blendingOffset, vec4(a.x, 0.0, a.z, 0.0));
+		SMAAMovc(bvec2(h), blendingWeight, a.xz);
+		blendingWeight /= dot(blendingWeight, vec2(1.0));
+
+		// Calculate the texture coordinates:
+		vec4 blendingCoord = mad(blendingOffset, vec4(texelSize, -texelSize), uvxyxy);
+
+		// We exploit bilinear filtering to mix current pixel with chosen neighbour:
+		color = blendingWeight.x * texture(inTonemap, blendingCoord.xy);
+		color += blendingWeight.y * texture(inTonemap, blendingCoord.zw);
+	}
+
+	imageStore(outSmaaColor, pix, color);
+}

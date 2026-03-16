@@ -1,0 +1,113 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/set_bindings.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inVolumetricLight;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outBlurVolumetric;
+
+layout(push_constant) uniform VolumetricPush
+{
+	float density;             // overall fog density
+	float scatteringStrength;  // brightness of scattered light
+	float extinction;          // how fast light is absorbed
+	float heightFalloff;       // vertical fog falloff
+
+	float maxDistance;         // max ray length in world/view units
+	float jitterStrength;      // scales step jitter for banding hiding
+	int stepCount;             // march steps
+	float pad0;
+
+	float asymmetryFactor;     // phase function asymmetry factor
+	float minTransmittance;    // minimum remaining light before fully attenuated
+	vec2 pixelSize;            // 1.0 / halfResExtent (x,y)
+
+	int beamPower;             // Determines how tight or wide beams are
+	// Blur (shared by X/Y passes)
+	float blurRadius;          // kernel radius in half-res pixels
+	float blurDepthSigma;      // depth sensitivity for bilateral blur
+	float blurWeightSigma;     // Gaussian width
+
+	vec2 blurDirection;        // (1,0) for horizontal, (0,1) for vertical
+} pc;
+
+void main()
+{
+	ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 imageSizeOut = imageSize(outBlurVolumetric);
+
+	if (any(greaterThanEqual(pixelCoord, imageSizeOut))) return;
+
+	vec2 uv = (vec2(pixelCoord) + 0.5) * pc.pixelSize;
+
+	vec3 centerColor = texture(inVolumetricLight, uv).rgb;
+
+	int radius = int(pc.blurRadius);
+	if (radius <= 0) {
+		imageStore(outBlurVolumetric, pixelCoord, vec4(centerColor, 1.0));
+		return;
+	}
+
+	float centerDepth = texture(inDepth, uv).r;
+
+	// Step in UV per 1-pixel move along blurDirection at half-res
+	vec2 texelStep = pc.pixelSize * pc.blurDirection;
+
+	vec3 accumulatedColor = vec3(0.0);
+	float weightSum = 0.0;
+
+	float centerWeight = 1.0;
+	accumulatedColor += centerColor * centerWeight;
+	weightSum += centerWeight;
+
+	// Spatial gaussian sigma
+	float sigma = (pc.blurWeightSigma > 0.0)
+		? pc.blurWeightSigma
+		: max(float(radius), 1.0) * 0.5;
+
+	float twoSigma2 = 2.0 * sigma * sigma;
+
+	// Depth sigma for bilateral term
+	float depthSigma = max(pc.blurDepthSigma, 1e-4);
+	float twoDepthSigma2 = 2.0 * depthSigma * depthSigma;
+
+	for (int i = 1; i <= radius; ++i) {
+		float tapDistance = float(i);
+
+		// Spatial Gaussian
+		float spatialWeight = exp(-(tapDistance * tapDistance) / twoSigma2);
+
+		float tapRadiusHalfRes = tapDistance; // distance in half-res pixels
+
+		// Positive offset
+		vec2 uvPos = uv + tapDistance * texelStep;
+		vec3 colorPos = texture(inVolumetricLight, uvPos).rgb;
+		float depthPos = texture(inDepth, uvPos).r;
+		float depthDiffP = depthPos - centerDepth;
+		float depthWeightP = exp(-(depthDiffP * depthDiffP) / twoDepthSigma2);
+
+		float weightPos = spatialWeight * depthWeightP;
+		accumulatedColor += colorPos * weightPos;
+		weightSum += weightPos;
+
+		// Negative offset
+		vec2 uvNeg = uv - tapDistance * texelStep;
+		vec3 colorNeg = texture(inVolumetricLight, uvNeg).rgb;
+		float depthNeg = texture(inDepth, uvNeg).r;
+		float depthDiffN = depthNeg - centerDepth;
+		float depthWeightN = exp(-(depthDiffN * depthDiffN) / twoDepthSigma2);
+
+		float weightNeg = spatialWeight * depthWeightN;
+		accumulatedColor += colorNeg * weightNeg;
+		weightSum += weightNeg;
+	}
+
+	accumulatedColor /= max(weightSum, 1e-6);
+
+	imageStore(outBlurVolumetric, pixelCoord, vec4(accumulatedColor, 1.0));
+}

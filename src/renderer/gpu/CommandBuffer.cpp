@@ -84,3 +84,21 @@ void CommandBuffer::recordDeferredCmd(std::function<void(VkCommandBuffer)>&& fun
 		ASSERT(validQueueType && "[recordDeferredCmd] Invalid queue type.\n");
 	}
 }
+
+void CommandBuffer::recordCommandBuffer(
+	std::function<void(VkCommandBuffer)>&& function,
+	VkCommandBuffer cmdBuffer,
+	VkCommandBufferUsageFlags usageFlags)
+{
+	ASSERT(cmdBuffer != VK_NULL_HANDLE && "[recordCommandBuffer] Null command buffer.");
+
+	VK_CHECK(vkResetCommandBuffer(cmdBuffer, 0));
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = usageFlags;
+
+	VK_CHECK(vkBeginCommandBuffer(cmdBuffer, &beginInfo));
+	function(cmdBuffer);
+	VK_CHECK(vkEndCommandBuffer(cmdBuffer));
+}

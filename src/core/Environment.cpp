@@ -66,12 +66,13 @@ void Environment::dispatchEnvironmentMaps(
 	GPUResources& resources)
 {
 	std::vector<const char*> hdrPaths = {
-		"res/assets/envhdr/san_giuseppe_bridge_4k.hdr",
-		"res/assets/envhdr/rogland_clear_night_4k.hdr",
-		"res/assets/envhdr/meadow_4k.hdr",
-		"res/assets/envhdr/belfast_sunset_puresky_4k.hdr",
-		"res/assets/envhdr/kloppenheim_06_puresky_4k.hdr",
-		"res/assets/envhdr/wasteland_clouds_4k.hdr"
+		"res/assets/envhdr/san_giuseppe_bridge_2k.hdr",
+		"res/assets/envhdr/rogland_clear_night_2k.hdr",
+		"res/assets/envhdr/belfast_sunset_puresky_2k.hdr",
+		"res/assets/envhdr/kloppenheim_06_puresky_2k.hdr",
+		"res/assets/envhdr/wasteland_clouds_2k.hdr",
+		//"res/assets/envhdr/meadow_2k.hdr", // At 2k res, trees have some artifacts
+		//"res/assets/envhdr/hazy_nebulae_2k.hdr" // Dark as shit
 	};
 
 	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
@@ -118,7 +119,7 @@ void Environment::dispatchEnvironmentMaps(
 	DescriptorWriter writer;
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		RenderPasses::ComputeDispatchScope envScope;
+		RenderPasses::ComputeScope envScope;
 		EnvData envData;
 
 		for (auto& env : ResourceManager::_environmentSets) {
@@ -130,24 +131,16 @@ void Environment::dispatchEnvironmentMaps(
 			auto& irradianceImg = env.irradiance;
 
 			ImageUtils::transitionImage(cmd,
-				equirect.image,
-				equirect.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
+				equirect,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			ImageUtils::transitionImage(cmd,
-				skyboxImg.image,
-				skyboxImg.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
+				skyboxImg,
 				VK_IMAGE_LAYOUT_GENERAL);
 			ImageUtils::transitionImage(cmd,
-				specularImg.image,
-				specularImg.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
+				specularImg,
 				VK_IMAGE_LAYOUT_GENERAL);
 			ImageUtils::transitionImage(cmd,
-				irradianceImg.image,
-				irradianceImg.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
+				irradianceImg,
 				VK_IMAGE_LAYOUT_GENERAL);
 
 			// EQUIRECT TO CUBEMAP
@@ -169,9 +162,7 @@ void Environment::dispatchEnvironmentMaps(
 				envScope,
 				writer);
 			ImageUtils::transitionImage(cmd,
-				skyboxImg.image,
-				skyboxImg.format,
-				VK_IMAGE_LAYOUT_GENERAL,
+				skyboxImg,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			ImageUtils::generateCubemapMiplevels(cmd, skyboxImg);
 
@@ -195,9 +186,7 @@ void Environment::dispatchEnvironmentMaps(
 				envScope,
 				writer);
 			ImageUtils::transitionImage(cmd,
-				irradianceImg.image,
-				irradianceImg.format,
-				VK_IMAGE_LAYOUT_GENERAL,
+				irradianceImg,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			// SPECULAR PREFILTER
@@ -222,9 +211,7 @@ void Environment::dispatchEnvironmentMaps(
 			}
 
 			ImageUtils::transitionImage(cmd,
-				specularImg.image,
-				specularImg.format,
-				VK_IMAGE_LAYOUT_GENERAL,
+				specularImg,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
 
@@ -239,9 +226,7 @@ void Environment::dispatchEnvironmentMaps(
 		envScope.extent = { brdfImg.extent.width, brdfImg.extent.height };
 
 		ImageUtils::transitionImage(cmd,
-			brdfImg.image,
-			brdfImg.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
+			brdfImg,
 			VK_IMAGE_LAYOUT_GENERAL);
 		RenderPasses::dispatchComputePass(
 			cmd,
@@ -250,9 +235,7 @@ void Environment::dispatchEnvironmentMaps(
 			writer
 		);
 		ImageUtils::transitionImage(cmd,
-			brdfImg.image,
-			brdfImg.format,
-			VK_IMAGE_LAYOUT_GENERAL,
+			brdfImg,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	}, graphicsPool, QueueType::Graphics, device);

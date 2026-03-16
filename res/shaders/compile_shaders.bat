@@ -8,8 +8,8 @@ set INCLUDE_PATH=^
  -Ires/shaders/include/^
  -Ires/shaders/debug/^
  -Ires/shaders/environment/^
- -Ires/shaders/meshes/^
- -Ires/shaders/depth/^
+ -Ires/shaders/core/^
+ -Ires/shaders/shadows/^
  -Ires/shaders/post_process/^
  -Ires/shaders/ao/^
  -Ires/shaders/visibility/

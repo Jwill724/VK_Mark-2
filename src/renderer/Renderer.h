@@ -17,6 +17,9 @@ namespace Renderer {
 	inline std::vector<std::unique_ptr<FrameContext>> _frameContexts;
 
 	FrameContext& getCurrentFrame();
+	FrameContext& getLastFrame();
+
+	ForwardPush& getForwardPush();
 
 	// Timeline semaphore for tracking transfer and compute work
 	extern TimelineSync _transferSync;
@@ -29,8 +32,12 @@ namespace Renderer {
 		Profiler& profiler);
 
 	void recordRenderCommand(FrameContext& frameCtx, Profiler& profiler);
-	void prepareFrameContext(FrameContext& frameCtx);
+	void prepareFrameContext(FrameContext& frameCtx, const VmaAllocator alloc);
 	void submitFrame(FrameContext& frameCtx, GPUResources& resources);
 
 	void cleanupRenderer(const VkDevice device, const VmaAllocator alloc);
+
+	const uint32_t& getFrameNumber();
+
+	const bool isFirstFrame();
 }

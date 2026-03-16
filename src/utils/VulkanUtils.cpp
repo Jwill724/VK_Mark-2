@@ -238,3 +238,24 @@ void VulkanUtils::defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawE
 	};
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
+
+void VulkanUtils::defineViewportAndScissorAtlas(
+	VkCommandBuffer cmd,
+	VkOffset2D offset,
+	VkExtent2D extent)
+{
+	VkViewport viewport{};
+	viewport.x = static_cast<float>(offset.x);
+	viewport.y = static_cast<float>(offset.y + static_cast<int32_t>(extent.height));
+	viewport.width = static_cast<float>(extent.width);
+	viewport.height = -static_cast<float>(extent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor{};
+	scissor.offset = offset;
+	scissor.extent = extent;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+}

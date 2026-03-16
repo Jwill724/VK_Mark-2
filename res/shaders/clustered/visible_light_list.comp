@@ -1,0 +1,62 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive    : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+#include "../include/clustered.glsl"
+
+layout(local_size_x = 256) in;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
+	ClusteredData clusteredData;
+};
+
+layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
+	GPUAddressTable frameAddressTable;
+};
+
+layout(push_constant) uniform ClusterPush {
+	uint activeLightCount;
+	uint pad0;
+	float pad1;
+	float pad2;
+	vec4 frusPlanes[6];
+} pc;
+
+bool sphereInFrustum(vec3 worldPos, float radius, vec4 planes[6])
+{
+	for (uint i = 0u; i < 6u; ++i) {
+		float d = dot(planes[i].xyz, worldPos) + planes[i].w;
+		if (d < -radius) return false;
+	}
+	return true;
+}
+
+void main() {
+	uint lightIndex = gl_GlobalInvocationID.x;
+	if (lightIndex >= pc.activeLightCount) return;
+
+	LightBuffer lightBuf = LightBuffer(frameAddressTable.addrs[ABT_Lights]);
+
+	VisibleLightCount visibleCountBuf = VisibleLightCount(frameAddressTable.addrs[ABT_VisibleLightCount]);
+	VisibleLightIDs visibleIDsBuf = VisibleLightIDs(frameAddressTable.addrs[ABT_VisibleLightIDs]);
+
+	LocalLight light = lightBuf.lights[lightIndex];
+
+	// Don't process flashlight while toggled off
+	if (((light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u) &&
+		!((light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u) &&
+		!((light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u)) return;
+
+	bool visible = sphereInFrustum(light.position, light.radius, pc.frusPlanes);
+
+	if (!visible) return;
+
+	uint writeIndex = atomicAdd(visibleCountBuf.count, 1u);
+
+	if (writeIndex >= pc.activeLightCount) return;
+
+	visibleIDsBuf.ids[writeIndex] = lightIndex;
+}

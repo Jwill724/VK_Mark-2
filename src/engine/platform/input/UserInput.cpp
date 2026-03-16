@@ -1,3 +1,306 @@
+//#include "pch.h"
+//
+//#include "UserInput.h"
+//#include "engine/Engine.h"
+//
+//namespace UserInput
+//{
+//	MouseState _mouse;
+//	KeyboardState _keyboard;
+//
+//	static glm::vec2 lastPos = glm::vec2(0.0f);
+//	static bool firstMouse = true;
+//
+//	static bool gUiEnabled = true;
+//
+//	void setUiEnabled(bool enabled) {
+//		gUiEnabled = enabled;
+//	}
+//
+//	bool isUiEnabled() {
+//		return gUiEnabled;
+//	}
+//
+//	static void setCursorHidden(bool hidden)
+//	{
+//		if (hidden) {
+//			SDL_HideCursor();
+//		}
+//		else {
+//			SDL_ShowCursor();
+//		}
+//	}
+//
+//	static void setMouseCaptured(SDL_Window* window, bool captured)
+//	{
+//		SDL_SetWindowRelativeMouseMode(window, captured);
+//		SDL_SetWindowMouseGrab(window, captured);
+//	}
+//
+//	void forceReleaseMouseCapture(SDL_Window* window) {
+//		if (_mouse.leftHideCursor) {
+//			_mouse.leftHideCursor = false;
+//			_mouse.leftPressed = false;
+//			_mouse.leftJustClicked = false;
+//
+//			firstMouse = true;
+//			lastPos = glm::vec2(0.0f);
+//			_mouse.delta = glm::vec2(0.0f);
+//
+//			setMouseCaptured(window, false);
+//			setCursorHidden(false);
+//		}
+//	}
+//
+//	static void SetCursorPos(SDL_Window* window, VkExtent2D windowExtent);
+//
+//	// Maintains cursor to 1:1 with window sizing. Keeps mouse consistent and stable during a window resize.
+//	static void NormalizeMousePos(SDL_Window* window, VkExtent2D windowExtent);
+//}
+//
+//static void UserInput::SetCursorPos(SDL_Window* window, VkExtent2D windowExtent)
+//{
+//	SDL_WarpMouseInWindow(
+//		window,
+//		static_cast<float>(windowExtent.width) * 0.5f,
+//		static_cast<float>(windowExtent.height) * 0.5f
+//	);
+//}
+//
+//static void UserInput::NormalizeMousePos(SDL_Window* window, VkExtent2D windowExtent)
+//{
+//	(void)window;
+//
+//	float mouseX = 0.0f;
+//	float mouseY = 0.0f;
+//
+//	SDL_GetMouseState(&mouseX, &mouseY);
+//
+//	_mouse.mousePos.x = static_cast<double>(mouseX);
+//	_mouse.mousePos.y = static_cast<double>(mouseY);
+//
+//	if (windowExtent.width == 0 || windowExtent.height == 0) {
+//		_mouse.normalized.x = 0.0f;
+//		_mouse.normalized.y = 0.0f;
+//		return;
+//	}
+//
+//	const float widthF = static_cast<float>(windowExtent.width);
+//	const float heightF = static_cast<float>(windowExtent.height);
+//
+//	const float aspectRatio = widthF / heightF;
+//
+//	_mouse.normalized.x =
+//		(2.0f * (mouseX / widthF) - 1.0f) * aspectRatio;
+//
+//	_mouse.normalized.y =
+//		2.0f * (mouseY / heightF) - 1.0f;
+//}
+//
+//void UserInput::beginFrame(SDL_Window* window)
+//{
+//	_keyboard.beginFrame();
+//	_mouse.beginFrame();
+//
+//	VkExtent2D windowExtent = Engine::getWindowExtent();
+//	if (windowExtent.width == 0 || windowExtent.height == 0) return;
+//
+//	if (!_mouse.leftHideCursor) {
+//		NormalizeMousePos(window, windowExtent);
+//		_mouse.position = glm::vec2(_mouse.normalized.x, _mouse.normalized.y);
+//
+//		if (firstMouse) {
+//			lastPos = _mouse.position;
+//			firstMouse = false;
+//		}
+//
+//		_mouse.delta = _mouse.position - lastPos;
+//		lastPos = _mouse.position;
+//		return;
+//	}
+//
+//    SetCursorPos(window, windowExtent);
+//
+//	_mouse.normalized.x = 0.0f;
+//	_mouse.normalized.y = 0.0f;
+//	_mouse.position = glm::vec2(0.0f, 0.0f);
+//
+//	if (firstMouse || _mouse.leftJustClicked) {
+//		lastPos = _mouse.position;
+//		_mouse.delta = glm::vec2(0.0f);
+//
+//		firstMouse = false;
+//		_mouse.leftJustClicked = false;
+//		return;
+//	}
+//}
+//
+//
+//// ============================================================
+//// KeyboardState (event-driven)
+//// ============================================================
+//
+//void UserInput::KeyboardState::beginFrame()
+//{
+//	for (int scancodeIndex = 0; scancodeIndex < SDL_SCANCODE_COUNT; scancodeIndex++)
+//	{
+//		KeyState& state = keyStates[scancodeIndex];
+//
+//		if (state == KeyState::Pressed) {
+//			state = KeyState::Held;
+//		}
+//		else if (state == KeyState::Released) {
+//			state = KeyState::None;
+//		}
+//	}
+//}
+//
+//void UserInput::MouseState::handleEvent(const SDL_Event& event, SDL_Window* window)
+//{
+//	const VkExtent2D windowExtent = Engine::getWindowExtent();
+//	switch (event.type)
+//	{
+//	case SDL_EVENT_MOUSE_MOTION:
+//	{
+//		if (windowExtent.width == 0 || windowExtent.height == 0) break;
+//
+//		const float widthF = static_cast<float>(windowExtent.width);
+//		const float heightF = static_cast<float>(windowExtent.height);
+//		const float aspectRatio = widthF / heightF;
+//
+//		if (leftHideCursor)
+//		{
+//			const float relX = static_cast<float>(event.motion.xrel);
+//			const float relY = static_cast<float>(event.motion.yrel);
+//
+//			glm::vec2 normalizedDelta{};
+//			normalizedDelta.x = (2.0f * (relX / widthF)) * aspectRatio;
+//			normalizedDelta.y = 2.0f * (relY / heightF);
+//
+//			// Accumulate for the frame (beginFrame() zeroes it).
+//			delta += normalizedDelta;
+//
+//			// Position is meaningless during capture, keep it centered.
+//			normalized.x = 0.0f;
+//			normalized.y = 0.0f;
+//			position = glm::vec2(0.0f);
+//		}
+//		else
+//		{
+//			mousePos.x = static_cast<double>(event.motion.x);
+//			mousePos.y = static_cast<double>(event.motion.y);
+//
+//			normalized.x =
+//				(2.0f * (static_cast<float>(event.motion.x) / widthF) - 1.0f) * aspectRatio;
+//
+//			normalized.y =
+//				2.0f * (static_cast<float>(event.motion.y) / heightF) - 1.0f;
+//
+//			position = glm::vec2(normalized.x, normalized.y);
+//		}
+//
+//	} break;
+//
+//
+//	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+//	{
+//		if (event.button.button == SDL_BUTTON_LEFT)
+//		{
+//			leftPressed = true;
+//			leftJustClicked = true;
+//
+//			if (!UserInput::isUiEnabled() || !ImGui::GetIO().WantCaptureMouse)
+//			{
+//				if (!leftHideCursor)
+//				{
+//					leftHideCursor = true;
+//					firstMouse = true;
+//					delta = glm::vec2(0.0f);
+//
+//					setCursorHidden(true);
+//					setMouseCaptured(window, true);
+//				}
+//			}
+//		}
+//	} break;
+//
+//	case SDL_EVENT_MOUSE_BUTTON_UP:
+//	{
+//		if (event.button.button == SDL_BUTTON_LEFT)
+//		{
+//			leftPressed = false;
+//			leftJustClicked = false;
+//
+//			if (leftHideCursor)
+//			{
+//				leftHideCursor = false;
+//				firstMouse = true;
+//				lastPos = glm::vec2(0.0f);
+//
+//				delta = glm::vec2(0.0f);
+//
+//				setMouseCaptured(window, false);
+//				setCursorHidden(false);
+//			}
+//		}
+//	} break;
+//
+//	default:
+//		break;
+//	}
+//}
+//
+//void UserInput::KeyboardState::handleEvent(const SDL_Event& event)
+//{
+//	if (event.type == SDL_EVENT_KEY_DOWN)
+//	{
+//		if (event.key.repeat) return;
+//
+//		const SDL_Scancode scancode = event.key.scancode;
+//		KeyState& state = keyStates[scancode];
+//
+//		if (state == KeyState::None || state == KeyState::Released) {
+//			state = KeyState::Pressed;
+//		}
+//		else {
+//			state = KeyState::Held;
+//		}
+//	}
+//	else if (event.type == SDL_EVENT_KEY_UP)
+//	{
+//		const SDL_Scancode scancode = event.key.scancode;
+//		keyStates[scancode] = KeyState::Released;
+//	}
+//}
+//
+//bool UserInput::KeyboardState::isPressed(SDL_Scancode sc) const
+//{
+//	return keyStates[sc] == KeyState::Pressed;
+//}
+//
+//bool UserInput::KeyboardState::isHeld(SDL_Scancode sc) const
+//{
+//	const KeyState state = keyStates[sc];
+//	return (state == KeyState::Held || state == KeyState::Pressed);
+//}
+//
+//bool UserInput::KeyboardState::isReleased(SDL_Scancode sc) const
+//{
+//	return keyStates[sc] == KeyState::Released;
+//}
+//
+//void UserInput::KeyboardState::resetKeyStates() {
+//	for (auto& key : keyStates) {
+//		key = KeyState::None;
+//	}
+//}
+//
+//void UserInput::handleSDLEvent(const SDL_Event& event, SDL_Window* window)
+//{
+//	_mouse.handleEvent(event, window);
+//	_keyboard.handleEvent(event);
+//}
+
 #include "pch.h"
 
 #include "UserInput.h"

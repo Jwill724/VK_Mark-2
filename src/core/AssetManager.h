@@ -46,7 +46,7 @@ struct ModelAsset {
 		size_t indexCount = 0;
 		uint32_t localMaterialCount = 0;
 		size_t materialBaseOffset = 0;
-		std::vector<AllocatedImage> images;
+		std::vector<RuntimeImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
 

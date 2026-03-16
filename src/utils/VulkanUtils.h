@@ -30,4 +30,8 @@ namespace VulkanUtils {
 	std::vector<uint32_t> findSupportedSampleCounts(VkPhysicalDeviceLimits deviceLimits);
 
 	void defineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent);
+    void defineViewportAndScissorAtlas(
+        VkCommandBuffer cmd,
+        VkOffset2D offset,
+        VkExtent2D extent);
 }

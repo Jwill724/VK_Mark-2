@@ -30,6 +30,10 @@ void EngineState::init() {
 	auto& dQueue = _resources.getMainDQueue();
 	auto mainAllocator = _resources.getAllocator();
 
+	if (!Backend::isComputeAvailable()) {
+		Engine::getProfiler().disableGPUAccelUsage();
+	}
+
 	EditorImgui::initImgui(dQueue);
 
 	DescriptorSetOverwatch::initDescriptors(device, dQueue);
@@ -37,35 +41,108 @@ void EngineState::init() {
 	const auto& winExtent = Engine::getWindowExtent();
 	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1u });
 
-	ResourceManager::initRenderTargets(
+
+	auto& tempQueue = _resources.getTempDQueue();
+
+	ResourceManager::initUniformRenderTargets(
 		device,
 		_resources.getRenderTargetDQueue(),
 		mainAllocator,
 		Renderer::getDrawExtent());
 	ResourceManager::initRenderSamplers(device, dQueue);
 	ResourceManager::initShadowMapImages(device, dQueue, mainAllocator);
-	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, _resources.getTempDQueue(), mainAllocator);
+	ResourceManager::initTextures(device, _resources.getGraphicsPool(), dQueue, tempQueue, mainAllocator);
 	ResourceManager::initStaticEnvironmentImages(device, dQueue, mainAllocator);
 
+	// Pipelines init
+	PipelineManager::definePipelineData();
 	PipelineManager::initPipelines(dQueue);
 
 	Environment::dispatchEnvironmentMaps(
 		device,
 		_resources);
 
-	_resources.getTempDQueue().flush();
 	VK_CHECK(vkResetCommandPool(device, _resources.getGraphicsPool(), 0));
-}
 
-void EngineState::loadAssets(Profiler& engineProfiler) {
-	auto assetQueue = std::make_shared<GLTFAssetQueue>();
+	// Setup descriptor resources
 
-	const auto mainAllocator = _resources.getAllocator();
+	auto& globalImgManager = ResourceManager::_globalImageManager;
+	auto& engineProfiler = Engine::getProfiler();
 
-	const auto device = Backend::getDevice();
+	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
+	const auto linearLODClampSampler = ResourceManager::getLinearLODClampSampler();
+	const auto shadowSampler = ResourceManager::getShadowMapSampler();
+	const auto noiseSampler = ResourceManager::getNoiseSampler();
 
-	// Temp queue needed for deferred buffer deletions for buffers used in commands.
-	auto& tempQueue = _resources.getTempDQueue();
+	// CSM image
+	auto& shadowImg = ResourceManager::getDirectionalCSMAtlas();
+	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, shadowSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(shadowImg.lutEntry.combinedImageIndex));
+
+	// flashlight shadow image
+	auto& flashlightShadowImg = ResourceManager::getFlashLightShadowMap();
+	flashlightShadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(flashlightShadowImg.imageView, shadowSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(flashlightShadowImg.lutEntry.combinedImageIndex));
+
+	// cookie gobo image
+	auto& cookieGoboImg = ResourceManager::getCookieGoboImage();
+	cookieGoboImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(cookieGoboImg.imageView, linearClampSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(cookieGoboImg.lutEntry.combinedImageIndex));
+
+	// Rainbow LUT
+	auto& rainbowLut = ResourceManager::getRainbowLUTImage();
+	rainbowLut.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(rainbowLut.imageView, linearClampSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(rainbowLut.lutEntry.combinedImageIndex));
+	engineProfiler.lensFlareSettings.rainbowLUTIndex = rainbowLut.lutEntry.combinedImageIndex;
+
+	// search and area lut textures
+	auto& searchTex = ResourceManager::getSearchTex();
+	searchTex.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(searchTex.imageView, linearLODClampSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(searchTex.lutEntry.combinedImageIndex));
+	_resources.smaaTextures.id0 = searchTex.lutEntry.combinedImageIndex;
+
+	auto& areaTex = ResourceManager::getAreaTex();
+	areaTex.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(areaTex.imageView, linearLODClampSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(areaTex.lutEntry.combinedImageIndex));
+	_resources.smaaTextures.id1 = areaTex.lutEntry.combinedImageIndex;
+
+	// === ENVIRONMENT IMAGE SETUP ===
+	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
+	auto irradianceSmpl = ResourceManager::getIrradianceSampler();
+	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
+	auto& brdfImg = ResourceManager::getBRDFImage();
+	auto brdfSmpl = ResourceManager::getBRDFSampler();
+
+	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.imageView, brdfSmpl);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(brdfImg.lutEntry.combinedImageIndex));
+
+	for (auto& env : ResourceManager::_environmentSets) {
+		if (env.setIndex == UINT32_MAX) break;
+
+		auto& irradianceImg = env.irradiance;
+		auto& specularImg = env.specular;
+		auto& skyboxImg = env.skybox;
+
+		irradianceImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(irradianceImg.imageView, irradianceSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(irradianceImg.lutEntry.samplerCubeIndex));
+
+		specularImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specularImg.imageView, specSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(specularImg.lutEntry.samplerCubeIndex));
+
+		skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
+		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(skyboxImg.lutEntry.samplerCubeIndex));
+
+		glm::uvec4 envEntry{};
+		envEntry.x = irradianceImg.lutEntry.samplerCubeIndex;
+		envEntry.y = specularImg.lutEntry.samplerCubeIndex;
+		envEntry.z = brdfImg.lutEntry.combinedImageIndex;
+		envEntry.w = skyboxImg.lutEntry.samplerCubeIndex;
+
+		ASSERT(env.setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
+		ResourceManager::_envMapIdxArray.indices[env.setIndex] = envEntry;
+	}
+
+	_resources.envMapIndexBuffer = BufferUtils::createUniformBuffer(ResourceManager::_envMapIdxArray, mainAllocator);
 
 	// main address table buffer
 	_resources.getAddressTableBuffer() = BufferUtils::createBuffer(
@@ -96,8 +173,6 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		mainAllocator
 	);
 	_resources.addGPUBufferToGlobalAddress(AddressBufferType::Luminance, luminanceBuffer);
-	// Conditionally the only global buffer that doesn't require assets to work, so it's upload occurs first.
-	_resources.updateAddressTableMapped();
 
 	auto lBuf = luminanceStaging.buffer;
 	auto lAlloc = luminanceStaging.allocation;
@@ -105,15 +180,14 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		BufferUtils::destroyBuffer(lBuf, lAlloc, mainAllocator);
 	});
 
-	bool availableAssets = false;
-	// Load files for assets and upload any default global buffers
-	JobSystem::submitJob([assetQueue, &availableAssets, &luminanceBuffer, &luminanceStaging, device](ThreadContext& threadCtx) {
+	JobSystem::submitJob([&luminanceBuffer, &luminanceStaging, device](ThreadContext& threadCtx) {
 		threadCtx.cmdPool = JobSystem::getThreadPoolManager().getPool(threadCtx.threadID, QueueType::Transfer);
 
 		CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 			VkBufferCopy copyRegion{};
 			copyRegion.size = luminanceSize;
 			vkCmdCopyBuffer(cmd, luminanceStaging.buffer, luminanceBuffer.buffer, 1, &copyRegion);
+
 		}, threadCtx.cmdPool, QueueType::Transfer, device);
 
 		auto& tQueue = Backend::getTransferQueue();
@@ -121,7 +195,57 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);
 		vkResetCommandPool(device, threadCtx.cmdPool, 0);
 		threadCtx.cmdPool = VK_NULL_HANDLE;
+	});
 
+	JobSystem::wait();
+
+	tempQueue.flush();
+
+#ifdef TRACY_ENABLE
+	auto& profiler = Engine::getProfiler();
+	profiler.getTracyGraphicsCmd() = CommandBuffer::createCommandBuffer(device, _resources.getGraphicsPool());
+	profiler.initTracyGPU(
+		Backend::getPhysicalDevice(),
+		device,
+		Backend::getGraphicsQueue().queue,
+		profiler.getTracyGraphicsCmd());
+#endif
+
+	// === GLOBAL DESCRIPTOR SETUP ===
+	// Global descriptor writing and update
+	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
+	DescriptorWriter mainWriter;
+	mainWriter.writeBuffer(
+		ADDRESS_TABLE_BINDING,
+		_resources.getAddressTableBuffer().buffer,
+		sizeof(GPUAddressTable),
+		0,
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		unifiedSet);
+
+	// env map index
+	mainWriter.writeBuffer(
+		GLOBAL_BINDING_ENV_INDEX,
+		_resources.envMapIndexBuffer.buffer,
+		sizeof(GPUEnvMapIndexArray),
+		0,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		unifiedSet);
+
+	mainWriter.writeFromImageLUT(_resources.getLUTManager().getEntries(), globalImgManager.table);
+	mainWriter.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, unifiedSet);
+	mainWriter.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, unifiedSet);
+	mainWriter.updateSet(device, unifiedSet);
+
+	LightingSystem::init(_resources);
+}
+
+void EngineState::loadAssets(Profiler& engineProfiler) {
+	auto assetQueue = std::make_shared<GLTFAssetQueue>();
+
+	bool availableAssets = false;
+	// Load files for assets and upload any default global buffers
+	JobSystem::submitJob([assetQueue, &availableAssets](ThreadContext& threadCtx) {
 		ScopedWorkQueue scoped(threadCtx, assetQueue.get());
 		availableAssets = AssetManager::loadGltf(threadCtx);
 	});
@@ -129,8 +253,11 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 	JobSystem::wait();
 
 	if (availableAssets) {
-		fmt::println("\nAssets available for loading!");
+		const auto mainAllocator = _resources.getAllocator();
+		const auto device = Backend::getDevice();
+		auto& tempQueue = _resources.getTempDQueue();
 
+		fmt::println("\nAssets available for loading!");
 		engineProfiler.startTimer();
 
 		// === TEXTURE LOADING ===
@@ -183,7 +310,12 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		auto& modelDataCounts = _resources.modelDataCounts;
 		JobSystem::submitJob([assetQueue, &meshes, &totalVertices, &totalIndices, &modelDataCounts](ThreadContext& threadCtx) {
 			ScopedWorkQueue scoped(threadCtx, assetQueue.get());
-			AssetManager::processMeshes(threadCtx, meshes, totalVertices, totalIndices, modelDataCounts);
+			AssetManager::processMeshes(
+				threadCtx,
+				meshes,
+				totalVertices,
+				totalIndices,
+				modelDataCounts);
 		});
 
 		JobSystem::wait();
@@ -234,113 +366,29 @@ void EngineState::loadAssets(Profiler& engineProfiler) {
 		// Asset loading done
 		auto elapsed = engineProfiler.endTimerSec();
 		fmt::print("Asset loading completed in {:.3f} seconds.\n\n", elapsed);
+
+		// flush any setup temp data like staging buffers
+		tempQueue.flush();
+
+		// Update global descriptors
+		auto& globalImgManager = ResourceManager::_globalImageManager;
+		auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
+		DescriptorWriter mainWriter;
+		mainWriter.writeFromImageLUT(_resources.getLUTManager().getEntries(), globalImgManager.table);
+		mainWriter.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, unifiedSet);
+		mainWriter.updateSet(device, unifiedSet);
 	}
 	else {
 		fmt::print("No assets for loading... skipping\n\n");
 	}
 
-	// flush any setup temp data like staging buffers
-	tempQueue.flush();
-
 	_resources.assetsLoaded = availableAssets;
-
-
-	// === GLOBAL DESCRIPTOR SETUP ===
-
-	auto& globalImgManager = ResourceManager::_globalImageManager;
-
-	// CSM image
-	auto& shadowImg = ResourceManager::getShadowMapImage();
-	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, ResourceManager::getShadowMapSampler());
-	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(shadowImg.lutEntry.combinedImageIndex));
-
-	// Rainbow LUT
-	auto& rainbowLut = ResourceManager::getRainbowLUTImage();
-	rainbowLut.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(rainbowLut.imageView, ResourceManager::getLinearClampSampler());
-	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(rainbowLut.lutEntry.combinedImageIndex));
-	engineProfiler.lensFlareSettings.rainbowLUTIndex = rainbowLut.lutEntry.combinedImageIndex;
-
-
-	// === ENVIRONMENT IMAGE SETUP ===
-	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
-	auto irradianceSmpl = ResourceManager::getIrradianceSampler();
-	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
-	auto& brdfImg = ResourceManager::getBRDFImage();
-	auto brdfSmpl = ResourceManager::getBRDFSampler();
-
-	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.imageView, brdfSmpl);
-	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(brdfImg.lutEntry.combinedImageIndex));
-
-	for (auto& env : ResourceManager::_environmentSets) {
-		if (env.setIndex == UINT32_MAX) break;
-
-		auto& irradianceImg = env.irradiance;
-		auto& specularImg = env.specular;
-		auto& skyboxImg = env.skybox;
-
-		irradianceImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(irradianceImg.imageView, irradianceSmpl);
-		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(irradianceImg.lutEntry.samplerCubeIndex));
-
-		specularImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(specularImg.imageView, specSmpl);
-		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(specularImg.lutEntry.samplerCubeIndex));
-
-		skyboxImg.lutEntry.samplerCubeIndex = globalImgManager.addCubeImage(skyboxImg.imageView, skyboxSmpl);
-		_resources.addImageLUTEntry(ImageLUTEntry::SamplerCubeOnly(skyboxImg.lutEntry.samplerCubeIndex));
-
-		glm::uvec4 envEntry{};
-		envEntry.x = irradianceImg.lutEntry.samplerCubeIndex;
-		envEntry.y = specularImg.lutEntry.samplerCubeIndex;
-		envEntry.z = brdfImg.lutEntry.combinedImageIndex;
-		envEntry.w = skyboxImg.lutEntry.samplerCubeIndex;
-
-		ASSERT(env.setIndex < MAX_ENV_SETS && "Too many environment sets for fixed UBO buffer!");
-		ResourceManager::_envMapIdxArray.indices[env.setIndex] = envEntry;
-	}
-
-	_resources.envMapIndexBuffer = BufferUtils::createUniformBuffer(ResourceManager::_envMapIdxArray, mainAllocator);
-
-	// ssao kernel block
-	ResourceManager::initSSAOKernel();
-	_resources.ssaoKernelBuffer = BufferUtils::createUniformBuffer(ResourceManager::_ssaoKernelBlock, mainAllocator);
-
-	// Global descriptor writing and update
-	auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
-	DescriptorWriter mainWriter;
-	mainWriter.writeBuffer(
-		ADDRESS_TABLE_BINDING,
-		_resources.getAddressTableBuffer().buffer,
-		sizeof(GPUAddressTable),
-		0,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		unifiedSet);
-
-	// env map index
-	mainWriter.writeBuffer(
-		GLOBAL_BINDING_ENV_INDEX,
-		_resources.envMapIndexBuffer.buffer,
-		sizeof(GPUEnvMapIndexArray),
-		0,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		unifiedSet);
-
-	// ssao kernel UBO
-	mainWriter.writeBuffer(
-		GLOBAL_BINDING_SSAO_KERNEL,
-		_resources.ssaoKernelBuffer.buffer,
-		sizeof(glm::vec4[KERNEL_BLOCK_SIZE]),
-		0,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		unifiedSet);
-
-	mainWriter.writeFromImageLUT(_resources.getLUTManager().getEntries(), globalImgManager.table);
-	mainWriter.writeImages(GLOBAL_BINDING_SAMPLER_CUBE, DescriptorImageType::SamplerCube, unifiedSet);
-	mainWriter.writeImages(GLOBAL_BINDING_STORAGE_IMAGE, DescriptorImageType::StorageImage, unifiedSet);
-	mainWriter.writeImages(GLOBAL_BINDING_COMBINED_SAMPLER, DescriptorImageType::CombinedSampler, unifiedSet);
-	mainWriter.updateSet(device, unifiedSet);
 }
 
 void EngineState::initRenderer(Profiler& engineProfiler) {
 	const auto device = Backend::getDevice();
+
+	_resources.updateAddressTableMapped();
 
 	Renderer::initRenderer(
 		device,
@@ -356,23 +404,30 @@ void EngineState::initRenderer(Profiler& engineProfiler) {
 	engineProfiler.getStats().gpuName = Backend::getDeviceName();
 
 	// VRAM Usage calculator
-	auto physicalDevice = Backend::getPhysicalDevice();
-	engineProfiler.getStats().vramStats = engineProfiler.GetTotalVRAMUsage(physicalDevice, _resources.getAllocator());
+	engineProfiler.getStats().vramStats = engineProfiler.getTotalVRAMUsage(Backend::getPhysicalDevice(), _resources.getAllocator());
 }
 
 
 void EngineState::renderFrame(Profiler& engineProfiler) {
 	auto& frame = Renderer::getCurrentFrame();
+	auto& stats = engineProfiler.getStats();
+	// Every 5 seconds
+	if (stats.vramQueryTimerSeconds >= 5.0f) {
+		stats.vramQueryTimerSeconds -= 5.0f;
+
+		stats.vramStats = engineProfiler.getTotalVRAMUsage(
+			Backend::getPhysicalDevice(),
+			_resources.getAllocator());
+	}
 
 	const auto& debug = engineProfiler.debugToggles;
-	if (debug.enableSettings || debug.enableStats)
+	if (debug.enableSettings || debug.enableProfilerView) {
 		EditorImgui::renderImgui(engineProfiler);
-
-	Renderer::prepareFrameContext(frame);
+	}
+	Renderer::prepareFrameContext(frame, _resources.getAllocator());
 	if (frame.swapchainResult != VK_SUCCESS) return;
 
 	engineProfiler.resetDrawCalls();
-
 	// === Scene update ===
 	engineProfiler.startTimer();
 	RenderScene::updateScene(frame, _resources, debug);
@@ -388,10 +443,16 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 
 void EngineState::shutdown() {
 	const auto device = Backend::getDevice();
+	const auto alloc = _resources.getAllocator();
 
 	JobSystem::shutdownScheduler();
 
-	RenderScene::cleanScene(_resources.getAddressTable());
+#ifdef TRACY_ENABLE
+	Engine::getProfiler().shutdownTracyGPU();
+#endif
+
+	LightingSystem::cleanup();
+	RenderScene::cleanScene();
 
 	JobSystem::getThreadPoolManager().cleanup(device);
 
@@ -406,8 +467,10 @@ void EngineState::shutdown() {
 	_resources.getTempDQueue().flush();
 	_resources.getMainDQueue().flush();
 	_resources.getRenderTargetDQueue().flush();
+	_resources.getDynamicPipelineQueue().flush();
+	_resources.getDynamicPipelineShaderStagesQueue().flush();
 
-	Renderer::cleanupRenderer(device, _resources.getAllocator());
+	Renderer::cleanupRenderer(device, alloc);
 
 	_resources.cleanup(device);
 }

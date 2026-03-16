@@ -27,7 +27,6 @@ struct DescriptorWriteGroup {
 
 enum class DescriptorImageType : uint8_t {
 	SamplerCube,
-	StorageImage,
 	CombinedSampler
 };
 
@@ -41,7 +40,6 @@ struct DescriptorWriter {
 	std::vector<size_t> writeBufferIndices;
 
 	std::vector<VkDescriptorImageInfo> samplerCubeDescriptors;
-	std::vector<VkDescriptorImageInfo> storageDescriptors;
 	std::vector<VkDescriptorImageInfo> combinedDescriptors;
 
 	bool enablePushDescriptor = false;
@@ -53,12 +51,12 @@ struct DescriptorWriter {
 
 	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
 
-	void writePushBuffer(
-		uint32_t binding,
-		VkBuffer buffer,
-		size_t size,
-		size_t offset,
-		VkDescriptorType type);
+	//void writePushBuffer(
+	//	uint32_t binding,
+	//	VkBuffer buffer,
+	//	size_t size,
+	//	size_t offset,
+	//	VkDescriptorType type);
 
 	void writeBuffer(
 		uint32_t binding,

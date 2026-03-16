@@ -8,7 +8,7 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
 }
 
-bool WindowIsOpen(GLFWwindow* window) {
+bool Window::isOpen() const {
 	return !(glfwWindowShouldClose(window));
 }
 
@@ -73,7 +73,7 @@ void Window::pollEvents() const {
 	glfwPollEvents();
 }
 
-void Window::cleanupWindow() const {
+void Window::cleanup() const {
 	glfwDestroyWindow(window);
 	glfwTerminate();
 }

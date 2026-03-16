@@ -11,43 +11,53 @@ enum class PipelineID : uint8_t {
 	// Debug
 	Wireframe,
 	OBBLine,
-	CascadeVPLine,
 
 	// === Culling pipeline *inactive (compute) ===
 	Visibility,
 
-	// === Post-process ===
-	ExposureReduce,   // compute
-	ExposureFinalize, // compute
-	ToneMap,          // graphics
+	ExposureReduce,
+	ExposureFinalize,
+	ToneMap,
 
-	// === IBL (compute) ===
 	HDRToCubemap,
 	SpecularPrefilter,
 	DiffuseIrradiance,
 	BRDFLUT,
 
-	// === DEPTH ===
-	DepthPrepass,  // graphics
-	ShadowCSM,     // graphics
-	DepthPyramid,  // compute
+	Prepass,
+	Shadow,
+	HiZGen,
 
-	// === SSAO (compute) ===
-	SSAO,
-	SSAOBlur,
-
-	// === GTAO (compute) ===
 	GTAO,
 	GTAOFilter,
 	GTAOTemporalResolve,
+	AOUpscale,
 
-	// === VOLUMETRIC LIGHTING (compute) ===
 	VolumetricLight,
 	VolumetricLightBlur,
 
-	// === LENS FLARE (compute) ===
 	FlareBright,
 	FlareGen,
+
+	ClusterTileSliceRanges,
+	VisibleLightList,
+	IndirectArgsLight,
+	ClusterCount,
+	ClusterScanOffsets,
+	ClusterScatterIDs,
+
+	SMAAEdges,
+	SMAAWeights,
+	SMAABlend,
+
+	CMAA2Edges,
+	CMAA2ShapeCandidates,
+	CMAA2DeferredResolve,
+	CMAA2DispatchArgs,
+
+	FXAA,
+
+	ScreenSpaceContactShadows,
 
 	Count
 };
@@ -86,12 +96,10 @@ namespace PipelineManager {
 	VkPipelineShaderStageCreateInfo createPipelineShaderStage(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 	VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts, const PushConstantDef pushConstants);
 
-	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings, bool msaaOn);
+	void setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings);
 	void setupShaders(PipelinePreset& pipelineSettings, DeletionQueue& shaderDeletionQueue);
 
-	// configurations for pipelines altered here
 	void initPipelines(DeletionQueue& queue);
-	void initShaders(DeletionQueue& queue);
 	void definePipelineData();
 }
 
@@ -99,8 +107,7 @@ namespace PipelineConfigs {
 	// graphics pipeline
 	void inputAssemblyConfig(VkPipelineInputAssemblyStateCreateInfo& inputAssembly, VkPrimitiveTopology topology, bool primitiveRestartEnabled);
 	void rasterizerConfig(VkPipelineRasterizationStateCreateInfo& rasterizer, VkPolygonMode mode, float lineWidth, VkCullModeFlags cullMode, VkFrontFace frontFace);
-	void multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling, const std::vector<VkSampleCountFlags>& samples,
-		uint32_t chosenMSAACount, bool sampleShadingEnabled);
+	void multisamplingConfig(VkPipelineMultisampleStateCreateInfo& multisampling, bool sampleShadingEnabled);
 	void colorBlendingConfig(VkPipelineColorBlendAttachmentState& colorBlend, VkColorComponentFlags colorComponents, bool blendEnabled, VkBlendFactor blendFactor);
 	void setColorAttachmentAndDepthFormat(std::vector<VkFormat>& colorFormats, VkPipelineRenderingCreateInfo& renderInfo, VkFormat depthFormat);
 	void depthStencilConfig(VkPipelineDepthStencilStateCreateInfo& depthStencil, bool depthTestEnabled, bool depthWriteEnabled, bool depthBoundsTestEnabled, bool stencilTestEnabled, VkCompareOp depthCompare);

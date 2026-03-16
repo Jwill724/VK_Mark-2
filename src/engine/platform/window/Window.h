@@ -1,12 +1,9 @@
 #pragma once
 
-#include "GLFW/glfw3.h"
+#include "glfw/glfw3.h"
 
-bool WindowIsOpen(GLFWwindow* window);
-
-struct Window {
-	GLFWwindow* window = nullptr;
-
+class Window {
+public:
 	void updateWindowSize() const;
 
 	bool throttleIfWindowUnfocused(double sleepMs) const;
@@ -14,5 +11,11 @@ struct Window {
 	void pollEvents() const;
 
 	void initWindow(const uint32_t width, const uint32_t height);
-	void cleanupWindow() const;
+	void cleanup() const;
+
+	bool isOpen() const;
+
+	GLFWwindow* getWindow() const { return window; }
+private:
+	GLFWwindow* window = nullptr;
 };

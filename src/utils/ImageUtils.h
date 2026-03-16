@@ -12,7 +12,7 @@ namespace ImageUtils {
 	void createTextureImage(
 		const VkDevice device,
 		VkCommandPool cmdPool,
-		void* data,
+		const void* data,
 		AllocatedImage& renderImage,
 		VkImageUsageFlags usage,
 		VkSampleCountFlagBits samples,
@@ -33,14 +33,11 @@ namespace ImageUtils {
 
 	void transitionImage(
 		VkCommandBuffer cmd,
-		VkImage image,
-		VkFormat format,
-		VkImageLayout currentLayout,
+		AllocatedImage& img,
 		VkImageLayout newLayout,
-		uint32_t baseMip = 0,                        // Starting mip
-		uint32_t mipCount = VK_REMAINING_MIP_LEVELS, // How many levels transitioned
-		VkPipelineStageFlags2 dstStageOverride = 0,
-		VkAccessFlags2        dstAccessOverride = 0);
+		uint32_t baseMip = 0,                                         // Starting mip
+		uint32_t mipCount = VK_REMAINING_MIP_LEVELS,                  // How many levels transitioned
+		VkImageLayout oldLayoutOverride = VK_IMAGE_LAYOUT_UNDEFINED); // Mips need manual transitions applied
 	void copyImageToImage(
 		VkCommandBuffer cmd,
 		VkImage source,
@@ -67,5 +64,6 @@ namespace ImageUtils {
 		float maxAnisotropy,
 		DeletionQueue* dQueue = nullptr,
 		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-		bool compareEnabled = false);
+		bool compareEnabled = false,
+		VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
 }

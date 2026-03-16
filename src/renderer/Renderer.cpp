@@ -22,7 +22,10 @@ namespace Renderer {
 	}
 
 	uint32_t _frameNumber{ 0 };
+	const uint32_t& getFrameNumber() { return _frameNumber; }
 	uint32_t _framesInFlight{ 0 };
+
+	const bool isFirstFrame() { return _frameNumber == 0; }
 
 	std::mutex _frameAccessMutex;
 
@@ -31,8 +34,18 @@ namespace Renderer {
 		return *_frameContexts[_frameNumber % _framesInFlight];
 	}
 
+	FrameContext& getLastFrame() {
+		std::scoped_lock lock(_frameAccessMutex);
+		const uint32_t lastFrameNumber = _frameNumber + _framesInFlight - 1u;
+		ASSERT(lastFrameNumber >= 0);
+		return *_frameContexts[lastFrameNumber % _framesInFlight];
+	}
+
 	TimelineSync _transferSync;
 	TimelineSync _computeSync;
+
+	ForwardPush _forwardPush;
+	ForwardPush& getForwardPush() { return _forwardPush; }
 }
 
 void Renderer::initRenderer(
@@ -43,16 +56,17 @@ void Renderer::initRenderer(
 {
 	SyncUtils::createTimelineSemaphore(_transferSync, device);
 
-	if (GPU_ACCELERATION_ENABLED) {
+	if (Backend::isComputeAvailable()) {
 		SyncUtils::createTimelineSemaphore(_computeSync, device);
 	}
+
+	const auto alloc = gpuResources.getAllocator();
 
 	_frameContexts = initFrameContexts(
 		device,
 		frameLayout,
-		gpuResources.getAllocator(),
-		_framesInFlight,
-		gpuResources.assetsLoaded
+		alloc,
+		_framesInFlight
 	);
 
 	auto& debug = profiler.debugToggles;
@@ -63,18 +77,101 @@ void Renderer::initRenderer(
 	debug.materialCount = modelDataCounts.totalMaterialCount;
 	debug.transformCount = modelDataCounts.totalTransformCount;
 	debug.meshCount = modelDataCounts.totalMeshCount;
+
+
+	auto& transformStaging = gpuResources.getInstanceTransformsStagingBuffer();
+
+	if (transformStaging.buffer == VK_NULL_HANDLE) {
+		constexpr size_t TRANSFORM_STAGING_BYTES = MAX_INSTANCE_TRANSFORMS * sizeof(glm::mat4);
+		transformStaging = BufferUtils::createBuffer(
+			TRANSFORM_STAGING_BYTES,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+			alloc
+		);
+		ASSERT(transformStaging.info.pMappedData);
+	}
 }
 
 // =============================================
 // === CLEAR DATA AND AQUIRE SWAPCHAIN INDEX ===
-
-void Renderer::prepareFrameContext(FrameContext& frameCtx) {
+void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator alloc) {
 	auto device = Backend::getDevice();
 	auto& swapDef = Backend::getSwapchainDef();
 
 	VkFence fence = swapDef.inFlightFences[frameCtx.frameIndex];
 	VK_CHECK(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
 	VK_CHECK(vkResetFences(device, 1, &fence));
+
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
+		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE &&
+		frameCtx.hasTimestampResultsPending)
+	{
+		const float timestampPeriod = Backend::getTimestampPeriod();
+
+		for (uint32_t passIndex = 1; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex) {
+			if (!frameCtx.timestampPassUsed[passIndex]) continue;
+
+			const PassID passID = static_cast<PassID>(passIndex);
+			const auto& range = frameCtx.passTimestampRanges[passIndex];
+
+			uint64_t queryPair[2]{};
+
+			VK_CHECK(vkGetQueryPoolResults(
+				device,
+				frameCtx.graphicsTimestampPool,
+				range.beginQuery,
+				2,
+				sizeof(queryPair),
+				queryPair,
+				sizeof(uint64_t),
+				VK_QUERY_RESULT_64_BIT
+			));
+
+			const uint64_t beginTicks = queryPair[0];
+			const uint64_t endTicks = queryPair[1];
+
+			if (endTicks > beginTicks) {
+				const uint64_t deltaTicks = endTicks - beginTicks;
+
+				const float gpuMs = static_cast<float>(
+					(static_cast<double>(deltaTicks) * static_cast<double>(timestampPeriod)) / 1000000.0
+				);
+
+				Engine::getProfiler().addGpuPassTime(passID, gpuMs);
+			}
+
+			frameCtx.timestampPassUsed[passIndex] = false;
+		}
+
+		uint64_t frameQueryPair[2]{};
+		VK_CHECK(vkGetQueryPoolResults(
+			device,
+			frameCtx.graphicsTimestampPool,
+			FRAME_BEGIN_QUERY,
+			2,
+			sizeof(frameQueryPair),
+			frameQueryPair,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT
+		));
+
+		const uint64_t frameBeginTicks = frameQueryPair[0];
+		const uint64_t frameEndTicks = frameQueryPair[1];
+
+		if (frameEndTicks > frameBeginTicks) {
+			const uint64_t deltaTicks = frameEndTicks - frameBeginTicks;
+
+			const float gpuFrameMs = static_cast<float>((static_cast<double>(deltaTicks) *
+				static_cast<double>(Backend::getTimestampPeriod())) / 1000000.0);
+
+			auto& stats = Engine::getProfiler().getStats();
+			stats.gpuFrameTimeRawMs = gpuFrameMs;
+			stats.gpuFrameTime.add(gpuFrameMs);
+		}
+
+		frameCtx.hasTimestampResultsPending = false;
+	}
 
 	uint32_t imageIndex = 0;
 	frameCtx.swapchainResult = vkAcquireNextImageKHR(
@@ -105,11 +202,28 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx) {
 	frameCtx.stagingHead = 0;
 
 	frameCtx.cpuDeletion.flush();
+
+	const uint32_t curWidth = _drawExtent.width;
+	const uint32_t curHeight = _drawExtent.height;
+
+	if (frameCtx.cachedExtentWidth != curWidth || frameCtx.cachedExtentHeight != curHeight) {
+		frameCtx.createClusterBuffers(
+			curWidth,
+			curHeight,
+			alloc
+		);
+	   frameCtx.createCMAA2Buffers(
+			curWidth,
+			curHeight,
+			alloc
+		);
+		frameCtx.cachedExtentWidth = curWidth;
+		frameCtx.cachedExtentHeight = curHeight;
+	}
 }
 
 // ===============================================
 // === SYNC FRAME SEMAPHORES AND PRESENT FRAME ===
-
 void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	auto& swapDef = Backend::getSwapchainDef();
 	uint32_t imageIndex = frameCtx.swapchainImageIndex;
@@ -146,21 +260,20 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 		waitInfos.push_back(waitTransfer);
 	}
 
-	if (GPU_ACCELERATION_ENABLED) {
-		if (frameCtx.computeWaitValue != UINT64_MAX &&
-			frameCtx.computeWaitValue <= _computeSync.signalValue)
-		{
-			ASSERT(frameCtx.computeWaitValue <= _computeSync.signalValue &&
-				"Invalid compute wait: waiting on unsignaled or future timeline value!");
+	if (frameCtx.computeWaitValue != UINT64_MAX && frameCtx.computeWaitValue <= _computeSync.signalValue)
+	{
+		ASSERT(frameCtx.computeWaitValue <= _computeSync.signalValue &&
+			"Invalid compute wait: waiting on unsignaled or future timeline value!");
 
-			VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
-			waitCompute.semaphore = _computeSync.semaphore;
-			waitCompute.value = frameCtx.computeWaitValue;
-			waitCompute.stageMask =
-				VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
-				VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
-			waitInfos.push_back(waitCompute);
-		}
+		VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
+		waitCompute.semaphore = _computeSync.semaphore;
+		waitCompute.value = frameCtx.computeWaitValue;
+		waitCompute.stageMask =
+			VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
+			VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+		waitInfos.push_back(waitCompute);
+
+		fmt::println("Should only execute when used compute timeline");
 	}
 
 	VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
@@ -200,14 +313,15 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 			gQueue.waitIdle();
 
 		Backend::resizeSwapchain();
-		auto& queue = resources.getRenderTargetDQueue();
-		queue.flush(); // Clear render targets
+
+		auto& targetQ1 = resources.getRenderTargetDQueue();
+		targetQ1.flush();
 		// Recreate all render targets with extent updates
-		ResourceManager::initRenderTargets(
+		ResourceManager::initUniformRenderTargets(
 			Backend::getDevice(),
-			queue,
+			targetQ1,
 			resources.getAllocator(),
-			_drawExtent); // New extent
+			_drawExtent);
 	}
 	else {
 		ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swapchain image!");
@@ -216,38 +330,27 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	_frameNumber++;
 }
 
+// Render Pass System V1
+// Very simple linear recording
 // ==============================================
 // === MAIN GRAPHICS RECORDING FOR ALL PASSES ===
 // ==============================================
 // All recorded in a single graphics queue
-
 void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	const auto device = Backend::getDevice();
-	const auto& swp = Backend::getSwapchainDef();
-	const auto& opaque = ResourceManager::getOpaqueImage();
-	const auto& transparent = ResourceManager::getTransparentImage();
-	const auto& toneMap = ResourceManager::getToneMapImage();
-	const auto& msaa = ResourceManager::getMSAAImage();
-	const auto& depth = ResourceManager::getDepthImage();
-	const auto& aoFinal = ResourceManager::getAORawImage();
-	const auto aoSampler = ResourceManager::getAOSampler();
-	const auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	const auto& volLight = ResourceManager::getVolumetricLightImage();
+	auto& swp = Backend::getSwapchainDef();
+	auto& opaque = ResourceManager::getOpaqueImage();
+	auto& transparent = ResourceManager::getTransparentImage();
+	auto& toneMap = ResourceManager::getToneMapImage();
+	auto& aoRaw = ResourceManager::getAORawImage();
+	auto& depthResolved = ResourceManager::getDepthResolvedImage();
+	auto& depth = ResourceManager::getDepthImage();
+	auto& volLight = ResourceManager::getVolumetricLightImage();
+	auto& shadowMask = ResourceManager::getScreenSpaceShadowMask();
+	const auto aoSampler = ResourceManager::getLinearLODClampSampler();
+	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
 
 	auto& debug = profiler.debugToggles;
-
-	// Small hack to fix dumb gpu validation layer issues.
-	// Fix some time later...
-	if (_frameNumber < 2) {
-		if (_frameNumber == 0) {
-			debug.aoMode = AO_OFF;
-			debug.enableShadows = 0;
-		}
-		else {
-			debug.aoMode = AO_GTAO;
-			debug.enableShadows = 1;
-		}
-	}
 
 	const VkExtent2D fullExtent = { _drawExtent.width, _drawExtent.height };
 	const VkExtent3D workgroupSize = { 16u, 16u, 1u };
@@ -262,26 +365,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	auto& gpuResources = Engine::getState().getGPUResources();
 
-	const auto& globalAddrsTableBuf = gpuResources.getAddressTableBuffer();
-
 	auto& scene = RenderScene::getCurrentSceneData();
 
 	bool hasVisibles = frameCtx.visibleCount > 0;
-
-	bool isTemporalValid = (_frameNumber > 0 && scene.temporal.y == 1);
-
-	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
-		// Update the global set for transforms
-		frameCtx.descriptorWriter.writeBuffer(
-			ADDRESS_TABLE_BINDING,
-			globalAddrsTableBuf.buffer,
-			sizeof(GPUAddressTable),
-			0,
-			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			unifiedSet);
-
-		frameCtx.descriptorWriter.updateSet(device, unifiedSet);
-	}
+	bool isTemporalValid = (!isFirstFrame() && scene.temporal.y == 1);
 
 	frameCtx.writeFrameDescriptors(device);
 
@@ -291,18 +378,46 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.cmdBuffer, &cmdBeginInfo));
 
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) && frameCtx.graphicsTimestampPool != VK_NULL_HANDLE) {
+		frameCtx.hasTimestampResultsPending = false;
+		frameCtx.timestampPassUsed.fill(false);
+
+		vkCmdResetQueryPool(
+			frameCtx.cmdBuffer,
+			frameCtx.graphicsTimestampPool,
+			0u,
+			TIMESTAMP_QUERY_COUNT
+		);
+	}
+
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue())) {
+		vkCmdWriteTimestamp2(
+			frameCtx.cmdBuffer,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			frameCtx.graphicsTimestampPool,
+			FRAME_BEGIN_QUERY
+		);
+	}
+
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
 	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
-		const auto& transformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Transforms);
-		const auto& prevTransformsBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::PrevTransforms);
-		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, transformsBuf);
-		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, prevTransformsBuf);
+		if (isTemporalValid) {
+			BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.prevTransforms_GPU);
+		}
+
+		BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.transforms_GPU);
 		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
 	}
 
+	if (frameCtx.lightsBufferUploadNeeded && hasVisibles) {
+		// Compute always reads this first
+		BarrierUtils::bufferComputeWriteToComputeRead(frameCtx.cmdBuffer, frameCtx.lights_GPU);
+		frameCtx.lightsBufferUploadNeeded = false; // Should only set back to false in here
+	}
+
 	if (hasVisibles) {
-		BarrierUtils::acquireShaderReadQ(frameCtx.cmdBuffer, frameCtx.visibleInstancesBuffer);
-		BarrierUtils::acquireIndirectQ(frameCtx.cmdBuffer, frameCtx.indirectDrawsBuffer);
+		BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.visibleInstances_GPU);
+		BarrierUtils::bufferTransferWriteToIndirectRead(frameCtx.cmdBuffer, frameCtx.indirectDraws_GPU);
 	}
 
 	vkCmdBindDescriptorSets(frameCtx.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -313,9 +428,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
-		opaque.image,
-		opaque.format,
-		VK_IMAGE_LAYOUT_UNDEFINED,
+		opaque,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Used in opaque shading to determine if on
@@ -324,20 +437,42 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		const auto indexBuffer = gpuResources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
 		vkCmdBindIndexBuffer(frameCtx.cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		// =====================
-		// === DEPTH PREPASS ===
-		RenderPasses::depthPrePass(
-			frameCtx,
-			Pipelines::getHandle(PipelineID::DepthPrepass),
-			isTemporalValid);
+		// ===============
+		// === PREPASS ===
+		{
+			RenderPasses::GraphicsScope basePrePassScope;
+			basePrePassScope.passID = PassID::Prepass;
+			RenderPasses::BasePrepass(frameCtx, basePrePassScope, profiler, isTemporalValid);
+		}
 
-		// ==========================
-		// === DEPTH PYRAMID PASS ===
-		RenderPasses::depthPyramidPass(frameCtx);
+		// ============================
+		// === HI-Z GENERATION PASS ===
+		{
+			RenderPasses::ComputeScope hiZScope;
+			hiZScope.passID = PassID::HiZGeneration;
+			RenderPasses::hiZGenerationPass(frameCtx, hiZScope, profiler);
+		}
+
+		// ==================================
+		// === CLUSTERED LIGHT BUILD PASS ===
+		if (LightingSystem::getActiveLightCount() > 0) {
+			RenderPasses::ComputeScope clusterScope;
+			clusterScope.passID = PassID::ClusteredLightBuild;
+			clusterScope.extent = {
+				LightingSystem::_clusteredData.tileCountX,
+				LightingSystem::_clusteredData.tileCountY
+			};
+			clusterScope.workgroupSize = { 8u, 8u, 1u }; // Initial tile size
+
+			RenderPasses::clusteredPass(frameCtx, clusterScope, profiler);
+		}
+
+		glm::vec2 fullPixelSize = glm::vec2(scene.pixelSizes.x, scene.pixelSizes.y);
+		glm::vec2 halfPixelSize = glm::vec2(scene.pixelSizes.z, scene.pixelSizes.w);
 
 		// =================
 		// === GTAO PASS ===
-		if (debug.aoMode == AO_GTAO) {
+		if ((debug.aoMode == AO_GTAO)) {
 			auto& gtaoPush = profiler.gtaoSettings;
 
 			const auto& proj = scene.proj;
@@ -348,136 +483,183 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			gtaoPush.ndcToViewMul = { gtaoPush.tanHalfFov.x * 2.0f, gtaoPush.tanHalfFov.y * -2.0f };
 			gtaoPush.ndcToViewAdd = { gtaoPush.tanHalfFov.x * -1.0f, gtaoPush.tanHalfFov.y * 1.0f };
 
-			gtaoPush.pixelSize = {
-				1.0f / static_cast<float>(winExtent.width),
-				1.0f / static_cast<float>(winExtent.height)
-			};
+			gtaoPush.ndcToViewMul_x_PixelSize = gtaoPush.ndcToViewMul * fullPixelSize;
 
-			gtaoPush.ndcToViewMul_x_PixelSize = gtaoPush.ndcToViewMul * gtaoPush.pixelSize;
-
-			RenderPasses::ComputeDispatchScope gtaoScope;
+			RenderPasses::ComputeScope gtaoScope;
+			gtaoScope.passID = PassID::GTAO;
 			gtaoScope.setPush(gtaoPush);
-			gtaoScope.extent = fullExtent;
+			gtaoScope.extent = { aoRaw.extent.width, aoRaw.extent.height };
 			gtaoScope.workgroupSize = workgroupSize;
 
-			RenderPasses::GTAOPass(frameCtx, gtaoScope, isTemporalValid);
+			RenderPasses::GTAOPass(frameCtx, gtaoScope, profiler, isTemporalValid);
 		}
-		// =================
-		// === SSAO PASS ===
-		else if (debug.aoMode == AO_SSAO) {
-			auto& ssaoPush = profiler.ssaoSettings;
-			ssaoPush.screenSize = glm::vec2(
-				static_cast<float>(winExtent.width),
-				static_cast<float>(winExtent.height)
-			);
-			ssaoPush.invScreenSize = 1.0f / ssaoPush.screenSize;
-
-			RenderPasses::ComputeDispatchScope ssaoScope;
-			ssaoScope.setPush(ssaoPush);
-			ssaoScope.extent = fullExtent;
-			ssaoScope.workgroupSize = workgroupSize;
-
-			RenderPasses::SSAOPass(frameCtx, ssaoScope);
-		}
-		// AO OFF
 		else {
+			// AO OFF
 			ImageUtils::transitionImage(
 				frameCtx.cmdBuffer,
-				aoFinal.image,
-				aoFinal.format,
-				VK_IMAGE_LAYOUT_UNDEFINED,
-				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+				aoRaw,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			);
 		}
 
-		// ================
-		// === CSM PASS ===
 		if (debug.enableShadows) {
-			RenderPasses::shadowCSMPass(frameCtx, Pipelines::getHandle(PipelineID::ShadowCSM));
+			// ================
+			// === CSM PASS ===
+			RenderPasses::GraphicsScope csmScope;
+			csmScope.passID = PassID::DirectionalCSM;
+			RenderPasses::shadowCSMPass(frameCtx, csmScope, profiler);
+
+			// =========================================
+			// === SCREEN SPACE CONTACT SHADOWS PASS ===
+			if (debug.enableSSS) {
+				RenderPasses::ComputeScope sssScope;
+				sssScope.passID = PassID::ScreenSpaceContactShadows;
+				sssScope.skipGroups = true;
+				sssScope.setPush(profiler.contactShadowsSettings);
+				RenderPasses::screenSpaceContactShadowsPass(frameCtx, sssScope, profiler);
+			}
+		}
+
+		if (!debug.enableShadows || !debug.enableSSS) {
+			ImageUtils::transitionImage(
+				frameCtx.cmdBuffer,
+				shadowMask,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			);
+		}
+
+
+		// ==========================
+		// === FLASH LIGHT SHADOW ===
+		if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
+			RenderPasses::GraphicsScope flScope;
+			flScope.passID = PassID::FlashlightShadow;
+			RenderPasses::shadowFlashLightPass(
+				frameCtx,
+				flScope,
+				profiler);
 		}
 	}
 
 	// =================================
 	// === MAIN FORWARD SHADING PASS ===
 	AttachmentDesc opaqueAttach{};
-	if (MSAA_ENABLED) {
-		opaqueAttach.imageView = msaa.imageView;
-		opaqueAttach.layout = msaa.initialLayout;
-		opaqueAttach.resolveView = opaque.imageView;
-		opaqueAttach.resolveLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		opaqueAttach.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-		opaqueAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	}
-	else {
-		opaqueAttach.imageView = opaque.imageView;
-		opaqueAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		opaqueAttach.resolveMode = VK_RESOLVE_MODE_NONE;
-		opaqueAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	}
+	opaqueAttach.imageView = opaque.imageView;
+	opaqueAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	opaqueAttach.resolveMode = VK_RESOLVE_MODE_NONE;
+	opaqueAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
+	//// Screen bounce light attachment write
+	//auto& bounceLightWrite = ResourceManager::getBounceLightHistoryWrite();
+	//ImageUtils::transitionImage(
+	//	frameCtx.cmdBuffer,
+	//	bounceLightWrite,
+	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	//AttachmentDesc bounceLightAttach;
+	//bounceLightAttach.imageView = bounceLightWrite.imageView;
+	//bounceLightAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	//bounceLightAttach.resolveMode = VK_RESOLVE_MODE_NONE;
+	//bounceLightAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	//bounceLightAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+	// Default depth read from pre pass
 	AttachmentDesc depthAttach{};
-	depthAttach.imageView = depth.imageView;
-	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depthAttach.imageView = depthResolved.imageView;
+	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	depthAttach.clearValue.depthStencil.depth = 0.0f;
 
-	RenderPasses::GraphicsRenderScope opaqueScope;
+	// Depth write
+	// Transparent needs the resolved
+	if ((profiler.pipeOverride.enabled) || // Note: Right now this only works due to only wireframe being an override pipeline
+		!hasVisibles)
+	{
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			depth,
+			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+		depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		depthAttach.imageView = depth.imageView;
+		depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	}
+
+	RenderPasses::GraphicsScope opaqueScope;
+	opaqueScope.passID = PassID::OpaqueForward;
+	// Define push constant for forward rendering passes opaque and transparent
+	_forwardPush.activeLightCount = LightingSystem::getActiveLightCount();
+	_forwardPush.flashlightVP = LightingSystem::_mainFlashLight.viewProj;
+
 
 	RenderPasses::beginRendering(
 		frameCtx.cmdBuffer,
-		{ opaqueAttach, depthAttach },
+		{
+			opaqueAttach,
+			//bounceLightAttach,
+			depthAttach
+		},
 		{ fullExtent },
 		opaqueScope);
 
 	// ===================
 	// === SKYBOX PASS ===
 	// Sky box draw always occurs
-	RenderPasses::skyboxPass(frameCtx, Pipelines::getHandle(PipelineID::Skybox), profiler);
+	RenderPasses::GraphicsScope skyboxScope;
+	skyboxScope = opaqueScope;
+	skyboxScope.passID = PassID::Skybox;
+	RenderPasses::skyboxPass(frameCtx, skyboxScope, profiler);
 
 	if (hasVisibles) {
-		// Can always assume opaque draw
-		PipelineHandle pipeline{};
+		// Final ao output
+		AllocatedImage aoFinal;
+		//if (isTemporalValid && (debug.aoMode == AO_GTAO) {
+		//	aoFinal = ResourceManager::getAOHistoryWrite();
+		//}
+		//else {
+		//	aoFinal = aoRaw;
+		//}
+		aoFinal = aoRaw;
 
-		// ===================
-		// === OPAQUE PASS ===
-		if (!profiler.pipeOverride.enabled) {
-			pipeline = Pipelines::getHandle(PipelineID::Opaque); // default mesh pipeline
-		}
-		else {
-			pipeline = Pipelines::getHandle(profiler.pipeOverride.selectedID);
-		}
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_1_TEX,
+			aoFinal.imageView,
+			aoSampler
+		);
 
-		if (debug.aoMode == AO_GTAO && isTemporalValid) {
-			// Temporally stabilized
-			const auto& aoTemporal = ResourceManager::getAOHistoryWrite();
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_2_TEX,
+			shadowMask.imageView,
+			ResourceManager::getNearestClampSampler()
+		);
+
+		if (debug.aoMode == AO_GTAO) {
 			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_1_TEX,
-				aoTemporal.imageView,
-				aoSampler
+				PUSH_BINDING_INPUT_3_TEX,
+				ResourceManager::getBentNormalsImage().imageView,
+				linearClampSampler
 			);
 		}
 		else {
+			// pointless write
 			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_1_TEX,
-				aoFinal.imageView,
-				aoSampler
+				PUSH_BINDING_INPUT_3_TEX,
+				shadowMask.imageView,
+				linearClampSampler
 			);
 		}
 
-		RenderPasses::opaqueMeshPass(frameCtx, pipeline, profiler);
+		RenderPasses::opaqueMeshPass(frameCtx, opaqueScope, profiler);
 
 		// ======================
 		// === OBB DEBUG PASS ===
 		if (debug.enableOBBs) {
-			RenderPasses::obbLinePass(frameCtx, Pipelines::getHandle(PipelineID::OBBLine), profiler);
-		}
-
-		// ============================
-		// === CASCADEVP DEBUG PASS ===
-		if (debug.enableShadows && debug.enableCascadeVPs) {
-			RenderPasses::CascadeVPLinePass(frameCtx, Pipelines::getHandle(PipelineID::CascadeVPLine), profiler);
+			RenderPasses::GraphicsScope obbScope;
+			obbScope = opaqueScope;
+			obbScope.passID = PassID::OBBLineView;
+			RenderPasses::obbLinePass(frameCtx, obbScope, profiler);
 		}
 	}
 
@@ -485,11 +667,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
-		opaque.image,
-		opaque.format,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		opaque,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
 
 	// ================================
 	// === VOLUMETRIC LIGHTING PASS ===
@@ -502,12 +681,13 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			1.0f / static_cast<float>(halfRes.y)
 		};
 
-		RenderPasses::ComputeDispatchScope volLightScope;
+		RenderPasses::ComputeScope volLightScope;
+		volLightScope.passID = PassID::VolumetricLighting;
 		volLightScope.setPush(volLightPush);
 		volLightScope.extent = { halfRes.x, halfRes.y };
 		volLightScope.workgroupSize = workgroupSize;
 
-		RenderPasses::volumetricLightingPass(frameCtx, volLightScope);
+		RenderPasses::volumetricLightingPass(frameCtx, volLightScope, profiler);
 	}
 
 	// ========================
@@ -518,9 +698,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
-			transparent.image,
-			transparent.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
+			transparent,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		AttachmentDesc transparentAttach{};
@@ -530,47 +708,37 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		transparentAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 		transparentAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
-		depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-		depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-
-		if (MSAA_ENABLED) {
-			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
-				depthResolved.image,
-				depthResolved.format,
-				VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-				VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-			depthAttach.imageView = depthResolved.imageView;
-		}
-
-		RenderPasses::GraphicsRenderScope transparentScope;
+		RenderPasses::GraphicsScope transparentScope;
+		transparentScope.passID = PassID::TransparentForward;
 
 		RenderPasses::beginRendering(
 			frameCtx.cmdBuffer,
-			{ transparentAttach, depthAttach },
+			{
+				transparentAttach,
+				//bounceLightAttach,
+				depthAttach
+			},
 			{ fullExtent },
 			transparentScope);
 
-		RenderPasses::transparentMeshPass(frameCtx, Pipelines::getHandle(PipelineID::Transparent), profiler);
+		RenderPasses::transparentMeshPass(frameCtx, transparentScope, profiler);
 
 		RenderPasses::endRendering(frameCtx.cmdBuffer);
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
-			transparent.image,
-			transparent.format,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			transparent,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 	// =====================
 	// === EXPOSURE PASS ===
-	RenderPasses::ComputeDispatchScope defaultScope;
-	defaultScope.extent = fullExtent;
-	defaultScope.workgroupSize = workgroupSize;
+	RenderPasses::ComputeScope exposureScope;
+	exposureScope.passID = PassID::Exposure;
+	exposureScope.extent = fullExtent;
+	exposureScope.workgroupSize = workgroupSize;
 	const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
-	RenderPasses::exposurePass(frameCtx, defaultScope, luminanceBuf, transparentVisible);
+	RenderPasses::exposurePass(frameCtx, exposureScope, profiler, luminanceBuf, transparentVisible);
 
 	// =======================
 	// === LENS FLARE PASS ===
@@ -612,69 +780,132 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		lensFlarePush.sunUv = uv;
 		lensFlarePush.sunVisible = (inFront && onScreen) ? 1.0f : 0.0f;
 
-		RenderPasses::ComputeDispatchScope lensFlareScope;
+		RenderPasses::ComputeScope lensFlareScope;
+		lensFlareScope.passID = PassID::LensFlare;
 		lensFlareScope.setPush(lensFlarePush);
 		lensFlareScope.extent = quarterRes;
 		lensFlareScope.workgroupSize = workgroupSize;
 
-		RenderPasses::lensFlarePass(frameCtx, lensFlareScope,
+		RenderPasses::lensFlarePass(frameCtx,
+			lensFlareScope,
+			profiler,
 			transparentVisible,
-			hasVisibles,
-			debug);
+			hasVisibles
+		);
 	}
 
 	// =====================
 	// === TONE MAP PASS ===
-	RenderPasses::toneMapPass(frameCtx, defaultScope,
+	exposureScope.passID = PassID::ToneMap;
+	RenderPasses::toneMapPass(frameCtx,
+		exposureScope,
+		profiler,
 		transparentVisible,
-		hasVisibles,
-		debug);
+		hasVisibles);
+
+
+	bool copyAAImage = false;
+
+	// =================
+	// === SMAA PASS ===
+	if (debug.aaMode == AA_SMAA && hasVisibles) {
+		RenderPasses::ComputeScope smaaScope;
+		smaaScope.passID = PassID::SMAA;
+		smaaScope.workgroupSize = workgroupSize;
+		smaaScope.extent = fullExtent;
+
+		smaaScope.setPush(gpuResources.smaaTextures);
+
+		RenderPasses::SMAAPass(frameCtx, smaaScope, profiler);
+		copyAAImage = true;
+	}
+	// ==================
+	// === CMAA2 PASS ===
+	else if (debug.aaMode == AA_CMAA2 && hasVisibles) {
+		RenderPasses::ComputeScope cmaa2Scope;
+		cmaa2Scope.passID = PassID::CMAA2;
+		cmaa2Scope.setPush(frameCtx.cmaa2Push);
+
+		const uint32_t quadCountX = (fullExtent.width + 1u) >> 1u;
+		const uint32_t quadCountY = (fullExtent.height + 1u) >> 1u;
+		const uint32_t groupsX = (quadCountX + 13u) / 14u;
+		const uint32_t groupsY = (quadCountY + 13u) / 14u;
+		cmaa2Scope.groupCountX = groupsX;
+		cmaa2Scope.groupCountY = groupsY;
+		cmaa2Scope.skipGroups = true;
+		cmaa2Scope.extent = { groupsX * 16u, groupsY * 16u };
+		RenderPasses::CMAA2Pass(frameCtx, cmaa2Scope, profiler);
+
+		copyAAImage = true;
+	}
+	// =================
+	// === FXAA PASS ===
+	else if (debug.aaMode == AA_FXAA && hasVisibles) {
+		RenderPasses::ComputeScope fxaaScope;
+		fxaaScope.passID = PassID::FXAA;
+		fxaaScope.workgroupSize = workgroupSize;
+		fxaaScope.extent = fullExtent;
+
+		RenderPasses::FXAAPass(frameCtx, fxaaScope, profiler);
+		copyAAImage = true;
+	}
+
+	if (!copyAAImage) {
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			toneMap,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+	}
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
 		swp.images[frameCtx.swapchainImageIndex],
-		swp.format,
-		VK_IMAGE_LAYOUT_UNDEFINED,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
+	const auto& aaColor = ResourceManager::getAAColor();
 	ImageUtils::copyImageToImage(
 		frameCtx.cmdBuffer,
-		toneMap.image,
-		swp.images[frameCtx.swapchainImageIndex],
-		fullExtent,
+		(copyAAImage) ? aaColor.image : toneMap.image,
+		swp.images[frameCtx.swapchainImageIndex].image,
 		swp.extent,
-		swp.format
+		swp.extent,
+		swp.images[frameCtx.swapchainImageIndex].format
 	);
 
-	if (debug.enableSettings || debug.enableStats) {
+	if (debug.enableSettings || debug.enableProfilerView) {
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
 			swp.images[frameCtx.swapchainImageIndex],
-			swp.format,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		EditorImgui::drawImgui(
 			frameCtx.cmdBuffer,
-			swp.imageViews[frameCtx.swapchainImageIndex],
+			swp.images[frameCtx.swapchainImageIndex].imageView,
 			swp.extent,
 			false);
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
 			swp.images[frameCtx.swapchainImageIndex],
-			swp.format,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 	else {
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
 			swp.images[frameCtx.swapchainImageIndex],
-			swp.format,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
+
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue())) {
+		vkCmdWriteTimestamp2(
+			frameCtx.cmdBuffer,
+			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+			frameCtx.graphicsTimestampPool,
+			FRAME_END_QUERY
+		);
+	}
+
+	profiler.collectTracyGPU(frameCtx.cmdBuffer);
 
 	VK_CHECK(vkEndCommandBuffer(frameCtx.cmdBuffer));
 }

@@ -1,218 +1,164 @@
 #pragma once
 
-#include "common/ResourceTypes.h"
-#include "renderer/gpu/PipelineManager.h"
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-
-struct IndirectStats {
-	uint32_t commands{ 0 };
-	uint32_t subdraws{ 0 };
-};
-
-struct VRAMStats {
-	VkDeviceSize used = 0;
-	VkDeviceSize budget = 0;
-};
-
-// Exponential moving average, to show clearer values over frames
-struct TimerAverager {
-	float smoothed = 0.0f;
-	bool initialized = false;
-
-	void add(float sample, float alpha = 0.1f) {
-		if (!initialized) {
-			smoothed = sample;
-			initialized = true;
-		}
-		else {
-			smoothed = (1.0f - alpha) * smoothed + alpha * sample;
-		}
-	}
-
-	float get() const { return smoothed; }
-};
-
-struct FrameStats {
-	std::string gpuName;
-	uint64_t triangleCount = 0;
-
-	TimerAverager deltaTime;
-	TimerAverager fps;
-	TimerAverager frameTime;
-	TimerAverager sceneUpdateTime;
-	TimerAverager drawTime;
-
-	VRAMStats vramStats{};
-
-	bool capFramerate = false;
-	float targetFrameRate = 0.0f;
-
-	uint32_t directDraws = 0;
-	IndirectStats opaqueIndirect;
-	IndirectStats transparentIndirect;
-};
-
-struct PipelineOverride {
-	bool enabled = false;
-	PipelineID selectedID = PipelineID::Wireframe;
-};
-
-// inline uniform block in global set 0
-struct alignas(4) DebugToggles {
-	// Higher level toggles
-	uint32_t enableOBBs = 0;
-	uint32_t enableCascadeVPs = 0;
-	uint32_t enableSettings = 1;
-	uint32_t enableStats = 1;
-
-	uint32_t aoMode = AO_GTAO;
-	uint32_t enableShadows = 1;
-	uint32_t enableVolumetrics = 1;
-	uint32_t activeEnvMap = 0; // Indexes into an array
-
-	// draw stats
-	uint32_t meshCount = 0;
-	uint32_t materialCount = 0;
-	uint32_t transformCount = 0;
-	uint32_t vertexCount = 0;
-
-	uint32_t indexCount = 0;
-	uint32_t enableLensFlare = 1;
-	uint32_t enableChromaticAberration = 1;
-	uint32_t pad0 = 0;
-
-	// fragment shader outputs
-	uint32_t showAlbedo = 0;
-	uint32_t showNormals = 0;
-	uint32_t showRoughness = 0;
-	uint32_t showMetallic = 0;
-
-	uint32_t showAmbientOcclusion = 0;
-	uint32_t showSpecular = 0;
-	uint32_t showDiffuse = 0;
-	uint32_t showCascadeSplits = 0;
-
-	uint32_t showEmissive = 0;
-	uint32_t showBakedAO = 0;
-	uint32_t enableTemporal = 0;
-	uint32_t pad1{};
-};
-
+#include "engine/platform/profiler/ProfilerTypes.h"
+#include "renderer/frame/FrameContext.h"
 
 class Profiler {
 public:
+	class ScopedPass {
+	public:
+		ScopedPass() = default;
+
+		ScopedPass(
+			Profiler& profiler,
+			FrameContext& frameCtx,
+			VkCommandBuffer cmd,
+			PassID passID
+		);
+
+		ScopedPass(const ScopedPass&) = delete;
+		ScopedPass& operator=(const ScopedPass&) = delete;
+
+		ScopedPass(ScopedPass&& other) noexcept;
+		ScopedPass& operator=(ScopedPass&& other) noexcept;
+
+		~ScopedPass();
+
+	private:
+		Profiler* _profiler = nullptr;
+		FrameContext* _frameCtx = nullptr;
+		VkCommandBuffer _cmd = VK_NULL_HANDLE;
+		PassID _passID = PassID::None;
+		void* _gpuZone = nullptr;
+		int64_t _cpuStartTicks = 0;
+	};
+
+	Profiler();
+	~Profiler();
+
 	void beginFrame();
 	void endFrame();
 
-	bool rendererWasStalled{ false };
-
 	void startTimer();
 	float endTimerMS() const;
-	inline float endTimerSec() const {
-		return endTimerMS() / 1000.0f;
-	}
+	float endTimerSec() const;
 
-	FrameStats& getStats() { return _stats; }
+	void resetDrawCalls();
 
-	void resetDrawCalls() {
-		_stats.triangleCount = 0u;
-		_stats.directDraws = 0u;
-		_stats.opaqueIndirect.commands = 0u;
-		_stats.opaqueIndirect.subdraws = 0u;
-		_stats.transparentIndirect.commands = 0u;
-		_stats.transparentIndirect.subdraws = 0u;
-	}
+	void resetPassStats();
+	void markPassActive(PassID passID);
 
-	inline void addDirect(uint32_t calls, uint64_t tris = 0) {
-		_stats.directDraws += calls;
-		_stats.triangleCount += tris;
-	}
+	void addCpuPassTime(
+		PassID passID,
+		float milliseconds
+	);
 
-	// Support both material pass views
+	void addGpuPassTime(
+		PassID passID,
+		float milliseconds
+	);
 
-	inline void addOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t tris = 0) {
-		_stats.opaqueIndirect.commands += commands;
-		_stats.opaqueIndirect.subdraws += subdraws;
-		_stats.triangleCount += tris;
-	}
-	inline void addTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t tris = 0) {
-		_stats.transparentIndirect.commands += commands;
-		_stats.transparentIndirect.subdraws += subdraws;
-		_stats.triangleCount += tris;
-	}
+	const char* getPassName(PassID passID) const;
+
+	ScopedPass profilePass(
+        FrameContext& frameCtx,
+		VkCommandBuffer cmd,
+		PassID passID
+	);
+
+
+	void initTracyGPU(
+		VkPhysicalDevice physicalDevice,
+		VkDevice device,
+		VkQueue queue,
+		VkCommandBuffer cmd
+	);
+
+	void shutdownTracyGPU();
+
+	void collectTracyGPU(VkCommandBuffer cmd);
+
+	bool isTracyGPUActive() const;
+
+	bool isTracyCompiledIn() const;
+	const std::array<PassTimingStats, static_cast<size_t>(PassID::Count)>& getAllPassStats() const;
+	bool isPassActive(PassID passID) const;
+
+	FrameStats& getStats();
+	const FrameStats& getStats() const;
+
+	const PassTimingStats& getPassStats(PassID passID) const;
+	PassTimingStats& getPassStats(PassID passID);
+
+	void addDirect(
+		uint32_t calls,
+		uint64_t triangles = 0
+	);
+
+	void addOpaqueIndirect(
+		uint32_t commands,
+		uint32_t subdraws,
+		uint64_t triangles = 0
+	);
+
+	void addTransparentIndirect(
+		uint32_t commands,
+		uint32_t subdraws,
+		uint64_t triangles = 0
+	);
+
+	void enableGPUAccelUsage();
+	void disableGPUAccelUsage();
+	bool isGPUAccelOn() const;
+
+	VRAMStats getTotalVRAMUsage(
+		VkPhysicalDevice physicalDevice,
+		VmaAllocator allocator
+	);
+
+	void enablePlatformTimerPrecision();
+	void disablePlatformTimerPrecision();
+
+	bool rendererWasStalled = false;
 
 	glm::vec3 cameraPos{};
 	std::mutex camMutex;
 
 	DebugToggles debugToggles;
 	PipelineOverride pipeOverride;
-	SSAOPush ssaoSettings;
+
 	GTAOPush gtaoSettings;
+	GTAOTemporalResolvePush gtaoTempResSettings;
 	VolumetricPush volLightSettings;
 	LensFlarePush lensFlareSettings;
+	SSSPush contactShadowsSettings;
 
-	VRAMStats GetTotalVRAMUsage(VkPhysicalDevice device, VmaAllocator allocator);
+	VkCommandBuffer& getTracyGraphicsCmd() { return tracyGraphicsCmdBuffer; }
 
-	void enablePlatformTimerPrecision();
-	void disablePlatformTimerPrecision();
-
-	Profiler();
-	~Profiler();
 private:
-	FrameStats _stats;
+	static constexpr size_t PassCount = static_cast<size_t>(PassID::Count);
 
-	LARGE_INTEGER _qpcFreq{};
-	long long _qpcFreqLL = 0;
-	long long _periodLL = 0; // ticks per frame
-	long long _nextTickLL = 0; // next target tick
-	double _qpcInv = 0.0; // seconds per tick
+	void* beginTracyGpuPass(
+		VkCommandBuffer cmd,
+		PassID passID
+	);
+
+	void endTracyGpuPass(void* gpuZone);
+
+	FrameStats _stats{};
+	std::array<PassTimingStats, PassCount> _passStats{};
+
+	VkCommandBuffer tracyGraphicsCmdBuffer = VK_NULL_HANDLE;
+
+	int64_t _qpcFrequency = 0;
+	int64_t _framePeriodTicks = 0;
+	int64_t _nextFrameTick = 0;
+	int64_t _startTimerTick = 0;
+
+	double _qpcInverse = 0.0;
 	double _frameStartTime = 0.0;
-	double _lastDeltaTime = 0.0;
-	LARGE_INTEGER _startTimer{};
+	double _lastFrameTime = 0.0;
+
+	bool _gpuAccelOn = false;
+	void* _tracyGpuContext = nullptr;
 };
-
-inline uint64_t trianglesFromNonIndexed(VkPrimitiveTopology topo, uint64_t vertexCount) {
-	switch (topo) {
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:  return vertexCount / 3u;
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP: return vertexCount >= 3 ? (vertexCount - 2u) : 0u;
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:   return vertexCount >= 3 ? (vertexCount - 2u) : 0u;
-	default:                                   return 0u; // points/lines/patches -> no triangles
-	}
-}
-
-inline uint64_t trianglesFromIndexed(VkPrimitiveTopology topo,
-	uint32_t indexCount,
-	uint32_t instanceCount)
-{
-	uint64_t base = 0;
-	switch (topo) {
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
-		static_cast<uint64_t>(base = indexCount / 3u);
-		break;
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
-	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
-		base = static_cast<uint64_t>(indexCount >= 3u) ? static_cast<uint64_t>(indexCount - 2u) : 0u; break;
-	default:
-		return 0; // points/lines/patches -> no triangles
-	}
-	return base * static_cast<uint64_t>(instanceCount);
-}
-
-
-inline uint64_t sumTrianglesIndirectRange(const std::vector<VkDrawIndexedIndirectCommand>& cmds,
-	uint32_t first,
-	uint32_t count,
-	VkPrimitiveTopology topo)
-{
-	uint64_t total = 0;
-	const size_t base = first;
-	for (uint32_t i = 0; i < count; ++i) {
-		const auto& d = cmds[base + static_cast<size_t>(i)];
-		total += trianglesFromIndexed(topo, d.indexCount, d.instanceCount);
-	}
-	return total;
-}

@@ -3,7 +3,6 @@
 #include "RenderScene.h"
 #include "DrawPreparation.h"
 #include "Visibility.h"
-#include "core/Environment.h"
 #include "utils/BufferUtils.h"
 #include "engine/Engine.h"
 
@@ -18,16 +17,22 @@ namespace RenderScene {
 
 	std::vector<GlobalInstance> _globalInstances;
 	std::vector<glm::mat4> _globalTransforms;
-	std::vector<glm::mat4> _prevTransforms;
+	uint32_t _recentTransformCount = 0;
 
 	bool _initializeTransformCopy = true;
 
 	Visibility::VisibilityState _visState;
 	std::vector<AABB> _visibleWorldAABBs;
 
+	Frustum _cascadeFrustums[MAX_SHADOW_CASCADES];
+
 	Camera _mainCamera;
 	glm::mat4 _curCamView;
 	glm::mat4 _curCamProj;
+
+	bool _lastFlashLightActive = false;
+	bool _flashLightDirtyAllFrames = false;
+	uint32_t _lightStateVersion = 0u;
 
 	const Camera& getCamera() { return _mainCamera; }
 
@@ -38,10 +43,10 @@ namespace RenderScene {
 	float _cachedAspectRatio = 0.0f;
 
 	Frustum _currentFrustum;
+	const Frustum& getMainFrustum() { return _currentFrustum; }
 
 	void updateCamera();
 	void updateShadowCSM(const glm::vec3& lightDir);
-	void extendFrustumByLightDirection(Frustum& frus, const glm::vec3& lightDir, float extensionDist);
 	bool _updateShadows = false;
 	bool _shadowsOn = false;
 
@@ -51,6 +56,28 @@ namespace RenderScene {
 	bool _isTemporalInvalid = false;
 
 	void createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc);
+
+	void updateDrawDataCPUPath(
+		FrameContext& frameCtx,
+		GPUResources& gpuResources,
+		const DebugToggles& debug);
+	void updateDrawDataGPUPath(FrameContext& frameCtx, GPUResources& gpuResources);
+
+	enum RenderPath : uint32_t {
+		CPU,
+		GPU
+	};
+	RenderPath _currentPath = RenderPath::CPU;
+
+	DispatchList _dispatchListSSS;
+
+	DispatchList buildDispatchList(
+		const glm::vec4 lightProj,
+		const glm::vec2 viewportSize,
+		const int waveSize = 64
+	);
+
+	void initCSMAtlasUVs();
 }
 
 void RenderScene::setScene(bool assetsLoaded) {
@@ -70,7 +97,7 @@ void RenderScene::setScene(bool assetsLoaded) {
 
 	_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 2.5f);    // golden sun
 	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f); // white
-	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.68f, 0.125f, 0.0f);
+	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.46f, -0.09f, 0.0f);
 }
 
 void RenderScene::updateCamera() {
@@ -82,7 +109,11 @@ void RenderScene::updateCamera() {
 	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler(), _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
-	_curCamProj = glm::perspectiveRH_ZO(glm::radians(_mainCamera._fovY), aspect, _mainCamera._farClip, _mainCamera._nearClip);
+	_curCamProj = glm::perspectiveRH_ZO(
+		glm::radians(_mainCamera._fovY),
+		aspect,
+		_mainCamera._farClip,
+		_mainCamera._nearClip);
 
 	_sceneData.view = _curCamView;
 	_sceneData.proj = _curCamProj;
@@ -94,43 +125,121 @@ void RenderScene::updateCamera() {
 		float pixelCount = width * height;
 		_sceneData.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
 
+		uint32_t widthU = static_cast<uint32_t>(width);
+		uint32_t heightU = static_cast<uint32_t>(height);
+
+		// Should clean some of this up
+		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
+		_sceneData.cameraClips.z = fullPixelSize.x;
+		_sceneData.cameraClips.w = fullPixelSize.y;
+
+		VkExtent3D halfExtent = {
+			(widthU + 1u) >> 1,
+			(heightU + 1u) >> 1,
+			1u
+		};
+		glm::vec2 halfPixelSize = 1.0f /
+			glm::vec2(static_cast<float>(halfExtent.width), static_cast<float>(halfExtent.height));
+
+		_sceneData.pixelSizes = glm::vec4(
+			fullPixelSize.x,
+			fullPixelSize.y,
+			halfPixelSize.x,
+			halfPixelSize.y);
+
 		_isTemporalInvalid = true;
 	}
 
-	if (_sceneData.viewproj != _lastViewProj) {
-		_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
+	_camChanged = (_sceneData.viewproj != _lastViewProj);
+
+	if (_camChanged) {
+		// Standard non modified frustum
+		_currentFrustum = extractFrustum(_sceneData.viewproj);
 		_lastViewProj = _sceneData.viewproj;
 		_camChanged = true;
 
 		_sceneData.invView = glm::inverse(_curCamView);
 		_sceneData.invProj = glm::inverse(_curCamProj);
 	}
-	else {
-		_camChanged = false;
+}
+
+static inline glm::vec4 buildAtlasUV(
+	VkExtent2D atlasExtent,
+	VkExtent2D tileExtent,
+	uint32_t tileX,
+	uint32_t tileY,
+	uint32_t borderPixels)
+{
+	const float atlasW = static_cast<float>(atlasExtent.width);
+	const float atlasH = static_cast<float>(atlasExtent.height);
+
+	const float tileW  = static_cast<float>(tileExtent.width);
+	const float tileH  = static_cast<float>(tileExtent.height);
+
+	const float borderU = static_cast<float>(borderPixels) / atlasW;
+	const float borderV = static_cast<float>(borderPixels) / atlasH;
+
+	const float offsetX = static_cast<float>(tileX) * tileW;
+	const float offsetY = static_cast<float>(tileY) * tileH;
+
+	const float offsetU = (offsetX / atlasW) + borderU;
+	const float offsetV = (offsetY / atlasH) + borderV;
+
+	const float scaleU  = (tileW / atlasW) - 2.0f * borderU;
+	const float scaleV  = (tileH / atlasH) - 2.0f * borderV;
+
+	return glm::vec4(scaleU, scaleV, offsetU, offsetV);
+}
+
+void RenderScene::initCSMAtlasUVs()
+{
+	const auto& atlas = ResourceManager::getDirectionalCSMAtlas();
+
+	const VkExtent2D atlasExtent = {
+		atlas.extent.width,
+		atlas.extent.height
+	};
+
+	// For a 2x2 grid:
+	const uint32_t tilesPerRow = 2u;
+	const VkExtent2D tileExtent = {
+		atlas.extent.width / tilesPerRow,
+		atlas.extent.height / tilesPerRow
+	};
+
+	const uint32_t borderPixels = 2;
+
+	for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
+		const uint32_t tileX = cascadeIndex % tilesPerRow;
+		const uint32_t tileY = cascadeIndex / tilesPerRow;
+
+		_shadowCSM.atlasUV[cascadeIndex] =
+			buildAtlasUV(atlasExtent, tileExtent, tileX, tileY, borderPixels);
 	}
 }
+
 
 // Two great starting points to learn cascade shadow maps
 // https://learnopengl.com/Guest-Articles/2021/CSM
 // https://www.youtube.com/watch?v=3FMONJ1O39U&list=LL&index=157
-
 // Both GLM_FORCE are enabled globally in hpp within pch
 // #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 // #define GLM_FORCE_RIGHT_HANDED
 // Pipeline depth compare LESS
 // CULL MODE: FRONT BIT
 void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
-	const auto& shadowMap = ResourceManager::getShadowMapImage();
-	const float shadowRes = static_cast<float>(shadowMap.extent.width);
+	const auto& shadowAtlas = ResourceManager::getDirectionalCSMAtlas();
+	const float shadowResWidth = static_cast<float>(shadowAtlas.extent.width);
+	const float tileRes = static_cast<float>(shadowResWidth / 2u);
 	// Define all csm parameters once
 	if (_shadowCSM.params.y == 0.0f) {
 		_shadowControl.splitLambda = 0.97f;
-		_shadowControl.lightDist = 0.25f;
 		_shadowControl.bias = 0.0001f;
 		_shadowCSM.params.z = static_cast<float>(MAX_SHADOW_CASCADES);
-		_shadowCSM.params.y = static_cast<float>(shadowMap.lutEntry.combinedImageIndex);
-		_shadowCSM.params.w = 1.0f / shadowRes;
-		_shadowCSM.cascadeRadii = { 1.0f, 2.0f, 3.0f, 5.0f };
+		_shadowCSM.params.y = static_cast<float>(shadowAtlas.lutEntry.combinedImageIndex);
+		_shadowCSM.params.w = 1.0f / tileRes;
+		_shadowCSM.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+		initCSMAtlasUVs();
 	}
 
 	const float aspect = _sceneData.viewportSize.x / _sceneData.viewportSize.y;
@@ -198,6 +307,8 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		// The scale factors cover edge cases for stability,
 		// depending on distance with the occluder and the view.
 		const float depthRange = max.z - min.z;
+
+		// These two scale factors keep shadows working
 		min.z -= depthRange * 5.0f;
 		max.z += depthRange * 2.0f;
 
@@ -212,36 +323,189 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		// get the offset
 		// scale it back down, only use x,y and apply it to vp matrix
 		glm::vec3 shadowOrigin = shadowMatrix * glm::vec4(glm::vec3(0.0f), 1.0f);
-		shadowOrigin = shadowOrigin * shadowRes / 2.0f;
+		shadowOrigin = shadowOrigin * tileRes / 2.0f;
 		glm::vec3 roundedOrigin = glm::round(shadowOrigin);
 		glm::vec3 roundOffset = roundedOrigin - shadowOrigin;
-		roundOffset = roundOffset * 2.0f / shadowRes;
+		roundOffset = roundOffset * 2.0f / tileRes;
 		roundOffset.z = 0.0f;
 		shadowMatrix[3] += glm::vec4(roundOffset, 0.0f);
 		_shadowCSM.cascadeVP[i] = shadowMatrix;
 
 		lastSplitDist = curSplit;
+
+		_cascadeFrustums[i] = extractFrustum(_shadowCSM.cascadeVP[i]);
 	}
 }
 
+
+static int bend_min(const int a, const int b) { return a > b ? b : a; }
+static int bend_max(const int a, const int b) { return a > b ? a : b; }
+
+// Dispatch building logic based on Bend Studio's
+// https://www.bendstudio.com/blog/inside-bend-screen-space-shadows/
+DispatchList RenderScene::buildDispatchList(
+	const glm::vec4 lightProj,
+	const glm::vec2 viewportSize,
+	const int waveSize)
+{
+	DispatchList result;
+
+	// Floating point division in the shader has a practical limit for precision when the light is *very* far off screen (~1m pixels+)
+	// So when computing the light XY coordinate, use an adjusted w value to handle these extreme values
+	float xy_light_w = lightProj[3];
+	const float FP_limit = 0.000002f * static_cast<float>(waveSize);
+
+	if (xy_light_w >= 0 && xy_light_w < FP_limit) xy_light_w = FP_limit;
+	else if (xy_light_w < 0 && xy_light_w > -FP_limit) xy_light_w = -FP_limit;
+
+	// Need precise XY pixel coordinates of the light
+	result.lightCoords[0] = ((lightProj[0] / xy_light_w) * +0.5f + 0.5f) * viewportSize.x;
+
+	// NOTE: Y flip required for my light projection to work
+	result.lightCoords[1] = (1.0f - ((lightProj[1] / xy_light_w) * -0.5f + 0.5f)) * viewportSize.y;
+	result.lightCoords[2] = lightProj[3] == 0 ? 0 : (lightProj[2] / lightProj[3]);
+	result.lightCoords[3] = lightProj[3] > 0 ? 1.0f : -1.0f;
+
+	int32_t light_xy[2] =
+	{
+		static_cast<int32_t>((result.lightCoords[0] + 0.5f)),
+		static_cast<int32_t>((result.lightCoords[1] + 0.5f))
+	};
+
+	// Make the bounds inclusive, relative to the light
+	const int32_t biased_bounds[4] =
+	{
+		0 - light_xy[0],
+		-(static_cast<int32_t>(viewportSize.y) - light_xy[1]),
+		static_cast<int32_t>(viewportSize.x) - light_xy[0],
+		-(0 - light_xy[1]),
+	};
+
+	// Process 4 quadrants around the light center,
+	// They each form a rectangle with one corner on the light XY coordinate
+	// If the rectangle isn't square, it will need breaking in two on the larger axis
+	// 0 = bottom left, 1 = bottom right, 2 = top left, 2 = top right
+	for (int q = 0; q < 4; q++) {
+		// Quads 0 and 3 needs to be +1 vertically, 1 and 2 need to be +1 horizontally
+		bool vertical = q == 0 || q == 3;
+
+		// Bounds relative to the quadrant
+		const int bounds[4] =
+		{
+			bend_max(0, ((q & 1) ? biased_bounds[0] : -biased_bounds[2])) / waveSize,
+			bend_max(0, ((q & 2) ? biased_bounds[1] : -biased_bounds[3])) / waveSize,
+			bend_max(0, (((q & 1) ? biased_bounds[2] : -biased_bounds[0]) + waveSize * (vertical ? 1 : 2) - 1)) / waveSize,
+			bend_max(0, (((q & 2) ? biased_bounds[3] : -biased_bounds[1]) + waveSize * (vertical ? 2 : 1) - 1)) / waveSize,
+		};
+
+		if ((bounds[2] - bounds[0]) > 0 && (bounds[3] - bounds[1]) > 0) {
+			int bias_x = (q == 2 || q == 3) ? 1 : 0;
+			int bias_y = (q == 1 || q == 3) ? 1 : 0;
+
+			DispatchData& disp = result.dispatch[result.dispatchCount++];
+
+			disp.waveCount[0] = waveSize; // 64
+			disp.waveCount[1] = bounds[2] - bounds[0];
+			disp.waveCount[2] = bounds[3] - bounds[1];
+			disp.waveOffset[0] = ((q & 1) ? bounds[0] : -bounds[2]) + bias_x;
+			disp.waveOffset[1] = ((q & 2) ? -bounds[3] : bounds[1]) + bias_y;
+
+			// We want the far corner of this quadrant relative to the light,
+			// as we need to know where the diagonal light ray intersects with the edge of the bounds
+			int axis_delta = +biased_bounds[0] - biased_bounds[1];
+			if (q == 1) axis_delta = +biased_bounds[2] + biased_bounds[1];
+			if (q == 2) axis_delta = -biased_bounds[0] - biased_bounds[3];
+			if (q == 3) axis_delta = -biased_bounds[2] + biased_bounds[3];
+
+			axis_delta = (axis_delta + waveSize - 1) / waveSize;
+
+			if (axis_delta > 0)
+			{
+				DispatchData& disp2 = result.dispatch[result.dispatchCount++];
+
+				// Take copy of current volume
+				disp2 = disp;
+
+				if (q == 0)
+				{
+					// Split on Y, split becomes -1 larger on x
+					disp2.waveCount[2] = bend_min(disp.waveCount[2], axis_delta);
+					disp.waveCount[2] -= disp2.waveCount[2];
+					disp2.waveOffset[1] = disp.waveOffset[1] + disp.waveCount[2];
+					disp2.waveOffset[0]--;
+					disp2.waveCount[1]++;
+				}
+				if (q == 1)
+				{
+					// Split on X, split becomes +1 larger on y
+					disp2.waveCount[1] = bend_min(disp.waveCount[1], axis_delta);
+					disp.waveCount[1] -= disp2.waveCount[1];
+					disp2.waveOffset[0] = disp.waveOffset[0] + disp.waveCount[1];
+					disp2.waveCount[2]++;
+				}
+				if (q == 2)
+				{
+					// Split on X, split becomes -1 larger on y
+					disp2.waveCount[1] = bend_min(disp.waveCount[1], axis_delta);
+					disp.waveCount[1] -= disp2.waveCount[1];
+					disp.waveOffset[0] += disp2.waveCount[1];
+					disp2.waveCount[2]++;
+					disp2.waveOffset[1]--;
+				}
+				if (q == 3)
+				{
+					// Split on Y, split becomes +1 larger on x
+					disp2.waveCount[2] = bend_min(disp.waveCount[2], axis_delta);
+					disp.waveCount[2] -= disp2.waveCount[2];
+					disp.waveOffset[1] += disp2.waveCount[2];
+					disp2.waveCount[1]++;
+				}
+
+				// Remove if too small
+				if (disp2.waveCount[1] <= 0 || disp2.waveCount[2] <= 0)
+				{
+					disp2 = result.dispatch[--result.dispatchCount];
+				}
+				if (disp.waveCount[1] <= 0 || disp.waveCount[2] <= 0)
+				{
+					disp = result.dispatch[--result.dispatchCount];
+				}
+			}
+		}
+	}
+
+	// Scale the shader values by the wave count, the shader expects this
+	for (int i = 0; i < result.dispatchCount; i++) {
+		result.dispatch[i].waveOffset[0] *= waveSize;
+		result.dispatch[i].waveOffset[1] *= waveSize;
+	}
+
+	return result;
+}
+
 void RenderScene::createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc) {
-	frameCtx.sceneDataBuffer = BufferUtils::createUniformBuffer(_sceneData, alloc);
+	frameCtx.sceneData_UBO = BufferUtils::createUniformBuffer(_sceneData, alloc);
 
 	frameCtx.cpuDeletion.push_function([&, alloc]() mutable {
-		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneDataBuffer, alloc);
+		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneData_UBO, alloc);
 	});
 }
 
-void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources, const DebugToggles& debug) {
+void RenderScene::updateScene(
+	FrameContext& frameCtx,
+	GPUResources& gpuResources,
+	const DebugToggles& debug)
+{
 	_isTemporalInvalid = false; // Assume clean start each frame
 
 	updateCamera();
 
 	const auto allocator = gpuResources.getAllocator();
 
+	_sceneData.temporal.x = frameCtx.frameIndex;
+
 	// No scene loaded in
 	if (!_assetsLoaded) {
-		_sceneData.temporal.x = frameCtx.frameIndex;
 		_sceneData.temporal.y = 0u;
 		createSceneBuffer(frameCtx, allocator);
 		return;
@@ -249,62 +513,114 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 
 	frameCtx.clearRenderData();
 
-	auto& meshes = gpuResources.getResgisteredMeshes();
+	const auto deltaTime = Engine::getProfiler().getStats().deltaSecondsRaw;
 
-	// Start of each frame copy the current transforms into previous.
-	// Frame 0 this will just be empty.
-	_prevTransforms = _globalTransforms;
+	// Light Updates, handle dynamics first
+	bool mainList = false;
+	bool dynamicList = false;
+	bool flashLightChanged = false;
 
-	DrawPreparation::syncGlobalInstancesAndTransforms(
-		frameCtx,
-		gpuResources,
+	if (UserInput::keyboard.isPressed(GLFW_KEY_F)) {
+		LightingSystem::_mainFlashLight.toggleFlashLight();
+	}
+
+	const bool flashLightActive = LightingSystem::_mainFlashLight.isFlashLightActive();
+
+	if (flashLightActive) {
+		flashLightChanged = LightingSystem::_mainFlashLight.updateFlashLight(
+			LightingSystem::_globalLightList,
+			ResourceManager::getFlashLightShadowMap().lutEntry.combinedImageIndex,
+			ResourceManager::getCookieGoboImage().lutEntry.combinedImageIndex,
+			_mainCamera._position,
+			_mainCamera._currentView
+		);
+	}
+
+	bool flashLightStateChanged = false;
+	if (flashLightActive != _lastFlashLightActive) {
+		_lastFlashLightActive = flashLightActive;
+		flashLightStateChanged = true;
+	}
+
+	if (flashLightChanged || flashLightStateChanged) {
+		++_lightStateVersion;
+	}
+
+	if (frameCtx.uploadedFlashLightVersion != _lightStateVersion) {
+		frameCtx.lightsBufferUploadNeeded = true;
+		frameCtx.uploadedFlashLightVersion = _lightStateVersion;
+	}
+
+	mainList = LightingSystem::updateLightList();
+	if (LightingSystem::_dynamicLightsEnabled) {
+		dynamicList = LightingSystem::updateDynamicLightsOrbit(deltaTime);
+		frameCtx.recentDynamicLightsTransform = true;
+	}
+	else {
+		// Requires update when count hasn't changed but dynamic and static states
+		if (frameCtx.recentDynamicLightsTransform && !frameCtx.lightsBufferUploadNeeded) {
+			frameCtx.lightsBufferUploadNeeded = true;
+			frameCtx.recentDynamicLightsTransform = false;
+		}
+	}
+
+	// Static update changes
+	if (frameCtx.recentLightListCount != LightingSystem::_globalLightList.size()) {
+		frameCtx.recentLightListCount = static_cast<uint32_t>(LightingSystem::_globalLightList.size());
+		frameCtx.lightsBufferUploadNeeded = true;
+	}
+
+	// First time init for lights buffer
+	if (!frameCtx.lightsInitialized && (mainList || dynamicList || flashLightChanged)) {
+		frameCtx.lightsInitialized = true;
+	}
+
+	if (mainList || dynamicList || flashLightChanged) {
+		frameCtx.lightsBufferUploadNeeded = true;
+	}
+
+	frameCtx.transformsBufferUploadNeeded = DrawPreparation::syncGlobalInstancesAndTransforms(
 		_sceneProfiles,
 		_globalInstances,
-		_globalTransforms);
+		_globalTransforms,
+		deltaTime);
 
-
-	// The command for this upload is uploaded during frame 0 initialization upload for transforms,
-	// Including all previous asset global loaded buffers.
-	// Could also occur if any buffer is destoryed internally.
-	gpuResources.updateAddressTableMapped();
+	// First time upload for transforms
+	if (!frameCtx.transformsInitialized) {
+		frameCtx.transformsInitialized = true;
+		frameCtx.transformsBufferUploadNeeded = true;
+	}
 
 	// First time intialization copy
 	if (_initializeTransformCopy) {
-		_prevTransforms = _globalTransforms;
 		_initializeTransformCopy = false;
 		_isTemporalInvalid = true;
 	}
 
-	// Instances with transforms counts could be increases or shrunk during the sync
-	if (_globalTransforms.size() != _prevTransforms.size()) {
+	// Instances with transforms counts could be increased or shrunk during the sync
+	if (static_cast<uint32_t>(_globalTransforms.size()) != _recentTransformCount) {
 		_isTemporalInvalid = true;
-		_prevTransforms = _globalTransforms;
+		_recentTransformCount = static_cast<uint32_t>(_globalTransforms.size());
 	}
 
-	frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
-		_visState,
-		_globalInstances,
-		_loadedScenes,
-		meshes.meshData,
-		_globalTransforms);
-
-	Visibility::applySyncResult(
-		_visState,
-		frameCtx.visSyncResult);
-
 	const glm::vec3 lightDir = glm::normalize(glm::vec3(_sceneData.sunlightDirection));
+
+	// Screen space contact shadows
+	if (debug.enableSSS) {
+		glm::vec4 lightProj = _sceneData.viewproj * glm::vec4(lightDir, 0.0f);
+
+		_dispatchListSSS = buildDispatchList(
+			lightProj,
+			glm::vec2(_sceneData.viewportSize.x, _sceneData.viewportSize.y)
+		);
+	}
+
+	// Cascaded shadow map updates
 	if (debug.enableShadows) {
 		_shadowCSM.params.x = _shadowControl.bias;
 
 		if (_camChanged || (lightDir != _lastLightDir) || !_shadowsOn) {
-			if (!_camChanged && lightDir != _lastLightDir) {
-				// Extract new frustum if only light has changed
-				_currentFrustum = Visibility::extractFrustum(_sceneData.viewproj);
-				_lastLightDir = lightDir;
-				_lastViewProj = _sceneData.viewproj;
-			}
-			float extensionDist = _mainCamera._farClip * _shadowControl.lightDist;
-			extendFrustumByLightDirection(_currentFrustum, lightDir, extensionDist);
+			_lastLightDir = lightDir;
 			_updateShadows = true;
 			_shadowsOn = true;
 		}
@@ -317,6 +633,66 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		_lastViewProj = glm::mat4(1.0f); // Default viewproj to recalculate frustum
 		_shadowsOn = false;
 	}
+	if (debug.enableShadows && _updateShadows) {
+		updateShadowCSM(lightDir);
+	}
+
+
+	if (debug.enableTemporal) {
+		_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
+	}
+	else {
+		_sceneData.temporal.y = 0u;
+	}
+	createSceneBuffer(frameCtx, allocator);
+
+	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.
+	frameCtx.shadowCSM_UBO = BufferUtils::createUniformBuffer(_shadowCSM, allocator);
+	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
+		BufferUtils::destroyAllocatedBuffer(frameCtx.shadowCSM_UBO, allocator);
+	});
+
+	auto& meshes = gpuResources.getResgisteredMeshes();
+	const bool& gpuAccelPath = Engine::getProfiler().isGPUAccelOn();
+	// When a update from gpu to cpu path occurs the bvh structures need to be updated.
+	// For simplicity I'm just gonna clear the structures and rebuild it.
+	if (_currentPath == RenderPath::GPU && !gpuAccelPath) {
+		_visState.cleanup();
+
+		frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
+			_visState,
+			_globalInstances,
+			_loadedScenes,
+			meshes.meshData,
+			_globalTransforms);
+	}
+	else {
+		frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
+			_visState,
+			_globalInstances,
+			_loadedScenes,
+			meshes.meshData,
+			_globalTransforms);
+	}
+
+	if (gpuAccelPath) {
+		updateDrawDataGPUPath(frameCtx, gpuResources);
+	}
+	else {
+		updateDrawDataCPUPath(frameCtx, gpuResources, debug);
+	}
+}
+
+void RenderScene::updateDrawDataCPUPath(
+	FrameContext& frameCtx,
+	GPUResources& gpuResources,
+	const DebugToggles& debug)
+{
+	_currentPath = RenderPath::CPU;
+
+	Visibility::applySyncResult(
+		_visState,
+		frameCtx.visSyncResult);
 
 	// CPU CULLING
 	Visibility::cullBVHCollect(
@@ -325,9 +701,71 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 		frameCtx.visibleInstances,
 		_visibleWorldAABBs);
 
+
 	if (!frameCtx.visibleInstances.empty()) {
 		frameCtx.visibleCount = static_cast<uint32_t>(frameCtx.visibleInstances.size());
 
+		//// Assign all unique instanceIDs to visible instances, enables map back to all worldaabbs.
+		//uint32_t mainVisibleSetID = 0;
+		//for (auto& inst : frameCtx.visibleInstances) {
+		//	inst.instanceID = mainVisibleSetID++;
+		//}
+
+		if (debug.enableShadows) {
+			frameCtx.shadowCasterInstances.reserve(std::max(1024u, frameCtx.visibleCount * 2u));
+
+			for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
+
+				// First 3 cascades can get foilage shadows
+				const bool allowAlphaMasked = (cascadeIndex != MAX_SHADOW_CASCADES - 1u);
+
+				PassRange& cascadeRange = frameCtx.shadowCastersRanges[cascadeIndex];
+				cascadeRange.firstInstance =
+					static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
+
+				Visibility::cullBVHCollectShadowCasters(
+					_visState,
+					_cascadeFrustums[cascadeIndex],
+					frameCtx.shadowCasterInstances,
+					gpuResources.getMaterialFlagsByID(),
+					allowAlphaMasked
+				);
+
+				cascadeRange.visibleCount =
+					static_cast<uint32_t>(frameCtx.shadowCasterInstances.size()) - cascadeRange.firstInstance;
+
+				ASSERT(cascadeRange.firstInstance + cascadeRange.visibleCount <= frameCtx.shadowCasterInstances.size());
+			}
+		}
+
+		if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
+			frameCtx.shadowCasterInstances.reserve(frameCtx.shadowCasterInstances.size() + frameCtx.visibleCount);
+
+			frameCtx.flashLightShadowRange.firstInstance =
+				static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
+
+			Visibility::cullBVHCollectShadowCasters(
+				_visState,
+				LightingSystem::_mainFlashLight.frustum,
+				frameCtx.shadowCasterInstances,
+				gpuResources.getMaterialFlagsByID(),
+				false
+			);
+
+			frameCtx.flashLightShadowRange.visibleCount =
+				static_cast<uint32_t>(frameCtx.shadowCasterInstances.size()) - frameCtx.flashLightShadowRange.firstInstance;
+
+			ASSERT(frameCtx.flashLightShadowRange.firstInstance +
+				frameCtx.flashLightShadowRange.visibleCount <= frameCtx.shadowCasterInstances.size());
+		}
+
+		//// Same pattern as main set
+		//uint32_t shadowCastersID = 0;
+		//for (auto& inst : frameCtx.shadowCasterInstances) {
+		//	inst.instanceID = shadowCastersID++;
+		//}
+
+		auto& meshes = gpuResources.getResgisteredMeshes();
 		DrawPreparation::buildAndSortIndirectDraws(
 			frameCtx,
 			meshes.meshData,
@@ -341,50 +779,31 @@ void RenderScene::updateScene(FrameContext& frameCtx, GPUResources& gpuResources
 			frameCtx,
 			gpuResources,
 			_globalTransforms,
-			_prevTransforms,
-			Backend::getTransferQueue());
-
-		if (debug.enableShadows && _updateShadows) {
-			updateShadowCSM(lightDir);
-		}
-	}
-
-	_sceneData.temporal.x = frameCtx.frameIndex;
-	if (debug.enableTemporal) {
-		_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
-	}
-	else {
-		_sceneData.temporal.y = 0u;
-	}
-	createSceneBuffer(frameCtx, allocator);
-
-	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.
-	frameCtx.shadowCSMBuffer = BufferUtils::createUniformBuffer(_shadowCSM, allocator);
-	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
-		BufferUtils::destroyAllocatedBuffer(frameCtx.shadowCSMBuffer, allocator);
-	});
-}
-
-// To improve shadow casters that appear out of the main view frustum
-void RenderScene::extendFrustumByLightDirection(Frustum& frus, const glm::vec3& lightDir, float extensionDist) {
-	for (uint32_t i = 0; i < 6; ++i) {
-		glm::vec3 normalPlane = glm::vec3(frus.planes[i]);
-		float facing = glm::dot(normalPlane, lightDir);
-
-		// Plane faces roughly toward light
-		if (facing < 0.0f) {
-			// Move it outward along its normal
-			frus.planes[i].w += extensionDist * (-facing);
-		}
+			LightingSystem::_globalLightList,
+			Backend::getTransferQueue(),
+			bool(_sceneData.temporal.y),
+			Engine::getProfiler().isGPUAccelOn());
 	}
 }
 
-void RenderScene::cleanScene(GPUAddressTable& globalTable) {
+// The actual culling and build pass occurs inside the Renderer.cpp, this just handles the transfer queue updates
+void RenderScene::updateDrawDataGPUPath(FrameContext& frameCtx, GPUResources& gpuResources)
+{
+	_currentPath = RenderPath::GPU;
+
+	DrawPreparation::uploadGPUBuffersForFrame(
+		frameCtx,
+		gpuResources,
+		_globalTransforms,
+		LightingSystem::_globalLightList,
+		Backend::getTransferQueue(),
+		bool(_sceneData.temporal.y),
+		Engine::getProfiler().isGPUAccelOn());
+}
+
+void RenderScene::cleanScene() {
 	_loadedScenes.clear();
 	_visState.cleanup();
 	_globalTransforms.clear();
-	_prevTransforms.clear();
-	globalTable.removeAddress(AddressBufferType::Transforms);
-	globalTable.removeAddress(AddressBufferType::PrevTransforms);
 	_initializeTransformCopy = true;
 }

@@ -4,14 +4,8 @@
 #include "common/ResourceTypes.h"
 #include "common/EngineConstants.h"
 
-// TODO: Find a better place for this.
-// All systems that need msaa counts are
-// image creation in here, pipeline setup, and during rendering
-inline uint32_t CURRENT_MSAA_LVL = MSAACOUNT_8;
-inline bool MSAA_ENABLED = true;
-
 // Anisotropic Filtering
-inline float CURRENT_AF_LVL = ANISOTROPY_LEVEL_16;
+inline float CURRENT_AF_LVL = ANISOTROPY_LEVEL_8;
 
 struct GPUResources {
 public:
@@ -19,10 +13,15 @@ public:
 	DeletionQueue& getMainDQueue() { return mainDeletionQueue; }
 	DeletionQueue& getTempDQueue() { return tempDeletionQueue; }
 	DeletionQueue& getRenderTargetDQueue() { return renderTargetQueue; }
+	DeletionQueue& getDynamicPipelineQueue() { return dynamicPipelineQueue; }
+	DeletionQueue& getDynamicPipelineShaderStagesQueue() { return dynamicPipelineShaderStagesQueue; }
 	VkCommandPool& getGraphicsPool() { return graphicsPool; }
 	VkCommandPool& getTransferPool() { return transferPool; }
 	VkCommandPool& getComputePool() { return computePool; }
 	VkFence& getLastSubmittedFence() { return lastSubmittedFence; }
+
+	std::vector<uint32_t>& getMaterialFlagsByID() { return materialFlagsIDs; }
+
 	void init(const VkDevice device);
 
 	GPUAddressTable& getAddressTable() { return gpuAddresses; }
@@ -54,15 +53,25 @@ public:
 		getLUTManager().clear();
 	}
 
+	AllocatedBuffer& getLightListStagingBuffer() {
+		return lightListStagingBuffer;
+	}
+
+	AllocatedBuffer& getInstanceTransformsStagingBuffer() {
+		return instanceTransformsStagingBuffer;
+	}
+
 	ModelDataCounts modelDataCounts;
 
 	// Uniform buffers
 	AllocatedBuffer envMapIndexBuffer;
-	AllocatedBuffer ssaoKernelBuffer;
 
 	void cleanup(VkDevice device);
 
 	bool assetsLoaded = false;
+
+	// stores search and area lut texture ids
+	BindlessAccessPush smaaTextures;
 
 private:
 	GPUAddressTable gpuAddresses{};
@@ -70,16 +79,25 @@ private:
 	AllocatedBuffer addressTableStagingBuffer;
 	mutable std::mutex addressTableMutex;
 
+	AllocatedBuffer lightListStagingBuffer;
+
+	AllocatedBuffer instanceTransformsStagingBuffer;
+
 	MeshRegistry registeredMeshes;
 
 	ImageLUTManager lutManager{};
 
+	std::vector<uint32_t> materialFlagsIDs;
+
 	std::unordered_map<AddressBufferType, AllocatedBuffer> gpuBuffers{};
 
 	VmaAllocator allocator = nullptr;
-	DeletionQueue mainDeletionQueue; // Runtime static
-	DeletionQueue tempDeletionQueue; // Primary use in asset loading prep
-	DeletionQueue renderTargetQueue; // For when new extents occur
+	DeletionQueue mainDeletionQueue;                // Runtime static
+	DeletionQueue tempDeletionQueue;                // Primary use in asset loading prep
+	DeletionQueue renderTargetQueue;                // For when new extents occur
+
+	DeletionQueue dynamicPipelineShaderStagesQueue;
+	DeletionQueue dynamicPipelineQueue;
 
 	// Graphics work
 	VkCommandPool graphicsPool = VK_NULL_HANDLE;
@@ -92,17 +110,15 @@ namespace ResourceManager {
 	extern ImageTableManager _globalImageManager;
 	extern EnvironmentSet _environmentSets[MAX_ENV_SETS];
 	extern GPUEnvMapIndexArray _envMapIdxArray;
-	extern glm::vec4 _ssaoKernelBlock[KERNEL_BLOCK_SIZE];
-	void initSSAOKernel();
 
 	extern glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS];
 
+	// TODO: Should change the naming style to remove -Image
 	AllocatedImage& getOpaqueImage();
 	AllocatedImage& getTransparentImage();
 	AllocatedImage& getToneMapImage();
-	AllocatedImage& getDepthImage();
-	AllocatedImage& getMSAAImage();
 	AllocatedImage& getDepthResolvedImage();
+	AllocatedImage& getDepthImage();
 	AllocatedImage& getPrevDepthResolvedImage();
 	AllocatedImage& getNormalImage();
 	AllocatedImage& getAORawImage();
@@ -111,32 +127,45 @@ namespace ResourceManager {
 	AllocatedImage& getAOHistoryWrite();
 	void flipAOHistory();
 	void resetAOHistoryIndex();
+	AllocatedImage& getBounceLightHistoryRead();
+	AllocatedImage& getBounceLightHistoryWrite();
+	void flipBounceLightHistory();
+	void resetBounceLightHistoryIndex();
 	AllocatedImage& getFlareBrightImage();
 	AllocatedImage& getLensFlareColorImage();
 	AllocatedImage& getRainbowLUTImage();
 	AllocatedImage& getVelocityImage();
 	AllocatedImage& getVolumetricLightImage();
 	AllocatedImage& getVolumetricBlurImage();
-	AllocatedImage& getVolumetricNoiseImage();
-	AllocatedImage& get4x4NoiseImage();
-	AllocatedImage& getShadowMapImage();
-	AllocatedImage& getBentNormalImage();
-	AllocatedImage& getDepthPyramidImage();
-	AllocatedImage& getMaterialDataImage();
+	AllocatedImage& getDirectionalCSMAtlas();
+	AllocatedImage& getScreenSpaceShadowMask();
+	AllocatedImage& getBentNormalsImage();
+	AllocatedImage& getHiZ();
 	AllocatedImage& getEdgeInfoImage();
+	AllocatedImage& getAOFinalImage();
+	AllocatedImage& getAAColor();
+	AllocatedImage& getCMAA2WorkingEdges();
+	AllocatedImage& getSMAAEdges();
+	AllocatedImage& getSMAAWeights();
+	AllocatedImage& getFlashLightShadowMap();
+	AllocatedImage& getCookieGoboImage();
+	AllocatedImage& getAreaTex();
+	AllocatedImage& getSearchTex();
 	const VkSampler getNearestClampSampler();
 	const VkSampler getLinearClampSampler();
-	const VkSampler getDepthPyramidSampler();
-	const VkSampler getAOSampler();
+	const VkSampler getHiZSampler();
+	const VkSampler getLinearLODClampSampler();
+	const VkSampler getPointBorderSampler();
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
 
 	// Empty black image
 	AllocatedImage& getDummyImage();
 
+	//AllocatedImage& get4x4NoiseImage();
+
 	//std::vector<VkDescriptorSet>& getShadowMapDescriptors();
 
-	std::vector<VkSampleCountFlags>& getAvailableSampleCounts();
 	void initRenderSamplers(
 		const VkDevice device,
 		DeletionQueue& queue);
@@ -146,7 +175,7 @@ namespace ResourceManager {
 		DeletionQueue& queue,
 		const VmaAllocator allocator);
 
-	void initRenderTargets(
+	void initUniformRenderTargets(
 		const VkDevice device,
 		DeletionQueue& targetQueue,
 		const VmaAllocator allocator,
@@ -158,6 +187,7 @@ namespace ResourceManager {
 	AllocatedImage& getAOMat();
 	AllocatedImage& getNormaMat();
 	AllocatedImage& getCheckboardTex();
+	AllocatedImage& getDummyUint8();
 	const VkSampler getDefaultSamplerLinear();
 	const VkSampler getDefaultSamplerNearest();
 	void initTextures(

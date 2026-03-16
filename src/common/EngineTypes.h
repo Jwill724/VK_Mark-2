@@ -14,6 +14,7 @@ struct DeletionQueue {
 	}
 
 	void flush() {
+		if (deletors.empty()) return;
 		// reverse iterate the deletion queue to execute all the functions
 		for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
 			(*it)(); //call functors
@@ -234,6 +235,8 @@ struct GPUQueue {
 
 	QueueType qType = QueueType::Generic;
 
+	uint32_t timestampValidBits = 0;
+
 	inline VkFence submit(const VkSubmitInfo& info) {
 		std::scoped_lock lock(submitMutex);
 		VkFence fence = fencePool.get();
@@ -336,6 +339,6 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 
 struct ShadowControl {
 	float splitLambda;
-	float lightDist;
 	float bias;
+	float softnessFactor;
 };

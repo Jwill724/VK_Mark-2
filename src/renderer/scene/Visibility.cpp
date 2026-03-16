@@ -34,7 +34,6 @@ namespace Visibility {
 		r.meshID = baked.meshID;
 		r.materialID = baked.materialID;
 		r.transformID = transformID;
-		r.drawType = static_cast<uint32_t>(drawType);
 		r.passType = baked.passType;
 		return r;
 	}
@@ -144,7 +143,7 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 {
 	VisibilitySyncResult res{};
 	bool needRebuildActive = false;
-	//bool anyRefit = false;
+	bool anyRefit = false;
 
 	for (const GlobalInstance& gi : gis) {
 		const SceneID sid = static_cast<SceneID>(gi.sceneID);
@@ -194,12 +193,12 @@ VisibilitySyncResult Visibility::syncFromGlobalInstances(
 		//	}
 		//}
 
-		//anyRefit |= updateWorldAABBsForDynamic(vs, gi, meshData, transforms);
+		anyRefit |= updateWorldAABBsForDynamic(vs, gi, meshData, transforms);
 	}
 
 	if (needRebuildActive) rebuildActive(vs);
 
-	//res.refitOnly = (!res.topologyChanged && anyRefit);
+	res.refitOnly = (!res.topologyChanged && anyRefit);
 	return res;
 }
 
@@ -264,7 +263,7 @@ void Visibility::bakeCoreSceneMeshes(
 
 			vs.instances[writeIndex] = makeRow(bakedInstance, transformID, gi.drawType);
 			vs.transformIDs[writeIndex] = transformID;
-			vs.worldAABBs[writeIndex] = transformAABB(meshData[meshID].localAABB, transforms[transformID]);
+			vs.worldAABBs[writeIndex] = AABBtoWorldSpace(meshData[meshID].localAABB, transforms[transformID]);
 		}
 	}
 
@@ -277,39 +276,39 @@ void Visibility::bakeCoreSceneMeshes(
 }
 
 
-//bool Visibility::updateWorldAABBsForDynamic(
-//	VisibilityState& vs,
-//	const GlobalInstance& gi,
-//	const std::vector<GPUMeshData>& meshData,
-//	const std::vector<glm::mat4>& transforms)
-//{
-//	if (gi.drawType != DrawType::DrawDynamic &&
-//		gi.drawType != DrawType::DrawMultiDynamic)
-//		return false;
-//
-//	const auto it = vs.slabs.find(static_cast<SceneID>(gi.sceneID));
-//	if (it == vs.slabs.end()) return false;
-//
-//	const CoreSlab& slab = it->second;
-//	if (slab.usedCopies == 0) return false;
-//
-//	const uint32_t rowCount = slab.usedCopies * slab.stride;
-//	uint32_t idx = slab.first;
-//
-//	for (uint32_t i = 0; i < rowCount; ++i, ++idx) {
-//		const uint32_t meshID = vs.instances[idx].meshID;
-//		const uint32_t tid = vs.transformIDs[idx];
-//
-//		ASSERT(meshID < meshData.size());
-//		ASSERT(tid < transforms.size());
-//
-//		vs.worldAABBs[idx] = Visibility::transformAABB(
-//			meshData[meshID].localAABB, transforms[tid]);
-//	}
-//
-//	return rowCount > 0;
-//}
-//
+bool Visibility::updateWorldAABBsForDynamic(
+	VisibilityState& vs,
+	const GlobalInstance& gi,
+	const std::vector<GPUMeshData>& meshData,
+	const std::vector<glm::mat4>& transforms)
+{
+	if (gi.drawType != DrawType::DrawDynamic &&
+		gi.drawType != DrawType::DrawMultiDynamic)
+		return false;
+
+	const auto it = vs.slabs.find(static_cast<SceneID>(gi.sceneID));
+	if (it == vs.slabs.end()) return false;
+
+	const CoreSlab& slab = it->second;
+	if (slab.usedCopies == 0) return false;
+
+	const uint32_t rowCount = slab.usedCopies * slab.stride;
+	uint32_t idx = slab.first;
+
+	for (uint32_t i = 0; i < rowCount; ++i, ++idx) {
+		const uint32_t meshID = vs.instances[idx].meshID;
+		const uint32_t tid = vs.transformIDs[idx];
+
+		ASSERT(meshID < meshData.size());
+		ASSERT(tid < transforms.size());
+
+		vs.worldAABBs[idx] = AABBtoWorldSpace(
+			meshData[meshID].localAABB, transforms[tid]);
+	}
+
+	return rowCount > 0;
+}
+
 //void Visibility::appendSceneCopies(
 //	VisibilityState& vs,
 //	const GlobalInstance& gi,
@@ -345,7 +344,7 @@ void Visibility::bakeCoreSceneMeshes(
 //			vs.transformIDs[w] = tid;
 //
 //			const uint32_t meshID = baked.meshID;
-//			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+//			vs.worldAABBs[w] = AABBtoWorldSpace(meshData[meshID].localAABB, transforms[tid]);
 //		}
 //	}
 //
@@ -388,7 +387,7 @@ void Visibility::bakeCoreSceneMeshes(
 //			vs.transformIDs[w] = tid;
 //
 //			const uint32_t meshID = baked.meshID;
-//			vs.worldAABBs[w] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+//			vs.worldAABBs[w] = AABBtoWorldSpace(meshData[meshID].localAABB, transforms[tid]);
 //		}
 //	}
 //}
@@ -417,7 +416,7 @@ void Visibility::rebuildActive(VisibilityState& vs) {
 //			const uint32_t idx = r.offset + i;
 //			const uint32_t meshID = vs.instances[idx].meshID;
 //			const uint32_t tid = vs.instances[idx].transformID;
-//			vs.worldAABBs[idx] = transformAABB(meshData[meshID].localAABB, transforms[tid]);
+//			vs.worldAABBs[idx] = AABBtoWorldSpace(meshData[meshID].localAABB, transforms[tid]);
 //		}
 //	}
 //}
@@ -474,10 +473,60 @@ void Visibility::cullBVHCollect(
 			for (uint32_t i = first; i < last; ++i) {
 				const uint32_t idx = vs.leafIndex[i];
 				const AABB& wb = vs.worldAABBs[idx];
+				if (!boxInFrustum(wb, frus, true)) continue;
+
+				visibleInstances.push_back(vs.instances[idx]);
+				visibleWorldAABBs.push_back(wb);
+			}
+		}
+		else {
+			stack.push_back(static_cast<uint32_t>(node.left));
+			stack.push_back(static_cast<uint32_t>(node.right));
+		}
+	}
+}
+
+
+void Visibility::cullBVHCollectShadowCasters(
+	const VisibilityState& vs,
+	const Frustum& frus,
+	std::vector<GPUInstance>& visibleInstances,
+	const std::vector<uint32_t>& flagsByMaterialID,
+	bool allowAlphaMasked)
+{
+	if (vs.bvh.empty()) return;
+
+	std::vector<uint32_t> stack;
+	stack.reserve(128u);
+	stack.push_back(0u); // root
+
+	while (!stack.empty()) {
+		const uint32_t ni = stack.back();
+		stack.pop_back();
+		const BVHNode& node = vs.bvh[ni];
+
+		if (!boxInFrustum(node.box, frus)) continue;
+
+		if (node.count) {
+			const uint32_t first = node.first;
+			const uint32_t last = first + node.count;
+			for (uint32_t i = first; i < last; ++i) {
+				const uint32_t idx = vs.leafIndex[i];
+				const GPUInstance& inst = vs.instances[idx];
+
+				const uint32_t materialFlags = flagsByMaterialID[inst.materialID];
+
+				// Don't want transparency for shadows
+				if ((materialFlags & MATERIAL_FLAG_CASTS_SHADOWS) == 0u) continue;
+				if (inst.passType == static_cast<uint32_t>(MaterialPass::Transparent)) continue;
+
+				// Don’t include masked in far cascades
+				if (!allowAlphaMasked && (materialFlags & MATERIAL_FLAG_ALPHA_MASKED) != 0u) continue;
+
+				const AABB& wb = vs.worldAABBs[idx];
 				if (!boxInFrustum(wb, frus)) continue;
 
-				visibleWorldAABBs.push_back(wb);
-				visibleInstances.push_back(vs.instances[idx]);
+				visibleInstances.push_back(inst);
 			}
 		}
 		else {
@@ -587,19 +636,10 @@ void Visibility::refitBVH(
 // === CORE CULL FUNCTIONS AND WORLD AABB/FRUSTUM SETUP ===
 
 // CPU Sided culling
-// Frustum culling
-bool Visibility::isVisible(const AABB& aabb, const Frustum& frus) {
-	if (!boxInFrustum(aabb, frus)) {
-		return false;
-	}
-
-	return true; // object is in the view frustum
-}
-
 // Frustum culling method https://iquilezles.org/articles/frustumcorrect/
-bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru) {
-	const glm::vec3 center = (box.vmax + box.vmin) * 0.5f;
-	const glm::vec3 extents = (box.vmax - box.vmin) * 0.5f;
+bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru, bool useCorners) {
+	const glm::vec3 center = box.origin;
+	const glm::vec3 extents = box.extent;
 
 	const float minSafeRadius = box.sphereRadius * 0.01f;
 	const float safeRadius = glm::max(box.sphereRadius, minSafeRadius);
@@ -621,202 +661,45 @@ bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru) {
 		if (dist + r < 0.0f) return false;
 	}
 
-	//int out;
+    //if (useCorners) {
+	   // int out;
 
-	//// check +x
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].x > box.vmax.x) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check +x
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].x > box.vmax.x) ? 1 : 0;
+	   // if (out == 8) return false;
 
-	//// check -x
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].x < box.vmin.x) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check -x
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].x < box.vmin.x) ? 1 : 0;
+	   // if (out == 8) return false;
 
-	//// check +y
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].y > box.vmax.y) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check +y
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].y > box.vmax.y) ? 1 : 0;
+	   // if (out == 8) return false;
 
-	//// check -y
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].y < box.vmin.y) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check -y
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].y < box.vmin.y) ? 1 : 0;
+	   // if (out == 8) return false;
 
-	//// check +z
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].z > box.vmax.z) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check +z
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].z > box.vmax.z) ? 1 : 0;
+	   // if (out == 8) return false;
 
-	//// check -z
-	//out = 0;
-	//for (int i = 0; i < 8; ++i)
-	//	out += (fru.corners[i].z < box.vmin.z) ? 1 : 0;
-	//if (out == 8) return false;
+	   // // check -z
+	   // out = 0;
+	   // for (int i = 0; i < 8; ++i)
+		  //  out += (fru.corners[i].z < box.vmin.z) ? 1 : 0;
+	   // if (out == 8) return false;
+    //}
 
 	return true;
-}
-
-Frustum Visibility::extractFrustum(const glm::mat4& viewproj) {
-	const glm::mat4 vpt = glm::transpose(viewproj);
-
-	Frustum frustum{};
-	frustum.planes[0] = vpt[3] + vpt[0]; // left
-	frustum.planes[1] = vpt[3] - vpt[0]; // right
-	frustum.planes[2] = vpt[3] + vpt[1]; // bot
-	frustum.planes[3] = vpt[3] - vpt[1]; // top
-	frustum.planes[4] = vpt[3] + vpt[2]; // near
-	frustum.planes[5] = vpt[3] - vpt[2]; // far
-
-	for (int i = 0; i < 6; ++i) {
-		frustum.planes[i] /= glm::length(glm::vec3(frustum.planes[i]));
-	}
-
-	//glm::mat4 invVp = glm::inverse(viewproj);
-	//int i = 0;
-	//for (int x = -1; x <= 1; x += 2) {
-	//	for (int y = -1; y <= 1; y += 2) {
-	//		for (int z = 0; z <= 1; z++) { // Vulkan NDC z [0,1]
-	//			glm::vec4 cornerNDC = glm::vec4(
-	//				static_cast<float>(x),
-	//				static_cast<float>(y),
-	//				static_cast<float>(z),
-	//				1.0f
-	//			);
-	//			glm::vec4 cornerWorld = invVp * cornerNDC;
-	//			frustum.corners[i++] = cornerWorld / cornerWorld.w;
-	//		}
-	//	}
-	//}
-
-	return frustum;
-}
-
-// AABB transform methods https://ktstephano.github.io/rendering/stratusgfx/aabbs
-AABB Visibility::transformAABB(const AABB& localBox, const glm::mat4& transform) {
-	// Convert to min/max corners first
-	const glm::vec3 vmin = localBox.vmin;
-	const glm::vec3 vmax = localBox.vmax;
-
-	const glm::vec3 corners[8] = {
-		glm::vec3(transform * glm::vec4(vmin.x, vmin.y, vmin.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmin.x, vmax.y, vmin.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmin.x, vmin.y, vmax.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmin.x, vmax.y, vmax.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmax.x, vmin.y, vmin.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmax.x, vmax.y, vmin.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmax.x, vmin.y, vmax.z, 1.0f)),
-		glm::vec3(transform * glm::vec4(vmax.x, vmax.y, vmax.z, 1.0f))
-	};
-
-	// Now apply the min/max algorithm from before using the 8 transformed corners
-	glm::vec3 newVmin = corners[0];
-	glm::vec3 newVmax = newVmin;
-
-	// Start looping from corner 1 onwards
-	for (size_t i = 1; i < 8; ++i) {
-		const auto& current = corners[i];
-		newVmin = glm::min(newVmin, current);
-		newVmax = glm::max(newVmax, current);
-	}
-
-	AABB worldBox{};
-	worldBox.vmin = newVmin;
-	worldBox.vmax = newVmax;
-	worldBox.origin = (newVmax + newVmin) * 0.5f;
-	worldBox.extent = (newVmax - newVmin) * 0.5f;
-	worldBox.sphereRadius = glm::length(worldBox.extent);
-
-	return worldBox;
-}
-
-std::vector<glm::vec3> Visibility::GetAABBVertices(const AABB& box) {
-	const glm::vec3 vmin = box.vmin;
-	const glm::vec3 vmax = box.vmax;
-
-	const glm::vec3 corners[8] {
-		glm::vec3(vmin.x, vmin.y, vmin.z),
-		glm::vec3(vmin.x, vmax.y, vmin.z),
-		glm::vec3(vmin.x, vmin.y, vmax.z),
-		glm::vec3(vmin.x, vmax.y, vmax.z),
-		glm::vec3(vmax.x, vmin.y, vmin.z),
-		glm::vec3(vmax.x, vmax.y, vmin.z),
-		glm::vec3(vmax.x, vmin.y, vmax.z),
-		glm::vec3(vmax.x, vmax.y, vmax.z)
-	};
-
-	// Now connect the corners to form 12 lines
-	std::vector<glm::vec3> vertices {
-		// edges along X
-		corners[0], corners[1],
-		corners[2], corners[3],
-		corners[4], corners[5],
-		corners[6], corners[7],
-
-		// edges along Y
-		corners[0], corners[2],
-		corners[1], corners[3],
-		corners[4], corners[6],
-		corners[5], corners[7],
-
-		// edges along Z
-		corners[0], corners[4],
-		corners[1], corners[5],
-		corners[2], corners[6],
-		corners[3], corners[7]
-	};
-
-	return vertices;
-}
-
-std::vector<glm::vec3> Visibility::GetOBBVertices(
-	const AABB& localBox,
-	const glm::mat4& modelMatrix)
-{
-	const glm::vec3 vmin = localBox.vmin;
-	const glm::vec3 vmax = localBox.vmax;
-
-	const glm::vec3 localCorners[8] {
-		glm::vec3(vmin.x, vmin.y, vmin.z),
-		glm::vec3(vmin.x, vmax.y, vmin.z),
-		glm::vec3(vmin.x, vmin.y, vmax.z),
-		glm::vec3(vmin.x, vmax.y, vmax.z),
-		glm::vec3(vmax.x, vmin.y, vmin.z),
-		glm::vec3(vmax.x, vmax.y, vmin.z),
-		glm::vec3(vmax.x, vmin.y, vmax.z),
-		glm::vec3(vmax.x, vmax.y, vmax.z)
-	};
-
-	glm::vec3 worldCorners[8]{};
-	for (uint32_t i = 0; i < 8; ++i) {
-		glm::vec4 world = modelMatrix * glm::vec4(localCorners[i], 1.0f);
-		worldCorners[i] = glm::vec3(world);
-	}
-
-	std::vector<glm::vec3> vertices {
-		// edges along X
-		worldCorners[0], worldCorners[1],
-		worldCorners[2], worldCorners[3],
-		worldCorners[4], worldCorners[5],
-		worldCorners[6], worldCorners[7],
-
-		// edges along Y
-		worldCorners[0], worldCorners[2],
-		worldCorners[1], worldCorners[3],
-		worldCorners[4], worldCorners[6],
-		worldCorners[5], worldCorners[7],
-
-		// edges along Z
-		worldCorners[0], worldCorners[4],
-		worldCorners[1], worldCorners[5],
-		worldCorners[2], worldCorners[6],
-		worldCorners[3], worldCorners[7]
-	};
-
-	return vertices;
 }

@@ -1,0 +1,50 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+#include "../include/cmaa2.glsl"
+
+layout(local_size_x = 1) in;
+
+// https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
+
+layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
+	GPUAddressTable frameAddressTable;
+};
+
+layout(push_constant) uniform CMAA2Push {
+	uint pass; // 0 candidate / 1 deferred loc count
+} pc;
+
+void main()
+{
+	if (gl_GlobalInvocationID.x != 0u) return;
+
+	DispatchIndirectArgsBuffer dispatchArgs =
+		DispatchIndirectArgsBuffer(frameAddressTable.addrs[ABT_DispatchIndirectArgs]);
+
+	Cmaa2ControlBuffer control =
+		Cmaa2ControlBuffer(frameAddressTable.addrs[ABT_Cmaa2Control]);
+
+	if (pc.pass == 0) {
+		uint candidateCount = control.control[CMAA2_CTRL_SHAPE_CANDIDATE_COUNT];
+
+		uint processGroupCountX =
+			(candidateCount + (CMAA2_PROCESS_CANDIDATES_NUM_THREADS - 1u)) /
+			CMAA2_PROCESS_CANDIDATES_NUM_THREADS;
+
+		dispatchArgs.args[INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES] = uvec4(processGroupCountX, 1u, 1u, 0u);
+	}
+	else if (pc.pass == 1) {
+		uint deferredLocCount = control.control[CMAA2_CTRL_DEFERRED_LOCATION_COUNT];
+
+		uint deferredGroupCountX =
+			(deferredLocCount + (CMAA2_DEFERRED_APPLY_NUM_THREADS - 1u)) /
+			CMAA2_DEFERRED_APPLY_NUM_THREADS;
+
+		dispatchArgs.args[INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED] = uvec4(deferredGroupCountX, 1u, 1u, 0u);
+	}
+}

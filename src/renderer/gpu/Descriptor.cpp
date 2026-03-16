@@ -12,7 +12,6 @@ constexpr uint32_t kDebugInlineBytes = Align4(sizeof(DebugToggles));
 
 constexpr VkShaderStageFlags BASE_STAGES = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
 constexpr VkShaderStageFlags IMAGE_STAGES = VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-constexpr VkShaderStageFlags COMPUTE_ONLY = VK_SHADER_STAGE_COMPUTE_BIT;
 
 namespace DescriptorSetOverwatch {
 	DescriptorManager mainDescriptorManager;
@@ -36,7 +35,6 @@ void DescriptorSetOverwatch::initMainDescriptorManager(const VkDevice device, De
 	std::vector<PoolSizeRatio> poolSizes {
 		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         static_cast<float>(MAX_FRAMES_IN_FLIGHT) },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         static_cast<float>(MAX_FRAMES_IN_FLIGHT) },
-		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          static_cast<float>(MAX_STORAGE_IMAGES) },
 		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, static_cast<float>(MAX_SAMPLER_CUBE_IMAGES + MAX_COMBINED_SAMPLERS_IMAGES) },
 		{ VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK,   static_cast<float>(kDebugInlineBytes) },
 	};
@@ -59,13 +57,11 @@ void DescriptorSetOverwatch::initDescriptors(const VkDevice device, DeletionQueu
 // Global access constant descriptors
 // [0] = GPU address table (draw ranges/material buffers, GPU ONLY SSBOs)
 // [1] = EnvSetUBO (Environment image indexes)
-// [2] = SSAO sample kernel glm::vec4[128]
-// [3] = inline uniform, debug toggles and draw stats
-// [4] = Samplercube images (Environment images)
-// [5] = Storage image array (Writable images)
-// [6] = Combined sampler (Static global combined samplers, mostly materials)
+// [2] = inline uniform, debug toggles and draw stats
+// [3] = Samplercube images (Environment images)
+// [4] = Combined sampler (Static global combined samplers, mostly materials)
 
-// All image resources - textures, render targets, compute inputs/outputs -
+// All static image resources - textures, render targets -
 // are stored in these arrays. Access and interpretation are handled via the
 // image LUT stored in binding [0]. This design makes all image usage agnostic,
 // bindless, and scalable across the entire engine.
@@ -75,7 +71,6 @@ void DescriptorSetOverwatch::initUnifiedDescriptor(const VkDevice device, Deleti
 
 	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BASE_STAGES, 1);
 	mainDescriptorManager.addBinding(GLOBAL_BINDING_ENV_INDEX, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, BASE_STAGES, 1);
-	mainDescriptorManager.addBinding(GLOBAL_BINDING_SSAO_KERNEL, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, BASE_STAGES, 1);
 	mainDescriptorManager.addBinding(GLOBAL_BINDING_DEBUG_INLINE, VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK, BASE_STAGES, kDebugInlineBytes);
 
 	mainDescriptorManager.addBinding(
@@ -83,12 +78,6 @@ void DescriptorSetOverwatch::initUnifiedDescriptor(const VkDevice device, Deleti
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		MAX_SAMPLER_CUBE_IMAGES // 100 image count
-	);
-	mainDescriptorManager.addBinding(
-		GLOBAL_BINDING_STORAGE_IMAGE,
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		IMAGE_STAGES,
-		MAX_STORAGE_IMAGES // 100 image count
 	);
 	mainDescriptorManager.addBinding(
 		GLOBAL_BINDING_COMBINED_SAMPLER,
@@ -114,12 +103,14 @@ void DescriptorSetOverwatch::initUnifiedDescriptor(const VkDevice device, Deleti
 // [0] = Storage buffer holding addresses (instance and indirect buffers)
 // [1] = Scene data UBO (camera, lighting, frame constants, etc)
 // [2] = Light frustum cascades, splits and shadow bias, etc
+// [3] = Clustered shading data
 void DescriptorSetOverwatch::initFrameDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
 	mainDescriptorManager.addBinding(ADDRESS_TABLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, BASE_STAGES, 1);
 	mainDescriptorManager.addBinding(FRAME_BINDING_SCENE, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, BASE_STAGES, 1);
 	mainDescriptorManager.addBinding(FRAME_BINDING_CSM, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, BASE_STAGES, 1);
+	mainDescriptorManager.addBinding(FRAME_BINDING_CLUSTERED, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, BASE_STAGES, 1);
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createSetLayout(device);
 	frameDescriptor.descriptorLayout = layout;
@@ -135,73 +126,23 @@ void DescriptorSetOverwatch::initFrameDescriptor(const VkDevice device, Deletion
 void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQueue& queue) {
 	mainDescriptorManager.clearBinding();
 
-	// depth/depth pyramid (sampled)
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_DEPTH_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		COMPUTE_ONLY,
-		1);
-
-	// normal/bent normals (sampled)
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_NORMAL_TEX,
+	// Readable inputs
+	for (uint32_t i = PUSH_BINDING_INPUT_1_TEX; i <= PUSH_BINDING_INPUT_5_TEX; i++) {
+		mainDescriptorManager.addBinding(
+		i,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		1);
-
-	// noise texture
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_NOISE_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		COMPUTE_ONLY,
-		1);
-
-	// velocity texture
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_VELOCITY_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		COMPUTE_ONLY,
-		1);
+	}
 
 	// Writable outputs
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_OUTPUT_1_TEX,
+	for (uint32_t i = PUSH_BINDING_OUTPUT_1_TEX; i <= PUSH_BINDING_OUTPUT_5_TEX; i++) {
+		mainDescriptorManager.addBinding(
+		i,
 		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		COMPUTE_ONLY,
-		1);
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_OUTPUT_2_TEX,
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		COMPUTE_ONLY,
-		1);
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_OUTPUT_3_TEX,
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		COMPUTE_ONLY,
-		1);
-
-	// Readable inputs
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_1_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		IMAGE_STAGES,
 		1);
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_2_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		IMAGE_STAGES,
-		1);
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_3_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		IMAGE_STAGES,
-		1);
-
-	mainDescriptorManager.addBinding(
-		PUSH_BINDING_INPUT_4_TEX,
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		IMAGE_STAGES,
-		1);
+	}
 
 	VkDescriptorSetLayout layout = mainDescriptorManager.createPushSetLayout(device);
 
@@ -437,34 +378,34 @@ VkDescriptorSetLayout DescriptorManager::createPushSetLayout(const VkDevice devi
 // === DESCRIPTOR WRITING ===
 
 // Push descriptor writing
-void DescriptorWriter::writePushBuffer(
-	uint32_t binding,
-	VkBuffer buffer,
-	size_t size,
-	size_t offset,
-	VkDescriptorType type)
-{
-	enablePushDescriptor = true;
-
-	size_t bufferIndex = bufferInfos.size();
-	bufferInfos.emplace_back(VkDescriptorBufferInfo{
-		.buffer = buffer,
-		.offset = offset,
-		.range = size
-	});
-
-	bufferWrites.push_back({
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = VK_NULL_HANDLE,
-		.dstBinding = binding,
-		.dstArrayElement = 0,
-		.descriptorCount = 1,
-		.descriptorType = type,
-		.pBufferInfo = nullptr
-	});
-
-	writeBufferIndices.push_back(bufferIndex);
-}
+//void DescriptorWriter::writePushBuffer(
+//	uint32_t binding,
+//	VkBuffer buffer,
+//	size_t size,
+//	size_t offset,
+//	VkDescriptorType type)
+//{
+//	enablePushDescriptor = true;
+//
+//	size_t bufferIndex = bufferInfos.size();
+//	bufferInfos.emplace_back(VkDescriptorBufferInfo{
+//		.buffer = buffer,
+//		.offset = offset,
+//		.range = size
+//	});
+//
+//	bufferWrites.push_back({
+//		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+//		.dstSet = VK_NULL_HANDLE,
+//		.dstBinding = binding,
+//		.dstArrayElement = 0,
+//		.descriptorCount = 1,
+//		.descriptorType = type,
+//		.pBufferInfo = nullptr
+//	});
+//
+//	writeBufferIndices.push_back(bufferIndex);
+//}
 
 
 void DescriptorWriter::writePushImage(
@@ -590,18 +531,6 @@ void DescriptorWriter::writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, 
 		//	if (ENABLE_DEBUG_LOGS) fmt::print("[LUT {}] Skipped SamplerCube (invalid index = {})\n", i, e.samplerCubeIndex);
 		//}
 
-		if (e.storageImageIndex != UINT32_MAX && e.storageImageIndex < table.storageViews.size()) {
-			const auto& info = table.storageViews[e.storageImageIndex];
-			if (ENABLE_DEBUG_LOGS) {
-				fmt::print("[LUT {}] Pushing StorageImage: view={}, layout=0x{:08X}\n",
-					i, (void*)info.imageView, static_cast<uint32_t>(info.imageLayout));
-			}
-			storageDescriptors.push_back(info);
-		}
-		//else {
-		//	if (ENABLE_DEBUG_LOGS) fmt::print("[LUT {}] Skipped StorageImage (invalid index = {})\n", i, e.storageImageIndex);
-		//}
-
 		if (e.combinedImageIndex != UINT32_MAX && e.combinedImageIndex < table.combinedViews.size()) {
 			const auto& info = table.combinedViews[e.combinedImageIndex];
 			if (ENABLE_DEBUG_LOGS) {
@@ -622,7 +551,6 @@ void DescriptorWriter::writeImages(uint32_t binding, DescriptorImageType type, V
 
 	switch (type) {
 	case DescriptorImageType::SamplerCube:    selected = &samplerCubeDescriptors;  vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; break;
-	case DescriptorImageType::StorageImage:   selected = &storageDescriptors;      vkType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;          break;
 	case DescriptorImageType::CombinedSampler:selected = &combinedDescriptors;     vkType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER; break;
 	default: ASSERT(false && "Invalid DescriptorImageType"); return;
 	}
@@ -642,7 +570,6 @@ void DescriptorWriter::clear() {
 	writeBufferIndices.clear();
 	bufferInfos.clear();
 	samplerCubeDescriptors.clear();
-	storageDescriptors.clear();
 	combinedDescriptors.clear();
 	shouldClearWrites = false;
 	enablePushDescriptor = false;

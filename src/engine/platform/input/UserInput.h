@@ -55,7 +55,7 @@ namespace UserInput {
 		inline static constexpr std::array trackedKeys {
 			GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D,
 			GLFW_KEY_SPACE, GLFW_KEY_LEFT_CONTROL, GLFW_KEY_LEFT_SHIFT,
-			GLFW_KEY_ESCAPE, GLFW_KEY_TAB, GLFW_KEY_P, GLFW_KEY_R
+			GLFW_KEY_ESCAPE, GLFW_KEY_TAB, GLFW_KEY_R, GLFW_KEY_F, GLFW_KEY_P
 		};
 
 		void update(GLFWwindow* window);

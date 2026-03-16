@@ -4,217 +4,169 @@
 #include "renderer/gpu/Descriptor.h"
 #include "renderer/backend/Backend.h"
 #include "core/ResourceManager.h"
+#include "engine/Engine.h"
 
-namespace PipelinePresents {
-	inline std::array<PipelinePreset, (size_t)PipelineID::Count> pipelinePresentBuilder;
-	inline PipelinePreset& getPipelinePresentByID(PipelineID id) {
-		return pipelinePresentBuilder[static_cast<size_t>(id)];
-	}
+enum VulkanShaderStage {
+	COMPUTE_STAGE = VK_SHADER_STAGE_COMPUTE_BIT,
+	VERTEX_STAGE = VK_SHADER_STAGE_VERTEX_BIT,
+	FRAGMENT_STAGE = VK_SHADER_STAGE_FRAGMENT_BIT
+};
+
+namespace PipelineManager {
+	void initPipelineShaders(DeletionQueue& dq);
 }
 
-void PipelineManager::initShaders(DeletionQueue& dq) {
+namespace PipelinePresets {
+	inline std::array<PipelinePreset, static_cast<size_t>(PipelineID::Count)> pipelinePresetBuilder;
+	inline PipelinePreset& getPipelinePresetByID(PipelineID id) {
+		return pipelinePresetBuilder[static_cast<size_t>(id)];
+	}
+
+	std::vector<ShaderStageInfo> shaderStagesInfo;
+	std::vector<std::string> shaderStagePathStorage;
+
+	static void writeShaderStage(
+		PipelineID id,
+		VulkanShaderStage stage,
+		const char* shaderName)
+	{
+		ShaderStageInfo stageInfo{};
+		stageInfo.stage = static_cast<VkShaderStageFlagBits>(stage);
+		stageInfo.filePath = shaderName;
+
+		getPipelinePresetByID(id).shaderStagesInfo.push_back(stageInfo);
+	}
+
+	void createPipeline(
+		PipelineBuilder& builder,
+		const VkDevice device,
+		PipelineID id,
+		PipelineCategory type,
+		std::string name,
+		bool swappable = false);
+
+	PipelineBuilder _defaultBuilder;
+	void setupBaseBuilder();
+}
+
+void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	// === GRAPHIC PIPELINES ===
+	PipelinePresets::writeShaderStage(PipelineID::Transparent, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Transparent, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
 
-	std::vector<ShaderStageInfo> meshShaderStages;
-	ShaderStageInfo vertexStage {
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/meshes/mesh_vert.spv"
-	};
-	ShaderStageInfo fragmentStage {
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/meshes/mesh_frag.spv"
-	};
+	PipelinePresets::writeShaderStage(PipelineID::Prepass, VERTEX_STAGE, "res/shaders/core/prepassVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Prepass, FRAGMENT_STAGE, "res/shaders/core/prepassFS.spv");
 
-	meshShaderStages.push_back(vertexStage);
-	meshShaderStages.push_back(fragmentStage);
-
-	PipelinePresents::getPipelinePresentByID(PipelineID::Opaque).shaderStagesInfo = meshShaderStages;
-	PipelinePresents::getPipelinePresentByID(PipelineID::Transparent).shaderStagesInfo = meshShaderStages;
-	PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe).shaderStagesInfo = meshShaderStages;
-
-
-	ShaderStageInfo obbLineVertStage {
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/debug/obb_line_vert.spv"
-	};
-	ShaderStageInfo obbLineFragStage {
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/debug/obb_line_frag.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::OBBLine).shaderStagesInfo.push_back(obbLineVertStage);
-	PipelinePresents::getPipelinePresentByID(PipelineID::OBBLine).shaderStagesInfo.push_back(obbLineFragStage);
-
-	ShaderStageInfo cascadeVPLineVertStage {
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/debug/cascadevp_line_vert.spv"
-	};
-	ShaderStageInfo cascadeVPLineFragStage {
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/debug/cascadevp_line_frag.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::CascadeVPLine).shaderStagesInfo.push_back(cascadeVPLineVertStage);
-	PipelinePresents::getPipelinePresentByID(PipelineID::CascadeVPLine).shaderStagesInfo.push_back(cascadeVPLineFragStage);
-
-
-	ShaderStageInfo skyboxVertStage {
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/environment/skybox_vert.spv"
-	};
-	ShaderStageInfo skyboxFragStage {
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/environment/skybox_frag.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxVertStage);
-	PipelinePresents::getPipelinePresentByID(PipelineID::Skybox).shaderStagesInfo.push_back(skyboxFragStage);
-
-	// === DEPTH PRE-PASS ===
-	ShaderStageInfo depthPrepassVertStage{
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/depth/depth_prepass_vert.spv"
-	};
-	ShaderStageInfo depthPrepassFragStage{
-		.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.filePath = "res/shaders/depth/depth_prepass_frag.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassVertStage);
-	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass).shaderStagesInfo.push_back(depthPrepassFragStage);
-
-	// === CASCADED SHADOW MAPPING ===
-	ShaderStageInfo csmVertStage{
-		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.filePath = "res/shaders/depth/csm_depth_vert.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::ShadowCSM).shaderStagesInfo.push_back(csmVertStage);
+	PipelinePresets::writeShaderStage(PipelineID::Shadow, VERTEX_STAGE, "res/shaders/shadows/shadow_depthVS.spv");
 
 	// === COMPUTE PIPELINES ===
 
-	// === EXPOSURE ===
-	ShaderStageInfo exposureReduceShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/exposure_reduce_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::ExposureReduce).shaderStagesInfo.push_back(exposureReduceShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::ExposureReduce, COMPUTE_STAGE, "res/shaders/post_process/exposure_reduce.spv");
+	PipelinePresets::writeShaderStage(PipelineID::ExposureFinalize, COMPUTE_STAGE, "res/shaders/post_process/exposure_finalize.spv");
 
-	ShaderStageInfo exposureFinalizeShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/exposure_finalize_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::ExposureFinalize).shaderStagesInfo.push_back(exposureFinalizeShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::ToneMap, COMPUTE_STAGE, "res/shaders/post_process/tone_map.spv");
 
-	// === TONE MAP ===
-	ShaderStageInfo toneMapShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/tone_map_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::ToneMap).shaderStagesInfo.push_back(toneMapShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::HiZGen, COMPUTE_STAGE, "res/shaders/core/hi_z_gen.spv");
 
+	PipelinePresets::writeShaderStage(PipelineID::HDRToCubemap, COMPUTE_STAGE, "res/shaders/environment/hdr2cubemap.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SpecularPrefilter, COMPUTE_STAGE, "res/shaders/environment/specular_prefilter.spv");
+	PipelinePresets::writeShaderStage(PipelineID::DiffuseIrradiance, COMPUTE_STAGE, "res/shaders/environment/diffuse_irradiance.spv");
+	PipelinePresets::writeShaderStage(PipelineID::BRDFLUT, COMPUTE_STAGE, "res/shaders/environment/brdf_lut.spv");
 
-	// === DEPTH PYRAMID ===
-	ShaderStageInfo depthPyramidShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/depth/depth_pyramid_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::DepthPyramid).shaderStagesInfo.push_back(depthPyramidShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::GTAO, COMPUTE_STAGE, "res/shaders/ao/gtao_main.spv");
+	PipelinePresets::writeShaderStage(PipelineID::GTAOFilter, COMPUTE_STAGE, "res/shaders/ao/gtao_filter.spv");
+	PipelinePresets::writeShaderStage(PipelineID::GTAOTemporalResolve, COMPUTE_STAGE, "res/shaders/ao/gtao_temporal_resolve.spv");
+	PipelinePresets::writeShaderStage(PipelineID::AOUpscale, COMPUTE_STAGE, "res/shaders/ao/ao_upscale.spv");
 
-	// === IBL ===
-	ShaderStageInfo cubemapShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/environment/hdr2cubemap_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::HDRToCubemap).shaderStagesInfo.push_back(cubemapShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::VolumetricLight, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light.spv");
+	PipelinePresets::writeShaderStage(PipelineID::VolumetricLightBlur, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light_blur.spv");
 
-	ShaderStageInfo prefilterShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/environment/specular_prefilter_comp.spv"
-	};
+	PipelinePresets::writeShaderStage(PipelineID::FlareBright, COMPUTE_STAGE, "res/shaders/post_process/flare_bright.spv");
+	PipelinePresets::writeShaderStage(PipelineID::FlareGen, COMPUTE_STAGE, "res/shaders/post_process/flare_gen.spv");
 
-	PipelinePresents::getPipelinePresentByID(PipelineID::SpecularPrefilter).shaderStagesInfo.push_back(prefilterShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::SMAAEdges, COMPUTE_STAGE, "res/shaders/post_process/smaa_edges.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SMAAWeights, COMPUTE_STAGE, "res/shaders/post_process/smaa_weights.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SMAABlend, COMPUTE_STAGE, "res/shaders/post_process/smaa_blend.spv");
 
-	ShaderStageInfo diffuseShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/environment/diffuse_irradiance_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::DiffuseIrradiance).shaderStagesInfo.push_back(diffuseShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::FXAA, COMPUTE_STAGE, "res/shaders/post_process/fxaa.spv");
 
-	ShaderStageInfo brdfLutShaderStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/environment/brdf_lut_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::BRDFLUT).shaderStagesInfo.push_back(brdfLutShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::CMAA2Edges, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_edges.spv");
+	PipelinePresets::writeShaderStage(PipelineID::CMAA2ShapeCandidates, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_shape_candidates.spv");
+	PipelinePresets::writeShaderStage(PipelineID::CMAA2DeferredResolve, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_deferred_resolve.spv");
+	PipelinePresets::writeShaderStage(PipelineID::CMAA2DispatchArgs, COMPUTE_STAGE, "res/shaders/post_process/indirect_args_cmaa2.spv");
 
+	PipelinePresets::writeShaderStage(PipelineID::ClusterTileSliceRanges, COMPUTE_STAGE, "res/shaders/clustered/cluster_tile_slice_ranges.spv");
+	PipelinePresets::writeShaderStage(PipelineID::ClusterCount, COMPUTE_STAGE, "res/shaders/clustered/cluster_count.spv");
+	PipelinePresets::writeShaderStage(PipelineID::ClusterScanOffsets, COMPUTE_STAGE, "res/shaders/clustered/cluster_scan_offsets.spv");
+	PipelinePresets::writeShaderStage(PipelineID::ClusterScatterIDs, COMPUTE_STAGE, "res/shaders/clustered/cluster_scatter_ids.spv");
+	PipelinePresets::writeShaderStage(PipelineID::VisibleLightList, COMPUTE_STAGE, "res/shaders/clustered/visible_light_list.spv");
+	PipelinePresets::writeShaderStage(PipelineID::IndirectArgsLight, COMPUTE_STAGE, "res/shaders/clustered/indirect_args_light.spv");
 
-	//// gpu frustum culling
-	//ShaderStageInfo visibilityShaderStage {
-	//	.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-	//	.filePath = "res/shaders/visibility/visibility_comp.spv"
-	//};
-	//PipelinePresents::getPipelinePresentByID(PipelineID::Visibility).shaderStagesInfo.push_back(visibilityShaderStage);
+	PipelinePresets::writeShaderStage(PipelineID::ScreenSpaceContactShadows, COMPUTE_STAGE, "res/shaders/shadows/bend_sss.spv");
 
-	// === SSAO ===
-	ShaderStageInfo ssaoStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/ao/ssao_main_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::SSAO).shaderStagesInfo.push_back(ssaoStage);
+	PipelinePresets::writeShaderStage(PipelineID::Opaque, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Opaque, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
 
-	ShaderStageInfo ssaoBlurStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/ao/ssao_blur_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::SSAOBlur).shaderStagesInfo.push_back(ssaoBlurStage);
+	PipelinePresets::writeShaderStage(PipelineID::Wireframe, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Wireframe, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::OBBLine, VERTEX_STAGE, "res/shaders/debug/obb_lineVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::OBBLine, FRAGMENT_STAGE, "res/shaders/debug/obb_lineFS.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::Skybox, VERTEX_STAGE, "res/shaders/environment/skyboxVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Skybox, FRAGMENT_STAGE, "res/shaders/environment/skyboxFS.spv");
 
 
-	// === GTAO ===
-	ShaderStageInfo gtaoStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/ao/gtao_main_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::GTAO).shaderStagesInfo.push_back(gtaoStage);
-
-	ShaderStageInfo gtaoFilterStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/ao/gtao_filter_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::GTAOFilter).shaderStagesInfo.push_back(gtaoFilterStage);
-
-	ShaderStageInfo gtaoTempResolveStage{
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/ao/gtao_temporal_resolve_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::GTAOTemporalResolve).shaderStagesInfo.push_back(gtaoTempResolveStage);
-
-
-	// === VOLUMETRIC LIGHTING ===
-	ShaderStageInfo volLightStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/volumetric_light_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::VolumetricLight).shaderStagesInfo.push_back(volLightStage);
-
-	ShaderStageInfo volLightBlurStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/volumetric_light_blur_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::VolumetricLightBlur).shaderStagesInfo.push_back(volLightBlurStage);
-
-	// === LENS FLARE ===
-	ShaderStageInfo flareBrightStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/flare_bright_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::FlareBright).shaderStagesInfo.push_back(flareBrightStage);
-
-	ShaderStageInfo flareGenStage {
-		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
-		.filePath = "res/shaders/post_process/flare_gen_comp.spv"
-	};
-	PipelinePresents::getPipelinePresentByID(PipelineID::FlareGen).shaderStagesInfo.push_back(flareGenStage);
-
-
-	// Pipeline shaders defined, good to setup
 	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
-		setupShaders(PipelinePresents::pipelinePresentBuilder[i], dq);
+		setupShaders(PipelinePresets::pipelinePresetBuilder[i], dq);
 	}
+}
+
+// graphic pipelines can share the same builder
+void PipelinePresets::setupBaseBuilder() {
+	_defaultBuilder._pipelineLayout = Pipelines::_globalLayout.layout;
+
+	_defaultBuilder.colorFormats.push_back(VK_FORMAT_B10G11R11_UFLOAT_PACK32);
+	//_defaultBuilder.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
+	_defaultBuilder.depthFormat = VK_FORMAT_D32_SFLOAT;
+}
+
+void PipelinePresets::createPipeline(
+	PipelineBuilder& builder,
+	const VkDevice device,
+	PipelineID id,
+	PipelineCategory type,
+	std::string name,
+	bool swappable)
+{
+	PipelinePreset& present = PipelinePresets::getPipelinePresetByID(id);
+
+	PipelineHandle& pipeHdl = Pipelines::getHandle(id);
+
+	if (type == PipelineCategory::Raster) {
+		builder.initializePipelineSTypes();
+		// Defaults to primary builder formats,
+		// can overwrite the format if wanted
+		if (present.colorFormats.empty() && present.depthFormat == VK_FORMAT_UNDEFINED) {
+			present.colorFormats = builder.colorFormats;
+			present.depthFormat = builder.depthFormat;
+		}
+		PipelineManager::setupPipelineConfig(builder, present);
+
+		pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+
+		// Only raster pipelines will get topology info
+		pipeHdl.topology = present.topology;
+	}
+	else {
+		pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+	}
+
+	pipeHdl.name = name;
+	pipeHdl.type = type;
+	pipeHdl.swappable = swappable;
+
+	builder.createPipeline(pipeHdl, present, device);
 }
 
 // defines push constants, descriptors, and pipeline layout
@@ -249,145 +201,295 @@ void PipelineManager::definePipelineData() {
 
 	Pipelines::_globalLayout.layout = PipelineManager::createPipelineLayout(setLayouts, pcRange);
 	Pipelines::_globalLayout.pcRange = pcRange;
+
+	PipelinePresets::setupBaseBuilder();
 }
+
 
 void PipelineManager::initPipelines(DeletionQueue& queue) {
 	DeletionQueue shaderDeletionQ;
 
-	initShaders(shaderDeletionQ);
-
-	definePipelineData();
+	initPipelineShaders(shaderDeletionQ);
 
 	const auto device = Backend::getDevice();
 
-	// graphic pipelines can share the same builder
-	PipelineBuilder builder;
-	builder._pipelineLayout = Pipelines::_globalLayout.layout;
-
-	builder.colorFormats.push_back(VK_FORMAT_B10G11R11_UFLOAT_PACK32);
-	builder.depthFormat = VK_FORMAT_D32_SFLOAT;
-
-	auto createPipeline = [&](
-		PipelineID id,
-		PipelineCategory type,
-		std::string name,
-		bool swappable = false,
-		bool mssaOn = MSAA_ENABLED) {
-
-		PipelinePreset& present = PipelinePresents::getPipelinePresentByID(id);
-
-		PipelineHandle& pipeHdl = Pipelines::getHandle(id);
-
-		if (type == PipelineCategory::Raster) {
-			builder.initializePipelineSTypes();
-			// Defaults to primary builder formats,
-			// can overwrite the format if wanted
-			if (present.colorFormats.empty() && present.depthFormat == VK_FORMAT_UNDEFINED) {
-				present.colorFormats = builder.colorFormats;
-				present.depthFormat = builder.depthFormat;
-			}
-			setupPipelineConfig(builder, present, mssaOn);
-
-			pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-
-			// Only raster pipelines will get topology info
-			pipeHdl.topology = present.topology;
-		}
-		else {
-			pipeHdl.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-		}
-
-		pipeHdl.name = name;
-		pipeHdl.type = type;
-		pipeHdl.swappable = swappable;
-
-		builder.createPipeline(pipeHdl, present, device);
-	};
-
 	// === OPAQUE PIPELINE ===
-	createPipeline(PipelineID::Opaque, PipelineCategory::Raster, "Opaque", false);
-
-	// === TRANSPARENT PIPELINE ===
-	PipelinePreset& transparentPreset = PipelinePresents::getPipelinePresentByID(PipelineID::Transparent);
-	transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
-	transparentPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
-	transparentPreset.enableBlending = true;
-	transparentPreset.enableDepthWrite = false;
-	createPipeline(PipelineID::Transparent, PipelineCategory::Raster, "Transparent", false, false);
+	PipelinePreset& opaquePreset = PipelinePresets::getPipelinePresetByID(PipelineID::Opaque);
+	opaquePreset.cullMode = VK_CULL_MODE_BACK_BIT;
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Opaque,
+		PipelineCategory::Raster,
+		"Opaque",
+		false);
 
 	// === WIREFRAME PIPELINE ===
-	PipelinePreset& wirePreset = PipelinePresents::getPipelinePresentByID(PipelineID::Wireframe);
+	PipelinePreset& wirePreset = PipelinePresets::getPipelinePresetByID(PipelineID::Wireframe);
 	wirePreset.polygonMode = VK_POLYGON_MODE_LINE;
 	wirePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
-
-	createPipeline(PipelineID::Wireframe, PipelineCategory::Raster, "Wireframe", true);
+	wirePreset.enableDepthWrite = true;
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Wireframe,
+		PipelineCategory::Raster,
+		"Wireframe",
+		true);
 
 	// === OBB LINE DEBUG PIPELINE ===
-	PipelinePreset& lineDebugPreset = PipelinePresents::getPipelinePresentByID(PipelineID::OBBLine);
+	PipelinePreset& lineDebugPreset = PipelinePresets::getPipelinePresetByID(PipelineID::OBBLine);
 	lineDebugPreset.polygonMode = VK_POLYGON_MODE_LINE;
 	lineDebugPreset.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	lineDebugPreset.enableDepthWrite = false;
+	lineDebugPreset.enableDepthWrite = true;
 	lineDebugPreset.depthCompareOp = VK_COMPARE_OP_GREATER;
-
-	createPipeline(PipelineID::OBBLine, PipelineCategory::Raster, "OBBLine");
-
-	// === CASCADE VIEW PROJECTION LINE DEBUG PIPELINE ===
-	PipelinePreset& cascadeVPLinePreset = PipelinePresents::getPipelinePresentByID(PipelineID::CascadeVPLine);
-	cascadeVPLinePreset.polygonMode = VK_POLYGON_MODE_LINE;
-	cascadeVPLinePreset.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	cascadeVPLinePreset.enableDepthWrite = false;
-	cascadeVPLinePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
-
-	createPipeline(PipelineID::CascadeVPLine, PipelineCategory::Raster, "CascadeVPLine");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::OBBLine,
+		PipelineCategory::Raster,
+		"OBBLine",
+		false);
 
 	// === SKYBOX PIPELINE ===
-	PipelinePreset& skyboxPreset = PipelinePresents::getPipelinePresentByID(PipelineID::Skybox);
-	skyboxPreset.enableDepthWrite = false;
+	PipelinePreset& skyboxPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Skybox);
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Skybox,
+		PipelineCategory::Raster,
+		"Skybox",
+		false);
 
-	createPipeline(PipelineID::Skybox, PipelineCategory::Raster, "Skybox");
+	// === TRANSPARENT PIPELINE ===
+	PipelinePreset& transparentPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Transparent);
+	transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
+	//transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
+	transparentPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
+	transparentPreset.enableBlending = true;
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Transparent,
+		PipelineCategory::Raster,
+		"Transparent");
 
-	// === DEPTH RESOLVED PIPELINE ===
-	PipelinePreset& depthPrePreset = PipelinePresents::getPipelinePresentByID(PipelineID::DepthPrepass);
-	depthPrePreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // Normals
-	depthPrePreset.colorFormats.push_back(VK_FORMAT_R16G16_SFLOAT);            // Velocity
-	depthPrePreset.depthFormat = VK_FORMAT_D32_SFLOAT;
-	depthPrePreset.depthCompareOp = VK_COMPARE_OP_GREATER;
-	depthPrePreset.cullMode = VK_CULL_MODE_BACK_BIT;
+	// === PREPASS PIPELINE ===
+	PipelinePreset& prepassPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Prepass);
+	prepassPreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // Normals
+	prepassPreset.colorFormats.push_back(VK_FORMAT_R16G16_SFLOAT);            // Velocity
+	prepassPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
+	prepassPreset.depthCompareOp = VK_COMPARE_OP_GREATER;
+	prepassPreset.cullMode = VK_CULL_MODE_BACK_BIT;
+	prepassPreset.enableDepthWrite = true;
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Prepass,
+		PipelineCategory::Raster,
+		"Prepass");
 
-	createPipeline(PipelineID::DepthPrepass, PipelineCategory::Raster, "DepthPrepass", false, false);
-
-	// === CSM PIPELINE ===
-	PipelinePreset& csmPreset = PipelinePresents::getPipelinePresentByID(PipelineID::ShadowCSM);
+	// === SHADOW PIPELINE ===
+	PipelinePreset& csmPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Shadow);
 	csmPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	csmPreset.depthCompareOp = VK_COMPARE_OP_LESS;
 	csmPreset.cullMode = VK_CULL_MODE_FRONT_BIT;
-	//csmPreset.enableDepthBias = true;
-	//csmPreset.depthBiasConstant = 1.25f;
-	//csmPreset.depthBiasSlope = 1.75f;
-	//csmPreset.depthBiasClamp = 0.0f;
-	csmPreset.viewMask = (1u << MAX_SHADOW_CASCADES) - 1u;
+	csmPreset.enableDepthWrite = true;
 
-	createPipeline(PipelineID::ShadowCSM, PipelineCategory::Raster, "ShadowCSM", false, false);
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::Shadow,
+		PipelineCategory::Raster,
+		"Shadow");
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
-	//createPipeline(PipelineID::Visibility, PipelineCategory::Compute, "Visibility");
-	createPipeline(PipelineID::ToneMap, PipelineCategory::Compute, "ToneMap");
-	createPipeline(PipelineID::ExposureReduce, PipelineCategory::Compute, "ExposureReduce");
-	createPipeline(PipelineID::ExposureFinalize, PipelineCategory::Compute, "ExposureFinalize");
-	createPipeline(PipelineID::FlareBright, PipelineCategory::Compute, "FlareBright");
-	createPipeline(PipelineID::FlareGen, PipelineCategory::Compute, "FlareGen");
-	createPipeline(PipelineID::HDRToCubemap, PipelineCategory::Compute, "HDRToCubemap");
-	createPipeline(PipelineID::SpecularPrefilter, PipelineCategory::Compute, "SpecularPrefilter");
-	createPipeline(PipelineID::DiffuseIrradiance, PipelineCategory::Compute, "DiffuseIrradiance");
-	createPipeline(PipelineID::BRDFLUT, PipelineCategory::Compute, "BRDFLUT");
-	createPipeline(PipelineID::SSAO, PipelineCategory::Compute, "SSAO");
-	createPipeline(PipelineID::SSAOBlur, PipelineCategory::Compute, "SSAOBlur");
-	createPipeline(PipelineID::GTAO, PipelineCategory::Compute, "GTAO");
-	createPipeline(PipelineID::GTAOFilter, PipelineCategory::Compute, "GTAOFilter");
-	createPipeline(PipelineID::GTAOTemporalResolve, PipelineCategory::Compute, "GTAOTemporalResolve");
-	createPipeline(PipelineID::DepthPyramid, PipelineCategory::Compute, "DepthPyramid");
-	createPipeline(PipelineID::VolumetricLight, PipelineCategory::Compute, "VolumetricLight");
-	createPipeline(PipelineID::VolumetricLightBlur, PipelineCategory::Compute, "VolumetricLightBlur");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,PipelineID::ToneMap,
+		PipelineCategory::Compute,
+		"ToneMap");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ExposureReduce,
+		PipelineCategory::Compute,
+		"ExposureReduce");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ExposureFinalize,
+		PipelineCategory::Compute,
+		"ExposureFinalize");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::FlareBright,
+		PipelineCategory::Compute,
+		"FlareBright");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::FlareGen,
+		PipelineCategory::Compute,
+		"FlareGen");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::HDRToCubemap,
+		PipelineCategory::Compute,
+		"HDRToCubemap");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::SpecularPrefilter,
+		PipelineCategory::Compute,
+		"SpecularPrefilter");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::DiffuseIrradiance,
+		PipelineCategory::Compute,
+		"DiffuseIrradiance");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::BRDFLUT,
+		PipelineCategory::Compute,
+		"BRDFLUT");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::GTAO,
+		PipelineCategory::Compute,
+		"GTAO");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::GTAOFilter,
+		PipelineCategory::Compute,
+		"GTAOFilter");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::GTAOTemporalResolve,
+		PipelineCategory::Compute,
+		"GTAOTemporalResolve");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::HiZGen,
+		PipelineCategory::Compute,
+		"HiZGen");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::VolumetricLight,
+		PipelineCategory::Compute,
+		"VolumetricLight");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::VolumetricLightBlur,
+		PipelineCategory::Compute,
+		"VolumetricLightBlur");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ClusterTileSliceRanges,
+		PipelineCategory::Compute,
+		"ClusterTileSliceRanges");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::VisibleLightList,
+		PipelineCategory::Compute,
+		"VisibleLightList");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::IndirectArgsLight,
+		PipelineCategory::Compute,
+		"IndirectArgsLight");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ClusterCount,
+		PipelineCategory::Compute,
+		"ClusterCount");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ClusterScanOffsets,
+		PipelineCategory::Compute,
+		"ClusterScanOffsets");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ClusterScatterIDs,
+		PipelineCategory::Compute,
+		"ClusterScatterIDs");
+
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ScreenSpaceContactShadows,
+		PipelineCategory::Compute,
+		"ScreenSpaceContactShadows");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::AOUpscale,
+		PipelineCategory::Compute,
+		"AOUpscale");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::SMAAEdges,
+		PipelineCategory::Compute,
+		"SMAAEdges");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::SMAAWeights,
+		PipelineCategory::Compute,
+		"SMAAWeights");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::SMAABlend,
+		PipelineCategory::Compute,
+		"SMAABlend");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::CMAA2Edges,
+		PipelineCategory::Compute,
+		"CMAA2Edges");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::CMAA2ShapeCandidates,
+		PipelineCategory::Compute,
+		"CMAA2ShapeCandidates");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::CMAA2DeferredResolve,
+		PipelineCategory::Compute,
+		"CMAA2DeferredResolve");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::CMAA2DispatchArgs,
+		PipelineCategory::Compute,
+		"CMAA2DispatchArgs");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::FXAA,
+		PipelineCategory::Compute,
+		"FXAA");
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 
@@ -455,11 +557,10 @@ VkPipelineShaderStageCreateInfo PipelineManager::setShader(const char* shaderFil
 	return shaderStage;
 }
 
-void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings, bool msaaOn) {
+void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePreset& settings) {
 
 	PipelineConfigs::inputAssemblyConfig(pipeline._inputAssembly, settings.topology, VK_FALSE);
 
-	// For cascaded shadow mapping
 	if (settings.enableDepthBias) {
 		pipeline._rasterizer.depthBiasEnable = VK_TRUE;
 		pipeline._rasterizer.depthBiasConstantFactor = settings.depthBiasConstant;
@@ -468,29 +569,19 @@ void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePre
 	}
 	PipelineConfigs::rasterizerConfig(pipeline._rasterizer, settings.polygonMode, 1.0f, settings.cullMode, settings.frontFace);
 
-	if (msaaOn) {
-		PipelineConfigs::multisamplingConfig(pipeline._multisampling,
-			ResourceManager::getAvailableSampleCounts(), CURRENT_MSAA_LVL, VK_FALSE);
-	}
-	else {
-		PipelineConfigs::multisamplingConfig(pipeline._multisampling,
-			ResourceManager::getAvailableSampleCounts(), 1, VK_FALSE);
-	}
+	PipelineConfigs::multisamplingConfig(pipeline._multisampling, VK_FALSE);
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
 		settings.enableBlending, VK_BLEND_FACTOR_ONE);
 
-	if (settings.enableDepthTest && settings.enableDepthWrite) {
-		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_TRUE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
-	}
-	else if (settings.enableDepthTest && !settings.enableDepthWrite) {
-		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_TRUE, VK_FALSE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
-	}
-	else {
-		PipelineConfigs::depthStencilConfig(pipeline._depthStencil, VK_FALSE, VK_FALSE, VK_FALSE, VK_FALSE, settings.depthCompareOp);
-	}
-
+	PipelineConfigs::depthStencilConfig(
+		pipeline._depthStencil,
+		settings.enableDepthTest,
+		settings.enableDepthWrite,
+		VK_FALSE,
+		VK_FALSE,
+		settings.depthCompareOp);
 
 	pipeline._renderInfo.viewMask = settings.viewMask;
 	PipelineConfigs::setColorAttachmentAndDepthFormat(settings.colorFormats, pipeline._renderInfo, settings.depthFormat);
@@ -521,37 +612,15 @@ void PipelineConfigs::rasterizerConfig(
 
 void PipelineConfigs::multisamplingConfig(
 	VkPipelineMultisampleStateCreateInfo& multisampling,
-	const std::vector<VkSampleCountFlags>& samples,
-	uint32_t chosenMSAACount,
 	bool sampleShadingEnabled)
 {
-
-	ASSERT((chosenMSAACount != 0) && ((chosenMSAACount & (chosenMSAACount - 1)) == 0) && "Invalid MSAA count! Must be a power of two up to 8.");
-	ASSERT(chosenMSAACount <= 8 && "Invalid MSAA count! Must be a power of two up to 8.");
-
-	// Default to sample count 1
-	VkSampleCountFlagBits msaaSample = VK_SAMPLE_COUNT_1_BIT;
-	if (static_cast<VkSampleCountFlagBits>(chosenMSAACount) == msaaSample) {
-		multisampling.rasterizationSamples = msaaSample;
-	}
-	else {
-		bool found = false;
-		for (auto sample : samples) {
-			if (sample == static_cast<VkSampleCountFlags>(chosenMSAACount)) {
-				msaaSample = static_cast<VkSampleCountFlagBits>(sample);
-				multisampling.rasterizationSamples = msaaSample;
-				found = true;
-				break;
-			}
-		}
-		ASSERT(found && "Failed to find valid MSAA sample count!");
-	}
+	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
 	multisampling.sampleShadingEnable = sampleShadingEnabled;
 	multisampling.minSampleShading = 1.0f;
 	multisampling.pSampleMask = nullptr;
 
-	multisampling.alphaToCoverageEnable = VK_TRUE;
+	multisampling.alphaToCoverageEnable = VK_FALSE;
 	multisampling.alphaToOneEnable = VK_FALSE;
 }
 

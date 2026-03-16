@@ -20,6 +20,9 @@ lib/
 *.exe
 *.cache
 
+# Random text files
+Renderer-Goals.txt
+
 # Assets
 res/assets/Bistro.glb
 
@@ -27,7 +30,7 @@ res/assets/Bistro.glb
 *.spv
 *.spv.dis
 
-# CMake files (if you use it)
+# CMake files
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake

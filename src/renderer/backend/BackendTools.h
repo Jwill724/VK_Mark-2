@@ -1,16 +1,16 @@
 #pragma once
 
-#include "common/Vk_Types.h"
+#include "common/ResourceTypes.h"
 #include "cstring"
 #include "set"
 
 struct SwapchainDef {
 	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-	std::vector<VkImage> images{};
-	std::vector<VkImageView> imageViews{};
-	VkFormat format{};
-	VkExtent2D extent{};
+	std::vector<AllocatedImage> images;
 	uint32_t imageCount = UINT32_MAX;
+
+	VkExtent2D extent;
+	VkFormat format;
 
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;

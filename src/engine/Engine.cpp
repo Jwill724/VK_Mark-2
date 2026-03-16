@@ -8,7 +8,7 @@ static std::unique_ptr<Window> _window;
 static std::unique_ptr<EngineState> engineState;
 
 namespace Engine {
-	GLFWwindow* getWindow() { return _window ? _window->window : nullptr; }
+	GLFWwindow* getWindow() { return _window ? _window->getWindow() : nullptr; }
 	// just returns the whole window struct for its use
 	const Window& windowModMode() { return *_window; }
 
@@ -43,7 +43,7 @@ void Engine::initWindow() {
 
 void Engine::resetWindow() {
 	if (_window) {
-		_window->cleanupWindow();
+		_window->cleanup();
 	}
 	if (_isInitialized == false) return; // shutdown
 
@@ -61,11 +61,7 @@ void Engine::run() {
 	getState().loadAssets(_engineProfiler);
 	getState().initRenderer(_engineProfiler);
 
-	_engineProfiler.getStats().capFramerate = true;
-	// TODO: Add auto define for target fps to match monitor hz
-	_engineProfiler.getStats().targetFrameRate = TARGET_FRAME_RATE_60;
-
-	while (WindowIsOpen(_window->window)) {
+	while (_window->isOpen()) {
 		_window->pollEvents();
 
 		if (_window->throttleIfWindowUnfocused(0.033)) continue;

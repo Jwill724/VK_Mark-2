@@ -1,0 +1,170 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+// NOTE: This shit doesn't work at all.
+
+#include "../include/set_bindings.glsl"
+#include "../include/depth.glsl"
+#include "../include/gpu_scene_structures.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inCurDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_3_TEX) uniform sampler2D inAoFinal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_4_TEX) uniform sampler2D inAoHistoryRead;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_5_TEX) uniform sampler2D inPrevDepth;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outAoHistoryWrite;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+layout(push_constant) uniform TemporalResolvePush {
+	float baseDepthTolerance;
+	float slopeDepthTolerance;
+	float noiseLevel;
+	float historyDampenStrength;
+	float maxHistoryWeight;
+	float minHistoryWeight;
+	float motionDecay;
+} pc;
+
+float fetchAO(ivec2 pixel)
+{
+	return texelFetch(inAoFinal, pixel, 0).r;
+}
+
+float fetchDepth(ivec2 pixel)
+{
+	return texelFetch(inCurDepth, pixel, 0).r;
+}
+
+float fetchPrevDepth(ivec2 pixel)
+{
+	return texelFetch(inPrevDepth, pixel, 0).r;
+}
+
+void main()
+{
+	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	const ivec2 res = ivec2(scene.viewportSize.xy);
+
+	if (pixel.x >= res.x || pixel.y >= res.y) return;
+
+	const ivec2 maxResCoord = res - ivec2(1);
+
+	float aoCurrent = fetchAO(pixel);
+
+	// If temporal invalid, just seed history with current.
+	if (scene.temporal.y == 0u) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// UVs full res
+	vec2 invRes = vec2(scene.pixelSizes.xy);
+	vec2 currUV = (vec2(pixel) + 0.5) * invRes;
+
+	// Velocity is full-res UV delta
+	vec2 velocityUV = texelFetch(inVelocity, pixel, 0).xy;
+	vec2 prevUV = currUV - velocityUV;
+
+	// Off-screen reprojection -> reject
+	if (prevUV.x <= 0.0 || prevUV.x >= 1.0 || prevUV.y <= 0.0 || prevUV.y >= 1.0) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// Convert prevUV to pixel
+	vec2 prevPixelF = prevUV * vec2(res) - vec2(0.5);
+	ivec2 prevPixel = ivec2(floor(prevPixelF + vec2(0.5)));
+	prevPixel = clamp(prevPixel, ivec2(0), maxResCoord);
+
+	float curDepth01 = fetchDepth(pixel);
+
+	// History samples
+	//float aoHistory = texelFetch(inAoHistoryRead, prevPixel, 0).r;
+	float aoHistory = texture(inAoHistoryRead, prevUV).r;
+	float prevDepth01 = texture(inPrevDepth, prevUV).r;
+	//float prevDepth01 = fetchPrevDepth(prevPixel);
+
+	// If depth is invalid, reject
+	if (curDepth01 <= DEPTH_EPSILON_REVERSED_Z || prevDepth01 <= DEPTH_EPSILON_REVERSED_Z) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	float curZ = linearizeDepth(curDepth01, scene.cameraClips.x, scene.cameraClips.y);
+	float prevZ = linearizeDepth(prevDepth01, scene.cameraClips.x, scene.cameraClips.y);
+
+	// Disocclusion threshold based on local depth slope
+	ivec2 px1 = clamp(pixel + ivec2(1, 0), ivec2(0), maxResCoord);
+	ivec2 py1 = clamp(pixel + ivec2(0, 1), ivec2(0), maxResCoord);
+
+	float curZx01 = fetchDepth(px1);
+	float curZy01 = fetchDepth(py1);
+
+	if (curZx01 <= DEPTH_EPSILON_REVERSED_Z || curZy01 <= DEPTH_EPSILON_REVERSED_Z) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	float curZx = linearizeDepth(curZx01, scene.cameraClips.x, scene.cameraClips.y);
+	float curZy = linearizeDepth(curZy01, scene.cameraClips.x, scene.cameraClips.y);
+
+	float slope = max(abs(curZx - curZ), abs(curZy - curZ));
+
+	// Base + slope-scaled threshold
+	float baseThreshold = pc.baseDepthTolerance * curZ;
+	float slopeThreshold = pc.slopeDepthTolerance * slope;
+
+	float threshold = max(baseThreshold, slopeThreshold);
+	threshold = min(threshold, 0.1 * max(curZ, 0.5));
+
+	float depthDiff = abs(curZ - prevZ);
+	if (depthDiff > threshold) {
+		imageStore(outAoHistoryWrite, pixel, vec4(aoCurrent, 0.0, 0.0, 0.0));
+		return;
+	}
+
+	// Neighborhood variance clip (full-res)
+	float sumAO = 0.0;
+	float sumAOSq = 0.0;
+	int count = 0;
+
+	for (int oy = -1; oy <= 1; ++oy) {
+		for (int ox = -1; ox <= 1; ++ox) {
+			ivec2 p = clamp(pixel + ivec2(ox, oy), ivec2(0), maxResCoord);
+			float v = fetchAO(p);
+			sumAO += v;
+			sumAOSq += v * v;
+			count++;
+		}
+	}
+
+	float meanAO = sumAO / float(count);
+	float variance = max(0.0, (sumAOSq / float(count)) - meanAO * meanAO);
+	float stddev = sqrt(variance);
+
+	float k = pc.noiseLevel;
+	aoHistory = clamp(aoHistory, meanAO - k * stddev, meanAO + k * stddev);
+
+	// History blending
+	vec2 velocityPx = velocityUV * vec2(res);
+	float speedPx = length(velocityPx);
+
+	float historyWeight = pc.maxHistoryWeight * exp(-pc.motionDecay * speedPx);
+	historyWeight = clamp(historyWeight, pc.minHistoryWeight, pc.maxHistoryWeight);
+
+	// Extra dampening knob: push towards current (reduces ghosting)
+	float damp = clamp(pc.historyDampenStrength, 0.0, 1.0);
+	historyWeight = mix(historyWeight, pc.minHistoryWeight, damp);
+
+	float aoOut = mix(aoCurrent, aoHistory, historyWeight);
+
+	imageStore(outAoHistoryWrite, pixel, vec4(aoOut, 0.0, 0.0, 0.0));
+}

@@ -8,16 +8,12 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 
 	updateLocalInput(window);
 
+	auto& debug = profiler.debugToggles;
 	// Note: If one imgui window is active and a mouse click on that window is occurring,
 	// then if the window is closed, that mouse click stays stuck until the imgui window is reopened.
 	// Same behavior as movement keys becoming sticky with window resizing/stalls.
 	// This is likely an event queue issue.
-
-	auto& debug = profiler.debugToggles;
-	// debug toggle settings
-	if (keyboard.isPressed(GLFW_KEY_TAB)) debug.enableSettings = 1u - debug.enableSettings;
-	if (keyboard.isPressed(GLFW_KEY_P)) debug.enableStats = 1u - debug.enableStats;
-
+	// Update 3/15/26: Gotta fix this mouse capture shit it can buggy with closing the imgui tab
 	// Mouse rotation, imgui can be properly used with free cam
 	if (!ImGui::GetIO().WantCaptureMouse && mouse.leftPressed) {
 		constexpr float sensitivity = 30.0f;
@@ -29,8 +25,8 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 
 	// TODO: movement is slow asf in space station model, due to model units being too large so
 	// some scaling factor will need to be added for this particular model
-	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 20.0f : 8.0f;
-	float moveSpeed = baseSpeed * profiler.getStats().deltaTime.get();
+	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 25.0f : 5.0f;
+	float moveSpeed = baseSpeed * profiler.getStats().deltaSecondsRaw;
 
 	const float radPitch = glm::radians(_pitch);
 	const float radYaw = glm::radians(_yaw);
@@ -61,8 +57,8 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 	if (keyboard.isHeld(GLFW_KEY_SPACE)) { vert += up * upWorld; }
 	if (keyboard.isHeld(GLFW_KEY_LEFT_CONTROL)) { vert -= up * upWorld;}
 
-	if (glm::length(horiz) > 0.0f) horiz = glm::normalize(horiz);
-	if (glm::length(vert) > 0.0f) vert = glm::normalize(vert);
+	if (glm::length(horiz) > 0.0f) { horiz = glm::normalize(horiz); }
+	if (glm::length(vert) > 0.0f) { vert = glm::normalize(vert); }
 
 	// scale speed on whole axis while frame independent
 	_velocity = (horiz + vert) * moveSpeed;
@@ -73,6 +69,15 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 	}
 
 	_position += _velocity;
+
+
+	if (keyboard.isPressed(GLFW_KEY_TAB)) {
+		debug.enableSettings = 1u - debug.enableSettings;
+	}
+
+	if (keyboard.isPressed(GLFW_KEY_P)) {
+		debug.enableProfilerView = 1u - debug.enableProfilerView;
+	}
 }
 
 glm::mat4 Camera::getViewMatrix() const {

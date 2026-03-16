@@ -18,6 +18,8 @@ struct PipelineBuilder {
 	std::vector<VkFormat> colorFormats;
 	VkFormat depthFormat;
 
+	uint32_t msaaCount = UINT32_MAX;
+
 	void initializePipelineSTypes();
 
 	void createPipeline(PipelineHandle& pipelineObj, const PipelinePreset& pipelineSettings, const VkDevice device);

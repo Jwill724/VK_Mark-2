@@ -3,11 +3,16 @@
 
 const uint MAX_CASCADES = 4u;
 
+const float flashlightShadowTexel = 1.0 / 512.0;
+
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	vec4 cascadeSplits;
-	vec4 params; // .x/shadowBias, .y/shadowMapID, .z/cascadeCount, .w/texelSize
-	vec4 cascadeRadii;
+	// x=bias, y=shadowAtlasID, z=cascadeCount, w=atlasTexelSize(1/atlasHeight)
+	vec4 params;
+	// xy = uvScale, zw = uvOffset (per cascade)
+	vec4 atlasUV[MAX_CASCADES];
+	vec4 maxFilterRadiusTexels;
 };
 
 // 8-tap Poisson disk in texels
@@ -44,34 +49,36 @@ mat2 createHash(vec2 pixelCoord)
 }
 
 // Used for volumetric lights shadow map samples
+// Depth test here is different from high and it works so just leave it.
 float PCFPoissonLow(
 	vec2 pixelCoord,
-	sampler2DArray sm,
-	vec2 uv,
-	uint layer,
-	float z,
+	sampler2D shadowMap,
+	vec2 shadowUV,
+	float receiverDepth,
 	float bias,
 	float texel)
 {
-	mat2 R = createHash(pixelCoord);
-	float s = 0.0;
-	float depthPos = z - bias;
+	mat2 rotation = createHash(pixelCoord);
+	float sum = 0.0;
+
+	float depthPos = receiverDepth + bias;
+
 	for (int i = 0; i < 8; ++i) {
-		vec2 offset = (R * poisson8[i]) * texel;
-		float depthSample = texture(sm, vec3(uv + offset, float(layer))).r;
-		s += float((depthPos) < depthSample);
+		vec2 offset = (rotation * poisson8[i]) * texel;
+
+		float depthSample = texture(shadowMap, shadowUV + offset).r;
+		sum += float(depthPos < depthSample);
 	}
 
-	return s * (1.0 / 8.0);
+	return sum * (1.0 / 8.0);
 }
 
 // Used in primary shadow rendering
 float PCFPoissonHigh(
 	vec2 pixelCoord,
-	sampler2DArray sm,
-	vec2 uv,
-	uint layer,
-	float z,
+	sampler2D shadowMap,
+	vec2 shadowUV,
+	float receiverDepth,
 	float bias,
 	float texel,
 	float radius)
@@ -79,12 +86,12 @@ float PCFPoissonHigh(
 	mat2 R = createHash(pixelCoord);
 	float sum = 0.0;
 	float samplePos = texel * radius;
-	float depthPos = z - bias * texel;
+	float depthPos = receiverDepth + (bias * texel);
 
 	for (int i = 0; i < 16; ++i) {
 		vec2 offset = (R * poisson16[i]) * samplePos;
 
-		float depthSample = texture(sm, vec3(uv + offset, float(layer))).r;
+		float depthSample = texture(shadowMap, shadowUV + offset).r;
 		float shadow = depthSample >= depthPos ? 1.0 : 0.0;
 
 		float w = 1.0 - smoothstep(0.0, radius, length(offset));

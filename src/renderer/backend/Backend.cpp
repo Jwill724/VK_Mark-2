@@ -11,6 +11,11 @@ namespace Backend {
 	VkInstance _instance = VK_NULL_HANDLE;
 	VkInstance getInstance() { return _instance; }
 
+	bool VULKAN_COMPUTE_AVAILABLE = false;
+	const bool isComputeAvailable() { return VULKAN_COMPUTE_AVAILABLE; }
+	//bool VULKAN_TRANSFER_AVAILABLE = false;
+	//const bool isTransferAvailable() { return VULKAN_TRANSFER_AVAILABLE; }
+
 	VkPhysicalDeviceProperties _deviceProps{};
 	VkPhysicalDeviceLimits _deviceLimits{};
 
@@ -19,6 +24,12 @@ namespace Backend {
 	}
 	const size_t getNonCoherentAtomSize() {
 		return _deviceLimits.nonCoherentAtomSize;
+	}
+	const float getTimestampPeriod() {
+		return _deviceLimits.timestampPeriod;
+	}
+	bool queueSupportsTimestamps(const GPUQueue& queue) {
+		return queue.timestampValidBits > 0;
 	}
 
 	VkDebugUtilsMessengerEXT _debugMessenger = VK_NULL_HANDLE;
@@ -155,29 +166,44 @@ void Backend::pickPhysicalDevice() {
 	vkGetPhysicalDeviceProperties(_physicalDevice, &_deviceProps);
 	_deviceLimits = _deviceProps.limits;
 	_deviceName = std::string(_deviceProps.deviceName);
-	ResourceManager::getAvailableSampleCounts() = VulkanUtils::findSupportedSampleCounts(_deviceLimits);
 }
 
 void Backend::createLogicalDevice() {
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies;
 
+	uint32_t queueFamilyCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(_physicalDevice, &queueFamilyCount, nullptr);
+
+	std::vector<VkQueueFamilyProperties> queueFamilyProps(queueFamilyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(
+		_physicalDevice,
+		&queueFamilyCount,
+		queueFamilyProps.data()
+	);
+
 	// Only add queue families that exist
 	if (_queueFamilyIndices.graphicsFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.graphicsFamily.value());
 		_graphicsQueue.familyIndex = _queueFamilyIndices.graphicsFamily.value();
+		_graphicsQueue.timestampValidBits = queueFamilyProps[_graphicsQueue.familyIndex].timestampValidBits;
 	}
 	if (_queueFamilyIndices.presentFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.presentFamily.value());
 		_presentQueue.familyIndex = _queueFamilyIndices.presentFamily.value();
+		_presentQueue.timestampValidBits = queueFamilyProps[_presentQueue.familyIndex].timestampValidBits;
 	}
 	if (_queueFamilyIndices.transferFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.transferFamily.value());
 		_transferQueue.familyIndex = _queueFamilyIndices.transferFamily.value();
+		_transferQueue.timestampValidBits = queueFamilyProps[_transferQueue.familyIndex].timestampValidBits;
+		//VULKAN_TRANSFER_AVAILABLE = true;
 	}
 	if (_queueFamilyIndices.computeFamily.has_value()) {
 		uniqueQueueFamilies.insert(_queueFamilyIndices.computeFamily.value());
 		_computeQueue.familyIndex = _queueFamilyIndices.computeFamily.value();
+		_computeQueue.timestampValidBits = queueFamilyProps[_computeQueue.familyIndex].timestampValidBits;
+		VULKAN_COMPUTE_AVAILABLE = true;
 	}
 
 	float queuePriority = 1.0f;
@@ -349,32 +375,52 @@ void Backend::createSwapchain() {
 	}
 
 	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, nullptr);
-	_swapchainDef.images.resize(imageCount);
-	_swapchainDef.imageViews.resize(imageCount);
-	_swapchainDef.imageCount = imageCount;
-	vkGetSwapchainImagesKHR(_device, _swapchainDef.swapchain, &imageCount, _swapchainDef.images.data());
+	std::vector<VkImage> rawSwapchainImages(imageCount);
+	vkGetSwapchainImagesKHR(
+		_device,
+		_swapchainDef.swapchain,
+		&imageCount,
+		rawSwapchainImages.data()
+	);
 
-	_swapchainDef.format = surfaceFormat.format;
-	_swapchainDef.extent = extent;
+	_swapchainDef.images.clear();
+	_swapchainDef.images.resize(imageCount);
+	_swapchainDef.imageCount = imageCount;
+
+	for (uint32_t imageIndex = 0; imageIndex < imageCount; ++imageIndex) {
+		AllocatedImage& swapchainImage = _swapchainDef.images[imageIndex];
+
+		swapchainImage.image = rawSwapchainImages[imageIndex];
+		swapchainImage.format = surfaceFormat.format;
+		swapchainImage.extent = { extent.width, extent.height, 1 };
+
+		swapchainImage.imageView = ImageUtils::createImageView(
+			_device,
+			swapchainImage.image,
+			swapchainImage.format,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			1
+		);
+	}
 
 	_swapchainDef.imageAvailableSemaphores.resize(imageCount);
 	_swapchainDef.renderFinishedSemaphores.resize(imageCount);
 	_swapchainDef.inFlightFences.resize(imageCount);
 	_swapchainDef.imageInFlightFrame.resize(imageCount, UINT32_MAX);
 
-	for (uint32_t i = 0; i < imageCount; ++i) {
-		_swapchainDef.imageAvailableSemaphores[i] = SyncUtils::createSemaphore(_device);
-		_swapchainDef.renderFinishedSemaphores[i] = SyncUtils::createSemaphore(_device);
-		_swapchainDef.inFlightFences[i] = SyncUtils::createFence(_device);
+	for (uint32_t imageIndex = 0; imageIndex < imageCount; ++imageIndex) {
+		_swapchainDef.imageAvailableSemaphores[imageIndex] =
+			SyncUtils::createSemaphore(_device);
 
-		_swapchainDef.imageViews[i] = ImageUtils::createImageView(
-			_device,
-			_swapchainDef.images[i],
-			_swapchainDef.format,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			1
-		);
+		_swapchainDef.renderFinishedSemaphores[imageIndex] =
+			SyncUtils::createSemaphore(_device);
+
+		_swapchainDef.inFlightFences[imageIndex] =
+			SyncUtils::createFence(_device);
 	}
+
+	_swapchainDef.extent = extent;
+	_swapchainDef.format = surfaceFormat.format;
 }
 
 void Backend::resizeSwapchain() {
@@ -392,9 +438,9 @@ void Backend::cleanupSwapchain() {
 	}
 
 	for (uint32_t i = 0; i < _swapchainDef.imageCount; ++i) {
-		VkImageView imgView = _swapchainDef.imageViews[i];
-		if (imgView != VK_NULL_HANDLE)
-			vkDestroyImageView(_device, imgView, nullptr);
+		auto& img = _swapchainDef.images[i];
+		if (img.imageView != VK_NULL_HANDLE)
+			vkDestroyImageView(_device, img.imageView, nullptr);
 
 		VkFence fence = _swapchainDef.inFlightFences[i];
 		if (fence != VK_NULL_HANDLE)
@@ -418,7 +464,7 @@ VkExtent2D Backend::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilitie
 	}
 	else {
 		int width, height;
-		glfwGetFramebufferSize(Engine::getWindow(), &width, &height);
+		glfwGetWindowSize(Engine::getWindow(), &width, &height);
 
 		VkExtent2D actualExtent = {
 			static_cast<uint32_t>(width),

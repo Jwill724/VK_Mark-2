@@ -1,0 +1,363 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_nonuniform_qualifier : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+#include "../include/depth.glsl"
+#include "../include/pbr.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform usampler2D inHiZ;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inFlareBright;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outLensFlareColor;
+
+layout(push_constant) uniform LensFlarePush {
+	vec2 fullRes;
+	vec2 invFullRes;
+
+	vec2 outputRes;
+	vec2 invOutputRes;
+
+	vec2 sunUv;
+	float sunVisible;
+	uint rainbowLUTIndex;
+
+	float brightThreshold;
+	float brightKnee;
+	float brightIntensity;
+	float pad0;
+
+	float ringInnerRadius;
+	float ringOuterRadius;
+	float chromaStrength;
+	float pad1;
+
+	float streakStrength;
+	float streakWidth;
+	float streakLength;
+	float pad2;
+
+	float occlusionRadiusPixels;
+	float occlusionDepthBias;
+	float occlusionFade;
+	float pad3;
+} pc;
+
+float ringMask(vec2 uv, vec2 sunUv, float innerRadius, float outerRadius);
+float streakAxisPixels(
+	vec2 uv,
+	vec2 originUv,
+	vec2 dir,
+	float widthUv,
+	float lengthUv,
+	vec2 outputRes);
+struct SunPick
+{
+	vec2 uv;
+	vec3 color;
+	float lum;
+	float coverage;
+};
+SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv);
+float computeSunOcclusion(vec2 sunUv);
+float distNormMinDim(vec2 uvA, vec2 uvB, vec2 outputRes);
+
+void main()
+{
+	ivec2 dim = imageSize(outLensFlareColor);
+	ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
+
+	if (any(greaterThanEqual(pixelCoord, dim))) return;
+
+	if (pc.sunVisible <= 0.0) {
+		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
+		return;
+	}
+
+	vec2 uv = (vec2(pixelCoord) + 0.5) / vec2(dim);
+
+	SunPick sunPick = findVisibleSunPeak(inFlareBright, pc.sunUv);
+
+	if (sunPick.lum < 1e-8) {
+		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
+		return;
+	}
+
+	vec2 sunUv = sunPick.uv;
+	vec3 brightColor = sunPick.color;
+	float brightLum = sunPick.lum;
+
+	float occlusion = computeSunOcclusion(sunUv);
+
+	float brightnessGate = 1.0 - exp(-brightLum * 0.55);
+
+	float coverageMin = 0.06;
+	float coverageMax = 0.18;
+
+	float coverageGate = saturate((sunPick.coverage - coverageMin) / max(coverageMax - coverageMin, 1e-6));
+	coverageGate = pow(coverageGate, 1.75);
+
+	const float occlusionFloor = 0.03;
+	float occlusionSoft = mix(occlusionFloor, 1.0, occlusion);
+	occlusionSoft = pow(occlusionSoft, 1.25);
+
+	float sunGate = brightnessGate * coverageGate * occlusionSoft * saturate(pc.sunVisible);
+
+	if (sunGate < 1e-5) {
+		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
+		return;
+	}
+
+	float distToSun = distNormMinDim(uv, sunUv, pc.outputRes);
+
+	vec3 tint = max(brightColor, vec3(0.0));
+	float tintLum = max(luminance(tint), 1e-6);
+	tint *= (1.0 / tintLum);
+
+	float ring = ringMask(uv, sunUv, pc.ringInnerRadius, pc.ringOuterRadius);
+
+	float ringT = (distToSun - pc.ringInnerRadius) / max(pc.ringOuterRadius - pc.ringInnerRadius, 1e-6);
+	ringT = saturate(ringT);
+
+	vec3 rainbowLut = texture(
+		combinedSamplers[nonuniformEXT(pc.rainbowLUTIndex)],
+		vec2(ringT, 0.5)
+	).rgb;
+
+	vec3 ringColor = mix(vec3(1.0), rainbowLut, saturate(pc.chromaStrength));
+
+	const float ringOpacity = 0.2;
+
+	float ringMid = 1.0 - abs(ringT * 2.0 - 1.0);
+	ringMid = pow(saturate(ringMid), 0.75);
+
+	vec3 ringContribution = ringColor * ring * ringMid * ringOpacity;
+
+	float widthUv  = pc.streakWidth;
+	float lengthUv = pc.streakLength;
+
+	float horiz = streakAxisPixels(
+		uv,
+		sunUv,
+		vec2(1.0, 0.0),
+		widthUv * 0.22,
+		lengthUv * 3.25,
+		pc.outputRes
+	);
+
+	float vert = streakAxisPixels(
+		uv,
+		sunUv,
+		vec2(0.0, 1.0),
+		widthUv * 0.40,
+		lengthUv * 1.75,
+		pc.outputRes
+	);
+
+	const int BLADE_COUNT = 8;
+	float star = 0.0;
+
+	for (int i = 0; i < BLADE_COUNT; ++i) {
+		float angle = (6.2831853 / float(BLADE_COUNT)) * float(i);
+		vec2 dir = vec2(cos(angle), sin(angle));
+
+		float blade = streakAxisPixels(
+			uv,
+			sunUv,
+			dir,
+			widthUv * 0.55,
+			lengthUv * 1.35,
+			pc.outputRes
+		);
+
+		blade = pow(max(blade, 0.0), 5.0);
+		star += blade;
+	}
+
+	star = min(star, 6.0);
+
+	float streakValue = (horiz * 1.0) + (vert * 0.35) + (star * 0.85);
+
+	float streakT = saturate(distToSun / max(pc.streakLength, 1e-6));
+	vec3 streakChroma = texture(
+		combinedSamplers[nonuniformEXT(pc.rainbowLUTIndex)],
+		vec2(streakT, 0.5)
+	).rgb;
+
+	vec3 streakColor = mix(tint, streakChroma, saturate(pc.chromaStrength * 0.45));
+	vec3 streakContribution = streakColor * (streakValue * pc.streakStrength);
+
+	vec3 flareColor = (ringContribution * 1.00) + (streakContribution * 1.10);
+	flareColor *= sunGate;
+
+	imageStore(outLensFlareColor, pixelCoord, vec4(max(flareColor, 0.0), 1.0));
+}
+
+float ringMask(vec2 uv, vec2 sunUv, float innerRadius, float outerRadius)
+{
+	float distToSun = distNormMinDim(uv, sunUv, pc.outputRes);
+
+	float innerSoft = max(innerRadius * 0.30, 1e-6);
+	float outerSoft = max(outerRadius * 0.30, 1e-6);
+
+	float inner = smoothstep(innerRadius, innerRadius + innerSoft, distToSun);
+	float outer = 1.0 - smoothstep(outerRadius - outerSoft, outerRadius, distToSun);
+
+	float band = saturate(inner * outer);
+	band = pow(band, 2.0);
+
+	return band;
+}
+
+float streakAxisPixels(
+	vec2 uv,
+	vec2 originUv,
+	vec2 dir,
+	float widthUv,
+	float lengthUv,
+	vec2 outputRes)
+{
+	vec2 deltaUv = (uv - originUv);
+
+	vec2 axis = normalize(dir);
+	vec2 perp = vec2(-axis.y, axis.x);
+
+	float alongUv = abs(dot(deltaUv, axis));
+	float acrossUv = abs(dot(deltaUv, perp));
+
+	float minDim = min(outputRes.x, outputRes.y);
+
+	float widthPixels = max(widthUv  * minDim, 0.85);
+	float lengthPixels = max(lengthUv * minDim, 2.0);
+
+	float alongPixels = alongUv * minDim;
+	float acrossPixels = acrossUv * minDim;
+
+	float gauss = exp(-(acrossPixels * acrossPixels) / (2.0 * widthPixels * widthPixels));
+	float falloff = exp(-alongPixels / lengthPixels);
+
+	return gauss * falloff;
+}
+
+SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv)
+{
+	ivec2 brightDimI = textureSize(brightTex, 0);
+	vec2 brightDim = vec2(brightDimI);
+	vec2 invBright = 1.0 / max(brightDim, vec2(1.0));
+
+	const int SEARCH_RADIUS = 6;
+
+	float bestLum = 0.0;
+	vec2 bestUv = sunUv;
+	vec3 bestColor = vec3(0.0);
+
+	float weightSum = 0.0;
+	vec2 weightedUv = vec2(0.0);
+	vec3 weightedColor = vec3(0.0);
+
+	float sumLum = 0.0;
+
+	for (int y = -SEARCH_RADIUS; y <= SEARCH_RADIUS; ++y) {
+		for (int x = -SEARCH_RADIUS; x <= SEARCH_RADIUS; ++x) {
+
+			vec2 offsetUv = vec2(float(x), float(y)) * invBright;
+			vec2 tapUv = clamp(sunUv + offsetUv, vec2(0.0), vec2(1.0));
+
+			vec3 c = textureLod(brightTex, tapUv, 0.0).rgb;
+			float lum = luminance(c);
+
+			sumLum += lum;
+
+			float w = lum * lum;
+
+			weightedUv += tapUv * w;
+			weightedColor += c * w;
+			weightSum += w;
+
+			if (lum > bestLum) {
+				bestLum = lum;
+				bestUv = tapUv;
+				bestColor = c;
+			}
+		}
+	}
+
+	if (weightSum > 1e-8) {
+		vec2 centroidUv = weightedUv / weightSum;
+		vec3 centroidColor = weightedColor / weightSum;
+
+		const float centroidBlend = 0.35;
+		bestUv = mix(bestUv, centroidUv, centroidBlend);
+		bestColor = mix(bestColor, centroidColor, 0.25);
+	}
+
+	const float sampleCount = float((SEARCH_RADIUS * 2 + 1) * (SEARCH_RADIUS * 2 + 1));
+
+	float coverage = 0.0;
+	if (bestLum > 1e-8) {
+		coverage = saturate((sumLum / sampleCount) / bestLum);
+	}
+
+	SunPick outPick;
+	outPick.uv = bestUv;
+	outPick.color = bestColor;
+	outPick.lum = bestLum;
+	outPick.coverage = coverage;
+
+	return outPick;
+}
+
+float computeSunOcclusion(vec2 sunUv)
+{
+	float farPlane = scene.cameraClips.y;
+	float nearPlane = scene.cameraClips.x;
+	float fade = max(pc.occlusionFade, 1e-6);
+
+	float radiusHalfRes = max(pc.occlusionRadiusPixels * 0.5, 0.0);
+
+	float tapSpacingPixels = max(pc.occlusionRadiusPixels * 0.75, 1.0);
+	vec2 tapSpacingUv = tapSpacingPixels * pc.invFullRes;
+
+	float bestVis = 0.0;
+
+	for (int y = -1; y <= 1; ++y) {
+		for (int x = -1; x <= 1; ++x) {
+
+			vec2 tapUv = sunUv + vec2(float(x), float(y)) * tapSpacingUv;
+			tapUv = clamp(tapUv, vec2(0.0), vec2(1.0));
+
+			float minLinearDepth = sampleHiZMinDepth(
+				inHiZ,
+				tapUv,
+				radiusHalfRes,
+				nearPlane,
+				farPlane
+			);
+			minLinearDepth += pc.occlusionDepthBias;
+
+			float vis = smoothstep(farPlane - fade, farPlane, minLinearDepth);
+			bestVis = max(bestVis, vis);
+		}
+	}
+
+	return bestVis;
+}
+
+float distNormMinDim(vec2 uvA, vec2 uvB, vec2 outputRes)
+{
+	vec2 deltaPixels = (uvA - uvB) * outputRes;
+	float minDim = min(outputRes.x, outputRes.y);
+
+	return length(deltaPixels) / max(minDim, 1.0);
+}

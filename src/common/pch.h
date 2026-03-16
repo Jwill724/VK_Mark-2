@@ -28,11 +28,17 @@
 // Third-party
 #include "fmt/core.h"
 #include <vulkan/vulkan.h>
-#include <GLFW/glfw3.h>
+#include "glfw/glfw3.h"
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <stb_image/stb_image.h>
+#include "enkiTS/TaskScheduler.h"
 #include <meshoptimizer.h>
+
+#ifdef TRACY_ENABLE
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
+#endif
 
 #define FASTGLTF_ENABLE_GLMC
 #include <fastgltf/glm_element_traits.hpp>
@@ -49,4 +55,5 @@
 #include "common/ErrorChecking.h"
 #include "common/glm_common.hpp"
 
-#include "enkiTS/TaskScheduler.h"
+#include "assets/AreaTex.h"
+#include "assets/SearchTex.h"

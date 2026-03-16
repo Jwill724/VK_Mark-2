@@ -36,7 +36,7 @@ static VkImageAspectFlags getAspectMaskFromFormat(const VkFormat format) {
 void ImageUtils::createTextureImage(
 	const VkDevice device,
 	VkCommandPool cmdPool,
-	void* data,
+	const void* data,
 	AllocatedImage& renderImage,
 	VkImageUsageFlags usage,
 	VkSampleCountFlagBits samples,
@@ -58,9 +58,7 @@ void ImageUtils::createTextureImage(
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		transitionImage(
 			cmd,
-			renderImage.image,
-			renderImage.format,
-			VK_IMAGE_LAYOUT_UNDEFINED,
+			renderImage,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		VkBufferImageCopy copyRegion{};
@@ -86,9 +84,7 @@ void ImageUtils::createTextureImage(
 		else {
 			transitionImage(
 				cmd,
-				renderImage.image,
-				renderImage.format,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				renderImage,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
 	}, cmdPool, QueueType::Graphics, device);
@@ -123,7 +119,8 @@ void ImageUtils::createRenderImage(
 	imgInfo.usage = usage;
 	imgInfo.samples = samples;
 	imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imgInfo.initialLayout = imgInfo.initialLayout; // Default layout is undefined
+	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	renderImage.previousLayout = imgInfo.initialLayout; // Reset layout
 
 	// enable mip-maps to get levels per extent of image
 	if (renderImage.mipmapped && renderImage.mipLevelCount == 0) {
@@ -294,21 +291,23 @@ void ImageUtils::destroyImage(VkDevice device, AllocatedImage& img, const VmaAll
 
 void ImageUtils::transitionImage(
 	VkCommandBuffer cmd,
-	VkImage image,
-	VkFormat format,
-	VkImageLayout oldLayout,
+	AllocatedImage& img,
 	VkImageLayout newLayout,
 	uint32_t baseMip,
 	uint32_t mipCount,
-	VkPipelineStageFlags2 dstStageOverride,
-	VkAccessFlags2        dstAccessOverride)
+	VkImageLayout oldLayoutOverride)
 {
+	VkImageLayout oldLayout =
+		(oldLayoutOverride != VK_IMAGE_LAYOUT_UNDEFINED)
+		? oldLayoutOverride
+		: img.previousLayout;
+
 	VkImageMemoryBarrier2 b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	b.oldLayout = oldLayout;
 	b.newLayout = newLayout;
-	b.image = image;
+	b.image = img.image;
 
-	b.subresourceRange.aspectMask = getAspectMaskFromFormat(format);
+	b.subresourceRange.aspectMask = getAspectMaskFromFormat(img.format);
 	b.subresourceRange.baseMipLevel = baseMip;
 	b.subresourceRange.levelCount = mipCount;
 	b.subresourceRange.baseArrayLayer = 0;
@@ -351,49 +350,45 @@ void ImageUtils::transitionImage(
 		break;
 	}
 
-	// dst (based on newLayout) - allow override for compute/fragment
-	if (dstStageOverride) { // explicit control
-		b.dstStageMask = dstStageOverride;
-		b.dstAccessMask = dstAccessOverride;
-	}
-	else {
-		switch (newLayout) {
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			b.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-			break;
+	switch (newLayout) {
+	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		b.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		break;
 		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-			b.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-			b.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
-				VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-			b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_GENERAL:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-			b.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT;
-			break;
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-			b.dstAccessMask = VK_ACCESS_2_NONE;
-			break;
-		default:
-			b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-			b.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
-			break;
-		}
+		b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		b.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+		b.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+		b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_GENERAL:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+		b.dstAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+		break;
+	case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+		b.dstAccessMask = VK_ACCESS_2_NONE;
+		break;
+	default:
+		b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		b.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+		break;
 	}
 
 	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
 	dep.imageMemoryBarrierCount = 1;
 	dep.pImageMemoryBarriers = &b;
 	vkCmdPipelineBarrier2(cmd, &dep);
+
+	// Assign new layout
+	img.previousLayout = newLayout;
 }
 
 void ImageUtils::copyImageToImage(
@@ -757,7 +752,8 @@ VkSampler ImageUtils::createSampler(
 	float maxAnisotropy,
 	DeletionQueue* dQueue,
 	VkSamplerMipmapMode mipmapMode,
-	bool compareEnabled)
+	bool compareEnabled,
+	VkBorderColor borderColor)
 {
 	static std::mutex samplerMutex;
 	std::scoped_lock lock(samplerMutex);
@@ -786,7 +782,7 @@ VkSampler ImageUtils::createSampler(
 	samplerInfo.addressModeV = addressMode;
 	samplerInfo.addressModeW = addressMode;
 	samplerInfo.unnormalizedCoordinates = VK_FALSE;
-	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK;
+	samplerInfo.borderColor = borderColor;
 	samplerInfo.compareEnable = VK_FALSE;
 	samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
 

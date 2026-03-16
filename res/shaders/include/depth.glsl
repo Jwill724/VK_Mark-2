@@ -7,13 +7,41 @@ const uint HI_Z_MIP_COUNT = 5u;
 // Reversed Z depth is standard
 const float DEPTH_EPSILON_REVERSED_Z = 1e-6;
 
-struct ViewReconstructResult
-{
-	vec3 pos;
-	float viewDepth;
-};
+// About the min max uint packed format for hi z
+// https://martinfullerblog.wordpress.com/2023/01/13/min-max-buffer-precision-improvement/
+const uint MAX_BITS   = 17u;
+const uint RATIO_BITS = 15u;
+const uint MAX_MASK   = (1u << MAX_BITS) - 1u;
+const uint RATIO_MASK = (1u << RATIO_BITS) - 1u;
 
-float sampleHiZMinDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
+uint packHZB(float minDepth01, float maxDepth01)
+{
+	float safeMax = max(maxDepth01, 0.0);
+	float ratio = (safeMax > 0.0) ? (minDepth01 / safeMax) : 1.0;
+
+	uint uMax = uint(clamp(maxDepth01, 0.0, 1.0) * float(MAX_MASK));
+	uint uRatio = uint(clamp(ratio, 0.0, 1.0) * float(RATIO_MASK));
+
+	return (uMax << RATIO_BITS) | (uRatio & RATIO_MASK);
+}
+
+void unpackHZB(uint packed, out float minDepth01, out float maxDepth01)
+{
+	maxDepth01 = float(packed >> RATIO_BITS) / float(MAX_MASK);
+	float ratio = float(packed & RATIO_MASK) / float(RATIO_MASK);
+	minDepth01 = ratio * maxDepth01;
+}
+
+float unpackNearRaw(uint packed)
+{
+	return float(packed >> RATIO_BITS) / float(MAX_MASK);
+}
+
+float linearizeDepth(float depth, float nearPlane, float farPlane) {
+	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
+}
+
+float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float nearPlane, float farPlane)
 {
 	// convert to approximate full-res footprint
 	float fullResRadius = max(radiusHalfRes * 2.0, 1.0);
@@ -22,12 +50,19 @@ float sampleHiZMinDepth(sampler2D hiZ, vec2 uv, float radiusHalfRes)
 	float mipLevel = log2(fullResRadius);
 
 	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_COUNT - 1u));
-	return textureLod(hiZ, uv, mipLevel).r;
+
+	uvec4 sampleDepth = textureLod(hiZ, uv, mipLevel);
+	float nearRaw = unpackNearRaw(sampleDepth.r);
+	float nearLinear = linearizeDepth(nearRaw, nearPlane, farPlane);
+
+	return nearLinear;
 }
 
-float linearizeDepth(float depth, float nearPlane, float farPlane) {
-	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
-}
+struct ViewReconstructResult
+{
+	vec3 pos;
+	float viewDepth;
+};
 
 ViewReconstructResult reconstructWorldPosFromDepth(vec2 uv, float depthValue, mat4 invProj, mat4 invView)
 {
@@ -66,5 +101,6 @@ ViewReconstructResult reconstructViewSpaceFromDepth(vec2 uv, float depthValue, m
 
 	return result;
 }
+
 
 #endif

@@ -1,0 +1,77 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive    : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+#include "../include/clustered.glsl"
+
+layout(local_size_x = 256) in;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
+	ClusteredData clusteredData;
+};
+
+layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
+	GPUAddressTable frameAddressTable;
+};
+
+shared uint sharedCounts[256];
+shared uint sharedBlockBaseOffset;
+
+void main()
+{
+	uint clusterIndex = gl_GlobalInvocationID.x;
+	uint localIndex = gl_LocalInvocationIndex;
+
+	ClusterCounts countsBuf =
+		ClusterCounts(frameAddressTable.addrs[ABT_ClusterCounts]);
+
+	ClusterOffsets offsetsBuf =
+		ClusterOffsets(frameAddressTable.addrs[ABT_ClusterOffsets]);
+
+	ClusterScanScratch scratchBuf =
+		ClusterScanScratch(frameAddressTable.addrs[ABT_ClusterScanScratch]);
+
+	// Load + clamp count
+	uint countValue = 0u;
+	if (clusterIndex < clusteredData.clusterCount) {
+		countValue = countsBuf.counts[clusterIndex];
+		countValue = min(countValue, clusteredData.maxLightsPerCluster);
+	}
+
+	sharedCounts[localIndex] = countValue;
+	barrier();
+
+	// Inclusive scan (Hillis–Steele)
+	for (uint stride = 1u; stride < 256u; stride <<= 1u) {
+
+		uint addValue = 0u;
+
+		barrier();
+		if (localIndex >= stride) {
+			addValue = sharedCounts[localIndex - stride];
+		}
+		barrier();
+
+		sharedCounts[localIndex] += addValue;
+		barrier();
+	}
+
+	uint inclusivePrefix = sharedCounts[localIndex];
+	uint exclusivePrefix = inclusivePrefix - countValue;
+
+	uint blockSum = sharedCounts[255];
+
+	if (localIndex == 0u) {
+		sharedBlockBaseOffset = atomicAdd(scratchBuf.scratch[0], blockSum);
+	}
+
+	barrier();
+
+	if (clusterIndex < clusteredData.clusterCount) {
+		countsBuf.counts[clusterIndex] = countValue;
+		offsetsBuf.offsets[clusterIndex] = sharedBlockBaseOffset + exclusivePrefix;
+	}
+}
