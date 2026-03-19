@@ -1,0 +1,112 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_EXT_nonuniform_qualifier : require
+#extension GL_EXT_scalar_block_layout : require
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_buffer_reference : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
+	GPUAddressTable globalAddressTable;
+};
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_DEBUG_INLINE, scalar) uniform DebugData {
+	DebugToggles debug;
+};
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D opaqueImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D transparentImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_3_TEX) uniform sampler2D volumetricLightImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_4_TEX) uniform sampler2D lensFlareColorImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D toneMapImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_2_TEX) writeonly uniform image2D cmaa2ColorImage;
+
+vec3 ACESFilm(vec3 x) {
+	const float a = 2.51;
+	const float b = 0.03;
+	const float c = 2.43;
+	const float d = 0.59;
+	const float e = 0.14;
+	return clamp((x * (a * x + b)) / (x *(c * x + d) + e), 0.0, 1.0);
+}
+
+vec3 hableTonemapPartial(vec3 color) {
+	const float A = 0.15;
+	const float B = 0.50;
+	const float C = 0.10;
+	const float D = 0.20;
+	const float E = 0.02;
+	const float F = 0.30;
+
+	vec3 numerator =
+		color * (A * color + C * B) +
+		D * E;
+
+	vec3 denominator =
+		color * (A * color + B) +
+		D * F;
+
+	return (numerator / denominator) - (E / F);
+}
+
+vec3 hableTonemap(vec3 color) {
+	const float whitePoint = 11.2;
+
+	vec3 mappedColor = hableTonemapPartial(color);
+	vec3 whiteScale = vec3(1.0) / hableTonemapPartial(vec3(whitePoint));
+
+	return clamp(mappedColor * whiteScale, 0.0, 1.0);
+}
+
+float noiseHash(ivec2 p)
+{
+	return fract(sin(dot(vec2(p), vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+void main()
+{
+	ivec2 dim = imageSize(toneMapImage);
+	ivec2 pid = ivec2(gl_GlobalInvocationID.xy);
+	if (any(greaterThanEqual(pid, dim))) return;
+
+	vec2 uvFull = (vec2(pid) + 0.5) / vec2(dim);
+
+	vec3 hdrOpaque = texelFetch(opaqueImage, pid, 0).rgb;
+	vec3 hdrTransparent = texelFetch(transparentImage, pid, 0).rgb;
+	vec3 hdrScene = hdrOpaque + hdrTransparent;
+
+	vec3 volumetricLight = texture(volumetricLightImage, uvFull).rgb;
+
+	vec3 lensFlare = vec3(0.0);
+	if (DBG(enableLensFlare)) {
+		ivec2 flareDim = textureSize(lensFlareColorImage, 0);
+		vec2 uvFlare = (uvFull * vec2(flareDim) + 0.5) / vec2(flareDim);
+		lensFlare = textureLod(lensFlareColorImage, uvFlare, 0.0).rgb;
+	}
+
+	vec3 hdr = max(hdrScene + volumetricLight + lensFlare, 0.0);
+
+	float exposure = LuminanceBuffer(globalAddressTable.addrs[ABT_Luminance]).luminanceSums[0].x;
+	exposure = max(exposure, 1e-4);
+
+	vec3 mapped = ACESFilm(hdr * exposure);
+	//vec3 mapped = hableTonemap(hdr * exposure);
+
+	float noise = noiseHash(pid);
+	mapped += (noise - 0.5) / 2048.0;
+
+	imageStore(toneMapImage, pid, vec4(mapped, 1.0));
+
+	if (debug.aaMode == AA_CMAA2) {
+		imageStore(cmaa2ColorImage, pid, vec4(mapped, 1.0));
+	}
+}

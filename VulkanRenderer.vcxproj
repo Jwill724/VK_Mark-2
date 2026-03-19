@@ -331,10 +331,8 @@
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
-    <None Include="res\shaders\ao\ao_upscale.comp" />
     <None Include="res\shaders\ao\gtao_filter.comp" />
     <None Include="res\shaders\ao\gtao_main.comp" />
-    <None Include="res\shaders\ao\gtao_temporal_resolve.comp" />
     <None Include="res\shaders\clustered\cluster_count.comp" />
     <None Include="res\shaders\clustered\cluster_scan_offsets.comp" />
     <None Include="res\shaders\clustered\cluster_scatter_ids.comp" />
@@ -342,9 +340,11 @@
     <None Include="res\shaders\clustered\indirect_args_light.comp" />
     <None Include="res\shaders\clustered\visible_light_list.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="res\shaders\post_process\chromatic_aberration.comp" />
     <None Include="res\shaders\post_process\smaa_blend.comp" />
     <None Include="res\shaders\post_process\smaa_edges.comp" />
     <None Include="res\shaders\post_process\smaa_weights.comp" />
+    <None Include="res\shaders\post_process\taa.comp" />
     <None Include="res\shaders\shadows\bend_sss.comp" />
     <None Include="res\shaders\shadows\shadow_depthVS.vert" />
     <None Include="res\shaders\include\clustered.glsl" />
@@ -373,7 +373,7 @@
     <None Include="res\shaders\post_process\cmaa2_edges.comp" />
     <None Include="res\shaders\post_process\cmaa2_shape_candidates.comp" />
     <None Include="res\shaders\post_process\indirect_args_cmaa2.comp" />
-    <None Include="res\shaders\post_process\tone_map.comp" />
+    <None Include="res\shaders\post_process\final_composite.comp" />
     <None Include="res\shaders\post_process\volumetric_light_blur.comp" />
     <None Include="res\shaders\post_process\volumetric_light.comp" />
     <None Include="res\shaders\visibility\visibility.comp" />

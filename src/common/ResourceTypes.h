@@ -308,19 +308,21 @@ enum class PassID : uint16_t {
 	ClusteredLightBuild,
 	GTAO,
 	DirectionalCSM,
-	ScreenSpaceContactShadows,
 	FlashlightShadow,
+	ScreenSpaceContactShadows,
 	Skybox,
 	OpaqueForward,
 	OBBLineView,
 	TransparentForward,
 	VolumetricLighting,
+	TAA,
 	Exposure,
 	LensFlare,
-	ToneMap,
-	SMAA,
+	FinalComposite,
 	CMAA2,
+	SMAA,
 	FXAA,
+	ChromaticAberration,
 
 	Count
 };
@@ -512,22 +514,18 @@ struct alignas(16) GTAOPush {
 	glm::vec2 blurDirection{ 0.0f };
 };
 
-struct alignas(16) GTAOTemporalResolvePush {
-	float baseDepthTolerance = 0.005f;
-	float slopeDepthTolerance = 0.5f;
-	float noiseLevel = 2.0f;
-	float historyDampenStrength = 1.0f; // Not used
-	float maxHistoryWeight = 0.98f;
-	float minHistoryWeight = 0.2f;
-	float motionDecay = 2.0f;
-	float pad0{0.0f};
+struct alignas(16) TAAPush {
+	float minBlend = 0.05f;
+	float maxBlend = 0.5f;
+	float depthDisocclusionScale = 200.0f;
+	float pad0;
 };
 
 struct alignas(16) VolumetricPush {
 	float density = 0.005f;
-	float scatteringStrength = 40.0f;
+	float scatteringStrength = 30.0f;
 	float extinction = 0.08f;
-	float heightFalloff = 0.04f;
+	float heightFalloff = 0.05f;
 
 	float maxDistance = 200.0f;
 	float jitterStrength = 0.8f;

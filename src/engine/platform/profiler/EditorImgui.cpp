@@ -278,11 +278,17 @@ namespace
 
 		UI::separatorText("Anti-Aliasing");
 
-		const char* aaModes[] = { "Off", "CMAA2", "SMAA", "FXAA" };
+		const char* aaModes[] = { "Off", "CMAA2", "SMAA", "FXAA", "TAA (WIP)" };
 		int currentAA = (int)dbg.aaMode;
 
 		if (ImGui::Combo("AA Method", &currentAA, aaModes, IM_ARRAYSIZE(aaModes))) {
 			dbg.aaMode = static_cast<uint32_t>(currentAA);
+		}
+		if (dbg.aaMode == AA_TAA) {
+			auto& taaSettings = profiler.taaSettings;
+			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 500.0f);
 		}
 
 		UI::separatorText("Environment");
@@ -318,7 +324,7 @@ namespace
 			O_Normals,
 			O_Albedo,
 			O_Emissive,
-			O_DiffuseBounceLight,
+			O_IrradianceNormal,
 			O_AO,
 			O_Specular,
 			O_Diffuse,
@@ -332,7 +338,7 @@ namespace
 				if (dbg.showNormals)            return O_Normals;
 				if (dbg.showAlbedo)             return O_Albedo;
 				if (dbg.showEmissive)           return O_Emissive;
-				if (dbg.showDiffuseBounceLight) return O_DiffuseBounceLight;
+				if (dbg.showBentNormals)        return O_IrradianceNormal;
 				if (dbg.showAmbientOcclusion)   return O_AO;
 				if (dbg.showSpecular)           return O_Specular;
 				if (dbg.showDiffuse)            return O_Diffuse;
@@ -347,7 +353,7 @@ namespace
 				dbg.showNormals = 0;
 				dbg.showAlbedo = 0;
 				dbg.showEmissive = 0;
-				dbg.showDiffuseBounceLight = 0;
+				dbg.showBentNormals = 0;
 				dbg.showAmbientOcclusion = 0;
 				dbg.showSpecular = 0;
 				dbg.showDiffuse = 0;
@@ -359,7 +365,7 @@ namespace
 				case O_Normals:              dbg.showNormals = 1; break;
 				case O_Albedo:               dbg.showAlbedo = 1; break;
 				case O_Emissive:             dbg.showEmissive = 1; break;
-				case O_DiffuseBounceLight:   dbg.showDiffuseBounceLight = 1; break;
+				case O_IrradianceNormal:     dbg.showBentNormals = 1; break;
 				case O_AO:                   dbg.showAmbientOcclusion = 1; break;
 				case O_Specular:             dbg.showSpecular = 1; break;
 				case O_Diffuse:              dbg.showDiffuse = 1; break;
@@ -395,7 +401,7 @@ namespace
 
 		if (ImGui::RadioButton("Emissive##ov", &overlay, O_Emissive))   applyOverlay(overlay);
 		ImGui::SameLine();
-		if (ImGui::RadioButton("Diffuse Bounce Light##ov", &overlay, O_DiffuseBounceLight)) applyOverlay(overlay);
+		if (ImGui::RadioButton("Bent Normals##ov", &overlay, O_IrradianceNormal)) applyOverlay(overlay);
 		ImGui::SameLine();
 		if (ImGui::RadioButton("Contact Shadows##ov", &overlay, O_SSS)) applyOverlay(overlay);
 	}
@@ -506,7 +512,6 @@ namespace
 
 		if (dbg.aoMode == AO_GTAO) {
 			auto& g = profiler.gtaoSettings;
-			auto& gres = profiler.gtaoTempResSettings;
 
 			// Core gtao settings
 			ImGui::SliderFloat("Radius##gtao", &g.effectRadius, 0.1f, 0.50f, "%.3f");
@@ -519,20 +524,6 @@ namespace
 
 			ImGui::SliderFloat("Filter Sharpness##gtao", &g.sharpness, 0.5f, 5.0f);
 			ImGui::SliderFloat("Filter Radius##gtao", &g.radius, 1.0f, 6.0f);
-
-			// Temporal resolve
-			//UI::separatorText("Temporal Resolve##gtao");
-			//bool gtaoTemporal = ( dbg.enableTemporal != 0u);
-			//if (ImGui::Checkbox("Enabled##gtao", &gtaoTemporal)) {
-			//	dbg.enableTemporal = gtaoTemporal ? 1u : 0u;
-			//}
-			//ImGui::SliderFloat("Depth Tolerance##gtao", &gres.baseDepthTolerance, 0.001f, 0.5f, "%.3f");
-			//ImGui::SliderFloat("Slope Depth Tolerance##gtao", &gres.slopeDepthTolerance, 0.1f, 2.5f, "%.2f");
-			//ImGui::SliderFloat("Noise Level##gtao", &gres.noiseLevel, 1.0f, 3.0f, "%.2f");
-			//ImGui::SliderFloat("Max History Weight##gtao", &gres.maxHistoryWeight, 0.01f, 1.0f, "%.2f");
-			//ImGui::SliderFloat("Min History Weight##gtao", &gres.minHistoryWeight, 0.01f, 1.0f, "%.2f");
-			//ImGui::SliderFloat("Motion Decay##gtao", &gres.motionDecay, 0.05f, 3.0f, "%.2f");
-
 		}
 
 		ImGui::NewLine();

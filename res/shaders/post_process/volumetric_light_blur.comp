@@ -4,8 +4,17 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_DEBUG_INLINE, scalar) uniform DebugData {
+	DebugToggles debug;
+};
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inDepth;
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inVolumetricLight;
@@ -76,6 +85,9 @@ void main()
 	float depthSigma = max(pc.blurDepthSigma, 1e-4);
 	float twoDepthSigma2 = 2.0 * depthSigma * depthSigma;
 
+	vec2 uvMin = 0.5 * pc.pixelSize;
+	vec2 uvMax = vec2(1.0) - uvMin;
+
 	for (int i = 1; i <= radius; ++i) {
 		float tapDistance = float(i);
 
@@ -85,7 +97,7 @@ void main()
 		float tapRadiusHalfRes = tapDistance; // distance in half-res pixels
 
 		// Positive offset
-		vec2 uvPos = uv + tapDistance * texelStep;
+		vec2 uvPos = clamp(uv + tapDistance * texelStep, uvMin, uvMax);
 		vec3 colorPos = texture(inVolumetricLight, uvPos).rgb;
 		float depthPos = texture(inDepth, uvPos).r;
 		float depthDiffP = depthPos - centerDepth;
@@ -96,7 +108,7 @@ void main()
 		weightSum += weightPos;
 
 		// Negative offset
-		vec2 uvNeg = uv - tapDistance * texelStep;
+		vec2 uvNeg = clamp(uv - tapDistance * texelStep, uvMin, uvMax);
 		vec3 colorNeg = texture(inVolumetricLight, uvNeg).rgb;
 		float depthNeg = texture(inDepth, uvNeg).r;
 		float depthDiffN = depthNeg - centerDepth;

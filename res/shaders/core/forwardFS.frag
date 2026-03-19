@@ -58,7 +58,6 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_CSM) uniform ShadowUBO {
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D aoFinal;
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D contactShadowMask;
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_3_TEX) uniform sampler2D bentNormals;
-//layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_4_TEX) uniform sampler2D indirectBounceLight;
 
 // Reusing push struct to get activeLights
 layout(push_constant) uniform ForwardPush {
@@ -124,7 +123,6 @@ void main()
 	const float alpha = base.a;
 	if (alpha < mat.alphaCutoff) discard;
 
-	//vec2 screenspace_uv = (gl_FragCoord.xy + vec2(0.5)) / scene.viewportSize.xy;
 	vec2 screenspace_uv = (gl_FragCoord.xy) / scene.viewportSize.xy;
 
 	// Right handed view on the -z
@@ -479,17 +477,18 @@ void main()
 	// IBL diffuse
 	vec3 irradianceN = N;
 	// GTAO Bent Normals used only on diffuse
-	if (debug.aoMode == 1u && mat.passType == PASS_OPAQUE) {
+	if (DBG(aoMode) && mat.passType == PASS_OPAQUE) {
 		vec4 bentSample = texture(bentNormals, screenspace_uv);
 		vec3 bent = normalize(bentSample.rgb);
+	    vec3 bentWS = normalize(mat3(scene.invView) * bent);
 
 		// Keep bent normal in the same surface hemisphere
-		float bentGeomDot = dot(bent, geometricNormalWS);
+		float bentGeomDot = dot(bentWS, geometricNormalWS);
 		if (bentGeomDot < 0.0) {
-			bent = normalize(bent - geometricNormalWS * bentGeomDot);
+			bentWS = normalize(bentWS - geometricNormalWS * bentGeomDot);
 		}
 
-		float bentDeviation = 1.0 - saturate(dot(N, bent));
+		float bentDeviation = 1.0 - saturate(dot(N, bentWS));
 
 		// Cone confidence - wide cone = less occluded = less redirection needed
 		float bentConeAngle = bentSample.a;
@@ -498,19 +497,14 @@ void main()
 		float bentBlend = bentDeviation * coneConfidence;
 		bentBlend = clamp(bentBlend, 0.0, 0.8);
 
-		vec3 blended = normalize(mix(N, bent, bentBlend));
+		vec3 blended = normalize(mix(N, bentWS, bentBlend));
 		irradianceN = blended;
+
+		if (DBG(showBentNormals)) {
+			RET(vec3(irradianceN), 1.0);
+		}
 	}
 	vec3 iblDiff = sampleIrradiance(irradianceN, irrIdx) * albedo;
-
-	// Indirect diffuse
-	//vec3 ssIndirectDiffuse = vec3(0.0);
-//	if (debug.aoMode == 3u && mat.passType == PASS_OPAQUE && scene.temporal.y == 1u) {
-//		ssIndirectDiffuse = texture(bentNormals, screenspace_uv).rgb;
-//		if (DBG(showDiffuseBounceLight)) {
-//			RET(vec3(ssIndirectDiffuse), alpha);
-//		}
-//	}
 
 	// Split ambient components
 	vec3 ambientDiffuse = kD * (iblDiff * aoTerm);
@@ -525,11 +519,6 @@ void main()
 
 	vec3 color = direct + localLightColor + ambient + emissive;
 	outFragColor = vec4(color, 1.0);
-
-//	// Diffuse bounce lighting
-//	vec3 primaryDiffuse = diff * sunColor * NdotL * shadow * microVisSun * contactShadows;
-//	vec3 iblBounce = kD * iblDiff * aoTerm;
-//	outBounceLight = vec4(primaryDiffuse + iblBounce + emissive, 1.0);
 }
 
 

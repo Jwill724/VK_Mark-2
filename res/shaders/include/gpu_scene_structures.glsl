@@ -18,14 +18,20 @@ struct SceneData {
 	mat4 invProj;
 	mat4 viewProj;
 	mat4 prevViewProj;
-	uvec4 temporal;         // .x = frameIndex, .y = historyValid (0/1), z = Hi-Z valid(0/1)
+	mat4 prevView;
+	mat4 viewProjUnjittered;
+	uvec4 temporal;            // .x = frameIndex, .y = historyValid (0/1), z = Hi-Z valid(0/1)
+	vec4 temporalJitter;
+	// x = current jitter x ndc
+	// y = current jitter y
+	// z = previous jitter x
+	// w = previous jitter y
 	vec4 sunlightDirection; // .w = power
 	vec4 sunlightColor;
 	vec4 cameraPos;         // .z camFar
 	vec4 cameraClips;       // .x near and .y far, .z invScreenWidth, .w invScreenHeight
 	vec4 viewportSize;      // .x and .y for width and height, .z for pixel count
 	vec4 pixelSizes;        // .x/.y = 1 / full extent .z/.w = = 1 / half extent
-	vec4 pad0;
 };
 
 // Number of env sets stored in the buffer (must match C++ side)
@@ -39,13 +45,19 @@ struct EnvMapIndexArray {
 	// w = skyboxMapIndex
 };
 
+const uint AA_OFF   = 0;
+const uint AA_CMAA2 = 1;
+const uint AA_SMAA  = 2;
+const uint AA_FXAA  = 3;
+const uint AA_TAA   = 4;
+
 // inline uniform block
 struct DebugToggles {
 	// Higher level toggles
 	uint enableOBBs;
 	uint enableenableProfilerView;
 	uint enableSettings;
-	uint aaMode; // 0 off, 1 cmaa2, 2 smaa, 3 fxaa
+	uint aaMode;
 
 	uint aoMode; // 0 off, 1 gtao
 	uint enableShadows;
@@ -75,7 +87,7 @@ struct DebugToggles {
 	uint showCascadeSplits;
 
 	uint showEmissive;
-	uint showDiffuseBounceLight;
+	uint showBentNormals;
 	uint enableTemporal;
 	uint showSSS; // Screen space contact shadows
 };

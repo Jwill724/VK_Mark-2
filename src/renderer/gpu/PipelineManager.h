@@ -17,7 +17,7 @@ enum class PipelineID : uint8_t {
 
 	ExposureReduce,
 	ExposureFinalize,
-	ToneMap,
+	FinalComposite,
 
 	HDRToCubemap,
 	SpecularPrefilter,
@@ -30,8 +30,6 @@ enum class PipelineID : uint8_t {
 
 	GTAO,
 	GTAOFilter,
-	GTAOTemporalResolve,
-	AOUpscale,
 
 	VolumetricLight,
 	VolumetricLightBlur,
@@ -56,8 +54,11 @@ enum class PipelineID : uint8_t {
 	CMAA2DispatchArgs,
 
 	FXAA,
+	TAA,
 
 	ScreenSpaceContactShadows,
+
+	ChromaticAberration,
 
 	Count
 };

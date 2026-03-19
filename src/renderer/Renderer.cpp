@@ -509,6 +509,19 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			csmScope.passID = PassID::DirectionalCSM;
 			RenderPasses::shadowCSMPass(frameCtx, csmScope, profiler);
 
+
+			// ==========================
+			// === FLASH LIGHT SHADOW ===
+			if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
+				RenderPasses::GraphicsScope flScope;
+				flScope.passID = PassID::FlashlightShadow;
+				RenderPasses::shadowFlashLightPass(
+					frameCtx,
+					flScope,
+					profiler);
+			}
+
+
 			// =========================================
 			// === SCREEN SPACE CONTACT SHADOWS PASS ===
 			if (debug.enableSSS) {
@@ -527,19 +540,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 			);
 		}
-
-
-		// ==========================
-		// === FLASH LIGHT SHADOW ===
-		if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
-			RenderPasses::GraphicsScope flScope;
-			flScope.passID = PassID::FlashlightShadow;
-			RenderPasses::shadowFlashLightPass(
-				frameCtx,
-				flScope,
-				profiler);
-		}
 	}
+
+
 
 	// =================================
 	// === MAIN FORWARD SHADING PASS ===
@@ -549,19 +552,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	opaqueAttach.resolveMode = VK_RESOLVE_MODE_NONE;
 	opaqueAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-	//// Screen bounce light attachment write
-	//auto& bounceLightWrite = ResourceManager::getBounceLightHistoryWrite();
-	//ImageUtils::transitionImage(
-	//	frameCtx.cmdBuffer,
-	//	bounceLightWrite,
-	//	VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-	//AttachmentDesc bounceLightAttach;
-	//bounceLightAttach.imageView = bounceLightWrite.imageView;
-	//bounceLightAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	//bounceLightAttach.resolveMode = VK_RESOLVE_MODE_NONE;
-	//bounceLightAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	//bounceLightAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 	// Default depth read from pre pass
 	AttachmentDesc depthAttach{};
@@ -598,7 +588,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		frameCtx.cmdBuffer,
 		{
 			opaqueAttach,
-			//bounceLightAttach,
 			depthAttach
 		},
 		{ fullExtent },
@@ -610,22 +599,13 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	RenderPasses::GraphicsScope skyboxScope;
 	skyboxScope = opaqueScope;
 	skyboxScope.passID = PassID::Skybox;
-	RenderPasses::skyboxPass(frameCtx, skyboxScope, profiler);
+	RenderPasses::skyboxPass(frameCtx, skyboxScope, profiler, hasVisibles);
 
 	if (hasVisibles) {
 		// Final ao output
-		AllocatedImage aoFinal;
-		//if (isTemporalValid && (debug.aoMode == AO_GTAO) {
-		//	aoFinal = ResourceManager::getAOHistoryWrite();
-		//}
-		//else {
-		//	aoFinal = aoRaw;
-		//}
-		aoFinal = aoRaw;
-
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_INPUT_1_TEX,
-			aoFinal.imageView,
+			aoRaw.imageView,
 			aoSampler
 		);
 
@@ -635,21 +615,20 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			ResourceManager::getNearestClampSampler()
 		);
 
+		AllocatedImage bentNormals;
 		if (debug.aoMode == AO_GTAO) {
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_3_TEX,
-				ResourceManager::getBentNormalsImage().imageView,
-				linearClampSampler
-			);
+			bentNormals = ResourceManager::getBentNormals();
 		}
 		else {
 			// pointless write
-			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_3_TEX,
-				shadowMask.imageView,
-				linearClampSampler
-			);
+			bentNormals = aoRaw;
 		}
+
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_INPUT_3_TEX,
+			bentNormals.imageView,
+			linearClampSampler
+		);
 
 		RenderPasses::opaqueMeshPass(frameCtx, opaqueScope, profiler);
 
@@ -669,26 +648,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		frameCtx.cmdBuffer,
 		opaque,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-	// ================================
-	// === VOLUMETRIC LIGHTING PASS ===
-	if (hasVisibles && debug.enableVolumetrics && debug.enableShadows) {
-		glm::uvec2 halfRes{ volLight.extent.width, volLight.extent.height };
-
-		auto& volLightPush = profiler.volLightSettings;
-		volLightPush.pixelSize = {
-			1.0f / static_cast<float>(halfRes.x),
-			1.0f / static_cast<float>(halfRes.y)
-		};
-
-		RenderPasses::ComputeScope volLightScope;
-		volLightScope.passID = PassID::VolumetricLighting;
-		volLightScope.setPush(volLightPush);
-		volLightScope.extent = { halfRes.x, halfRes.y };
-		volLightScope.workgroupSize = workgroupSize;
-
-		RenderPasses::volumetricLightingPass(frameCtx, volLightScope, profiler);
-	}
 
 	// ========================
 	// === TRANSPARENT PASS ===
@@ -715,7 +674,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			frameCtx.cmdBuffer,
 			{
 				transparentAttach,
-				//bounceLightAttach,
 				depthAttach
 			},
 			{ fullExtent },
@@ -731,6 +689,38 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
+	// ================================
+	// === VOLUMETRIC LIGHTING PASS ===
+	if (hasVisibles && debug.enableVolumetrics && debug.enableShadows) {
+		glm::uvec2 halfRes{ volLight.extent.width, volLight.extent.height };
+
+		auto& volLightPush = profiler.volLightSettings;
+		volLightPush.pixelSize = {
+			1.0f / static_cast<float>(halfRes.x),
+			1.0f / static_cast<float>(halfRes.y)
+		};
+
+		RenderPasses::ComputeScope volLightScope;
+		volLightScope.passID = PassID::VolumetricLighting;
+		volLightScope.setPush(volLightPush);
+		volLightScope.extent = { halfRes.x, halfRes.y };
+		volLightScope.workgroupSize = workgroupSize;
+
+		RenderPasses::volumetricLightingPass(frameCtx, volLightScope, profiler);
+	}
+
+	// ================
+	// === TAA PASS ===
+	if (debug.aaMode == AA_TAA && hasVisibles && isTemporalValid) {
+		RenderPasses::ComputeScope taaScope;
+		taaScope.passID = PassID::TAA;
+		taaScope.workgroupSize = workgroupSize;
+		taaScope.extent = fullExtent;
+		taaScope.setPush(profiler.taaSettings);
+
+		RenderPasses::TAAPass(frameCtx, taaScope, profiler);
+	}
+
 	// =====================
 	// === EXPOSURE PASS ===
 	RenderPasses::ComputeScope exposureScope;
@@ -738,7 +728,14 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	exposureScope.extent = fullExtent;
 	exposureScope.workgroupSize = workgroupSize;
 	const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
-	RenderPasses::exposurePass(frameCtx, exposureScope, profiler, luminanceBuf, transparentVisible);
+	RenderPasses::exposurePass(
+		frameCtx,
+		exposureScope,
+		profiler,
+		luminanceBuf,
+		transparentVisible,
+		hasVisibles,
+		isTemporalValid);
 
 	// =======================
 	// === LENS FLARE PASS ===
@@ -790,87 +787,112 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			lensFlareScope,
 			profiler,
 			transparentVisible,
-			hasVisibles
+			hasVisibles,
+			isTemporalValid
 		);
 	}
 
-	// =====================
-	// === TONE MAP PASS ===
-	exposureScope.passID = PassID::ToneMap;
-	RenderPasses::toneMapPass(frameCtx,
+
+	// ============================
+	// === FINAL COMPOSITE PASS ===
+	exposureScope.passID = PassID::FinalComposite;
+	RenderPasses::finalCompositePass(frameCtx,
 		exposureScope,
 		profiler,
 		transparentVisible,
-		hasVisibles);
+		hasVisibles,
+		isTemporalValid);
 
+	bool copyPostAAImage = false;
+	if (hasVisibles && (debug.aaMode != AA_OFF && debug.aaMode != AA_TAA)) {
+		switch(debug.aaMode)
+		{
+			// ==================
+			// === CMAA2 PASS ===
+			case AA_CMAA2:
+			{
+				RenderPasses::ComputeScope cmaa2Scope;
+				cmaa2Scope.passID = PassID::CMAA2;
+				cmaa2Scope.setPush(frameCtx.cmaa2Push);
 
-	bool copyAAImage = false;
+				const uint32_t quadCountX = (fullExtent.width + 1u) >> 1u;
+				const uint32_t quadCountY = (fullExtent.height + 1u) >> 1u;
+				const uint32_t groupsX = (quadCountX + 13u) / 14u;
+				const uint32_t groupsY = (quadCountY + 13u) / 14u;
+				cmaa2Scope.groupCountX = groupsX;
+				cmaa2Scope.groupCountY = groupsY;
+				cmaa2Scope.skipGroups = true;
+				cmaa2Scope.extent = { groupsX * 16u, groupsY * 16u };
+				RenderPasses::CMAA2Pass(frameCtx, cmaa2Scope, profiler);
+				copyPostAAImage = true;
+				break;
+			}
 
-	// =================
-	// === SMAA PASS ===
-	if (debug.aaMode == AA_SMAA && hasVisibles) {
-		RenderPasses::ComputeScope smaaScope;
-		smaaScope.passID = PassID::SMAA;
-		smaaScope.workgroupSize = workgroupSize;
-		smaaScope.extent = fullExtent;
+			// =================
+			// === SMAA PASS ===
+			case AA_SMAA:
+			{
+				RenderPasses::ComputeScope smaaScope;
+				smaaScope.passID = PassID::SMAA;
+				smaaScope.workgroupSize = workgroupSize;
+				smaaScope.extent = fullExtent;
 
-		smaaScope.setPush(gpuResources.smaaTextures);
+				smaaScope.setPush(gpuResources.smaaTextures);
 
-		RenderPasses::SMAAPass(frameCtx, smaaScope, profiler);
-		copyAAImage = true;
+				RenderPasses::SMAAPass(frameCtx, smaaScope, profiler);
+				copyPostAAImage = true;
+				break;
+			}
+
+			// =================
+			// === FXAA PASS ===
+			case AA_FXAA:
+			{
+				RenderPasses::ComputeScope fxaaScope;
+				fxaaScope.passID = PassID::FXAA;
+				fxaaScope.workgroupSize = workgroupSize;
+				fxaaScope.extent = fullExtent;
+
+				RenderPasses::FXAAPass(frameCtx, fxaaScope, profiler);
+				copyPostAAImage = true;
+				break;
+			}
+		}
 	}
-	// ==================
-	// === CMAA2 PASS ===
-	else if (debug.aaMode == AA_CMAA2 && hasVisibles) {
-		RenderPasses::ComputeScope cmaa2Scope;
-		cmaa2Scope.passID = PassID::CMAA2;
-		cmaa2Scope.setPush(frameCtx.cmaa2Push);
 
-		const uint32_t quadCountX = (fullExtent.width + 1u) >> 1u;
-		const uint32_t quadCountY = (fullExtent.height + 1u) >> 1u;
-		const uint32_t groupsX = (quadCountX + 13u) / 14u;
-		const uint32_t groupsY = (quadCountY + 13u) / 14u;
-		cmaa2Scope.groupCountX = groupsX;
-		cmaa2Scope.groupCountY = groupsY;
-		cmaa2Scope.skipGroups = true;
-		cmaa2Scope.extent = { groupsX * 16u, groupsY * 16u };
-		RenderPasses::CMAA2Pass(frameCtx, cmaa2Scope, profiler);
-
-		copyAAImage = true;
-	}
-	// =================
-	// === FXAA PASS ===
-	else if (debug.aaMode == AA_FXAA && hasVisibles) {
-		RenderPasses::ComputeScope fxaaScope;
-		fxaaScope.passID = PassID::FXAA;
-		fxaaScope.workgroupSize = workgroupSize;
-		fxaaScope.extent = fullExtent;
-
-		RenderPasses::FXAAPass(frameCtx, fxaaScope, profiler);
-		copyAAImage = true;
-	}
-
-	if (!copyAAImage) {
-		ImageUtils::transitionImage(
+	if (!debug.enableChromaticAberration) {
+		auto& aaColor = ResourceManager::getAAColor();
+		ImageUtils::imageCopy(
 			frameCtx.cmdBuffer,
-			toneMap,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+			(copyPostAAImage) ? aaColor : toneMap,
+			swp.images[frameCtx.swapchainImageIndex],
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			false);
+	}
+	// =================================
+	// === CHROMATIC ABERRATION PASS ===
+	else {
+		RenderPasses::ComputeScope caScope;
+		caScope.passID = PassID::ChromaticAberration;
+		caScope.extent = fullExtent;
+		caScope.workgroupSize = workgroupSize;
+		RenderPasses::chromaticAberrationPass(
+			frameCtx,
+			caScope,
+			profiler,
+			hasVisibles
+		);
+
+		ImageUtils::imageCopy(
+			frameCtx.cmdBuffer,
+			ResourceManager::getPostNonAAComposite(),
+			swp.images[frameCtx.swapchainImageIndex],
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			false);
 	}
 
-	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
-		swp.images[frameCtx.swapchainImageIndex],
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-	const auto& aaColor = ResourceManager::getAAColor();
-	ImageUtils::copyImageToImage(
-		frameCtx.cmdBuffer,
-		(copyAAImage) ? aaColor.image : toneMap.image,
-		swp.images[frameCtx.swapchainImageIndex].image,
-		swp.extent,
-		swp.extent,
-		swp.images[frameCtx.swapchainImageIndex].format
-	);
 
 	if (debug.enableSettings || debug.enableProfilerView) {
 		ImageUtils::transitionImage(
@@ -884,12 +906,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			swp.extent,
 			false);
 
-		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-	}
-	else {
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
 			swp.images[frameCtx.swapchainImageIndex],

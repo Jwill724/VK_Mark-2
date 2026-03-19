@@ -95,10 +95,6 @@ namespace RenderPasses {
 		FrameContext& frameCtx,
 		GraphicsScope scope,
 		Profiler& profiler);
-	//void AOUpscalePass(
-	//	FrameContext& frameCtx,
-	//	ComputeScope scope,
-	//	Profiler& profiler);
 	void GTAOPass(
 		FrameContext& frameCtx,
 		ComputeScope scope,
@@ -121,18 +117,27 @@ namespace RenderPasses {
 		ComputeScope scope,
 		Profiler& profiler,
 		const AllocatedBuffer& luminanceBuf,
-		const bool transparentVisible);
+		const bool transparentVisible,
+		const bool hasVisibles,
+		const bool isTemporalValid);
 	void lensFlarePass(
 		FrameContext& frameCtx,
 		ComputeScope scope,
 		Profiler& profiler,
 		const bool transparentVisible,
-		const bool hasVisibles);
-	void toneMapPass(
+		const bool hasVisibles,
+		const bool isTemporalValid);
+	void finalCompositePass(
 		FrameContext& frameCtx,
 		ComputeScope scope,
 		Profiler& profiler,
 		const bool transparentVisible,
+		const bool hasVisibles,
+		const bool isTemporalValid);
+	void chromaticAberrationPass(
+		FrameContext& frameCtx,
+		ComputeScope scope,
+		Profiler& profiler,
 		const bool hasVisibles);
 	void clusteredPass(
 		FrameContext& frameCtx,
@@ -150,6 +155,10 @@ namespace RenderPasses {
 		FrameContext& frameCtx,
 		ComputeScope scope,
 		Profiler& profiler);
+	void TAAPass(
+		FrameContext& frameCtx,
+		ComputeScope scope,
+		Profiler& profiler);
 
 
 	void opaqueMeshPass(
@@ -163,7 +172,8 @@ namespace RenderPasses {
 	void skyboxPass(
 		FrameContext& frameCtx,
 		GraphicsScope scope,
-		Profiler& profiler);
+		Profiler& profiler,
+		const bool hasVisibles);
 	void obbLinePass(
 		FrameContext& frameCtx,
 		GraphicsScope scope,

@@ -61,7 +61,7 @@ public:
 	const char* getPassName(PassID passID) const;
 
 	ScopedPass profilePass(
-        FrameContext& frameCtx,
+		FrameContext& frameCtx,
 		VkCommandBuffer cmd,
 		PassID passID
 	);
@@ -128,7 +128,7 @@ public:
 	PipelineOverride pipeOverride;
 
 	GTAOPush gtaoSettings;
-	GTAOTemporalResolvePush gtaoTempResSettings;
+	TAAPush taaSettings;
 	VolumetricPush volLightSettings;
 	LensFlarePush lensFlareSettings;
 	SSSPush contactShadowsSettings;

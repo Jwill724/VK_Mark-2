@@ -127,7 +127,7 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 	mainDescriptorManager.clearBinding();
 
 	// Readable inputs
-	for (uint32_t i = PUSH_BINDING_INPUT_1_TEX; i <= PUSH_BINDING_INPUT_5_TEX; i++) {
+	for (uint32_t i = PUSH_BINDING_INPUT_1_TEX; i <= PUSH_BINDING_INPUT_9_TEX; i++) {
 		mainDescriptorManager.addBinding(
 		i,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,

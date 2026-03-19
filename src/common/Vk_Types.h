@@ -160,16 +160,22 @@ struct alignas(16) GPUSceneData {
 	glm::mat4 proj{};
 	glm::mat4 invView{};
 	glm::mat4 invProj{};
-	glm::mat4 viewproj{};
-	glm::mat4 prevViewproj{};
+	glm::mat4 viewProj{};
+	glm::mat4 prevViewProj{};
+	glm::mat4 prevView{};
+	glm::mat4 viewProjUnjittered{};
 	glm::uvec4 temporal{};         // x = frameIndex, y = historyValid (0/1), z = Hi-Z valid(0/1)
+	glm::vec4 temporalJitter;
+	// x = current jitter x ndc
+	// y = current jitter y
+	// z = previous jitter x
+	// w = previous jitter y
 	glm::vec4 sunlightDirection{}; // w for sun power
 	glm::vec4 sunlightColor{};
 	glm::vec4 cameraPos{};
 	glm::vec4 cameraClips{};       // .x near and .y far, .z invScreenWidth, .w invScreenHeight
 	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
 	glm::vec4 pixelSizes{};        // .x/.y = 1 / full extent .z/.w = = 1 / half extent
-	glm::vec4 pad0{};
 };
 
 // x = diffuse, y = specular, z = brdf, w = skybox
@@ -215,6 +221,7 @@ enum AAMode : uint32_t {
 	AA_CMAA2,   // Conservative Morphological Anti-Aliasing 2
 	AA_SMAA,    // Sub-Pixel Morphological Anti-Aliasing
 	AA_FXAA,    // Fast Approximate Anti-Aliasing
+	AA_TAA      // Temporal Anti-Aliasing
 };
 
 template<typename T>

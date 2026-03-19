@@ -38,7 +38,7 @@ void main()
 	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
 	vec2 uv = unpackUV(vtx.uvX, vtx.uvY);
 	vec4 color = unpackRGBA8(vtx.colorRGBA8);
-    vec2 octEnc;
+	vec2 octEnc;
 	octEnc.x = snorm16ToFloat(vtx.normalX);
 	octEnc.y = snorm16ToFloat(vtx.normalY);
 	vec3 normal = octDecode(octEnc);

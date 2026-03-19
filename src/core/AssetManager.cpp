@@ -23,7 +23,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//// TODO: Use a script to download assets
 	//// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
 	//std::string bistroPath{ "res/assets/Bistro.glb" };
-	//auto bistroFile = loadGltfFiles(bistroPath);
 	//ASSERT(bistroFile.has_value());
 	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
 	//queue->push(bistroFile.value());
@@ -33,6 +32,24 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	ASSERT(sponza1File.has_value());
 	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
 	queue->push(sponza1File.value());
+
+	//std::string mechPath{ "res/assets/mech.glb" };
+	//auto mechFile = loadGltfFiles(mechPath);
+	//ASSERT(mechFile.has_value());
+	//mechFile.value()->scene->sceneName = SceneNames.at(SceneID::Mech);
+	//queue->push(mechFile.value());
+
+	//std::string yellowMechPath{ "res/assets/yellow_mech.glb" };
+	//auto yellowMechFile = loadGltfFiles(yellowMechPath);
+	//ASSERT(yellowMechFile.has_value());
+	//yellowMechFile.value()->scene->sceneName = SceneNames.at(SceneID::YellowMech);
+	//queue->push(yellowMechFile.value());
+
+	//std::string miniPath{ "res/assets/mini.glb" };
+	//auto miniFile = loadGltfFiles(miniPath);
+	//ASSERT(miniFile.has_value());
+	//miniFile.value()->scene->sceneName = SceneNames.at(SceneID::Mini);
+	//queue->push(miniFile.value());
 
 	//std::string duckPath{ "res/assets/Duck.glb" };
 	//auto duckFile = loadGltfFiles(duckPath);
@@ -1120,8 +1137,8 @@ void AssetManager::buildSceneGraph(
 	uint32_t firstTransform = 0;
 
 	int gridCols = 4;       // how many models per row
-	float spacingX = 250.0f; // horizontal spacing
-	float spacingZ = 250.0f; // depth spacing
+	float spacingX = 15.0f; // horizontal spacing
+	float spacingZ = 15.0f; // depth spacing
 
 	for (auto& context : gltfJobs) {
 		if (!context->isComplete()) continue;
@@ -1215,9 +1232,9 @@ void AssetManager::buildSceneGraph(
 		gblInst.transformCount = static_cast<uint32_t>(modelAsset.runtime.uniqueNodeIDs.size());
 
 		// Spreads out assets in even planes as grids
-		//int row = instanceCounter / gridCols;
-		//int col = instanceCounter % gridCols;
-		//gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
+		int row = instanceCounter / gridCols;
+		int col = instanceCounter % gridCols;
+		gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
 
 		// === Push unique transforms into the global list ===
 		gblInst.firstTransform = firstTransform;

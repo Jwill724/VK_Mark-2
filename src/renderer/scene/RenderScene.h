@@ -30,6 +30,9 @@ namespace RenderScene {
 		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1 } },
 		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1 } },
 		{ SceneID::WrathDragon, { "WrathDragon", DrawType::DrawStatic, 1 } },
+		{ SceneID::Mech, { "Mech", DrawType::DrawStatic, 1 } },
+		{ SceneID::YellowMech, { "YellowMech", DrawType::DrawStatic, 1 } },
+		{ SceneID::Mini, { "Mini", DrawType::DrawStatic, 1 } },
 	};
 
 	extern std::vector<GlobalInstance> _globalInstances;
@@ -41,6 +44,7 @@ namespace RenderScene {
 
 	const Camera& getCamera();
 	const Frustum& getMainFrustum();
+	const glm::mat4& getCurProjUnjittered();
 
 	void setScene(bool assetsLoaded);
 

@@ -38,13 +38,14 @@ namespace ImageUtils {
 		uint32_t baseMip = 0,                                         // Starting mip
 		uint32_t mipCount = VK_REMAINING_MIP_LEVELS,                  // How many levels transitioned
 		VkImageLayout oldLayoutOverride = VK_IMAGE_LAYOUT_UNDEFINED); // Mips need manual transitions applied
-	void copyImageToImage(
+
+	void imageCopy(
 		VkCommandBuffer cmd,
-		VkImage source,
-		VkImage destination,
-		VkExtent2D srcSize,
-		VkExtent2D dstSize,
-		VkFormat format);
+		AllocatedImage& src,
+		AllocatedImage& dst,
+		VkImageLayout srcFinalLayout,
+		VkImageLayout dstFinalLayout,
+		bool copyDirect = true); // Keep true if both formats match
 
 	uint32_t calculateMipLevels(AllocatedImage& img, uint32_t maxMipCap = UINT32_MAX);
 

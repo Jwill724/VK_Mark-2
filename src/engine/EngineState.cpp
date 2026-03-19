@@ -421,9 +421,8 @@ void EngineState::renderFrame(Profiler& engineProfiler) {
 	}
 
 	const auto& debug = engineProfiler.debugToggles;
-	if (debug.enableSettings || debug.enableProfilerView) {
-		EditorImgui::renderImgui(engineProfiler);
-	}
+	EditorImgui::renderImgui(engineProfiler);
+
 	Renderer::prepareFrameContext(frame, _resources.getAllocator());
 	if (frame.swapchainResult != VK_SUCCESS) return;
 

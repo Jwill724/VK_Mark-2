@@ -51,20 +51,19 @@ mat2 createHash(vec2 pixelCoord)
 // Used for volumetric lights shadow map samples
 // Depth test here is different from high and it works so just leave it.
 float PCFPoissonLow(
-	vec2 pixelCoord,
+	mat2 poissonRotation,
 	sampler2D shadowMap,
 	vec2 shadowUV,
 	float receiverDepth,
 	float bias,
 	float texel)
 {
-	mat2 rotation = createHash(pixelCoord);
 	float sum = 0.0;
 
 	float depthPos = receiverDepth + bias;
 
 	for (int i = 0; i < 8; ++i) {
-		vec2 offset = (rotation * poisson8[i]) * texel;
+		vec2 offset = (poissonRotation * poisson8[i]) * texel;
 
 		float depthSample = texture(shadowMap, shadowUV + offset).r;
 		sum += float(depthPos < depthSample);

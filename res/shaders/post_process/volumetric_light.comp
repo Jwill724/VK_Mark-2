@@ -24,6 +24,10 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_CSM) uniform ShadowUBO {
 	ShadowCSM csm;
 };
 
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_DEBUG_INLINE, scalar) uniform DebugData {
+	DebugToggles debug;
+};
+
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inDepth;
@@ -72,13 +76,9 @@ vec3 worldToShadowUvz(vec3 worldPos, uint cascadeIdx, out bool valid)
 	return vec3(uv, z);
 }
 
-float sampleShadowVolumetric(ViewReconstructResult result)
+float sampleShadowVolumetric(ViewReconstructResult result, uint cascadeIdx, mat2 poissonRotation)
 {
-	const uint cascadeCount = uint(csm.params.z);
 	vec3 worldPos = result.pos;
-	float viewDepth = result.viewDepth;
-
-	uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
 
 	bool valid = false;
 	vec3 uvz = worldToShadowUvz(worldPos, cascadeIdx, valid);
@@ -92,7 +92,7 @@ float sampleShadowVolumetric(ViewReconstructResult result)
 	vec2 atlasUV = uvz.xy * atlas.xy + atlas.zw;
 
 	float shadow = PCFPoissonLow(
-		vec2(gl_GlobalInvocationID.xy),
+		poissonRotation,
 		combinedSamplers[nonuniformEXT(shadowMapID)],
 		atlasUV,
 		uvz.z,
@@ -115,13 +115,6 @@ float phaseHenyeyGreenstein(float cosTheta, float g)
 	return 1.0 / (4.0 * 3.14159265359) * (1.0 - g2) / (denom * sqrt(denom));
 }
 
-float computeHeightFactor(vec3 worldPos)
-{
-	// Fog falls off with height above Y = 0
-	float height = max(worldPos.y, 0.0);
-	return exp(-pc.heightFalloff * height);
-}
-
 void main()
 {
 	ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
@@ -129,20 +122,25 @@ void main()
 
 	if (any(greaterThanEqual(pixelCoord, halfResSize))) return;
 
+	// Shadow map rotation hash
+	mat2 poissonRotation = createHash(vec2(pixelCoord));
+
 	// Half-res UV
 	vec2 uv = (vec2(pixelCoord) + 0.5) * pc.pixelSize;
+	vec2 samplingUV = uv;
 
-	ivec2 baseCoord = ivec2(pixelCoord) * 2;
+	if (debug.aaMode == AA_TAA) {
+		// Remove jitter from UV before depth sample to get stable world position reconstruction
+		samplingUV -= scene.temporalJitter.xy * 0.5; // NDC to UV space
+		samplingUV = clamp(samplingUV, vec2(0.0), vec2(1.0));
+	}
 
-	float depth00 = texelFetch(inDepth, baseCoord + ivec2(0, 0), 0).r;
-	float depth10 = texelFetch(inDepth, baseCoord + ivec2(1, 0), 0).r;
-	float depth01 = texelFetch(inDepth, baseCoord + ivec2(0, 1), 0).r;
-	float depth11 = texelFetch(inDepth, baseCoord + ivec2(1, 1), 0).r;
-
-	float depthValue = max(max(depth00, depth10), max(depth01, depth11));
+	vec4 depths = textureGather(inDepth, samplingUV, 0);
+	//float depthValue = max(max(depths.x, depths.y), max(depths.z, depths.w));
+	float depthValue = texture(inDepth, samplingUV).r;
 
 	ViewReconstructResult reconstructPos;
-	reconstructPos = reconstructWorldPosFromDepth(uv, depthValue, scene.invProj, scene.invView);
+	reconstructPos = reconstructWorldPosFromDepth(samplingUV, depthValue, scene.invProj, scene.invView);
 
 	vec3 cameraWorldPos = scene.cameraPos.xyz;
 	vec3 viewRay = reconstructPos.pos - cameraWorldPos;
@@ -156,7 +154,7 @@ void main()
 	// Angle between camera view and incoming sunlight
 	float cosTheta = dot(viewDir, sunDir);
 	// If sun is mostly behind camera
-	if (cosTheta <= 0) {
+	if (cosTheta < -0.1) {
 		imageStore(outVolumetricLight, pixelCoord, vec4(0.0));
 		return;
 	}
@@ -168,7 +166,9 @@ void main()
 	float maxRayDistance = pc.maxDistance;
 	bool hasHitGeometry = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 	if (hasHitGeometry) {
-		maxRayDistance = min(maxRayDistance, distanceToSurface);
+		//maxRayDistance = min(maxRayDistance, distanceToSurface);
+		float softClip = distanceToSurface + 0.1;
+		maxRayDistance = min(maxRayDistance, softClip);
 	}
 
 	if (maxRayDistance <= 0.0 || pc.stepCount <= 0) {
@@ -177,6 +177,20 @@ void main()
 	}
 
 	float dirMask = pow(clamp(cosTheta, 0.0, 1.0), float(pc.beamPower));
+
+//	float centerDepth = depthValue;
+//	float leftDepth = texelFetch(inDepth, ivec2(max(pixelCoord.x * 2 - 1, 0), pixelCoord.y * 2), 0).r;
+//	float rightDepth = texelFetch(inDepth, ivec2(min(pixelCoord.x * 2 + 1, int(scene.viewportSize.x) - 1), pixelCoord.y * 2), 0).r;
+//	float upDepth = texelFetch(inDepth, ivec2(pixelCoord.x * 2, max(pixelCoord.y * 2 - 1, 0)), 0).r;
+//	float downDepth = texelFetch(inDepth, ivec2(pixelCoord.x * 2, min(pixelCoord.y * 2 + 1, int(scene.viewportSize.y) - 1)), 0).r;
+//
+//	float depthEdge =
+//		max(
+//			max(abs(centerDepth - leftDepth), abs(centerDepth - rightDepth)),
+//			max(abs(centerDepth - upDepth), abs(centerDepth - downDepth))
+//	);
+//
+//	const float edgeFade = 1.0 - smoothstep(0.002, 0.02, depthEdge);
 
 	// Phase function
 	float phase = phaseHenyeyGreenstein(cosTheta, pc.asymmetryFactor);
@@ -191,36 +205,45 @@ void main()
 
 	float localDensity = pc.density;
 
+	// Extinction
+	float extinctionCoeff = localDensity * pc.extinction;
+	float segmentTrans = exp(-extinctionCoeff * stepLength);
+
+	vec3 baseScatter = sunColor * localDensity * phase * dirMask * pc.scatteringStrength;
+
+	const uint cascadeCount = uint(csm.params.z);
+	uint cascadeIdx = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
+	float nextSplit = csm.cascadeSplits[min(cascadeIdx, cascadeCount - 1u)];
+
+	vec3 camForward = -vec3(scene.invView[0][2], scene.invView[1][2], scene.invView[2][2]);
+	float forwardDot = dot(camForward, viewDir);
+
+	// Height factor
+	float heightStart = max(cameraWorldPos.y, 0.0);
+	float heightFactor = exp(-pc.heightFalloff * heightStart);
+	float heightStep = exp(-pc.heightFalloff * viewDir.y * stepLength);
+
 	for (int i = 0; i < pc.stepCount; ++i) {
 		if (rayT > maxRayDistance) break;
 
 		vec3 samplePos = cameraWorldPos + viewDir * rayT;
 		reconstructPos.pos = samplePos;
+		reconstructPos.viewDepth = dot(camForward, cameraWorldPos) + forwardDot * rayT;
 
-		vec4 samplePosVS = scene.view * vec4(samplePos, 1.0);
-		reconstructPos.viewDepth = -samplePosVS.z;
-
-		// Height fog
-		float heightFactor = computeHeightFactor(samplePos);
+		// Only re-check cascade when approaching the next split
+		if (reconstructPos.viewDepth > nextSplit) {
+			cascadeIdx = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
+			nextSplit = (cascadeIdx < cascadeCount - 1u)
+				? csm.cascadeSplits[cascadeIdx + 1u]
+				: 1e30;
+		}
 
 		// Sample CSM shadowing
-		float shadowTerm = sampleShadowVolumetric(reconstructPos);
+		float shadowTerm = sampleShadowVolumetric(reconstructPos, cascadeIdx, poissonRotation);
 
-		vec3 scattering =
-			sunColor *
-			localDensity *
-			heightFactor *
-			shadowTerm *
-			phase *
-			dirMask *
-			pc.scatteringStrength;
-
-		accumulatedLight += scattering * transmittance * stepLength;
-
-		// Extinction
-		float extinctionCoeff = localDensity * pc.extinction;
-		float segmentTrans = exp(-extinctionCoeff * stepLength);
+		accumulatedLight += baseScatter * heightFactor * shadowTerm * transmittance * stepLength;
 		transmittance *= segmentTrans;
+		heightFactor *= heightStep;
 
 		if (transmittance < pc.minTransmittance) break;
 

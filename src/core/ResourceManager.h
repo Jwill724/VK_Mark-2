@@ -118,32 +118,31 @@ namespace ResourceManager {
 	AllocatedImage& getTransparentImage();
 	AllocatedImage& getToneMapImage();
 	AllocatedImage& getDepthResolvedImage();
-	AllocatedImage& getDepthImage();
 	AllocatedImage& getPrevDepthResolvedImage();
-	AllocatedImage& getNormalImage();
+	AllocatedImage& getDepthImage();
+	AllocatedImage& getViewSpaceNormals();
 	AllocatedImage& getAORawImage();
 	AllocatedImage& getAOTempImage();
-	AllocatedImage& getAOHistoryRead();
-	AllocatedImage& getAOHistoryWrite();
-	void flipAOHistory();
-	void resetAOHistoryIndex();
-	AllocatedImage& getBounceLightHistoryRead();
-	AllocatedImage& getBounceLightHistoryWrite();
-	void flipBounceLightHistory();
-	void resetBounceLightHistoryIndex();
+
+	AllocatedImage& getColorHistoryRead();
+	AllocatedImage& getColorHistoryWrite();
+	void flipColorHistory();
+	void resetColorHistoryIndex();
+
 	AllocatedImage& getFlareBrightImage();
 	AllocatedImage& getLensFlareColorImage();
 	AllocatedImage& getRainbowLUTImage();
 	AllocatedImage& getVelocityImage();
+	AllocatedImage& getPrevVelocityImage();
 	AllocatedImage& getVolumetricLightImage();
 	AllocatedImage& getVolumetricBlurImage();
 	AllocatedImage& getDirectionalCSMAtlas();
 	AllocatedImage& getScreenSpaceShadowMask();
-	AllocatedImage& getBentNormalsImage();
+	AllocatedImage& getBentNormals();
 	AllocatedImage& getHiZ();
 	AllocatedImage& getEdgeInfoImage();
-	AllocatedImage& getAOFinalImage();
 	AllocatedImage& getAAColor();
+	AllocatedImage& getPostNonAAComposite();
 	AllocatedImage& getCMAA2WorkingEdges();
 	AllocatedImage& getSMAAEdges();
 	AllocatedImage& getSMAAWeights();
@@ -156,6 +155,7 @@ namespace ResourceManager {
 	const VkSampler getHiZSampler();
 	const VkSampler getLinearLODClampSampler();
 	const VkSampler getPointBorderSampler();
+	const VkSampler getTaaHistorySampler();
 	const VkSampler getNoiseSampler();
 	const VkSampler getShadowMapSampler();
 

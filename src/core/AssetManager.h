@@ -2,6 +2,8 @@
 
 #include <core/loader/TextureLoader.h>
 
+// TODO: Redesign this scene id system
+
 // ====== Scene Graph Node Base ======
 struct Node {
 	std::weak_ptr<Node> parent;
@@ -29,6 +31,10 @@ enum class SceneID : uint8_t {
 	Structure,
 	EmissiveTest,
 	WrathDragon,
+	Mech,
+	YellowMech,
+	Mini,
+
 	Count
 };
 
@@ -109,6 +115,9 @@ namespace AssetManager {
 		{ SceneID::Structure, "Structure" },
 		{ SceneID::EmissiveTest, "EmissiveTest" },
 		{ SceneID::WrathDragon, "WrathDragon" },
+		{ SceneID::Mech, "Mech" },
+		{ SceneID::YellowMech, "YellowMech" },
+		{ SceneID::Mini, "Mini" },
 	};
 
 	static const std::unordered_map<std::string, SceneID> SceneIDs{
@@ -122,6 +131,9 @@ namespace AssetManager {
 		{ "Structure", SceneID::Structure },
 		{ "EmissiveTest", SceneID::EmissiveTest },
 		{ "WrathDragon", SceneID::WrathDragon },
+		{ "Mech", SceneID::Mech },
+		{ "YellowMech", SceneID::YellowMech },
+		{ "Mini", SceneID::Mini },
 	};
 
 	bool loadGltf(ThreadContext& threadCtx);

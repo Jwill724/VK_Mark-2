@@ -36,22 +36,28 @@ namespace RenderScene {
 
 	const Camera& getCamera() { return _mainCamera; }
 
-	// Only wanna extract a new frustum if viewproj changes
-	glm::mat4 _lastViewProj = glm::mat4(1.0f);
-	glm::vec3 _lastLightDir = glm::vec3(0.0f);
+	glm::mat4 _curCamProjUnjittered = glm::mat4(1.0f);
+	const glm::mat4& getCurProjUnjittered() { return _curCamProjUnjittered; }
+
+	glm::mat4 _curCamProjJittered = glm::mat4(1.0f);
+
+	glm::mat4 _lastViewProjUnjittered = glm::mat4(1.0f);
+	glm::mat4 _lastViewProjJittered = glm::mat4(1.0f);
+
+	glm::vec2 _currentJitterNDC = glm::vec2(0.0f);
+	glm::vec2 _previousJitterNDC = glm::vec2(0.0f);
 
 	float _cachedAspectRatio = 0.0f;
+
+	glm::mat4 _lastView = glm::mat4(1.0f);
 
 	Frustum _currentFrustum;
 	const Frustum& getMainFrustum() { return _currentFrustum; }
 
 	void updateCamera();
 	void updateShadowCSM(const glm::vec3& lightDir);
-	bool _updateShadows = false;
-	bool _shadowsOn = false;
 
 	bool _assetsLoaded = false;
-	bool _camChanged = false;
 
 	bool _isTemporalInvalid = false;
 
@@ -80,6 +86,51 @@ namespace RenderScene {
 	void initCSMAtlasUVs();
 }
 
+static float haltonSequence(uint32_t index, uint32_t base)
+{
+	float f = 1.0, r = 0.0;
+	while (index > 0) {
+		f /= static_cast<float>(base);
+		r += f * float(index % base);
+		index /= base;
+	}
+	return r;
+}
+
+static glm::vec2 buildTemporalJitterPixels(uint32_t frameIndex)
+{
+	const uint32_t sequenceLength = 16u;
+	uint32_t index = (frameIndex % sequenceLength) + 1u;
+
+	glm::vec2 jitter;
+	jitter.x = haltonSequence(index, 2u);
+	jitter.y = haltonSequence(index, 3u);
+	jitter -= glm::vec2(0.5f);
+	return jitter;
+}
+
+static glm::vec2 convertJitterPixelsToNDC(
+	const glm::vec2 jitterPixels,
+	const float width,
+	const float height)
+{
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	jitterNDC.x = (2.0f * jitterPixels.x) / width;
+	jitterNDC.y = (2.0f * jitterPixels.y) / height;
+
+	return jitterNDC;
+}
+
+static glm::mat4 applyProjectionJitter(
+	glm::mat4 proj,
+	const glm::vec2 jitterNDC)
+{
+	proj[2][0] += jitterNDC.x;
+	proj[2][1] += jitterNDC.y;
+	return proj;
+}
+
 void RenderScene::setScene(bool assetsLoaded) {
 	_assetsLoaded = assetsLoaded;
 
@@ -95,6 +146,12 @@ void RenderScene::setScene(bool assetsLoaded) {
 
 	_sceneData.cameraClips = glm::vec4(_mainCamera._nearClip, _mainCamera._farClip, 0.0f, 0.0f);
 
+	_currentJitterNDC = glm::vec2(0.0f);
+	_previousJitterNDC = glm::vec2(0.0f);
+
+	_lastViewProjUnjittered = glm::mat4(1.0f);
+	_lastViewProjJittered = glm::mat4(1.0f);
+
 	_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 2.5f);    // golden sun
 	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f); // white
 	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.46f, -0.09f, 0.0f);
@@ -102,33 +159,69 @@ void RenderScene::setScene(bool assetsLoaded) {
 
 void RenderScene::updateCamera() {
 	const auto extent = Renderer::getDrawExtent();
-	float width = static_cast<float>(extent.width);
+	float width  = static_cast<float>(extent.width);
 	float height = static_cast<float>(extent.height);
 	float aspect = width / height;
 
 	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler(), _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
-	_curCamProj = glm::perspectiveRH_ZO(
+
+	_curCamProjUnjittered = glm::perspectiveRH_ZO(
 		glm::radians(_mainCamera._fovY),
 		aspect,
 		_mainCamera._farClip,
 		_mainCamera._nearClip);
 
+	_previousJitterNDC = _currentJitterNDC;
+
+	glm::vec2 currentJitterPixels = buildTemporalJitterPixels(_sceneData.temporal.x);
+	_currentJitterNDC = convertJitterPixelsToNDC(currentJitterPixels, width, height);
+	_curCamProjJittered  = applyProjectionJitter(_curCamProjUnjittered, _currentJitterNDC);
+
+	// Compute both unjittered and jittered viewprojs up front
+	glm::mat4 currentViewProjUnjittered = _curCamProjUnjittered * _curCamView;
+	glm::mat4 currentViewProjJittered = _curCamProjJittered * _curCamView;
+
 	_sceneData.view = _curCamView;
-	_sceneData.proj = _curCamProj;
-	_sceneData.prevViewproj = _lastViewProj;
-	_sceneData.viewproj = _curCamProj * _curCamView;
+	_sceneData.invView = glm::inverse(_curCamView);
+
+	if (Engine::getProfiler().debugToggles.aaMode == AA_TAA) {
+		_sceneData.proj = _curCamProjJittered;
+		_sceneData.invProj = glm::inverse(_curCamProjJittered);
+		_sceneData.viewProj = currentViewProjJittered;
+	}
+	else {
+		_sceneData.proj = _curCamProjUnjittered;
+		_sceneData.invProj = glm::inverse(_curCamProjUnjittered);
+		_sceneData.viewProj = currentViewProjUnjittered;
+	}
+
+	_sceneData.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
+
+	_sceneData.prevViewProj = _lastViewProjUnjittered; // unjittered previous — velocity prev NDC
+
 	_sceneData.cameraPos = glm::vec4(_mainCamera._position, 0.0f);
+	_sceneData.temporalJitter = glm::vec4(
+		_currentJitterNDC.x,
+		_currentJitterNDC.y,
+		_previousJitterNDC.x,
+		_previousJitterNDC.y);
+
+	_currentFrustum = extractFrustum(currentViewProjUnjittered);
+	_lastViewProjUnjittered = currentViewProjUnjittered;
+	_lastViewProjJittered = currentViewProjJittered;
+
+	_sceneData.prevView = _lastView;
+	_lastView = _curCamView;
 
 	if (_sceneData.viewportSize.x != width || _sceneData.viewportSize.y != height) {
 		float pixelCount = width * height;
 		_sceneData.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
 
-		uint32_t widthU = static_cast<uint32_t>(width);
+		uint32_t widthU  = static_cast<uint32_t>(width);
 		uint32_t heightU = static_cast<uint32_t>(height);
 
-		// Should clean some of this up
 		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
 		_sceneData.cameraClips.z = fullPixelSize.x;
 		_sceneData.cameraClips.w = fullPixelSize.y;
@@ -138,8 +231,11 @@ void RenderScene::updateCamera() {
 			(heightU + 1u) >> 1,
 			1u
 		};
+
 		glm::vec2 halfPixelSize = 1.0f /
-			glm::vec2(static_cast<float>(halfExtent.width), static_cast<float>(halfExtent.height));
+			glm::vec2(
+				static_cast<float>(halfExtent.width),
+				static_cast<float>(halfExtent.height));
 
 		_sceneData.pixelSizes = glm::vec4(
 			fullPixelSize.x,
@@ -148,18 +244,6 @@ void RenderScene::updateCamera() {
 			halfPixelSize.y);
 
 		_isTemporalInvalid = true;
-	}
-
-	_camChanged = (_sceneData.viewproj != _lastViewProj);
-
-	if (_camChanged) {
-		// Standard non modified frustum
-		_currentFrustum = extractFrustum(_sceneData.viewproj);
-		_lastViewProj = _sceneData.viewproj;
-		_camChanged = true;
-
-		_sceneData.invView = glm::inverse(_curCamView);
-		_sceneData.invProj = glm::inverse(_curCamProj);
 	}
 }
 
@@ -245,6 +329,8 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	const float aspect = _sceneData.viewportSize.x / _sceneData.viewportSize.y;
 
 	if (_cachedAspectRatio != aspect) {
+		_cachedAspectRatio = aspect;
+
 		const float nearClip = _mainCamera._nearClip;
 		const float farClip = _mainCamera._farClip;
 		const float clipRange = farClip - nearClip;
@@ -498,11 +584,11 @@ void RenderScene::updateScene(
 {
 	_isTemporalInvalid = false; // Assume clean start each frame
 
+	_sceneData.temporal.x = frameCtx.frameIndex;
+
 	updateCamera();
 
 	const auto allocator = gpuResources.getAllocator();
-
-	_sceneData.temporal.x = frameCtx.frameIndex;
 
 	// No scene loaded in
 	if (!_assetsLoaded) {
@@ -607,7 +693,7 @@ void RenderScene::updateScene(
 
 	// Screen space contact shadows
 	if (debug.enableSSS) {
-		glm::vec4 lightProj = _sceneData.viewproj * glm::vec4(lightDir, 0.0f);
+		glm::vec4 lightProj = _sceneData.viewProj * glm::vec4(lightDir, 0.0f);
 
 		_dispatchListSSS = buildDispatchList(
 			lightProj,
@@ -617,26 +703,8 @@ void RenderScene::updateScene(
 
 	// Cascaded shadow map updates
 	if (debug.enableShadows) {
-		_shadowCSM.params.x = _shadowControl.bias;
-
-		if (_camChanged || (lightDir != _lastLightDir) || !_shadowsOn) {
-			_lastLightDir = lightDir;
-			_updateShadows = true;
-			_shadowsOn = true;
-		}
-		else {
-			_updateShadows = false;
-		}
-	}
-	// In event that view or light has changed and light is off,
-	else if (_shadowsOn) {
-		_lastViewProj = glm::mat4(1.0f); // Default viewproj to recalculate frustum
-		_shadowsOn = false;
-	}
-	if (debug.enableShadows && _updateShadows) {
 		updateShadowCSM(lightDir);
 	}
-
 
 	if (debug.enableTemporal) {
 		_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
@@ -772,7 +840,7 @@ void RenderScene::updateDrawDataCPUPath(
 			meshes.meshLODs,
 			_visibleWorldAABBs,
 			_sceneData.cameraPos,
-			_sceneData.proj,
+			_curCamProjUnjittered,
 			debug);
 
 		DrawPreparation::uploadGPUBuffersForFrame(

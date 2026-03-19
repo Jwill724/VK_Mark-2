@@ -64,7 +64,7 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::ExposureReduce, COMPUTE_STAGE, "res/shaders/post_process/exposure_reduce.spv");
 	PipelinePresets::writeShaderStage(PipelineID::ExposureFinalize, COMPUTE_STAGE, "res/shaders/post_process/exposure_finalize.spv");
 
-	PipelinePresets::writeShaderStage(PipelineID::ToneMap, COMPUTE_STAGE, "res/shaders/post_process/tone_map.spv");
+	PipelinePresets::writeShaderStage(PipelineID::FinalComposite, COMPUTE_STAGE, "res/shaders/post_process/final_composite.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::HiZGen, COMPUTE_STAGE, "res/shaders/core/hi_z_gen.spv");
 
@@ -75,8 +75,6 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 
 	PipelinePresets::writeShaderStage(PipelineID::GTAO, COMPUTE_STAGE, "res/shaders/ao/gtao_main.spv");
 	PipelinePresets::writeShaderStage(PipelineID::GTAOFilter, COMPUTE_STAGE, "res/shaders/ao/gtao_filter.spv");
-	PipelinePresets::writeShaderStage(PipelineID::GTAOTemporalResolve, COMPUTE_STAGE, "res/shaders/ao/gtao_temporal_resolve.spv");
-	PipelinePresets::writeShaderStage(PipelineID::AOUpscale, COMPUTE_STAGE, "res/shaders/ao/ao_upscale.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLight, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light.spv");
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLightBlur, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light_blur.spv");
@@ -89,6 +87,8 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::SMAABlend, COMPUTE_STAGE, "res/shaders/post_process/smaa_blend.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::FXAA, COMPUTE_STAGE, "res/shaders/post_process/fxaa.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::TAA, COMPUTE_STAGE, "res/shaders/post_process/taa.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::CMAA2Edges, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_edges.spv");
 	PipelinePresets::writeShaderStage(PipelineID::CMAA2ShapeCandidates, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_shape_candidates.spv");
@@ -103,6 +103,8 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::IndirectArgsLight, COMPUTE_STAGE, "res/shaders/clustered/indirect_args_light.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::ScreenSpaceContactShadows, COMPUTE_STAGE, "res/shaders/shadows/bend_sss.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::ChromaticAberration, COMPUTE_STAGE, "res/shaders/post_process/chromatic_aberration.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::Opaque, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
 	PipelinePresets::writeShaderStage(PipelineID::Opaque, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
@@ -126,8 +128,8 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 void PipelinePresets::setupBaseBuilder() {
 	_defaultBuilder._pipelineLayout = Pipelines::_globalLayout.layout;
 
-	_defaultBuilder.colorFormats.push_back(VK_FORMAT_B10G11R11_UFLOAT_PACK32);
-	//_defaultBuilder.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
+	//_defaultBuilder.colorFormats.push_back(VK_FORMAT_B10G11R11_UFLOAT_PACK32);
+	_defaultBuilder.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
 	_defaultBuilder.depthFormat = VK_FORMAT_D32_SFLOAT;
 }
 
@@ -253,6 +255,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === SKYBOX PIPELINE ===
 	PipelinePreset& skyboxPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Skybox);
+	//skyboxPreset.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
@@ -306,9 +309,9 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	// === COMPUTE PIPELINE SETUP STAGE ===
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
-		device,PipelineID::ToneMap,
+		device,PipelineID::FinalComposite,
 		PipelineCategory::Compute,
-		"ToneMap");
+		"FinalComposite");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
@@ -369,12 +372,6 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		PipelineID::GTAOFilter,
 		PipelineCategory::Compute,
 		"GTAOFilter");
-	PipelinePresets::createPipeline(
-		PipelinePresets::_defaultBuilder,
-		device,
-		PipelineID::GTAOTemporalResolve,
-		PipelineCategory::Compute,
-		"GTAOTemporalResolve");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
@@ -439,12 +436,6 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
-		PipelineID::AOUpscale,
-		PipelineCategory::Compute,
-		"AOUpscale");
-	PipelinePresets::createPipeline(
-		PipelinePresets::_defaultBuilder,
-		device,
 		PipelineID::SMAAEdges,
 		PipelineCategory::Compute,
 		"SMAAEdges");
@@ -490,6 +481,18 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		PipelineID::FXAA,
 		PipelineCategory::Compute,
 		"FXAA");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::TAA,
+		PipelineCategory::Compute,
+		"TAA");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::ChromaticAberration,
+		PipelineCategory::Compute,
+		"ChromaticAberration");
 
 	shaderDeletionQ.flush(); // deferred deletion of shader modules
 

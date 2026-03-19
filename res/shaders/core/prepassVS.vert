@@ -55,21 +55,21 @@ void main()
 	vec4 prevWorldPos = prevModel * vec4(vtx.position, 1.0);
 
 	vec4 currClipPos = scene.viewProj * worldPos;
-	vec4 prevClipPos = scene.prevViewProj * prevWorldPos;
+
+	vec4 currClipUnj = scene.viewProjUnjittered * worldPos;
+	vec4 prevClipUnj = scene.prevViewProj * prevWorldPos;
+
 	outUV = uv;
 	outMaterialID = inst.materialID;
 
-	bool currValid = currClipPos.w > 0.0;
-	bool prevValid = prevClipPos.w > 0.0;
-
-	if (!currValid || !prevValid) {
+	bool currValid = currClipPos.w > 0.0 && prevClipUnj.w > 0.0;
+	if (!currValid) {
 		outCurrNdc = vec2(0.0);
 		outPrevNdc = vec2(0.0);
 		outTemporalValidation = 0u;
-	}
-	else {
-		outCurrNdc = currClipPos.xy / currClipPos.w;
-		outPrevNdc = prevClipPos.xy / prevClipPos.w;
+	} else {
+		outCurrNdc = currClipUnj.xy / currClipUnj.w; // unjittered
+		outPrevNdc = prevClipUnj.xy / prevClipUnj.w; // unjittered
 		outTemporalValidation = scene.temporal.y;
 	}
 

@@ -71,7 +71,7 @@ struct alignas(4) DebugToggles {
 	uint32_t enableOBBs = 0;
 	uint32_t enableProfilerView = 0;
 	uint32_t enableSettings = 1;
-	uint32_t aaMode = AA_SMAA;
+	uint32_t aaMode = AA_CMAA2;
 
 	uint32_t aoMode = AO_GTAO;
 	uint32_t enableShadows = 1;
@@ -99,8 +99,8 @@ struct alignas(4) DebugToggles {
 	uint32_t showCascadeSplits = 0;
 
 	uint32_t showEmissive = 0;
-	uint32_t showDiffuseBounceLight = 0;
-	uint32_t enableTemporal = 0;
+	uint32_t showBentNormals = 0;
+	uint32_t enableTemporal = 1;
 	uint32_t showSSS = 0;
 };
 

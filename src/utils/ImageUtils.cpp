@@ -30,6 +30,91 @@ static VkImageAspectFlags getAspectMaskFromFormat(const VkFormat format) {
 	}
 }
 
+static void copyImageToImageDirect(
+	VkCommandBuffer cmd,
+	VkImage src,
+	VkImage dst,
+	VkExtent2D extent,
+	VkFormat format)
+{
+	VkImageAspectFlags aspectMask = getAspectMaskFromFormat(format);
+
+	VkImageCopy2 copyRegion{};
+	copyRegion.sType = VK_STRUCTURE_TYPE_IMAGE_COPY_2;
+	copyRegion.srcSubresource.aspectMask = aspectMask;
+	copyRegion.srcSubresource.mipLevel = 0;
+	copyRegion.srcSubresource.baseArrayLayer = 0;
+	copyRegion.srcSubresource.layerCount = 1;
+
+	copyRegion.dstSubresource.aspectMask = aspectMask;
+	copyRegion.dstSubresource.mipLevel = 0;
+	copyRegion.dstSubresource.baseArrayLayer = 0;
+	copyRegion.dstSubresource.layerCount = 1;
+
+	copyRegion.extent.width = extent.width;
+	copyRegion.extent.height = extent.height;
+	copyRegion.extent.depth = 1;
+
+	VkCopyImageInfo2 copyInfo{};
+	copyInfo.sType = VK_STRUCTURE_TYPE_COPY_IMAGE_INFO_2;
+	copyInfo.srcImage = src;
+	copyInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	copyInfo.dstImage = dst;
+	copyInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	copyInfo.regionCount = 1;
+	copyInfo.pRegions = &copyRegion;
+
+	vkCmdCopyImage2(cmd, &copyInfo);
+}
+
+static void copyImageToImageBlit(
+	VkCommandBuffer cmd,
+	VkImage source,
+	VkImage destination,
+	VkExtent2D srcSize,
+	VkExtent2D dstSize,
+	VkFormat format)
+{
+	VkImageAspectFlags aspectMask = getAspectMaskFromFormat(format);
+
+	VkImageBlit2 blitRegion{};
+	blitRegion.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
+	blitRegion.pNext = nullptr;
+
+	blitRegion.srcOffsets[1].x = srcSize.width;
+	blitRegion.srcOffsets[1].y = srcSize.height;
+	blitRegion.srcOffsets[1].z = 1;
+
+	blitRegion.dstOffsets[1].x = dstSize.width;
+	blitRegion.dstOffsets[1].y = dstSize.height;
+	blitRegion.dstOffsets[1].z = 1;
+
+	blitRegion.srcSubresource.aspectMask = aspectMask;
+	blitRegion.srcSubresource.baseArrayLayer = 0;
+	blitRegion.srcSubresource.layerCount = 1;
+	blitRegion.srcSubresource.mipLevel = 0;
+
+	blitRegion.dstSubresource.aspectMask = aspectMask;
+	blitRegion.dstSubresource.baseArrayLayer = 0;
+	blitRegion.dstSubresource.layerCount = 1;
+	blitRegion.dstSubresource.mipLevel = 0;
+
+	VkBlitImageInfo2 blitInfo{};
+	blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
+	blitInfo.pNext = nullptr;
+
+	blitInfo.dstImage = destination;
+	blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	blitInfo.srcImage = source;
+	blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	blitInfo.filter = VK_FILTER_NEAREST;
+	blitInfo.regionCount = 1;
+	blitInfo.pRegions = &blitRegion;
+
+	vkCmdBlitImage2(cmd, &blitInfo);
+}
+
+
 // TODO: When I get a better image loading library (ktx),
 // I'll rework this to be able to create large staging buffers for many textures into a single cmd
 // TODO: Change this function, the most spaghetti part of the code-base.
@@ -391,51 +476,59 @@ void ImageUtils::transitionImage(
 	img.previousLayout = newLayout;
 }
 
-void ImageUtils::copyImageToImage(
+void ImageUtils::imageCopy(
 	VkCommandBuffer cmd,
-	VkImage source,
-	VkImage destination,
-	VkExtent2D srcSize,
-	VkExtent2D dstSize,
-	VkFormat format)
+	AllocatedImage& src,
+	AllocatedImage& dst,
+	VkImageLayout srcFinalLayout,
+	VkImageLayout dstFinalLayout,
+	bool copyDirect)
 {
-	VkImageAspectFlags aspectMask = getAspectMaskFromFormat(format);
+	transitionImage(
+		cmd,
+		src,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-	VkImageBlit2 blitRegion{};
-	blitRegion.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
-	blitRegion.pNext = nullptr;
+	transitionImage(
+		cmd,
+		dst,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-	blitRegion.srcOffsets[1].x = srcSize.width;
-	blitRegion.srcOffsets[1].y = srcSize.height;
-	blitRegion.srcOffsets[1].z = 1;
+	// Assumes both images are the same size
+	VkExtent2D extent = {
+		src.extent.width,
+		src.extent.height
+	};
 
-	blitRegion.dstOffsets[1].x = dstSize.width;
-	blitRegion.dstOffsets[1].y = dstSize.height;
-	blitRegion.dstOffsets[1].z = 1;
+	if (copyDirect) {
+		copyImageToImageDirect(
+			cmd,
+			src.image,
+			dst.image,
+			extent,
+			src.format
+		);
+	}
+	else {
+		copyImageToImageBlit(
+			cmd,
+			src.image,
+			dst.image,
+			extent,
+			extent,
+			src.format
+		);
+	}
 
-	blitRegion.srcSubresource.aspectMask = aspectMask;
-	blitRegion.srcSubresource.baseArrayLayer = 0;
-	blitRegion.srcSubresource.layerCount = 1;
-	blitRegion.srcSubresource.mipLevel = 0;
+	transitionImage(
+		cmd,
+		src,
+		srcFinalLayout);
 
-	blitRegion.dstSubresource.aspectMask = aspectMask;
-	blitRegion.dstSubresource.baseArrayLayer = 0;
-	blitRegion.dstSubresource.layerCount = 1;
-	blitRegion.dstSubresource.mipLevel = 0;
-
-	VkBlitImageInfo2 blitInfo{};
-	blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
-	blitInfo.pNext = nullptr;
-
-	blitInfo.dstImage = destination;
-	blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	blitInfo.srcImage = source;
-	blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-	blitInfo.filter = VK_FILTER_NEAREST;
-	blitInfo.regionCount = 1;
-	blitInfo.pRegions = &blitRegion;
-
-	vkCmdBlitImage2(cmd, &blitInfo);
+	transitionImage(
+		cmd,
+		dst,
+		dstFinalLayout);
 }
 
 uint32_t ImageUtils::calculateMipLevels(AllocatedImage& img, uint32_t maxMipCap) {

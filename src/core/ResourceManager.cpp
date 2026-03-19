@@ -32,6 +32,9 @@ namespace ResourceManager {
 	AllocatedImage _prevDepthResolvedImage;
 	AllocatedImage& getPrevDepthResolvedImage() { return _prevDepthResolvedImage; }
 
+	AllocatedImage _prevVelocityImage;
+	AllocatedImage& getPrevVelocityImage() { return _prevVelocityImage; }
+
 	// Max lod = mip count
 	VkSampler _hiZSampler;
 	const VkSampler getHiZSampler() { return _hiZSampler; }
@@ -45,18 +48,17 @@ namespace ResourceManager {
 	VkSampler _pointBorderSampler;
 	const VkSampler getPointBorderSampler() { return _pointBorderSampler; }
 
+	VkSampler _taaHistorySampler;
+	const VkSampler getTaaHistorySampler() { return _taaHistorySampler; }
+
 	VkSampler _noiseSampler;
 	const VkSampler getNoiseSampler() { return _noiseSampler; }
 
-	AllocatedImage _normalImage;
-	AllocatedImage& getNormalImage() { return _normalImage; }
+	AllocatedImage _viewSpaceNormals;
+	AllocatedImage& getViewSpaceNormals() { return _viewSpaceNormals; }
 
-	AllocatedImage _bentNormalImage;
-	AllocatedImage& getBentNormalsImage() { return _bentNormalImage; }
-
-	// Full res ao output
-	AllocatedImage _aoFinalImage;
-	AllocatedImage& getAOFinalImage() { return _aoFinalImage; }
+	AllocatedImage _bentNormals;
+	AllocatedImage& getBentNormals() { return _bentNormals; }
 
 	// ao images
 	AllocatedImage _edgeInfoImage;
@@ -66,33 +68,23 @@ namespace ResourceManager {
 	AllocatedImage _aoTempImage;
 	AllocatedImage& getAOTempImage() { return _aoTempImage; }
 
-	// AO HISTORY
-	uint32_t _aoHistoryIndex = 0;
-	AllocatedImage _aoHistoryImages[2];
-	AllocatedImage& getAOHistoryRead() {
-		return _aoHistoryImages[_aoHistoryIndex];
+	// COLOR HISTORY
+	uint32_t _colorHistoryIndex = 0;
+	AllocatedImage _colorHistoryImages[2];
+	AllocatedImage& getColorHistoryRead() {
+		return _colorHistoryImages[_colorHistoryIndex];
 	}
-	AllocatedImage& getAOHistoryWrite() {
-		return _aoHistoryImages[_aoHistoryIndex ^ 1u];
+	AllocatedImage& getColorHistoryWrite() {
+		return _colorHistoryImages[_colorHistoryIndex ^ 1u];
 	}
-	void flipAOHistory() { _aoHistoryIndex ^= 1u; }
-	void resetAOHistoryIndex() { _aoHistoryIndex = 0; }
-
-	// BOUNCE LIGHT HISTORY
-	uint32_t _bounceLightHistoryIndex = 0;
-	AllocatedImage _bounceLightHistoryImages[2];
-	AllocatedImage& getBounceLightHistoryRead() {
-		return _bounceLightHistoryImages[_bounceLightHistoryIndex];
-	}
-	AllocatedImage& getBounceLightHistoryWrite() {
-		return _bounceLightHistoryImages[_bounceLightHistoryIndex ^ 1u];
-	}
-	void flipBounceLightHistory() { _bounceLightHistoryIndex ^= 1u; }
-	void resetBounceLightHistoryIndex() { _bounceLightHistoryIndex = 0; }
-
+	void flipColorHistory() { _colorHistoryIndex ^= 1u; }
+	void resetColorHistoryIndex() { _colorHistoryIndex = 0; }
 
 	AllocatedImage _aaColor;
 	AllocatedImage& getAAColor() { return _aaColor; }
+
+	AllocatedImage _postNonAAComposite;
+	AllocatedImage& getPostNonAAComposite() { return _postNonAAComposite; }
 
 	AllocatedImage _cmaa2WorkingEdges;
 	AllocatedImage& getCMAA2WorkingEdges() { return _cmaa2WorkingEdges; }
@@ -328,7 +320,8 @@ void ResourceManager::initUniformRenderTargets(
 	};
 
 	// Opaque
-	_opaqueImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	//_opaqueImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_opaqueImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_opaqueImage.extent = drawExtent;
 
 	ImageUtils::createRenderImage(
@@ -367,6 +360,15 @@ void ResourceManager::initUniformRenderTargets(
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
+	_prevDepthResolvedImage.format = BASE_DEPTH_FORMAT;
+	_prevDepthResolvedImage.extent = drawExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_prevDepthResolvedImage,
+		baseComputeUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator);
 
 	_depthImage.format = BASE_DEPTH_FORMAT;
 	_depthImage.extent = drawExtent;
@@ -374,21 +376,6 @@ void ResourceManager::initUniformRenderTargets(
 		device,
 		_depthImage,
 		depthResolvedUsages,
-		VK_SAMPLE_COUNT_1_BIT,
-		targetQueue,
-		allocator);
-
-	// Previous depth resolved image
-	_prevDepthResolvedImage.format = BASE_DEPTH_FORMAT;
-	_prevDepthResolvedImage.extent = drawExtent;
-	VkImageUsageFlags prevDepthResolvedUsages{};
-	prevDepthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-	prevDepthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-	prevDepthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	ImageUtils::createRenderImage(
-		device,
-		_prevDepthResolvedImage,
-		prevDepthResolvedUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
@@ -415,40 +402,20 @@ void ResourceManager::initUniformRenderTargets(
 		targetQueue,
 		allocator);
 
-	// ao history images
-	resetAOHistoryIndex();
+	// color history images
+	resetColorHistoryIndex();
 	for (uint32_t i = 0; i < 2; ++i) {
-		_aoHistoryImages[i].format = VK_FORMAT_R8_UNORM;
-		_aoHistoryImages[i].extent = drawExtent;
-
-		VkImageUsageFlags historyUsages{};
-		historyUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
-		historyUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
-		historyUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+		_colorHistoryImages[i].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+		_colorHistoryImages[i].extent = drawExtent;
 
 		ImageUtils::createRenderImage(
 			device,
-			_aoHistoryImages[i],
-			historyUsages,
+			_colorHistoryImages[i],
+			baseComputeUsages,
 			VK_SAMPLE_COUNT_1_BIT,
 			targetQueue,
 			allocator);
 	}
-
-	//// bounce light history images
-	//resetBounceLightHistoryIndex();
-	//for (uint32_t i = 0; i < 2; ++i) {
-	//	_bounceLightHistoryImages[i].format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	//	_bounceLightHistoryImages[i].extent = drawExtent;
-
-	//	ImageUtils::createRenderImage(
-	//		device,
-	//		_bounceLightHistoryImages[i],
-	//		drawImageUsages,
-	//		VK_SAMPLE_COUNT_1_BIT,
-	//		targetQueue,
-	//		allocator);
-	//}
 
 	// Edge image
 	_edgeInfoImage.format = VK_FORMAT_R8_UNORM;
@@ -462,37 +429,36 @@ void ResourceManager::initUniformRenderTargets(
 		allocator
 	);
 
-	//_aoFinalImage.format = VK_FORMAT_R8_UNORM;
-	//_aoFinalImage.extent = drawExtent;
-	//ImageUtils::createRenderImage(
-	//	device,
-	//	_aoFinalImage,
-	//	computeMinimalUsages,
-	//	VK_SAMPLE_COUNT_1_BIT,
-	//	targetQueue,
-	//	allocator
-	//);
-
 	// Velocity
 	_velocityImage.format = VK_FORMAT_R16G16_SFLOAT;
 	_velocityImage.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
 		_velocityImage,
-		mrtColorUsages,
+		drawImageUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+	_prevVelocityImage.format = VK_FORMAT_R16G16_SFLOAT;
+	_prevVelocityImage.extent = drawExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_prevVelocityImage,
+		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
 
 
-	// Normal
-	_normalImage.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-	_normalImage.extent = drawExtent;
+	// View space normals
+	_viewSpaceNormals.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	_viewSpaceNormals.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
-		_normalImage,
-		mrtColorUsages,
+		_viewSpaceNormals,
+		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
@@ -627,11 +593,23 @@ void ResourceManager::initUniformRenderTargets(
 	);
 
 	// Bent normals
-	_bentNormalImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_bentNormalImage.extent = drawExtent;
+	_bentNormals.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_bentNormals.extent = drawExtent;
 	ImageUtils::createRenderImage(
 		device,
-		_bentNormalImage,
+		_bentNormals,
+		baseComputeUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	// post non aa composite
+	_postNonAAComposite.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_postNonAAComposite.extent = drawExtent;
+	ImageUtils::createRenderImage(
+		device,
+		_postNonAAComposite,
 		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -790,6 +768,16 @@ void ResourceManager::initRenderSamplers(
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
 	);
+
+	_taaHistorySampler = ImageUtils::createSampler(
+		device,
+		VK_FILTER_LINEAR,
+		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		0.0f,
+		1.0f,
+		&queue,
+		VK_SAMPLER_MIPMAP_MODE_NEAREST
+);
 }
 
 EnvironmentSet ResourceManager::initEnvironmentSetImages(

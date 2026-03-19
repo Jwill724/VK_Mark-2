@@ -1,0 +1,216 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+#include "../include/depth.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inColorCurrent;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform sampler2D inColorHistory;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_3_TEX) uniform sampler2D inVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_4_TEX) uniform sampler2D inVelocityHistory;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_5_TEX) uniform sampler2D inDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_6_TEX) uniform sampler2D inPrevDepth;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outColorResolved;
+
+layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+	SceneData scene;
+};
+
+layout(push_constant) uniform TAAPush {
+	float minBlend;
+	float maxBlend;
+	float depthDisocclusionScale;
+} pc;
+
+vec3 RGBToYCoCg(vec3 rgb)
+{
+	float co = rgb.r - rgb.b;
+	float t = rgb.b + co * 0.5;
+	float cg = rgb.g - t;
+	float y = t + cg * 0.5;
+	return vec3(y, co, cg);
+}
+
+vec3 YCoCgToRGB(vec3 ycocg)
+{
+	float t = ycocg.x - ycocg.z * 0.5;
+	float g = ycocg.z + t;
+	float b = t - ycocg.y * 0.5;
+	float r = b + ycocg.y;
+	return vec3(r, g, b);
+}
+
+vec3 sampleHistoryCatmullRom(vec2 uv)
+{
+	vec2 texelSize = vec2(scene.pixelSizes.xy);
+	vec2 samplePos = uv / texelSize;
+	vec2 texelCenter = floor(samplePos - 0.5) + 0.5;
+	vec2 f = samplePos - texelCenter;
+	vec2 f2 = f * f;
+	vec2 f3 = f2 * f;
+
+	vec2 w0 = -0.5 * f3 + f2 - 0.5 * f;
+	vec2 w1 =  1.5 * f3 - 2.5 * f2 + 1.0;
+	vec2 w2 = -1.5 * f3 + 2.0 * f2 + 0.5 * f;
+	vec2 w3 =  0.5 * f3 - 0.5 * f2;
+
+	vec2 w12 = w1 + w2;
+	vec2 offset12 = w2 / w12;
+
+	vec2 tc0 = (texelCenter - 1.0) * texelSize;
+	vec2 tc12 = (texelCenter + offset12) * texelSize;
+	vec2 tc3 = (texelCenter + 2.0) * texelSize;
+
+	vec3 color =
+		texture(inColorHistory, vec2(tc12.x, tc0.y )).rgb * (w12.x * w0.y ) +
+		texture(inColorHistory, vec2(tc0.x,  tc12.y)).rgb * (w0.x  * w12.y) +
+		texture(inColorHistory, tc12                ).rgb * (w12.x * w12.y) +
+		texture(inColorHistory, vec2(tc3.x,  tc12.y)).rgb * (w3.x  * w12.y) +
+		texture(inColorHistory, vec2(tc12.x, tc3.y )).rgb * (w12.x * w3.y );
+
+	return RGBToYCoCg(color);
+}
+
+vec2 getDilatedVelocity(vec2 uv)
+{
+	float maxMag = 0.0;
+	vec2 dilated = vec2(0.0);
+	vec2 texelSize = vec2(scene.pixelSizes.xy);
+
+	for (int y = -1; y <= 1; ++y) {
+		for (int x = -1; x <= 1; ++x) {
+			vec2 v = texture(inVelocity, uv + vec2(x, y) * texelSize).rg;
+			float mag = dot(v, v);
+			if (mag > maxMag) {
+				maxMag  = mag;
+				dilated = v;
+			}
+		}
+	}
+
+	return dilated;
+}
+
+float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV)
+{
+	vec2 historyUV = uv - velocityUV;
+
+	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
+
+	vec2 prevVelocity = texture(inVelocityHistory, historyUV).rg;
+	float velocityDelta = length(prevVelocity - velocityUV);
+	return clamp((velocityDelta - 0.0002) * 50.0, 0.0, 1.0);
+}
+
+float computeDepthDisocclusion(vec2 uv, vec2 velocityUV)
+{
+	vec2 historyUV = uv - velocityUV;
+
+	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
+
+	float currentDepth = texelFetch(inDepth, ivec2(uv / vec2(scene.pixelSizes.xy)), 0).r;
+	float prevDepth    = texture(inPrevDepth, historyUV).r;
+
+	float depthDelta = currentDepth - prevDepth;
+
+	return clamp(depthDelta * pc.depthDisocclusionScale, 0.0, 1.0);
+}
+
+vec3 varianceClip(vec3 historyYCoCg, vec2 uv)
+{
+	vec2 texelSize = vec2(scene.pixelSizes.xy);
+
+	vec3 topL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1, -1) * texelSize).rgb);
+	vec3 topM = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 0, -1) * texelSize).rgb);
+	vec3 topR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1, -1) * texelSize).rgb);
+	vec3 midL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1,  0) * texelSize).rgb);
+	vec3 midM = RGBToYCoCg(texture(inColorCurrent, uv                            ).rgb);
+	vec3 midR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1,  0) * texelSize).rgb);
+	vec3 botL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1,  1) * texelSize).rgb);
+	vec3 botM = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 0,  1) * texelSize).rgb);
+	vec3 botR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1,  1) * texelSize).rgb);
+
+	const float totalSamples = 9.0;
+	vec3 mean     = (topL + topM + topR + midL + midM + midR + botL + botM + botR) / totalSamples;
+	vec3 sqSum    = (topL*topL + topM*topM + topR*topR +
+					 midL*midL + midM*midM + midR*midR +
+					 botL*botL + botM*botM + botR*botR) / totalSamples;
+	vec3 variance = sqSum - mean * mean;
+	vec3 stddev   = sqrt(max(variance, vec3(0.0)));
+
+	// Rounded AABB — blend 3x3 and cross min/max
+	vec3 cMin9 = min(min(min(min(min(min(min(min(topL, topM), topR), midL), midM), midR), botL), botM), botR);
+	vec3 cMax9 = max(max(max(max(max(max(max(max(topL, topM), topR), midL), midM), midR), botL), botM), botR);
+	vec3 cMin5 = min(min(min(min(topM, midL), midM), midR), botM);
+	vec3 cMax5 = max(max(max(max(topM, midL), midM), midR), botM);
+
+	vec3 cMin = 0.5 * (cMin9 + cMin5);
+	vec3 cMax = 0.5 * (cMax9 + cMax5);
+
+	//vec3 gamma   = vec3(1.0, 1.25, 1.25);
+	float edgeContrast = (cMax9.r - cMin9.r) / max(mean.r, 0.01);
+	float edgeGamma = mix(1.0, 0.5, clamp(edgeContrast * 2.0, 0.0, 1.0));
+	vec3 gamma = vec3(edgeGamma, 1.0, 1.0);
+	vec3 vMin    = mean - gamma * stddev;
+	vec3 vMax    = mean + gamma * stddev;
+
+	vMin = max(vMin, cMin);
+	vMax = min(vMax, cMax);
+
+	// Chroma extent from luma
+	vec2 chromaExtent = vec2(0.25 * 0.5 * (vMax.r - vMin.r));
+	vMin.yz = midM.gb - chromaExtent;
+	vMax.yz = midM.gb + chromaExtent;
+
+	return clamp(historyYCoCg, vMin, vMax);
+}
+
+void main()
+{
+	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	const ivec2 res   = ivec2(scene.viewportSize.xy);
+
+	if (pixel.x >= res.x || pixel.y >= res.y) return;
+
+	const vec2 invRes = vec2(scene.pixelSizes.xy);
+	const vec2 uv     = (vec2(pixel) + 0.5) * invRes;
+
+	vec3 currentColor   = texelFetch(inColorCurrent, pixel, 0).rgb;
+	vec3 currentYCoCg   = RGBToYCoCg(currentColor);
+
+	vec2 velocityUV = getDilatedVelocity(uv);
+
+	vec2 historyUV = uv - velocityUV;
+
+	bool validHistory = all(greaterThanEqual(historyUV, vec2(0.0))) &&
+						all(lessThanEqual(historyUV, vec2(1.0)));
+
+	if (!validHistory) {
+		imageStore(outColorResolved, pixel, vec4(currentColor, 1.0));
+		return;
+	}
+
+	vec3 historyYCoCg = sampleHistoryCatmullRom(historyUV);
+	historyYCoCg      = varianceClip(historyYCoCg, uv);
+
+	float disocclusion = max(computeVelocityDisocclusion(uv, velocityUV),
+							computeDepthDisocclusion(uv, velocityUV));
+
+	float lumaCurrent     = currentYCoCg.r;
+	float lumaHistory     = historyYCoCg.r;
+	float lumaDiff        = abs(lumaCurrent - lumaHistory) / max(lumaCurrent, 0.2);
+
+	float alpha           = mix(pc.minBlend, pc.maxBlend, disocclusion);
+	alpha                 = mix(alpha, min(alpha * 2.0, 0.5), lumaDiff);
+
+	vec3  resolvedYCoCg   = mix(historyYCoCg, currentYCoCg, alpha);
+	vec3  resolvedRGB     = YCoCgToRGB(resolvedYCoCg);
+
+	imageStore(outColorResolved, pixel, vec4(resolvedRGB, 1.0));
+}

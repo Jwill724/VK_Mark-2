@@ -15,19 +15,21 @@ namespace {
 		{ "Clustered Light Build" },
 		{ "GTAO" },
 		{ "Directional CSM" },
-		{ "SS Contact Shadows" },
 		{ "Flashlight Shadow Map" },
+		{ "SS Contact Shadows" },
 		{ "Skybox" },
 		{ "Opaque Forward" },
 		{ "OBB Line View" },
 		{ "Transparent Forward" },
 		{ "Volumetric Lighting" },
+		{ "TAA" },
 		{ "Luminance Exposure" },
 		{ "Lens Flare" },
-		{ "Tone Map" },
-		{ "SMAA" },
+		{ "Final Composite" },
 		{ "CMAA2" },
-		{ "FXAA" }
+		{ "SMAA" },
+		{ "FXAA" },
+		{ "Chromatic Aberration" },
 	}};
 
 	static int64_t queryPerformanceCounterTicks() {
@@ -53,6 +55,7 @@ namespace {
 		};
 	}
 
+	// Order of execution
 	static constexpr std::array<tracy::SourceLocationData, static_cast<size_t>(PassID::Count)> TracyPassSourceLocations = {{
 		makePassSourceLocation("None"),
 		makePassSourceLocation("Pre-Pass"),
@@ -60,19 +63,21 @@ namespace {
 		makePassSourceLocation("Clustered Light Build"),
 		makePassSourceLocation("GTAO"),
 		makePassSourceLocation("Directional CSM"),
-		makePassSourceLocation("SS Contact Shadows"),
 		makePassSourceLocation("Flashlight Shadow Map"),
+		makePassSourceLocation("SS Contact Shadows"),
 		makePassSourceLocation("Skybox"),
 		makePassSourceLocation("Opaque Forward"),
 		makePassSourceLocation("OBB Line View"),
 		makePassSourceLocation("Transparent Forward"),
 		makePassSourceLocation("Volumetric Lighting"),
+		makePassSourceLocation("TAA"),
 		makePassSourceLocation("Luminance Exposure"),
 		makePassSourceLocation("Lens Flare"),
-		makePassSourceLocation("Tone Map"),
-		makePassSourceLocation("SMAA"),
+		makePassSourceLocation("Final Composite"),
 		makePassSourceLocation("CMAA2"),
-		makePassSourceLocation("FXAA")
+		makePassSourceLocation("SMAA"),
+		makePassSourceLocation("FXAA"),
+		makePassSourceLocation("Chromatic Aberration")
 	}};
 #endif
 }

@@ -1,0 +1,90 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/set_bindings.glsl"
+#include "../include/gpu_scene_structures.glsl"
+
+// Based on implementation
+// https://github.com/PanosK92/SpartanEngine/blob/master/data/shaders/chromatic_aberration.hlsl
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inColor;
+layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outColor;
+
+void main()
+{
+	ivec2 outputDim = imageSize(outColor);
+	ivec2 pixelPos = ivec2(gl_GlobalInvocationID.xy);
+
+	if (pixelPos.x >= outputDim.x || pixelPos.y >= outputDim.y) return;
+
+	vec2 invOutputDim = 1.0 / vec2(outputDim);
+	vec2 uv = (vec2(pixelPos) + 0.5) * invOutputDim;
+
+	vec4 centerColor = texture(inColor, uv);
+
+	vec2 screenCenter = vec2(0.5);
+	vec2 centeredUv = uv - screenCenter;
+
+	float radialLength = length(centeredUv);
+
+	vec2 radialDirection = vec2(0.0);
+	if (radialLength > 1e-6) {
+		radialDirection = centeredUv / radialLength;
+	}
+
+	// Strength curve - weaker in center, stronger toward edges
+	float radialT = saturate(radialLength / 0.70710678);
+
+	// Chromatic aberration strength in pixel units
+	const float maxShiftPixels = 1.5;
+	float chromaticShiftPixels = radialT * radialT * radialT * maxShiftPixels;
+
+	// Small lens distortion to give the effect more optical character
+	const float maxDistortionAmount = 0.08;
+	float distortionAmount = radialT * maxDistortionAmount;
+
+	// Zoom factor to keep distorted UVs inside the visible area
+	const float maxRadius = 0.70710678;
+	float maxDistortionFactor = 1.0 + distortionAmount * (maxRadius * maxRadius);
+	float zoom = 1.0 / maxDistortionFactor;
+
+	float distortionFactor = 1.0 + distortionAmount * (radialLength * radialLength);
+	vec2 distortedUv = screenCenter + centeredUv * zoom * distortionFactor;
+
+	// Clamp UVs to half texel to avoid sampling outside the image
+	vec2 halfTexel = 0.5 * invOutputDim;
+	vec2 uvMin = halfTexel;
+	vec2 uvMax = vec2(1.0) - halfTexel;
+
+	distortedUv = clamp(distortedUv, uvMin, uvMax);
+
+	// Safe edge fade so the effect falls off near hard borders
+	vec2 distToMin = distortedUv - uvMin;
+	vec2 distToMax = uvMax - distortedUv;
+
+	float edgeDistance = min(
+		min(distToMin.x, distToMin.y),
+		min(distToMax.x, distToMax.y)
+	);
+
+	float edgeFade = smoothstep(0.0, 0.02, edgeDistance);
+
+	// Channel offset in UV space
+	vec2 shiftUv = radialDirection * chromaticShiftPixels * invOutputDim * edgeFade;
+
+	vec2 uvRed = clamp(distortedUv + shiftUv, uvMin, uvMax);
+	vec2 uvGreen = distortedUv;
+	vec2 uvBlue = clamp(distortedUv - shiftUv, uvMin, uvMax);
+
+	float redChannel = textureLod(inColor, uvRed, 0.0).r;
+	float greenChannel = textureLod(inColor, uvGreen, 0.0).g;
+	float blueChannel = textureLod(inColor, uvBlue, 0.0).b;
+
+	vec4 result = vec4(redChannel, greenChannel, blueChannel, centerColor.a);
+
+	imageStore(outColor, pixelPos, result);
+}

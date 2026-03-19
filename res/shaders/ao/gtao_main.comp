@@ -22,6 +22,9 @@ layout(local_size_x = 16, local_size_y = 16) in;
 const float XE_GTAO_PI = 3.1415926535897932384626433832795;
 const float XE_GTAO_HALF_PI = 1.5707963267948966192313216916398;
 
+const uint XE_HILBERT_LEVEL = 6u;
+const uint XE_HILBERT_WIDTH = (1u << XE_HILBERT_LEVEL);
+
 // Depth pyramid texture
 layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform usampler2D inHiZ;
 
@@ -109,12 +112,37 @@ float packEdges(vec4 edges)
 	return dot(edges, vec4(64.0 / 255.0, 16.0 / 255.0, 4.0 / 255.0, 1.0 / 255.0));
 }
 
-vec2 getNoise(ivec2 pix)
-{
+vec2 getNoise(ivec2 pix) {
 	vec2 pixel = vec2(pix);
 	float sliceNoise = interleavedGradientNoise(pixel);
 	float stepNoise = interleavedGradientNoise(pixel.yx + vec2(17.0, 43.0));
 	return vec2(sliceNoise, stepNoise);
+}
+
+uint XE_GTAO_HilbertIndex(uint posX, uint posY) {
+	uint index = 0u;
+	for (uint curLevel = XE_HILBERT_WIDTH / 2u; curLevel > 0u; curLevel /= 2u) {
+		uint regionX = (posX & curLevel) > 0u ? 1u : 0u;
+		uint regionY = (posY & curLevel) > 0u ? 1u : 0u;
+		index += curLevel * curLevel * ((3u * regionX) ^ regionY);
+		if (regionY == 0u) {
+			if (regionX == 1u) {
+				posX = uint(XE_HILBERT_WIDTH - 1u) - posX;
+				posY = uint(XE_HILBERT_WIDTH - 1u) - posY;
+			}
+
+			uint temp = posX;
+			posX = posY;
+			posY = temp;
+		}
+	}
+	return index;
+}
+
+vec2 XE_GTAO_SpatioTemporalNoise(ivec2 pixCoord, uint temporalIndex) {
+	uint index = XE_GTAO_HilbertIndex(uint(pixCoord.x), uint(pixCoord.y));
+	index += 288u * (temporalIndex % 64u);
+	return vec2(fract(0.5 + index * vec2(0.75487766624669276005, 0.5698402909980532659114)));
 }
 
 void main()
@@ -167,7 +195,14 @@ void main()
 	float visibility = 0.0;
 
 	// noise
-	vec2 noise = getNoise(pix);
+	vec2 noise;
+	if (debug.aaMode == AA_TAA) {
+		noise = XE_GTAO_SpatioTemporalNoise(pix, scene.temporal.x);
+	}
+	else {
+		noise = getNoise(pix);
+	}
+
 	const float noiseSlice = noise.x;
 	const float noiseSample = noise.y;
 
@@ -339,11 +374,9 @@ void main()
 
 	imageStore(outRawAO, pix, vec4(visibility));
 
-	vec3 bentVS = normalize(bentNormal);
-	vec3 bentWS = normalize(mat3(scene.invView) * bentVS);
-
 	// Average cone half-angle across slices
 	float coneAngle = (bentConeAngleAccum / sliceCount);
 
-	imageStore(outBentNormals, pix, vec4(bentWS, coneAngle));
+	bentNormal = normalize(bentNormal);
+	imageStore(outBentNormals, pix, vec4(bentNormal, coneAngle));
 }

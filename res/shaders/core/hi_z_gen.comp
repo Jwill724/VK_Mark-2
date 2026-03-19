@@ -18,9 +18,9 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform usampler2D in
 // Output: current HZB mip (packed uint)
 layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform uimage2D outMip;
 
-layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-	SceneData scene;
-};
+//layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
+//	SceneData scene;
+//};
 
 layout(push_constant) uniform DepthPyramidPush {
 	uint mipLevel;

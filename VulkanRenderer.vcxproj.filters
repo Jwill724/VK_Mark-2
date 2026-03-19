@@ -441,7 +441,7 @@
     <None Include="res\shaders\shadows\shadow_depthVS.vert">
       <Filter>res\shaders\shadows</Filter>
     </None>
-    <None Include="res\shaders\post_process\tone_map.comp">
+    <None Include="res\shaders\post_process\final_composite.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
     <None Include="res\shaders\post_process\exposure_finalize.comp">
@@ -461,9 +461,6 @@
     </None>
     <None Include="res\shaders\include\depth.glsl">
       <Filter>res\shaders\include</Filter>
-    </None>
-    <None Include="res\shaders\ao\gtao_temporal_resolve.comp">
-      <Filter>res\shaders\ao</Filter>
     </None>
     <None Include="res\shaders\post_process\flare_bright.comp">
       <Filter>res\shaders\post_process</Filter>
@@ -501,9 +498,6 @@
     <None Include="res\shaders\shadows\bend_sss.comp">
       <Filter>res\shaders\shadows</Filter>
     </None>
-    <None Include="res\shaders\ao\ao_upscale.comp">
-      <Filter>res\shaders\ao</Filter>
-    </None>
     <None Include="res\shaders\post_process\fxaa.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
@@ -529,6 +523,12 @@
       <Filter>res\shaders\clustered</Filter>
     </None>
     <None Include="res\shaders\post_process\indirect_args_cmaa2.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\taa.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\chromatic_aberration.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
   </ItemGroup>
