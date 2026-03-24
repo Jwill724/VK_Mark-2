@@ -26,14 +26,28 @@
 - Tracy profiler
 
 ## Future
--Render graph
--Better asset management (dynamic asset loading, resource handling)
+-A True Render Graph
+-Full GPU culling with draw building
+-Runtime asset loading and handling
+-Dynamic meshes, material and light interactions
+-Async compute (compute passes during shadow depth)
 -KTX texture format
--Full compute async
 -Deeper multithreading (texture loading, cmd recording)
--Occlusion culling
--GPU frustum culling
--GPU batching and sorting
+-Auto Exposure
+-Grand Turismo 7 tonemapping
+-Physically based light units
+-Atmospheric scattering sky with sun
+-Bloom
+-SSGI
+-SSR
+-Planar reflections
+-Parallax corrected cubemaps
+-HBAO+?
+-Water shaders
+-Voxel volumetrics
+-Make TAA work
+-Improvements to lens flare quality
+-Ray traced reflections
 
 ## Screenshots
 ![Sponza](res/screenshots/sponza.png)
@@ -45,7 +59,7 @@
 - `W A S D` ‐ Move forward, left, back, right
 - `Space` ‐ Move up
 - `Ctrl` ‐ Move down
-- `Mouse (Left Click + Move)` ‐ Look around
+- `Mouse (Right Click + Move)` ‐ Look around
 - `R` ‐ Reset camera to spawn/origin
 - `Tab` ‐ Toggle ImGui editor setting
 - `P` ‐ Toggle ImGui stats profiling window
@@ -54,11 +68,12 @@
 
 ## Requirements for build
 - Windows 10+
+- Discrete GPU with 6gb+ vram
 - Vulkan SDK (1.4+)
-- Visual Studio 2022
+- Visual Studio 2026
 
 ## Build steps
-Open project file in visual studio 2022
+Open project file in visual studio 2026
 Cmake to be utilized in future, doesn't currently work.
 
 For Bistro asset (tree is busted)

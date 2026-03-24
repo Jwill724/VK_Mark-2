@@ -34,7 +34,7 @@ namespace RenderScene {
 	bool _flashLightDirtyAllFrames = false;
 	uint32_t _lightStateVersion = 0u;
 
-	const Camera& getCamera() { return _mainCamera; }
+	Camera& getCamera() { return _mainCamera; }
 
 	glm::mat4 _curCamProjUnjittered = glm::mat4(1.0f);
 	const glm::mat4& getCurProjUnjittered() { return _curCamProjUnjittered; }
@@ -46,6 +46,8 @@ namespace RenderScene {
 
 	glm::vec2 _currentJitterNDC = glm::vec2(0.0f);
 	glm::vec2 _previousJitterNDC = glm::vec2(0.0f);
+
+	float _shadowFar = 800.0f;
 
 	float _cachedAspectRatio = 0.0f;
 
@@ -134,17 +136,18 @@ static glm::mat4 applyProjectionJitter(
 void RenderScene::setScene(bool assetsLoaded) {
 	_assetsLoaded = assetsLoaded;
 
-	_mainCamera._velocity = glm::vec3(0.0f);
-	_mainCamera._position = SPAWNPOINT;
+	_mainCamera.setPosition(SPAWNPOINT);
+	_mainCamera.setYaw(-90.0f);
+	_mainCamera.setFovY(90.0f);
 
-	_mainCamera._pitch = 0.0f;
-	_mainCamera._yaw = -90.0f;
+	_mainCamera.setSensitivity(50.0f); // Feels good on 1600dpi
+	_mainCamera.setMaxSpeed(20.0f);
+	_mainCamera.setMinSpeed(5.0f);
 
-	_mainCamera._fovY = 90.0f;
-	_mainCamera._nearClip = 0.1f;
-	_mainCamera._farClip = 1000.0f;
+	_mainCamera.setAcceleration(20.0f);
+	_mainCamera.setDamping(8.0f);
 
-	_sceneData.cameraClips = glm::vec4(_mainCamera._nearClip, _mainCamera._farClip, 0.0f, 0.0f);
+	_sceneData.cameraClips = glm::vec4(_mainCamera.getNearClip(), _mainCamera.getFarClip(), 0.0f, 0.0f);
 
 	_currentJitterNDC = glm::vec2(0.0f);
 	_previousJitterNDC = glm::vec2(0.0f);
@@ -163,21 +166,22 @@ void RenderScene::updateCamera() {
 	float height = static_cast<float>(extent.height);
 	float aspect = width / height;
 
-	_mainCamera.processInput(Engine::getWindow(), Engine::getProfiler(), _isTemporalInvalid);
+	auto& profiler = Engine::getProfiler();
+	_mainCamera.processInput(Engine::getWindow(), profiler, _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
 
 	_curCamProjUnjittered = glm::perspectiveRH_ZO(
-		glm::radians(_mainCamera._fovY),
+		glm::radians(_mainCamera.getFovY()),
 		aspect,
-		_mainCamera._farClip,
-		_mainCamera._nearClip);
+		_mainCamera.getFarClip(),
+		_mainCamera.getNearClip());
 
 	_previousJitterNDC = _currentJitterNDC;
 
 	glm::vec2 currentJitterPixels = buildTemporalJitterPixels(_sceneData.temporal.x);
 	_currentJitterNDC = convertJitterPixelsToNDC(currentJitterPixels, width, height);
-	_curCamProjJittered  = applyProjectionJitter(_curCamProjUnjittered, _currentJitterNDC);
+	_curCamProjJittered = applyProjectionJitter(_curCamProjUnjittered, _currentJitterNDC);
 
 	// Compute both unjittered and jittered viewprojs up front
 	glm::mat4 currentViewProjUnjittered = _curCamProjUnjittered * _curCamView;
@@ -186,7 +190,7 @@ void RenderScene::updateCamera() {
 	_sceneData.view = _curCamView;
 	_sceneData.invView = glm::inverse(_curCamView);
 
-	if (Engine::getProfiler().debugToggles.aaMode == AA_TAA) {
+	if (profiler.debugToggles.aaMode == AA_TAA) {
 		_sceneData.proj = _curCamProjJittered;
 		_sceneData.invProj = glm::inverse(_curCamProjJittered);
 		_sceneData.viewProj = currentViewProjJittered;
@@ -199,9 +203,9 @@ void RenderScene::updateCamera() {
 
 	_sceneData.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
 
-	_sceneData.prevViewProj = _lastViewProjUnjittered; // unjittered previous — velocity prev NDC
+	_sceneData.prevViewProj = _lastViewProjUnjittered;         // unjittered previous — velocity prev NDC
 
-	_sceneData.cameraPos = glm::vec4(_mainCamera._position, 0.0f);
+	_sceneData.cameraPos = glm::vec4(_mainCamera.getPosition(), 0.0f);
 	_sceneData.temporalJitter = glm::vec4(
 		_currentJitterNDC.x,
 		_currentJitterNDC.y,
@@ -331,8 +335,8 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	if (_cachedAspectRatio != aspect) {
 		_cachedAspectRatio = aspect;
 
-		const float nearClip = _mainCamera._nearClip;
-		const float farClip = _mainCamera._farClip;
+		const float nearClip = _mainCamera.getNearClip();
+		const float farClip = _shadowFar;
 		const float clipRange = farClip - nearClip;
 		const float ratio = farClip / nearClip;
 
@@ -345,12 +349,12 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		}
 	}
 
-	float lastSplitDist = _mainCamera._nearClip;
+	float lastSplitDist = _mainCamera.getNearClip();
 	for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
 		const float curSplit = _shadowCSM.cascadeSplits[i];
 
 		// world-space corners of the slice
-		glm::mat4 proj = glm::perspective(glm::radians(_mainCamera._fovY), aspect, lastSplitDist, curSplit);
+		glm::mat4 proj = glm::perspective(glm::radians(_mainCamera.getFovY()), aspect, lastSplitDist, curSplit);
 		glm::mat4 invVp = glm::inverse(proj * _curCamView);
 
 		// Zero to one depth
@@ -612,15 +616,16 @@ void RenderScene::updateScene(
 
 	const bool flashLightActive = LightingSystem::_mainFlashLight.isFlashLightActive();
 
-	if (flashLightActive) {
-		flashLightChanged = LightingSystem::_mainFlashLight.updateFlashLight(
-			LightingSystem::_globalLightList,
-			ResourceManager::getFlashLightShadowMap().lutEntry.combinedImageIndex,
-			ResourceManager::getCookieGoboImage().lutEntry.combinedImageIndex,
-			_mainCamera._position,
-			_mainCamera._currentView
-		);
-	}
+	flashLightChanged = LightingSystem::_mainFlashLight.updateFlashLight(
+		LightingSystem::_globalLightList,
+		ResourceManager::getFlashLightShadowMap().lutEntry.combinedImageIndex,
+		ResourceManager::getCookieGoboImage().lutEntry.combinedImageIndex,
+		_mainCamera.getPosition(),
+		_mainCamera.getView(),
+		deltaTime,
+		_mainCamera.getDelta(),
+		_mainCamera.getView()
+	);
 
 	bool flashLightStateChanged = false;
 	if (flashLightActive != _lastFlashLightActive) {
@@ -706,12 +711,9 @@ void RenderScene::updateScene(
 		updateShadowCSM(lightDir);
 	}
 
-	if (debug.enableTemporal) {
-		_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
-	}
-	else {
-		_sceneData.temporal.y = 0u;
-	}
+	// Now the temporal should be known if this frame is safe
+	_sceneData.temporal.y = _isTemporalInvalid ? 0u : 1u;
+
 	createSceneBuffer(frameCtx, allocator);
 
 	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.

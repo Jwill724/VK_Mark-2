@@ -66,13 +66,11 @@ void Environment::dispatchEnvironmentMaps(
 	GPUResources& resources)
 {
 	std::vector<const char*> hdrPaths = {
-		"res/assets/envhdr/belfast_sunset_puresky_2k.hdr",
 		"res/assets/envhdr/san_giuseppe_bridge_2k.hdr",
+		"res/assets/envhdr/belfast_sunset_puresky_2k.hdr",
 		"res/assets/envhdr/rogland_clear_night_2k.hdr",
 		"res/assets/envhdr/kloppenheim_06_puresky_2k.hdr",
-		"res/assets/envhdr/wasteland_clouds_2k.hdr",
-		//"res/assets/envhdr/meadow_2k.hdr", // At 2k res, trees have some artifacts
-		//"res/assets/envhdr/hazy_nebulae_2k.hdr" // Dark as shit
+		"res/assets/envhdr/wasteland_clouds_2k.hdr"
 	};
 
 	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();

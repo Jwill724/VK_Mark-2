@@ -522,8 +522,8 @@ struct alignas(16) TAAPush {
 };
 
 struct alignas(16) VolumetricPush {
-	float density = 0.005f;
-	float scatteringStrength = 30.0f;
+	float density = 0.004f;
+	float scatteringStrength = 37.0f;
 	float extinction = 0.08f;
 	float heightFalloff = 0.05f;
 
@@ -564,15 +564,15 @@ struct alignas(16) LensFlarePush {
 	float pad0{ 0.0f };
 
 	// Ring params (FlareGen)
-	float ringInnerRadius = 0.05f;
+	float ringInnerRadius = 0.1f;
 	float ringOuterRadius = 0.20f;
 	float chromaStrength = 1.0f;
 	float pad1{ 0.0f };
 
 	// Streak params (FlareGen)
-	float streakStrength = 0.1f;
+	float streakStrength = 0.2f;
 	float streakWidth = 0.01f;   // UV units
-	float streakLength = 0.1f;   // UV units
+	float streakLength = 0.2f;   // UV units
 	float pad2{ 0.0f };
 
 	// Hi-Z occlusion params (FlareGen)
@@ -632,4 +632,11 @@ struct alignas(16) BindlessAccessPush {
 struct PassTimestampRange {
 	uint32_t beginQuery = UINT32_MAX;
 	uint32_t endQuery = UINT32_MAX;
+};
+
+struct ToneMappingSettings {
+	float cameraExposure = 0.18f;
+	float maxLuminance = 0.0f;
+	float midLuminance = 0.0f;
+	float minLuminance = 0.0f;
 };

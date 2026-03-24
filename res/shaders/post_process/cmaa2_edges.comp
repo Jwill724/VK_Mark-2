@@ -121,7 +121,7 @@ void main() {
 	sharedFracEdgesH[centerAddr] = vec4(qe0.y, qe1.y, qe2.y, qe3.y);
 
 	memoryBarrierShared();
-	barrier();
+	//barrier();
 
 	if (!inOutputKernel) return;
 

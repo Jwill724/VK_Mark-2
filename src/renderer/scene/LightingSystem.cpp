@@ -116,7 +116,7 @@ namespace LightingSystem {
 		);
 
 		randomLight.type = LightType::Point;
-		randomLight.radius = 1.5f;
+		randomLight.radius = 1.0f;
 		randomLight.intensity = 4.0f;
 
 		glm::vec3 colorA = glm::vec3(rand06, rand07, rand08);
@@ -317,10 +317,14 @@ bool FlashLight::updateFlashLight(
 	const uint32_t shadowMapID,
 	const uint32_t cookieTexID,
 	const glm::vec3& pos,
-	const glm::vec3& dir)
+	const glm::vec3& dir,
+	const float dt,
+	const glm::vec2 mouseDelta,
+	const glm::vec3 camForward)
 {
 	bool lightStateUpdated = false;
 
+	// Static setup
 	if (shadowMapID != spotLight.shadowMapID || cookieTexID != spotLight.cookieTexID) {
 		spotLight.cookieTexID = cookieTexID;
 		spotLight.shadowMapID = shadowMapID;
@@ -336,20 +340,49 @@ bool FlashLight::updateFlashLight(
 		lightStateUpdated = true;
 	}
 
-	if (spotLight.direction != dir || spotLight.position != pos) {
-		spotLight.direction = dir;
-		spotLight.position = pos;
+	glm::vec3 flatForward = glm::normalize(glm::vec3(camForward.x, 0.0f, camForward.z));
+	const glm::vec3 upWorld = glm::vec3(0.0f, 1.0f, 0.0f);
+
+	// Handle edge case (looking straight up/down)
+	if (glm::length(flatForward) < 0.001f) {
+		flatForward = glm::vec3(0.0f, 0.0f, -1.0f);
+	}
+
+	glm::vec3 stableRight = glm::normalize(glm::cross(flatForward, upWorld));
+	glm::vec3 stableUp = upWorld;
+
+	// Reduce sway when looking up/down
+	float verticalFactor = 1.0f - std::abs(camForward.y);
+	verticalFactor = glm::smoothstep(0.0f, 1.0f, verticalFactor);
+
+	glm::vec3 swayOffset =
+		stableRight * (-mouseDelta.x * swayStrength) +
+		stableUp    * (-mouseDelta.y * swayStrength);
+
+	swayOffset *= verticalFactor;
+
+	glm::vec3 targetDir = glm::normalize(camForward + swayOffset);
+	glm::vec3 targetPos = pos;
+
+	// smoothing (exponential)
+	float response = 1.0f - std::exp(-lagStrength * dt);
+
+	smoothedDir = glm::normalize(glm::mix(smoothedDir, targetDir, response));
+	smoothedPos = glm::mix(smoothedPos, targetPos, response);
+
+	if (spotLight.direction != smoothedDir || spotLight.position != smoothedPos) {
+		spotLight.direction = smoothedDir;
+		spotLight.position = smoothedPos;
 		lightStateUpdated = true;
 	}
 
 	spotLight.intensity = LightingSystem::_flashLightSettings.intensity;
 
+	// Matrix update
 	if (lightStateUpdated) {
-		glm::vec3 forward = glm::normalize(spotLight.direction);
-		glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-		glm::vec3 right = glm::normalize(glm::cross(forward, up));
-		up = glm::normalize(glm::cross(right, forward));
+		glm::vec3 fwd = glm::normalize(spotLight.direction);
+		glm::vec3 right = glm::normalize(glm::cross(fwd, upWorld));
+		glm::vec3 up = glm::normalize(glm::cross(right, fwd));
 
 		const float offsetRight = LightingSystem::_flashLightSettings.offsetRight;
 		const float offsetDown = LightingSystem::_flashLightSettings.offsetDown;
@@ -359,11 +392,11 @@ bool FlashLight::updateFlashLight(
 			spotLight.position +
 			right * offsetRight +
 			up * offsetDown +
-			forward * offsetFwd;
+			fwd * offsetFwd;
 
 		glm::mat4 view = glm::lookAt(
 			lightPos,
-			lightPos + forward,
+			lightPos + fwd,
 			up
 		);
 
@@ -379,9 +412,9 @@ bool FlashLight::updateFlashLight(
 		viewProj = proj * view;
 		frustum = extractFrustum(viewProj);
 	}
-
+ 
+	// Push to global list
 	const bool lightDirty = lightStateUpdated || flashLightFlagsChanged;
-
 	if (lightDirty) {
 		flashLightFlagsChanged = false;
 		globalLightList[LIGHT_LIST_SLOT_FLASHLIGHT] = spotLight;

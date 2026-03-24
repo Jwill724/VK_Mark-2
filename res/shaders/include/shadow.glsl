@@ -5,6 +5,8 @@ const uint MAX_CASCADES = 4u;
 
 const float flashlightShadowTexel = 1.0 / 512.0;
 
+const float shadowFar = 1000.0;
+
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	vec4 cascadeSplits;

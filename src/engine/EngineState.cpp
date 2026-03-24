@@ -41,7 +41,6 @@ void EngineState::init() {
 	const auto& winExtent = Engine::getWindowExtent();
 	Renderer::setDrawExtent({ winExtent.width, winExtent.height, 1u });
 
-
 	auto& tempQueue = _resources.getTempDQueue();
 
 	ResourceManager::initUniformRenderTargets(

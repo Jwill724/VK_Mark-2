@@ -160,8 +160,8 @@ void main()
 		uv,
 		sunUv,
 		vec2(0.0, 1.0),
-		widthUv * 0.40,
-		lengthUv * 1.75,
+		widthUv * 0.30,
+		lengthUv * 1.45,
 		pc.outputRes
 	);
 
@@ -176,8 +176,8 @@ void main()
 			uv,
 			sunUv,
 			dir,
-			widthUv * 0.55,
-			lengthUv * 1.35,
+			widthUv * 0.25,
+			lengthUv * 0.75,
 			pc.outputRes
 		);
 
@@ -187,7 +187,7 @@ void main()
 
 	star = min(star, 6.0);
 
-	float streakValue = (horiz * 1.0) + (vert * 0.35) + (star * 0.85);
+	float streakValue = (horiz * 1.0) + (vert * 0.25) + (star * 0.85);
 
 	float streakT = saturate(distToSun / max(pc.streakLength, 1e-6));
 	vec3 streakChroma = texture(

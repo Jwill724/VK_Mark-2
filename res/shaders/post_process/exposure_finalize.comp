@@ -24,8 +24,8 @@ layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
 
 layout(push_constant) uniform ExposurePush {
 	uint totalTiles;
-	uint pad0[3];
-} push;
+	float cameraExposure;
+} pc;
 
 shared float sharedSum[256];
 
@@ -37,7 +37,7 @@ void main()
 	uint lid = gl_LocalInvocationIndex;
 
 	float value = 0.0;
-	if (gid < push.totalTiles) {
+	if (gid < pc.totalTiles) {
 		value = lBuf.luminanceSums[gid].x;
 	}
 
@@ -67,7 +67,7 @@ void main()
 		float Lavg = exp(totalLog / float(pixelCount));
 		Lavg = clamp(Lavg, 0.001, 100.0);
 
-		float exposure = 0.18 / Lavg;
+		float exposure = pc.cameraExposure / Lavg;
 
 		lBuf.luminanceSums[0] = vec4(exposure, 0.0, 0.0, 0.0);
 	}

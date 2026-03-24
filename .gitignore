@@ -20,6 +20,8 @@ lib/
 *.exe
 *.cache
 
+*.ini
+
 # Random text files
 Renderer-Goals.txt
 

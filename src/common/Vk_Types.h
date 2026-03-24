@@ -172,7 +172,7 @@ struct alignas(16) GPUSceneData {
 	// w = previous jitter y
 	glm::vec4 sunlightDirection{}; // w for sun power
 	glm::vec4 sunlightColor{};
-	glm::vec4 cameraPos{};
+	glm::vec4 cameraPos{};         // xyz pos, .w exposure
 	glm::vec4 cameraClips{};       // .x near and .y far, .z invScreenWidth, .w invScreenHeight
 	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
 	glm::vec4 pixelSizes{};        // .x/.y = 1 / full extent .z/.w = = 1 / half extent
@@ -222,6 +222,11 @@ enum AAMode : uint32_t {
 	AA_SMAA,    // Sub-Pixel Morphological Anti-Aliasing
 	AA_FXAA,    // Fast Approximate Anti-Aliasing
 	AA_TAA      // Temporal Anti-Aliasing
+};
+
+enum ToneMapper : uint32_t {
+	TM_ACESFILM,
+	TM_GT7
 };
 
 template<typename T>

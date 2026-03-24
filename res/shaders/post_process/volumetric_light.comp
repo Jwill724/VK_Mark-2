@@ -136,7 +136,6 @@ void main()
 	}
 
 	vec4 depths = textureGather(inDepth, samplingUV, 0);
-	//float depthValue = max(max(depths.x, depths.y), max(depths.z, depths.w));
 	float depthValue = texture(inDepth, samplingUV).r;
 
 	ViewReconstructResult reconstructPos;
@@ -166,9 +165,7 @@ void main()
 	float maxRayDistance = pc.maxDistance;
 	bool hasHitGeometry = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 	if (hasHitGeometry) {
-		//maxRayDistance = min(maxRayDistance, distanceToSurface);
-		float softClip = distanceToSurface + 0.1;
-		maxRayDistance = min(maxRayDistance, softClip);
+		maxRayDistance = min(maxRayDistance, distanceToSurface);
 	}
 
 	if (maxRayDistance <= 0.0 || pc.stepCount <= 0) {
@@ -177,20 +174,6 @@ void main()
 	}
 
 	float dirMask = pow(clamp(cosTheta, 0.0, 1.0), float(pc.beamPower));
-
-//	float centerDepth = depthValue;
-//	float leftDepth = texelFetch(inDepth, ivec2(max(pixelCoord.x * 2 - 1, 0), pixelCoord.y * 2), 0).r;
-//	float rightDepth = texelFetch(inDepth, ivec2(min(pixelCoord.x * 2 + 1, int(scene.viewportSize.x) - 1), pixelCoord.y * 2), 0).r;
-//	float upDepth = texelFetch(inDepth, ivec2(pixelCoord.x * 2, max(pixelCoord.y * 2 - 1, 0)), 0).r;
-//	float downDepth = texelFetch(inDepth, ivec2(pixelCoord.x * 2, min(pixelCoord.y * 2 + 1, int(scene.viewportSize.y) - 1)), 0).r;
-//
-//	float depthEdge =
-//		max(
-//			max(abs(centerDepth - leftDepth), abs(centerDepth - rightDepth)),
-//			max(abs(centerDepth - upDepth), abs(centerDepth - downDepth))
-//	);
-//
-//	const float edgeFade = 1.0 - smoothstep(0.002, 0.02, depthEdge);
 
 	// Phase function
 	float phase = phaseHenyeyGreenstein(cosTheta, pc.asymmetryFactor);

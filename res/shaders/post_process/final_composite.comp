@@ -39,34 +39,6 @@ vec3 ACESFilm(vec3 x) {
 	return clamp((x * (a * x + b)) / (x *(c * x + d) + e), 0.0, 1.0);
 }
 
-vec3 hableTonemapPartial(vec3 color) {
-	const float A = 0.15;
-	const float B = 0.50;
-	const float C = 0.10;
-	const float D = 0.20;
-	const float E = 0.02;
-	const float F = 0.30;
-
-	vec3 numerator =
-		color * (A * color + C * B) +
-		D * E;
-
-	vec3 denominator =
-		color * (A * color + B) +
-		D * F;
-
-	return (numerator / denominator) - (E / F);
-}
-
-vec3 hableTonemap(vec3 color) {
-	const float whitePoint = 11.2;
-
-	vec3 mappedColor = hableTonemapPartial(color);
-	vec3 whiteScale = vec3(1.0) / hableTonemapPartial(vec3(whitePoint));
-
-	return clamp(mappedColor * whiteScale, 0.0, 1.0);
-}
-
 float noiseHash(ivec2 p)
 {
 	return fract(sin(dot(vec2(p), vec2(12.9898, 78.233))) * 43758.5453);
@@ -99,8 +71,6 @@ void main()
 	exposure = max(exposure, 1e-4);
 
 	vec3 mapped = ACESFilm(hdr * exposure);
-	//vec3 mapped = hableTonemap(hdr * exposure);
-
 	float noise = noiseHash(pid);
 	mapped += (noise - 0.5) / 2048.0;
 

@@ -8,25 +8,20 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 
 	updateLocalInput(window);
 
+	_delta = mouse.delta;
+
 	auto& debug = profiler.debugToggles;
-	// Note: If one imgui window is active and a mouse click on that window is occurring,
-	// then if the window is closed, that mouse click stays stuck until the imgui window is reopened.
-	// Same behavior as movement keys becoming sticky with window resizing/stalls.
-	// This is likely an event queue issue.
-	// Update 3/15/26: Gotta fix this mouse capture shit it can buggy with closing the imgui tab
-	// Mouse rotation, imgui can be properly used with free cam
-	if (!ImGui::GetIO().WantCaptureMouse && mouse.leftPressed) {
-		constexpr float sensitivity = 30.0f;
-		_yaw -= mouse.delta.x * sensitivity;
-		_pitch += mouse.delta.y * sensitivity;
+	if (mouse.rightPressed) {
+		_yaw -= mouse.delta.x * _sensitivity;
+		_pitch += mouse.delta.y * _sensitivity;
 		constexpr float maxPitch = 89.0f;
 		_pitch = std::clamp(_pitch, -maxPitch, maxPitch);
 	}
 
-	// TODO: movement is slow asf in space station model, due to model units being too large so
-	// some scaling factor will need to be added for this particular model
-	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? 25.0f : 5.0f;
-	float moveSpeed = baseSpeed * profiler.getStats().deltaSecondsRaw;
+	const float dt = profiler.getStats().deltaSecondsRaw;
+
+	float baseSpeed = keyboard.isHeld(GLFW_KEY_LEFT_SHIFT) ? _maxSpeed : _minSpeed;
+	float moveSpeed = baseSpeed * dt;
 
 	const float radPitch = glm::radians(_pitch);
 	const float radYaw = glm::radians(_yaw);
@@ -60,16 +55,42 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 	if (glm::length(horiz) > 0.0f) { horiz = glm::normalize(horiz); }
 	if (glm::length(vert) > 0.0f) { vert = glm::normalize(vert); }
 
-	// scale speed on whole axis while frame independent
-	_velocity = (horiz + vert) * moveSpeed;
+	// Build desired direction
+	glm::vec3 desiredDir = horiz + vert;
+	float inputMag = glm::length(desiredDir);
+
+	if (inputMag > 0.0f) {
+		desiredDir = glm::normalize(desiredDir);
+
+		inputMag = inputMag * inputMag;
+
+		float targetSpeed = baseSpeed * inputMag;
+
+		// Project current velocity onto desired direction
+		float currentSpeed = glm::dot(_velocity, desiredDir);
+		float addSpeed = targetSpeed - currentSpeed;
+
+		if (addSpeed > 0.0f) {
+			float accelSpeed = _acceleration * dt * baseSpeed;
+			accelSpeed = std::min(accelSpeed, addSpeed);
+			_velocity += desiredDir * accelSpeed;
+		}
+	}
+
+	// Friction
+	float speed = glm::length(_velocity);
+	if (speed > 0.0f) {
+		float drop = speed * _damping * dt;
+		float newSpeed = std::max(speed - drop, 0.0f);
+		_velocity *= (newSpeed / speed);
+	}
+
+	_position += _velocity * dt;
 
 	if (keyboard.isPressed(GLFW_KEY_R)) {
 		reset();
 		isTemporalInvalid = true;
 	}
-
-	_position += _velocity;
-
 
 	if (keyboard.isPressed(GLFW_KEY_TAB)) {
 		debug.enableSettings = 1u - debug.enableSettings;

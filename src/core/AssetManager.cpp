@@ -23,6 +23,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//// TODO: Use a script to download assets
 	//// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
 	//std::string bistroPath{ "res/assets/Bistro.glb" };
+	//auto bistroFile = loadGltfFiles(bistroPath);
 	//ASSERT(bistroFile.has_value());
 	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
 	//queue->push(bistroFile.value());

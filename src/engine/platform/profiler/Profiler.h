@@ -132,6 +132,7 @@ public:
 	VolumetricPush volLightSettings;
 	LensFlarePush lensFlareSettings;
 	SSSPush contactShadowsSettings;
+	ToneMappingSettings toneMappingSettings;
 
 	VkCommandBuffer& getTracyGraphicsCmd() { return tracyGraphicsCmdBuffer; }
 

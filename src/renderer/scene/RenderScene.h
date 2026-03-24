@@ -42,7 +42,7 @@ namespace RenderScene {
 
 	extern DispatchList _dispatchListSSS;
 
-	const Camera& getCamera();
+	Camera& getCamera();
 	const Frustum& getMainFrustum();
 	const glm::mat4& getCurProjUnjittered();
 

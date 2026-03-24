@@ -480,7 +480,7 @@ void main()
 	if (DBG(aoMode) && mat.passType == PASS_OPAQUE) {
 		vec4 bentSample = texture(bentNormals, screenspace_uv);
 		vec3 bent = normalize(bentSample.rgb);
-	    vec3 bentWS = normalize(mat3(scene.invView) * bent);
+		vec3 bentWS = normalize(mat3(scene.invView) * bent);
 
 		// Keep bent normal in the same surface hemisphere
 		float bentGeomDot = dot(bentWS, geometricNormalWS);

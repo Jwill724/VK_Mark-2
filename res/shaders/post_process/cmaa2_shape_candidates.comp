@@ -110,12 +110,12 @@ void detectZsHorizontal(
 	// Inverted Z
 	invertedZScore  = edges.r * edges.g * edgesP1P0.a;
 	invertedZScore *= 2.0 + (edgesM1P0.g + edgesP2P0.a) - (edges.a + edgesP1P0.g)
-	                - 0.7 * (edgesP2P0.g + edgesM1P0.a + edges.b + edgesP1P0.r);
+					- 0.7 * (edgesP2P0.g + edgesM1P0.a + edges.b + edgesP1P0.r);
 
 	// Normal Z
 	normalZScore  = edges.r * edges.a * edgesP1P0.g;
 	normalZScore *= 2.0 + (edgesM1P0.a + edgesP2P0.g) - (edges.g + edgesP1P0.a)
-	              - 0.7 * (edgesP2P0.a + edgesM1P0.g + edges.b + edgesP1P0.r);
+				  - 0.7 * (edgesP2P0.a + edgesM1P0.g + edges.b + edgesP1P0.r);
 }
 
 void findZLineLengths(
@@ -148,8 +148,8 @@ void findZLineLengths(
 	const int c_maxLineLength = 86;
 
 	for (int j = 0; j < 255; j++) {
-		uint edgeLeft  = loadEdgeNibble(screenPos - stepRight * int(lineLengthLeft),           inWorkingEdges);
-		uint edgeRight = loadEdgeNibble(screenPos + stepRight * (int(lineLengthRight) + 1),    inWorkingEdges);
+		uint edgeLeft  = loadEdgeNibble(screenPos - stepRight * int(lineLengthLeft),        inWorkingEdges);
+		uint edgeRight = loadEdgeNibble(screenPos + stepRight * (int(lineLengthRight) + 1), inWorkingEdges);
 
 		continueLeft  = continueLeft  && ((edgeLeft  & maskTraceLeft)  == maskTraceLeft);
 		continueRight = continueRight && ((edgeRight & maskTraceRight) == maskTraceRight);
@@ -247,7 +247,7 @@ vec4 computeSimpleShapeBlendValues(
 		fromAbove += k * (fromRight * edgesLeft.a   * (1.0 - edgesBottom.r)+ fromLeft  * edgesRight.a  * (1.0 - edgesBottom.b));
 	}
 
-	blurCoeff *= clamp(1.30 - numberOfEdgesAllAround / 10.0, 0.0, 1.3);
+	blurCoeff *= clamp(1.3 - numberOfEdgesAllAround / 10.0, 0.0, 1.3);
 
 	return vec4(fromLeft, fromAbove, fromRight, fromBelow) * blurCoeff;
 }
@@ -273,13 +273,13 @@ void main() {
 
 	ivec2 pixelPos = ivec2(int(pixelX), int(pixelY));
 
-	vec4 edges       = loadEdgesFlt(pixelPos);
+	vec4 edges = loadEdgesFlt(pixelPos);
+	if (!any(bvec4(edges))) return;
+
 	vec4 edgesLeft   = loadEdgesFlt(pixelPos + ivec2(-1,  0));
 	vec4 edgesRight  = loadEdgesFlt(pixelPos + ivec2( 1,  0));
 	vec4 edgesTop    = loadEdgesFlt(pixelPos + ivec2( 0, -1));
 	vec4 edgesBottom = loadEdgesFlt(pixelPos + ivec2( 0,  1));
-
-	if (!any(bvec4(edges))) return;
 
 	// Simple shapes - always run first, stored unconditionally
 	{

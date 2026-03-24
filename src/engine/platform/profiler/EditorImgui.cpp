@@ -241,12 +241,40 @@ namespace
 		DebugToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 		FrameStats& stats = *ui.stats;
+		{
+			UI::separatorText("Camera");
+			auto& camera = RenderScene::getCamera();
 
-		UI::separatorText("Camera");
-		const auto& camera = RenderScene::getCamera();
-		ImGui::Text("World Position: %.2f %.2f %.2f", camera._position.x, camera._position.y, camera._position.z);
+			const auto& pos = camera.getPosition();
+			ImGui::Text("World Position: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
 
-		//ImGui::SliderFloat("Shadow band meters", &LightingSystem::_flashLightSettings.farProjScale, 1.0, 10.0f);
+			const auto& camVelo = camera.getVelocity();
+			ImGui::Text("Velocity: %.2f %.2f %.2f", camVelo.x, camVelo.y, camVelo.z);
+
+			int camSens = static_cast<int>(camera.getSensitivity());
+			ImGui::SliderInt("Sensitivity", &camSens, 1, 100);
+			camera.setSensitivity(static_cast<float>(camSens));
+
+			int camFOV = static_cast<int>(camera.getFovY());
+			ImGui::SliderInt("FOV", &camFOV, 60, 120);
+			camera.setFovY(static_cast<float>(camFOV));
+
+			int maxSpeed = static_cast<int>(camera.getMaxSpeed());
+			ImGui::SliderInt("Max Speed", &maxSpeed , 1, 100);
+			camera.setMaxSpeed(static_cast<float>(maxSpeed));
+
+			int minSpeed = static_cast<int>(camera.getMinSpeed());
+			ImGui::SliderInt("Min Speed", &minSpeed , 1, 100);
+			camera.setMinSpeed(static_cast<float>(minSpeed));
+
+			int accel = static_cast<int>(camera.getAcceleration());
+			ImGui::SliderInt("Acceleration", &accel , 1, 100);
+			camera.setAcceleration(static_cast<float>(accel));
+
+			int damping = static_cast<int>(camera.getDamping());
+			ImGui::SliderInt("Damping", &damping , 1, 100);
+			camera.setDamping(static_cast<float>(damping));
+		}
 
 		UI::separatorText("Shadows");
 
@@ -259,6 +287,8 @@ namespace
 		}
 
 		if (dbg.enableShadows) {
+			//ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
+
 			if (ImGui::Checkbox("Enable Screen Space Contact Shadows##rt", &contact)) {
 				dbg.enableSSS = contact ? 1u : 0u;
 			}
@@ -443,19 +473,50 @@ namespace
 		ImGui::Text("Active: %u / %u", activeCount, static_cast<uint32_t>(MAX_VISIBLE_LIGHTS));
 
 		auto& flashlight = LightingSystem::_flashLightSettings;
+		auto& flashlightReal = LightingSystem::_mainFlashLight;
 		UI::separatorText("Flash Light settings");
+		ImGui::SliderFloat("Lag Strength", &flashlightReal.lagStrength, 10.0, 100.0f);
+		ImGui::SliderFloat("Sway Strength", &flashlightReal.swayStrength, 0.001f, 0.1f, "%.3f");
 		//ImGui::SliderFloat("light radius##light", &flashlight.radius, 5, 100.0f);
-		ImGui::SliderFloat("light intensity##light", &flashlight.intensity, 10.0f, 500.0f);
+		ImGui::SliderFloat("Intensity##light", &flashlight.intensity, 10.0f, 500.0f);
 		//ImGui::SliderFloat("light outer degree##light", &flashlight.outerDeg, 10.0f, 40.0f);
 		//ImGui::SliderFloat("light inner degree##light", &flashlight.innerDeg, 10.0f, 40.0f);
-		ImGui::SliderFloat("offset right##light", &flashlight.offsetRight, -0.2f, 0.2f, "%.2f");
-		ImGui::SliderFloat("offset down##light", &flashlight.offsetDown, -0.2f, 0.2f, "%.2f");
-		ImGui::SliderFloat("offset forward##light", &flashlight.offsetFwd, -0.2f, 0.2f, "%.2f");
+		ImGui::SliderFloat("Offset R##light", &flashlight.offsetRight, -0.2f, 0.2f, "%.2f");
+		ImGui::SliderFloat("Offset D##light", &flashlight.offsetDown, -0.2f, 0.2f, "%.2f");
+		ImGui::SliderFloat("Offset L##light", &flashlight.offsetFwd, -0.2f, 0.2f, "%.2f");
 		//ImGui::SliderFloat("fov y scale##light", &flashlight.fovYScale, 0.1f, 5.0f);
 
 		//ImGui::SliderFloat("near projection##light", &flashlight.nearProj, 0.1f, 3.0f);
 		//ImGui::SliderFloat("shadow bias##light", &flashlight.shadowBias, 0.0001f, 1.5f, "%.4f");
 		//ImGui::SliderFloat("radius texels##light", &flashlight.radiusTexels, 1.0f, 4.0f);
+
+
+		ImGui::NewLine();
+		UI::separatorText("Screen Space Ambient Occlusion");
+
+		const char* aoModes[] = { "Off", "GTAO" };
+		int current = (int)dbg.aoMode;
+
+		if (ImGui::Combo("AO Method", &current, aoModes, IM_ARRAYSIZE(aoModes))) {
+			dbg.aoMode = (uint32_t)current;
+		}
+
+		if (dbg.aoMode == AO_GTAO) {
+			auto& g = profiler.gtaoSettings;
+
+			// Core gtao settings
+			ImGui::SliderFloat("Radius##gtao", &g.effectRadius, 0.1f, 0.50f, "%.3f");
+			ImGui::SliderFloat("Falloff Range##gtao", &g.effectFalloffRange, 0.20f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Distribution##gtao", &g.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
+			ImGui::SliderFloat("Thin Occluder Comp##gtao", &g.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
+
+			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&g.sliceCount), 4, 8);
+			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&g.stepsPerSliceCount), 2, 8);
+
+			ImGui::SliderFloat("Filter Sharpness##gtao", &g.sharpness, 0.5f, 5.0f);
+			ImGui::SliderFloat("Filter Radius##gtao", &g.radius, 1.0f, 6.0f);
+		}
+
 
 		ImGui::NewLine();
 		UI::separatorText("Volumetrics");
@@ -501,30 +562,19 @@ namespace
 		DebugToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
-		UI::separatorText("Screen Space Ambient Occlusion");
+		{
+			UI::separatorText("Tone Mapping");
+			//const char* tmModes[] = { "ACES Film", /*"Gran Turismo 7"*/ };
+			//int currentTM = (int)dbg.tonemapper;
 
-		const char* aoModes[] = { "Off", "GTAO" };
-		int current = (int)dbg.aoMode;
+			//if (ImGui::Combo("Mode", &currentTM, tmModes, IM_ARRAYSIZE(tmModes))) {
+			//	dbg.tonemapper = (uint32_t)currentTM;
+			//}
 
-		if (ImGui::Combo("AO Method", &current, aoModes, IM_ARRAYSIZE(aoModes))) {
-			dbg.aoMode = (uint32_t)current;
+			auto& exposure = profiler.toneMappingSettings.cameraExposure;
+			ImGui::SliderFloat("Exposure", &exposure, 0.01f, 0.3f);
 		}
 
-		if (dbg.aoMode == AO_GTAO) {
-			auto& g = profiler.gtaoSettings;
-
-			// Core gtao settings
-			ImGui::SliderFloat("Radius##gtao", &g.effectRadius, 0.1f, 0.50f, "%.3f");
-			ImGui::SliderFloat("Falloff Range##gtao", &g.effectFalloffRange, 0.20f, 1.0f, "%.2f");
-			ImGui::SliderFloat("Distribution##gtao", &g.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
-			ImGui::SliderFloat("Thin Occluder Comp##gtao", &g.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
-
-			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&g.sliceCount), 4, 8);
-			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&g.stepsPerSliceCount), 2, 8);
-
-			ImGui::SliderFloat("Filter Sharpness##gtao", &g.sharpness, 0.5f, 5.0f);
-			ImGui::SliderFloat("Filter Radius##gtao", &g.radius, 1.0f, 6.0f);
-		}
 
 		ImGui::NewLine();
 		UI::separatorText("Chromatic Aberration");

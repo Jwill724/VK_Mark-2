@@ -842,10 +842,15 @@ void RenderPasses::exposurePass(
 
 	struct alignas(16) ExposurePush {
 		uint32_t totalTiles;
-		uint32_t pad0[3]{};
+		float cameraExposure;
+		float deltaTime;
+		float adaptationSpeed;
 	} expPush{};
 	expPush.totalTiles = totalTiles;
-	scope.setPush(totalTiles);
+	expPush.cameraExposure = profiler.toneMappingSettings.cameraExposure;
+	//expPush.adaptationSpeed = 0.5f;
+	//expPush.deltaTime = Engine::getProfiler().getStats().deltaSecondsRaw;
+	scope.setPush(expPush);
 
 	dispatchComputePass(
 		frameCtx.cmdBuffer,

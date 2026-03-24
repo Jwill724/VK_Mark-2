@@ -58,11 +58,23 @@ public:
 
 	// position and direction based off camera
 	bool updateFlashLight(
-	   std::vector<LocalLight>& globalLightList,
-	   const uint32_t shadowMapID,
-	   const uint32_t cookieTexID,
-	   const glm::vec3& pos,
-	   const glm::vec3& dir);
+		std::vector<LocalLight>& globalLightList,
+		const uint32_t shadowMapID,
+		const uint32_t cookieTexID,
+		const glm::vec3& pos,
+		const glm::vec3& dir,
+		const float dt,
+		const glm::vec2 mouseDelta,
+		const glm::vec3 camForward);
+
+	glm::vec3 smoothedDir{0.0f, 0.0f, -1.0f};
+	glm::vec3 smoothedPos{0.0f};
+
+	glm::vec3 dirVelocity{0.0f}; // for spring
+	glm::vec3 posVelocity{0.0f};
+
+	float lagStrength = 40.0f;   // responsiveness
+	float swayStrength = 0.025f; // camera motion
 
 private:
 	bool flashLightFlagsChanged = false;
