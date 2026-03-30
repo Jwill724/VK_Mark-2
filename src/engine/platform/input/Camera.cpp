@@ -117,4 +117,5 @@ void Camera::reset() {
 	_position = SPAWNPOINT;
 	_pitch = 0.0f;
 	_yaw = -90.0f;
+	_velocity = glm::vec3(0.0f);
 }

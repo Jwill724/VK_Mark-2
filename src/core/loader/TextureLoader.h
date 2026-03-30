@@ -14,7 +14,6 @@ namespace TextureLoader {
 		const VmaAllocator allocator,
 		DeletionQueue& bufferQueue,
 		const VkDevice device);
-	void generateMipmaps(VkCommandBuffer cmd, const AllocatedImage& image);
 	VkFilter extract_filter(fastgltf::Filter filter);
 	VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter);
 }

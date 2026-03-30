@@ -338,7 +338,12 @@ inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue
 }
 
 struct ShadowControl {
-	float splitLambda;
-	float bias;
+	float splitLambda = 0.97f;
+	float bias = 0.0001f;
 	float softnessFactor;
+	float maxCasterDistance[4] = { 3000.0f, 4000.0f, 5000.0f, 6000.0f };
+	float xyPadding = 150.0f;
+	float lsEpsilon = 5.0f;
+	float dirEpsilon = 20.0f;
+	float shadowRadii[4] = { 17.0f, 46.0f, 160.0f, 1000.0f };
 };

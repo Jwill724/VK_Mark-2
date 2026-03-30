@@ -178,3 +178,32 @@ inline std::vector<glm::vec3> GetOBBVertices(
 
 	return vertices;
 }
+
+inline AABB mergeAABB(const AABB& a, const AABB& b)
+{
+	AABB result{};
+	result.vmin = glm::min(a.vmin, b.vmin);
+	result.vmax = glm::max(a.vmax, b.vmax);
+	result.origin = (result.vmax + result.vmin) * 0.5f;
+	result.extent = (result.vmax - result.vmin) * 0.5f;
+	result.sphereRadius = glm::length(result.extent);
+	return result;
+}
+
+inline AABB computeVisibleReceiverAABB(const std::vector<AABB>& visibleWorldAABBs)
+{
+	AABB receiver{};
+	receiver.vmin = glm::vec3(1e30f);
+	receiver.vmax = glm::vec3(-1e30f);
+
+	for (const AABB& aabb : visibleWorldAABBs) {
+		receiver.vmin = glm::min(receiver.vmin, aabb.vmin);
+		receiver.vmax = glm::max(receiver.vmax, aabb.vmax);
+	}
+
+	receiver.origin = 0.5f * (receiver.vmin + receiver.vmax);
+	receiver.extent = 0.5f * (receiver.vmax - receiver.vmin);
+	receiver.sphereRadius = glm::length(receiver.extent);
+
+	return receiver;
+}

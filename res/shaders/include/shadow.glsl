@@ -1,21 +1,12 @@
 #ifndef SHADOW_GLSL
 #define SHADOW_GLSL
 
-const uint MAX_CASCADES = 4u;
-
 const float flashlightShadowTexel = 1.0 / 512.0;
 
 const float shadowFar = 1000.0;
 
-struct ShadowCSM {
-	mat4 cascadeVP[MAX_CASCADES];
-	vec4 cascadeSplits;
-	// x=bias, y=shadowAtlasID, z=cascadeCount, w=atlasTexelSize(1/atlasHeight)
-	vec4 params;
-	// xy = uvScale, zw = uvOffset (per cascade)
-	vec4 atlasUV[MAX_CASCADES];
-	vec4 maxFilterRadiusTexels;
-};
+const uint SHADOW_FILTER_PCF  = 0u;
+//const uint SHADOW_FILTER_PCSS = 1u;
 
 // 8-tap Poisson disk in texels
 const vec2 poisson8[8] = vec2[](
@@ -44,31 +35,38 @@ const vec2 poisson16[16] = vec2[](
 
 mat2 createHash(vec2 pixelCoord)
 {
-	float h = fract(sin(dot(pixelCoord, vec2(12.9898, 78.233))) * 43758.5453);
-	float ang = h * 6.2831853;
-	mat2 R = mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-	return R;
+	float ang = interleavedGradientNoise(pixelCoord) * 6.2831853;
+	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
+
+mat2 createHashTemporal(vec2 pixelCoord, uint frameIndex)
+{
+	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
+	float ang = interleavedGradientNoise(jitteredPixel) * 6.2831853;
+	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
+
+float gaussianWeight(vec2 diskPos)
+{
+	float d2 = dot(diskPos, diskPos); // d in [0, 1] on unit disk, so d2 in [0,1]
+	return exp(-d2 * 2.0);
 }
 
 // Used for volumetric lights shadow map samples
-// Depth test here is different from high and it works so just leave it.
 float PCFPoissonLow(
-	mat2 poissonRotation,
-	sampler2D shadowMap,
-	vec2 shadowUV,
-	float receiverDepth,
-	float bias,
-	float texel)
+	mat2      poissonRotation,
+	uint      shadowMapID,
+	vec2      shadowUV,
+	float     receiverDepth,
+	float     bias,
+	float     texel)
 {
-	float sum = 0.0;
-
+	float sum      = 0.0;
 	float depthPos = receiverDepth + bias;
-
 	for (int i = 0; i < 8; ++i) {
 		vec2 offset = (poissonRotation * poisson8[i]) * texel;
-
-		float depthSample = texture(shadowMap, shadowUV + offset).r;
-		sum += float(depthPos < depthSample);
+		float depthSample = SampleTexture(shadowMapID, shadowUV + offset).r;
+		sum              += float(depthPos < depthSample);
 	}
 
 	return sum * (1.0 / 8.0);
@@ -76,34 +74,39 @@ float PCFPoissonLow(
 
 // Used in primary shadow rendering
 float PCFPoissonHigh(
-	vec2 pixelCoord,
-	sampler2D shadowMap,
-	vec2 shadowUV,
-	float receiverDepth,
-	float bias,
-	float texel,
-	float radius)
+	mat2      poissonRotation,
+	uint      shadowMapID,
+	vec2      shadowUV,
+	float     receiverDepth,
+	float     bias,
+	float     texel,
+	float     radius)
 {
-	mat2 R = createHash(pixelCoord);
-	float sum = 0.0;
-	float samplePos = texel * radius;
-	float depthPos = receiverDepth + (bias * texel);
+	float samplePos = texel * radius;   // UV-space kernel radius
+	float depthPos  = receiverDepth + bias;
+
+	float sum       = 0.0;
+	float weightSum = 0.0;
 
 	for (int i = 0; i < 16; ++i) {
-		vec2 offset = (R * poisson16[i]) * samplePos;
+		vec2  diskPos    = poisson16[i];
+		vec2  offset     = (poissonRotation * diskPos) * samplePos;
 
-		float depthSample = texture(shadowMap, shadowUV + offset).r;
-		float shadow = depthSample >= depthPos ? 1.0 : 0.0;
+		float depthSample = SampleTexture(shadowMapID, shadowUV + offset).r;
+		float shadow      = depthSample >= depthPos ? 1.0 : 0.0;
 
-		float w = 1.0 - smoothstep(0.0, radius, length(offset));
-		sum += shadow * w;
+		// Gaussian weight keyed to unit-disk distance
+		float w    = gaussianWeight(diskPos);
+		sum       += shadow * w;
+		weightSum += w;
 	}
 
-	return sum / 16.0;
+	return weightSum > 1e-6 ? sum / weightSum : 1.0;
 }
 
 // Right handed view looks down -Z
-uint cascadeViewDepthSplit(float viewDepth, uint cascadeCount, vec4 cascadeSplits) {
+uint cascadeViewDepthSplit(float viewDepth, uint cascadeCount, vec4 cascadeSplits)
+{
 	uint cascadeIdx = cascadeCount - 1u;
 	for (uint i = 0u; i < cascadeCount; ++i) {
 		if (viewDepth < cascadeSplits[i]) {

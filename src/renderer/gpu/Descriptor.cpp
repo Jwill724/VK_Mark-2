@@ -127,7 +127,7 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 	mainDescriptorManager.clearBinding();
 
 	// Readable inputs
-	for (uint32_t i = PUSH_BINDING_INPUT_1_TEX; i <= PUSH_BINDING_INPUT_9_TEX; i++) {
+	for (uint32_t i = PUSH_BINDING_READ_1; i <= PUSH_BINDING_READ_7; i++) {
 		mainDescriptorManager.addBinding(
 		i,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -136,7 +136,7 @@ void DescriptorSetOverwatch::initPushDescriptor(const VkDevice device, DeletionQ
 	}
 
 	// Writable outputs
-	for (uint32_t i = PUSH_BINDING_OUTPUT_1_TEX; i <= PUSH_BINDING_OUTPUT_5_TEX; i++) {
+	for (uint32_t i = PUSH_BINDING_WRITE_1; i <= PUSH_BINDING_WRITE_5; i++) {
 		mainDescriptorManager.addBinding(
 		i,
 		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
@@ -376,55 +376,26 @@ VkDescriptorSetLayout DescriptorManager::createPushSetLayout(const VkDevice devi
 }
 
 // === DESCRIPTOR WRITING ===
-
-// Push descriptor writing
-//void DescriptorWriter::writePushBuffer(
-//	uint32_t binding,
-//	VkBuffer buffer,
-//	size_t size,
-//	size_t offset,
-//	VkDescriptorType type)
-//{
-//	enablePushDescriptor = true;
-//
-//	size_t bufferIndex = bufferInfos.size();
-//	bufferInfos.emplace_back(VkDescriptorBufferInfo{
-//		.buffer = buffer,
-//		.offset = offset,
-//		.range = size
-//	});
-//
-//	bufferWrites.push_back({
-//		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-//		.dstSet = VK_NULL_HANDLE,
-//		.dstBinding = binding,
-//		.dstArrayElement = 0,
-//		.descriptorCount = 1,
-//		.descriptorType = type,
-//		.pBufferInfo = nullptr
-//	});
-//
-//	writeBufferIndices.push_back(bufferIndex);
-//}
-
-
 void DescriptorWriter::writePushImage(
 	uint32_t binding,
-	VkImageView view,
+	AllocatedImage& image,
 	VkSampler sampler,
-	VkImageLayout layoutOverride)
+	VkImageLayout overrideLayout,
+	uint32_t storageViewIndex)
 {
 	enablePushDescriptor = true;
 
-	VkImageLayout layout = (sampler != VK_NULL_HANDLE) ?
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
-
-	if (layoutOverride != VK_IMAGE_LAYOUT_UNDEFINED) {
-		layout = layoutOverride;
-	}
-
 	VkDescriptorType type = (sampler != VK_NULL_HANDLE) ?
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+
+	VkImageView view = image.imageView;
+	if (storageViewIndex != UINT32_MAX && (storageViewIndex >= 0u && storageViewIndex < image.mipLevelCount)) {
+		view = image.storageViews[static_cast<size_t>(storageViewIndex)];
+	}
+	VkImageLayout layout = image.currentLayout;
+	if (overrideLayout != VK_IMAGE_LAYOUT_MAX_ENUM) {
+		layout = overrideLayout;
+	}
 
 	VkDescriptorImageInfo imageInfo{ sampler, view, layout };
 	imageWriteGroups.push_back({
@@ -434,6 +405,7 @@ void DescriptorWriter::writePushImage(
 		.imageInfo = imageInfo
 	});
 }
+
 
 void DescriptorWriter::updatePushSet(
 	VkCommandBuffer cmd,

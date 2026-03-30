@@ -71,20 +71,18 @@ constexpr uint32_t FRAME_BINDING_CSM       = 2u;
 constexpr uint32_t FRAME_BINDING_CLUSTERED = 3u;
 
 // Push bindings
-constexpr uint32_t PUSH_BINDING_INPUT_1_TEX  = 0u;
-constexpr uint32_t PUSH_BINDING_INPUT_2_TEX  = 1u;
-constexpr uint32_t PUSH_BINDING_INPUT_3_TEX  = 2u;
-constexpr uint32_t PUSH_BINDING_INPUT_4_TEX  = 3u;
-constexpr uint32_t PUSH_BINDING_INPUT_5_TEX  = 4u;
-constexpr uint32_t PUSH_BINDING_INPUT_6_TEX  = 5u;
-constexpr uint32_t PUSH_BINDING_INPUT_7_TEX  = 6u;
-constexpr uint32_t PUSH_BINDING_INPUT_8_TEX  = 7u;
-constexpr uint32_t PUSH_BINDING_INPUT_9_TEX  = 8u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_1_TEX = 9u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_2_TEX = 10u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_3_TEX = 11u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_4_TEX = 12u;
-constexpr uint32_t PUSH_BINDING_OUTPUT_5_TEX = 13u;
+constexpr uint32_t PUSH_BINDING_READ_1  = 0u;
+constexpr uint32_t PUSH_BINDING_READ_2  = 1u;
+constexpr uint32_t PUSH_BINDING_READ_3  = 2u;
+constexpr uint32_t PUSH_BINDING_READ_4  = 3u;
+constexpr uint32_t PUSH_BINDING_READ_5  = 4u;
+constexpr uint32_t PUSH_BINDING_READ_6  = 5u;
+constexpr uint32_t PUSH_BINDING_READ_7  = 6u;
+constexpr uint32_t PUSH_BINDING_WRITE_1 = 7u;
+constexpr uint32_t PUSH_BINDING_WRITE_2 = 8u;
+constexpr uint32_t PUSH_BINDING_WRITE_3 = 9u;
+constexpr uint32_t PUSH_BINDING_WRITE_4 = 10u;
+constexpr uint32_t PUSH_BINDING_WRITE_5 = 11u;
 
 // Image array sizes
 constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES      = 100u;
@@ -94,6 +92,7 @@ constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 10000u;
 constexpr uint32_t JOB_WORKER_COUNT = MAX_THREADS;
 
 // GPU material flags
-constexpr uint32_t MATERIAL_FLAG_ALPHA_MASKED  = 1u << 0;
-constexpr uint32_t MATERIAL_FLAG_CASTS_SHADOWS = 1u << 1;
+constexpr uint32_t MATERIAL_FLAG_ALPHA_MASKED   = 1u << 0;
+constexpr uint32_t MATERIAL_FLAG_CASTS_SHADOWS  = 1u << 1;
 constexpr uint32_t MATERIAL_FLAG_HAS_NORMAL_MAP = 1u << 2;
+constexpr uint32_t MATERIAL_FLAG_IS_TREE        = 1u << 3;

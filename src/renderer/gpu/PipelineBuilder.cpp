@@ -14,6 +14,8 @@ void PipelineBuilder::initializePipelineSTypes() {
 	_depthStencil = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
 
 	_renderInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+
+	_colorBlendAttachments.clear();
 }
 
 void PipelineBuilder::createPipeline(PipelineHandle& pipelineObj, const PipelinePreset& pipelineSettings, const VkDevice device) {
@@ -44,10 +46,11 @@ void PipelineBuilder::createPipeline(PipelineHandle& pipelineObj, const Pipeline
 		const uint32_t attachmentCount = static_cast<uint32_t>(pipelineSettings.colorFormats.size());
 
 		std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
-		blendAttachments.resize(attachmentCount);
-
-		for (uint32_t i = 0; i < attachmentCount; ++i) {
-			blendAttachments[i] = _colorBlendAttachment;
+		if (!_colorBlendAttachments.empty()) {
+			blendAttachments = _colorBlendAttachments;
+		}
+		else {
+			blendAttachments.resize(attachmentCount, _colorBlendAttachment);
 		}
 
 		VkPipelineColorBlendStateCreateInfo colorBlending = {};

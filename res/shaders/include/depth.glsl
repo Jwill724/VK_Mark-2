@@ -1,11 +1,11 @@
 #ifndef DEPTH_GLSL
 #define DEPTH_GLSL
 
-const uint HI_Z_MIP_COUNT = 5u;
+#define HI_Z_MIP_COUNT 5
 
 // Depth conventions in renderer are ZERO_TO_ONE and RIGHT_HANDED
 // Reversed Z depth is standard
-const float DEPTH_EPSILON_REVERSED_Z = 1e-6;
+#define DEPTH_EPSILON_REVERSED_Z 1e-6
 
 // About the min max uint packed format for hi z
 // https://martinfullerblog.wordpress.com/2023/01/13/min-max-buffer-precision-improvement/

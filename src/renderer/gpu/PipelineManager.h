@@ -6,6 +6,7 @@ enum class PipelineID : uint8_t {
 	// === Base (graphics) ===
 	Opaque,
 	Transparent,
+	TransparentResolve,
 	Skybox,
 
 	// Debug

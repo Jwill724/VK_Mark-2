@@ -160,6 +160,10 @@ namespace RenderPasses {
 		ComputeScope scope,
 		Profiler& profiler);
 
+	void transparentResolvePass(
+		FrameContext& frameCtx,
+		ComputeScope scope,
+		Profiler& profiler);
 
 	void opaqueMeshPass(
 		FrameContext& frameCtx,

@@ -3,17 +3,12 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
+#include "../include/common.glsl"
 #include "../include/cmaa2.glsl"
 
 layout(local_size_x = 1) in;
 
 // https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
 
 layout(push_constant) uniform CMAA2Push {
 	uint pass; // 0 candidate / 1 deferred loc count
@@ -23,11 +18,9 @@ void main()
 {
 	if (gl_GlobalInvocationID.x != 0u) return;
 
-	DispatchIndirectArgsBuffer dispatchArgs =
-		DispatchIndirectArgsBuffer(frameAddressTable.addrs[ABT_DispatchIndirectArgs]);
+	DispatchIndirectArgsBuffer dispatchArgs = getIndirectDispatchBuffer();
 
-	Cmaa2ControlBuffer control =
-		Cmaa2ControlBuffer(frameAddressTable.addrs[ABT_Cmaa2Control]);
+	Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
 
 	if (pc.pass == 0) {
 		uint candidateCount = control.control[CMAA2_CTRL_SHAPE_CANDIDATE_COUNT];

@@ -3,19 +3,10 @@
 #extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
 #include "../include/clustered.glsl"
+#include "../include/common.glsl"
 
 layout(local_size_x = 256) in;
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
-	ClusteredData clusteredData;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
 
 shared uint sharedCounts[256];
 shared uint sharedBlockBaseOffset;
@@ -25,14 +16,14 @@ void main()
 	uint clusterIndex = gl_GlobalInvocationID.x;
 	uint localIndex = gl_LocalInvocationIndex;
 
-	ClusterCounts countsBuf =
-		ClusterCounts(frameAddressTable.addrs[ABT_ClusterCounts]);
+	ClusteredData clustered = getClusteredData();
+	SceneData scene = getSceneData();
 
-	ClusterOffsets offsetsBuf =
-		ClusterOffsets(frameAddressTable.addrs[ABT_ClusterOffsets]);
+	ClusterCounts countsBuf = getClusterCountsBuffer();
 
-	ClusterScanScratch scratchBuf =
-		ClusterScanScratch(frameAddressTable.addrs[ABT_ClusterScanScratch]);
+	ClusterOffsets offsetsBuf = getClusterOffsetsBuffer();
+
+	ClusterScanScratch scratchBuf = getClusterScratchBuffer();
 
 	// Load + clamp count
 	uint countValue = 0u;

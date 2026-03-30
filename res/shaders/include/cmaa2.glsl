@@ -1,9 +1,6 @@
 #ifndef CMAA2_GLSL
 #define CMAA2_GLSL
 
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_scalar_block_layout : require
-
 const uint CMAA2_HEAD_OFFSETXY_SHIFT = 30u;
 const uint CMAA2_HEAD_OFFSETXY_MASK  = 0x3u;
 const uint CMAA2_HEAD_INDEX_MASK     = 0x0FFFFFFFu;
@@ -24,26 +21,6 @@ const ivec2 pixelOffsets[4] = ivec2[4](
 	ivec2(0, 1),
 	ivec2(1, 1)
 );
-
-layout(buffer_reference, scalar) buffer Cmaa2ControlBuffer {
-	uint control[];
-};
-
-layout(buffer_reference, scalar) buffer Cmaa2ShapeCandidatesBuffer {
-	uint pixelIDs[];
-};
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredLocationsBuffer {
-	uint quadIDs[];
-};
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredItemsBuffer {
-	uvec4 items[];
-};
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredHeadsBuffer {
-	uint heads[];
-};
 
 uint loadEdgeNibble(ivec2 pixelPos, usampler2D workingEdges)
 {

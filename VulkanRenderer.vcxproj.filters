@@ -390,7 +390,7 @@
     <None Include="res\shaders\core\forwardVS.vert">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\forwardFS.frag">
+    <None Include="res\shaders\core\opaque_forward.frag">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\environment\hdr2cubemap.comp">
@@ -420,13 +420,7 @@
     <None Include="res\shaders\environment\brdf_lut.comp">
       <Filter>res\shaders\environment</Filter>
     </None>
-    <None Include="res\shaders\include\set_bindings.glsl">
-      <Filter>res\shaders\include</Filter>
-    </None>
     <None Include="res\shaders\include\pbr.glsl">
-      <Filter>res\shaders\include</Filter>
-    </None>
-    <None Include="res\shaders\include\gpu_scene_structures.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
     <None Include="res\shaders\visibility\visibility.comp">
@@ -530,6 +524,18 @@
     </None>
     <None Include="res\shaders\post_process\chromatic_aberration.comp">
       <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\core\transparent_forward.frag">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\include\common.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\shading_functions.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\core\transparent_resolve.comp">
+      <Filter>res\shaders\core</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -71,6 +71,16 @@ namespace Visibility {
 		std::vector<AABB>& visibleWorldAABBs,
 		bool disableCulling = false);
 
+	void cullBVHCollectShadowCastersReceivers(
+		uint32_t cascadeIndex,
+		const VisibilityState& vs,
+		const Frustum& cascadeFrustum,
+		const glm::mat4& lightView,
+		const glm::vec3& receiverLSMin,
+		const glm::vec3& receiverLSMax,
+		std::vector<GPUInstance>& out,
+		const std::vector<uint32_t>& flags);
+
 	void cullBVHCollectShadowCasters(
 		const VisibilityState& vs,
 		const Frustum& frus,

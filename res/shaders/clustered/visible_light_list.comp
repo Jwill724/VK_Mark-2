@@ -3,19 +3,10 @@
 #extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
 #include "../include/clustered.glsl"
+#include "../include/common.glsl"
 
 layout(local_size_x = 256) in;
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
-	ClusteredData clusteredData;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
 
 layout(push_constant) uniform ClusterPush {
 	uint activeLightCount;
@@ -38,10 +29,12 @@ void main() {
 	uint lightIndex = gl_GlobalInvocationID.x;
 	if (lightIndex >= pc.activeLightCount) return;
 
-	LightBuffer lightBuf = LightBuffer(frameAddressTable.addrs[ABT_Lights]);
+	ClusteredData clustered = getClusteredData();
 
-	VisibleLightCount visibleCountBuf = VisibleLightCount(frameAddressTable.addrs[ABT_VisibleLightCount]);
-	VisibleLightIDs visibleIDsBuf = VisibleLightIDs(frameAddressTable.addrs[ABT_VisibleLightIDs]);
+	LightBuffer lightBuf = getLightBuffer();
+
+	VisibleLightCount visibleCountBuf = getVisibleLightCountBuffer();
+	VisibleLightIDs visibleIDsBuf = getVisibleLightIDsBuffer();
 
 	LocalLight light = lightBuf.lights[lightIndex];
 

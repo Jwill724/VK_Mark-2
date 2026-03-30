@@ -109,7 +109,10 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 	{
 		const float timestampPeriod = Backend::getTimestampPeriod();
 
-		for (uint32_t passIndex = 1; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex) {
+		bool allReady = true;
+
+		for (uint32_t passIndex = 1; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
+		{
 			if (!frameCtx.timestampPassUsed[passIndex]) continue;
 
 			const PassID passID = static_cast<PassID>(passIndex);
@@ -117,7 +120,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 
 			uint64_t queryPair[2]{};
 
-			VK_CHECK(vkGetQueryPoolResults(
+			VkResult res = vkGetQueryPoolResults(
 				device,
 				frameCtx.graphicsTimestampPool,
 				range.beginQuery,
@@ -126,16 +129,24 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 				queryPair,
 				sizeof(uint64_t),
 				VK_QUERY_RESULT_64_BIT
-			));
+			);
+
+			if (res == VK_NOT_READY) {
+				allReady = false;
+				continue;
+			}
+
+			VK_CHECK(res);
 
 			const uint64_t beginTicks = queryPair[0];
-			const uint64_t endTicks = queryPair[1];
+			const uint64_t endTicks   = queryPair[1];
 
-			if (endTicks > beginTicks) {
+			if (endTicks > beginTicks)
+			{
 				const uint64_t deltaTicks = endTicks - beginTicks;
 
 				const float gpuMs = static_cast<float>(
-					(static_cast<double>(deltaTicks) * static_cast<double>(timestampPeriod)) / 1000000.0
+					(double(deltaTicks) * double(timestampPeriod)) / 1000000.0
 				);
 
 				Engine::getProfiler().addGpuPassTime(passID, gpuMs);
@@ -144,33 +155,43 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 			frameCtx.timestampPassUsed[passIndex] = false;
 		}
 
-		uint64_t frameQueryPair[2]{};
-		VK_CHECK(vkGetQueryPoolResults(
-			device,
-			frameCtx.graphicsTimestampPool,
-			FRAME_BEGIN_QUERY,
-			2,
-			sizeof(frameQueryPair),
-			frameQueryPair,
-			sizeof(uint64_t),
-			VK_QUERY_RESULT_64_BIT
-		));
+		// Frame timestamps
+		{
+			uint64_t queryPair[2]{};
 
-		const uint64_t frameBeginTicks = frameQueryPair[0];
-		const uint64_t frameEndTicks = frameQueryPair[1];
+			VkResult res = vkGetQueryPoolResults(
+				device,
+				frameCtx.graphicsTimestampPool,
+				FRAME_BEGIN_QUERY,
+				2,
+				sizeof(queryPair),
+				queryPair,
+				sizeof(uint64_t),
+				VK_QUERY_RESULT_64_BIT
+			);
 
-		if (frameEndTicks > frameBeginTicks) {
-			const uint64_t deltaTicks = frameEndTicks - frameBeginTicks;
+			if (res == VK_NOT_READY) {
+				allReady = false;
+			}
+			else {
+				VK_CHECK(res);
 
-			const float gpuFrameMs = static_cast<float>((static_cast<double>(deltaTicks) *
-				static_cast<double>(Backend::getTimestampPeriod())) / 1000000.0);
+				const uint64_t delta = queryPair[1] - queryPair[0];
 
-			auto& stats = Engine::getProfiler().getStats();
-			stats.gpuFrameTimeRawMs = gpuFrameMs;
-			stats.gpuFrameTime.add(gpuFrameMs);
+				if (queryPair[1] > queryPair[0])
+				{
+					const float gpuMs = static_cast<float>(
+						(double(delta) * double(timestampPeriod)) / 1000000.0
+					);
+
+					auto& stats = Engine::getProfiler().getStats();
+					stats.gpuFrameTimeRawMs = gpuMs;
+					stats.gpuFrameTime.add(gpuMs);
+				}
+			}
 		}
 
-		frameCtx.hasTimestampResultsPending = false;
+		frameCtx.hasTimestampResultsPending = !allReady;
 	}
 
 	uint32_t imageIndex = 0;
@@ -339,16 +360,17 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	const auto device = Backend::getDevice();
 	auto& swp = Backend::getSwapchainDef();
-	auto& opaque = ResourceManager::getOpaqueImage();
-	auto& transparent = ResourceManager::getTransparentImage();
-	auto& toneMap = ResourceManager::getToneMapImage();
-	auto& aoRaw = ResourceManager::getAORawImage();
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	auto& depth = ResourceManager::getDepthImage();
-	auto& volLight = ResourceManager::getVolumetricLightImage();
-	auto& shadowMask = ResourceManager::getScreenSpaceShadowMask();
-	const auto aoSampler = ResourceManager::getLinearLODClampSampler();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
+	auto& opaque = ResourceManager::getOpaque_Target();
+	auto& transparentAccum = ResourceManager::getTransparentAccumulation_Target();
+	auto& transparentReveal = ResourceManager::getTransparentRevealage_Target();
+	auto& toneMap = ResourceManager::getToneMap_Target();
+	auto& aoRaw = ResourceManager::getAORaw_Target();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& depth = ResourceManager::getDepthRaw_Target();
+	auto& volLight = ResourceManager::getVolumetricLight_Target();
+	auto& shadowMask = ResourceManager::getScreenSpaceShadowMask_Target();
+	const auto aoSampler = ResourceManager::getLinearLODClamp_Sampler();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
 
 	auto& debug = profiler.debugToggles;
 
@@ -378,16 +400,18 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	VK_CHECK(vkBeginCommandBuffer(frameCtx.cmdBuffer, &cmdBeginInfo));
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) && frameCtx.graphicsTimestampPool != VK_NULL_HANDLE) {
-		frameCtx.hasTimestampResultsPending = false;
-		frameCtx.timestampPassUsed.fill(false);
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
+		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE) {
+		if (!frameCtx.hasTimestampResultsPending) {
+			vkCmdResetQueryPool(
+				frameCtx.cmdBuffer,
+				frameCtx.graphicsTimestampPool,
+				0u,
+				TIMESTAMP_QUERY_COUNT
+			);
 
-		vkCmdResetQueryPool(
-			frameCtx.cmdBuffer,
-			frameCtx.graphicsTimestampPool,
-			0u,
-			TIMESTAMP_QUERY_COUNT
-		);
+			frameCtx.timestampPassUsed.fill(false);
+		}
 	}
 
 	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue())) {
@@ -472,7 +496,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		// =================
 		// === GTAO PASS ===
-		if ((debug.aoMode == AO_GTAO)) {
+		if (debug.aoMode == AO_GTAO) {
 			auto& gtaoPush = profiler.gtaoSettings;
 
 			const auto& proj = scene.proj;
@@ -543,15 +567,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 
-
 	// =================================
 	// === MAIN FORWARD SHADING PASS ===
 	AttachmentDesc opaqueAttach{};
 	opaqueAttach.imageView = opaque.imageView;
 	opaqueAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	opaqueAttach.resolveMode = VK_RESOLVE_MODE_NONE;
-	opaqueAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 	// Default depth read from pre pass
 	AttachmentDesc depthAttach{};
@@ -573,8 +593,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 		depthAttach.imageView = depth.imageView;
-		depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	}
 
 	RenderPasses::GraphicsScope opaqueScope;
@@ -582,7 +600,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// Define push constant for forward rendering passes opaque and transparent
 	_forwardPush.activeLightCount = LightingSystem::getActiveLightCount();
 	_forwardPush.flashlightVP = LightingSystem::_mainFlashLight.viewProj;
-
 
 	RenderPasses::beginRendering(
 		frameCtx.cmdBuffer,
@@ -604,20 +621,20 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	if (hasVisibles) {
 		// Final ao output
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			aoRaw.imageView,
+			PUSH_BINDING_READ_1,
+			aoRaw,
 			aoSampler
 		);
 
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			shadowMask.imageView,
-			ResourceManager::getNearestClampSampler()
+			PUSH_BINDING_READ_2,
+			shadowMask,
+			ResourceManager::getNearestClamp_Sampler()
 		);
 
 		AllocatedImage bentNormals;
 		if (debug.aoMode == AO_GTAO) {
-			bentNormals = ResourceManager::getBentNormals();
+			bentNormals = ResourceManager::getBentNormals_Target();
 		}
 		else {
 			// pointless write
@@ -625,8 +642,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		}
 
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			bentNormals.imageView,
+			PUSH_BINDING_READ_3,
+			bentNormals,
 			linearClampSampler
 		);
 
@@ -657,15 +674,23 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
-			transparent,
+			transparentAccum,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			transparentReveal,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
-		AttachmentDesc transparentAttach{};
-		transparentAttach.imageView = transparent.imageView;
-		transparentAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		transparentAttach.resolveMode = VK_RESOLVE_MODE_NONE;
-		transparentAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		transparentAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+		AttachmentDesc tAccumAttach{};
+		tAccumAttach.imageView = transparentAccum.imageView;
+		tAccumAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		tAccumAttach.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f };
+
+		AttachmentDesc tRevealAttach{};
+		tRevealAttach.imageView = transparentReveal.imageView;
+		tRevealAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		tRevealAttach.clearValue.color = { 1.0f, 0.0f, 0.0f, 0.0f };
 
 		RenderPasses::GraphicsScope transparentScope;
 		transparentScope.passID = PassID::TransparentForward;
@@ -673,7 +698,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		RenderPasses::beginRendering(
 			frameCtx.cmdBuffer,
 			{
-				transparentAttach,
+				tAccumAttach,
+				tRevealAttach,
 				depthAttach
 			},
 			{ fullExtent },
@@ -685,8 +711,18 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
-			transparent,
+			transparentAccum,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			transparentReveal,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		RenderPasses::ComputeScope tcScope;
+		tcScope.passID = PassID::TransparentResolve;
+		tcScope.extent = fullExtent;
+		tcScope.workgroupSize = workgroupSize;
+		RenderPasses::transparentResolvePass(frameCtx, tcScope, profiler);
 	}
 
 	// ================================
@@ -711,7 +747,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	// ================
 	// === TAA PASS ===
-	if (debug.aaMode == AA_TAA && hasVisibles && isTemporalValid) {
+	if ((debug.aaMode == AA_TAA) && hasVisibles && isTemporalValid) {
 		RenderPasses::ComputeScope taaScope;
 		taaScope.passID = PassID::TAA;
 		taaScope.workgroupSize = workgroupSize;
@@ -741,7 +777,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// === LENS FLARE PASS ===
 	if (debug.enableLensFlare && hasVisibles) {
 		auto& lensFlarePush = profiler.lensFlareSettings;
-		const auto& brightFlare = ResourceManager::getFlareBrightImage();
+		const auto& brightFlare = ResourceManager::getFlareBright_Target();
 		VkExtent2D quarterRes = {
 			brightFlare.extent.width,
 			brightFlare.extent.height
@@ -861,7 +897,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	if (!debug.enableChromaticAberration) {
-		auto& aaColor = ResourceManager::getAAColor();
+		auto& aaColor = ResourceManager::getAAColor_Target();
 		ImageUtils::imageCopy(
 			frameCtx.cmdBuffer,
 			(copyPostAAImage) ? aaColor : toneMap,
@@ -886,7 +922,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		ImageUtils::imageCopy(
 			frameCtx.cmdBuffer,
-			ResourceManager::getPostNonAAComposite(),
+			ResourceManager::getPostNonAAComposite_Target(),
 			swp.images[frameCtx.swapchainImageIndex],
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -922,6 +958,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	profiler.collectTracyGPU(frameCtx.cmdBuffer);
+
+	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
+		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE)
+	{
+		frameCtx.hasTimestampResultsPending = true;
+	}
 
 	VK_CHECK(vkEndCommandBuffer(frameCtx.cmdBuffer));
 }

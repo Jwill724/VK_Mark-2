@@ -3,17 +3,17 @@
 #include "renderer/Renderer.h"
 #include "renderer/scene/RenderScene.h"
 
-struct OpaqueBatchKey {
+struct BatchKey {
 	uint32_t meshID;
 	uint32_t materialID;
 
-	bool operator==(const OpaqueBatchKey& other) const {
+	bool operator==(const BatchKey& other) const {
 		return meshID == other.meshID && materialID == other.materialID;
 	}
 };
 
-struct OpaqueBatchKeyHash {
-	std::size_t operator()(const OpaqueBatchKey& k) const {
+struct BatchKeyHash {
+	std::size_t operator()(const BatchKey& k) const {
 		std::size_t h1 = std::hash<uint32_t>{}(k.meshID);
 		std::size_t h2 = std::hash<uint32_t>{}(k.materialID);
 		return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));

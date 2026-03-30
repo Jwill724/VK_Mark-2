@@ -32,6 +32,10 @@ struct Vertex {
 	int16_t normalX = 0;
 	int16_t normalY = 0;
 
+	int16_t tangentX = 0;
+	int16_t tangentY = 0;
+	int8_t  tangentW = 0;
+
 	uint16_t uvX = 0;
 	uint16_t uvY = 0;
 
@@ -191,6 +195,8 @@ struct alignas(16) GPUShadowCSM {
 	// xy = uvScale, zw = uvOffset (per cascade)
 	glm::vec4 atlasUV[MAX_SHADOW_CASCADES]{};
 	glm::vec4 maxFilterRadiusTexels{};
+	//float cascadeBias[MAX_SHADOW_CASCADES]{};
+	//float cascadeNormalOffset[MAX_SHADOW_CASCADES]{};
 };
 
 struct TimelineSync {
@@ -213,7 +219,7 @@ enum class DrawType : uint32_t {
 
 enum AOMode : uint32_t {
 	AO_OFF,
-	AO_GTAO // Ground Truth Ambient Occlusion
+	AO_GTAO  // Ground Truth Ambient Occlusion
 };
 
 enum AAMode : uint32_t {
@@ -227,6 +233,11 @@ enum AAMode : uint32_t {
 enum ToneMapper : uint32_t {
 	TM_ACESFILM,
 	TM_GT7
+};
+
+enum ShadowFilter : uint32_t {
+	SHADOW_FILTER_PCF,
+	//SHADOW_FILTER_PCSS
 };
 
 template<typename T>

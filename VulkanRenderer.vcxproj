@@ -340,6 +340,8 @@
     <None Include="res\shaders\clustered\indirect_args_light.comp" />
     <None Include="res\shaders\clustered\visible_light_list.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="res\shaders\core\transparent_forward.frag" />
+    <None Include="res\shaders\core\transparent_resolve.comp" />
     <None Include="res\shaders\post_process\chromatic_aberration.comp" />
     <None Include="res\shaders\post_process\smaa_blend.comp" />
     <None Include="res\shaders\post_process\smaa_edges.comp" />
@@ -347,14 +349,17 @@
     <None Include="res\shaders\post_process\taa.comp" />
     <None Include="res\shaders\shadows\bend_sss.comp" />
     <None Include="res\shaders\shadows\shadow_depthVS.vert" />
+    <None Include="res\shaders\include\common.glsl" />
+    <None Include="res\shaders\include\shading_functions.glsl" />
     <None Include="res\shaders\include\clustered.glsl" />
     <None Include="res\shaders\include\depth.glsl" />
     <None Include="res\shaders\include\shadow.glsl" />
     <None Include="res\shaders\include\cmaa2.glsl" />
+    <None Include="res\shaders\include\pbr.glsl" />
     <None Include="res\shaders\core\prepassFS.frag" />
     <None Include="res\shaders\core\prepassVS.vert" />
     <None Include="res\shaders\core\forwardVS.vert" />
-    <None Include="res\shaders\core\forwardFS.frag" />
+    <None Include="res\shaders\core\opaque_forward.frag" />
     <None Include="res\shaders\core\hi_z_gen.comp" />
     <None Include="res\shaders\environment\hdr2cubemap.comp" />
     <None Include="res\shaders\environment\skyboxVS.vert" />
@@ -377,9 +382,6 @@
     <None Include="res\shaders\post_process\volumetric_light_blur.comp" />
     <None Include="res\shaders\post_process\volumetric_light.comp" />
     <None Include="res\shaders\visibility\visibility.comp" />
-    <None Include="res\shaders\include\set_bindings.glsl" />
-    <None Include="res\shaders\include\pbr.glsl" />
-    <None Include="res\shaders\include\gpu_scene_structures.glsl" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->

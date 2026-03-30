@@ -88,7 +88,7 @@ namespace LightingSystem {
 		defaultLight.color = glm::vec3(1.0f);
 		defaultLight.position = glm::vec3(0.0f);
 		defaultLight.radius = 1.5f;
-		defaultLight.intensity = 4.0f;
+		defaultLight.intensity = 2.5f;
 		defaultLight.shadowMapID = UINT32_MAX;
 		defaultLight.cookieTexID = UINT32_MAX;
 

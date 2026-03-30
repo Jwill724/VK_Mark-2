@@ -3,28 +3,20 @@
 #extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
 #include "../include/clustered.glsl"
+#include "../include/common.glsl"
 
 layout(local_size_x = 1) in;
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
-	ClusteredData clusteredData;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
 
 void main()
 {
 	if (gl_GlobalInvocationID.x != 0u) return;
 
-	DispatchIndirectArgsBuffer dispatchArgs =
-		DispatchIndirectArgsBuffer(frameAddressTable.addrs[ABT_DispatchIndirectArgs]);
+	DispatchIndirectArgsBuffer dispatchArgs = getIndirectDispatchBuffer();
 
-	const uint visibleCount = VisibleLightCount(frameAddressTable.addrs[ABT_VisibleLightCount]).count;
+	ClusteredData clustered = getClusteredData();
+
+	const uint visibleCount = getVisibleLightCountBuffer().count;
 	const uint clusterCount = clusteredData.clusterCount;
 
 	uint workItemCount = (visibleCount <= LIGHT_THRESHOLD) ? clusterCount : visibleCount;

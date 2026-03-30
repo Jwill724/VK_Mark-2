@@ -2,10 +2,10 @@
 
 #include "Visibility.h"
 #include "renderer/gpu/PipelineManager.h"
+#include "RenderScene.h"
 
 namespace Visibility {
 	// === HELPERS ===
-	glm::vec3 centerOf(const AABB& a) { return a.origin; }
 
 	// min/max-only union
 	inline void growMinMax(AABB& dst, const AABB& src) {
@@ -436,7 +436,7 @@ void Visibility::cullBVHCollect(
 	visibleInstances.clear();
 	visibleWorldAABBs.clear();
 
-	// just push all active instances(no culling)
+	// just push all active instances(
 	if (disableCulling) {
 		// if no active data, nothing to do
 		if (vs.active.empty()) return;
@@ -486,6 +486,94 @@ void Visibility::cullBVHCollect(
 	}
 }
 
+void Visibility::cullBVHCollectShadowCastersReceivers(
+	uint32_t currentCascadeIndex,
+	const VisibilityState& vs,
+	const Frustum& frus,
+	const glm::mat4& lightView,
+	const glm::vec3& receiverLSMin,
+	const glm::vec3& receiverLSMax,
+	std::vector<GPUInstance>& visibleInstances,
+	const std::vector<uint32_t>& flagsByMaterialID)
+{
+	if (vs.bvh.empty()) return;
+
+	glm::vec3 lightDirWS = glm::normalize(glm::vec3(-lightView[2]));
+
+	const float LS_EPSILON = RenderScene::_shadowControl.lsEpsilon;
+	const float DIR_EPSILON = RenderScene::_shadowControl.dirEpsilon;
+
+	std::vector<uint32_t> stack;
+	stack.reserve(128u);
+	stack.push_back(0u);
+
+	while (!stack.empty()) {
+		const uint32_t ni = stack.back();
+		stack.pop_back();
+
+		const BVHNode& node = vs.bvh[ni];
+
+		if (!boxInFrustum(node.box, frus)) continue;
+
+		// Node test against loose receiver
+		glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(node.box.origin, 1.0f));
+		glm::vec3 extentLS = glm::mat3(
+			glm::abs(lightView[0]), glm::abs(lightView[1]), glm::abs(lightView[2])) * node.box.extent;
+
+		glm::vec3 nMin = centerLS - extentLS;
+		glm::vec3 nMax = centerLS + extentLS;
+
+		if (nMin.x > receiverLSMax.x + LS_EPSILON || nMax.x < receiverLSMin.x - LS_EPSILON) continue;
+		if (nMin.y > receiverLSMax.y + LS_EPSILON || nMax.y < receiverLSMin.y - LS_EPSILON) continue;
+		if (nMin.z > receiverLSMax.z + LS_EPSILON || nMax.z < receiverLSMin.z - LS_EPSILON) continue;
+
+		if (node.count) {
+			const uint32_t first = node.first;
+			const uint32_t last  = first + node.count;
+
+			for (uint32_t i = first; i < last; ++i) {
+				const uint32_t idx = vs.leafIndex[i];
+				const GPUInstance& inst = vs.instances[idx];
+
+				const uint32_t materialFlags = flagsByMaterialID[inst.materialID];
+
+				if ((materialFlags & MATERIAL_FLAG_CASTS_SHADOWS) == 0u) continue;
+				if (inst.passType == static_cast<uint32_t>(MaterialPass::Transparent)) continue;
+
+				bool isAlphaMasked = (materialFlags & MATERIAL_FLAG_ALPHA_MASKED) != 0u;
+				bool isTree        = (materialFlags & MATERIAL_FLAG_IS_TREE) != 0u;
+
+				if (isAlphaMasked && !isTree && currentCascadeIndex >= 2) continue;
+				if (isAlphaMasked && isTree && currentCascadeIndex >= 3) continue;
+
+				const AABB& wb = vs.worldAABBs[idx];
+
+				//float casterProj = glm::dot(lightDirWS, wb.origin);
+				//if (casterProj > DIR_EPSILON) continue;
+
+				glm::vec3 casterCenterLS = glm::vec3(lightView * glm::vec4(wb.origin, 1.0f));
+				glm::mat3 absLight = glm::mat3(
+					glm::abs(lightView[0]),
+					glm::abs(lightView[1]),
+					glm::abs(lightView[2]));
+				glm::vec3 casterExtentLS = absLight * wb.extent;
+
+				float casterZMin = casterCenterLS.z - casterExtentLS.z;
+				float casterZMax = casterCenterLS.z + casterExtentLS.z;
+
+				if (casterZMin > receiverLSMax.z + LS_EPSILON) continue;
+
+				if (!boxInFrustum(wb, frus)) continue;
+
+				visibleInstances.push_back(inst);
+			}
+		}
+		else {
+			stack.push_back(static_cast<uint32_t>(node.left));
+			stack.push_back(static_cast<uint32_t>(node.right));
+		}
+	}
+}
 
 void Visibility::cullBVHCollectShadowCasters(
 	const VisibilityState& vs,
@@ -555,12 +643,12 @@ uint32_t Visibility::buildMedianBVHRecursive(
 		const AABB& a = world[leafIndex[first + i]];
 		if (i == 0) {
 			nodeB = a; // copies vmin/vmax/origin/extent/radius;
-			cmin = cmax = centerOf(a);
+			cmin = cmax = a.origin;
 		}
 		else {
 			growMinMax(nodeB, a); // min/max only
-			cmin = glm::min(cmin, centerOf(a));
-			cmax = glm::max(cmax, centerOf(a));
+			cmin = glm::min(cmin, a.origin);
+			cmax = glm::max(cmax, a.origin);
 		}
 	}
 	finalizeFromMinMax(nodeB); // compute origin/extent/radius once
@@ -584,7 +672,7 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	const uint32_t mid = first + count / 2;
 	std::nth_element(leafIndex.begin() + first, leafIndex.begin() + mid, leafIndex.begin() + first + count,
 		[&](uint32_t ia, uint32_t ib) {
-			return centerOf(world[ia])[axis] < centerOf(world[ib])[axis];
+			return world[ia].origin[axis] < world[ib].origin[axis];
 		});
 
 	// recurse
@@ -629,7 +717,6 @@ void Visibility::refitBVH(
 	n.box = b;
 }
 
-
 // Note: With the addition of shadows, the 8 points on the frustum over-complicated the design
 // due to overdraw occuring with the extension of the frustum planes facing light.
 
@@ -661,7 +748,7 @@ bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru, bool useCorne
 		if (dist + r < 0.0f) return false;
 	}
 
-    //if (useCorners) {
+	//if (useCorners) {
 	   // int out;
 
 	   // // check +x
@@ -699,7 +786,7 @@ bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru, bool useCorne
 	   // for (int i = 0; i < 8; ++i)
 		  //  out += (fru.corners[i].z < box.vmin.z) ? 1 : 0;
 	   // if (out == 8) return false;
-    //}
+	//}
 
 	return true;
 }

@@ -2,10 +2,8 @@
 
 #extension GL_ARB_separate_shader_objects : require
 #extension GL_GOOGLE_include_directive : require
-#extension GL_EXT_nonuniform_qualifier : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
+#include "../include/common.glsl"
 
 // smaa implementation mine is based off
 // https://github.com/dmnsgn/glsl-smaa/tree/main?tab=readme-ov-file
@@ -25,14 +23,8 @@ const vec2 SMAA_SEARCHTEX_SIZE = vec2(66.0, 33.0);
 const vec2 SMAA_SEARCHTEX_PACKED_SIZE = vec2(64.0, 16.0);
 const float SMAA_CORNER_ROUNDING_NORM = (float(SMAA_CORNER_ROUNDING) / 100.0);
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inSmaaEdges;
-layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2D outWeights;
-
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER) uniform sampler2D combinedSamplers[];
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-	SceneData scene;
-};
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inSmaaEdges;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outWeights;
 
 layout(push_constant) uniform TextureAccess {
 	uint searchTexID;
@@ -285,6 +277,8 @@ void SMAADetectVerticalCornerPattern(sampler2D edgesTex, inout vec2 weights, vec
 
 void main() {
 	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+
+	SceneData scene = getSceneData();
 	ivec2 viewportSize = ivec2(scene.viewportSize.xy);
 	if (pix.x >= viewportSize.x || pix.y >= viewportSize.y) return;
 
@@ -308,13 +302,13 @@ void main() {
 	vec2 edges = texture(inSmaaEdges, uv).rg;
 
 	if (edges.g > 0.0) { // Edge at north
-		weights.rg = SMAACalculateDiagWeights(inSmaaEdges, combinedSamplers[nonuniformEXT(pc.areaTexID)], uv, edges, texelSize, subsampleIndices);
+		weights.rg = SMAACalculateDiagWeights(inSmaaEdges, TEX2D(pc.areaTexID), uv, edges, texelSize, subsampleIndices);
 		if (weights.r == -weights.g) {
 			vec2 d;
 
 			// Find the distance to the left:
 			vec3 coords;
-			coords.x = SMAASearchXLeft(inSmaaEdges, combinedSamplers[nonuniformEXT(pc.searchTexID)], offset0.xy, offset2.x, texelSize);
+			coords.x = SMAASearchXLeft(inSmaaEdges, TEX2D(pc.searchTexID), offset0.xy, offset2.x, texelSize);
 			coords.y = offset1.y;
 			d.x = coords.x;
 
@@ -322,7 +316,7 @@ void main() {
 			float e1 = texture(inSmaaEdges, coords.xy).r;
 
 			// Find the distance to the right:
-			coords.z = SMAASearchXRight(inSmaaEdges, combinedSamplers[nonuniformEXT(pc.searchTexID)], offset0.zw, offset2.y, texelSize);
+			coords.z = SMAASearchXRight(inSmaaEdges, TEX2D(pc.searchTexID), offset0.zw, offset2.y, texelSize);
 			d.y = coords.z;
 
 			// We want the distances to be in pixel units (doing this here allow to
@@ -338,7 +332,7 @@ void main() {
 
 			// Ok, we know how this pattern looks like, now it is time for getting
 			// the actual area:
-			weights.rg = SMAAArea(combinedSamplers[nonuniformEXT(pc.areaTexID)], sqrt_d, e1, e2, subsampleIndices.y);
+			weights.rg = SMAAArea(TEX2D(pc.areaTexID), sqrt_d, e1, e2, subsampleIndices.y);
 
 			// Fix corners:
 			coords.y = uv.y;
@@ -351,7 +345,7 @@ void main() {
 
 		// Find the distance to the top:
 		vec3 coords;
-		coords.y = SMAASearchYUp(inSmaaEdges, combinedSamplers[nonuniformEXT(pc.searchTexID)], offset1.xy, offset2.z, texelSize);
+		coords.y = SMAASearchYUp(inSmaaEdges, TEX2D(pc.searchTexID), offset1.xy, offset2.z, texelSize);
 		coords.x = offset0.x;
 		d.x = coords.y;
 
@@ -359,7 +353,7 @@ void main() {
 		float e1 = texture(inSmaaEdges, coords.xy).g;
 
 		// Find the distance to the bottom:
-		coords.z = SMAASearchYDown(inSmaaEdges, combinedSamplers[nonuniformEXT(pc.searchTexID)], offset1.zw, offset2.w, texelSize);
+		coords.z = SMAASearchYDown(inSmaaEdges, TEX2D(pc.searchTexID), offset1.zw, offset2.w, texelSize);
 		d.y = coords.z;
 
 		// We want the distances to be in pixel units:
@@ -373,7 +367,7 @@ void main() {
 		float e2 = SMAASampleLevelZeroOffset(inSmaaEdges, coords.xz, vec2(0, 1), texelSize).g;
 
 		// Get the area for this direction:
-		weights.ba = SMAAArea(combinedSamplers[nonuniformEXT(pc.areaTexID)], sqrt_d, e1, e2, subsampleIndices.x);
+		weights.ba = SMAAArea(TEX2D(pc.areaTexID), sqrt_d, e1, e2, subsampleIndices.x);
 
 		// Fix corners:
 		coords.x = uv.x;

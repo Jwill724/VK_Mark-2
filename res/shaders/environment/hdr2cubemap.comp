@@ -3,14 +3,12 @@
 #extension GL_ARB_separate_shader_objects : require
 #extension GL_GOOGLE_include_directive : require
 
-#include "../include/set_bindings.glsl"
+#include "../include/common.glsl"
 
 layout (local_size_x = 16, local_size_y = 16) in;
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D equirectImage;
-layout(set = PUSH_SET, binding = PUSH_BINDING_OUTPUT_1_TEX) writeonly uniform image2DArray skyboxStorage;
-
-const float PI = 3.14159265359;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D equirectImage;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2DArray skyboxStorage;
 
 layout(push_constant) uniform EnvData {
 	float sampleCountF;
@@ -48,8 +46,9 @@ void main() {
 
 	vec4 color = texture(equirectImage, sphericalUV);
 
+	// Prevents overly bright spots, not physically accurate
 	float maxL = max(max(color.r, color.g), color.b);
-	if (maxL > 50.0) color *= 50.0 / maxL;
+	if (maxL > 1000.0) color *= 1000.0 / maxL;
 
 	imageStore(skyboxStorage, storePos, color);
 }

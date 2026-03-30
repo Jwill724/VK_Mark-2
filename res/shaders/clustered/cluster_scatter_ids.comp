@@ -3,29 +3,18 @@
 #extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
-#include "../include/depth.glsl"
 #include "../include/clustered.glsl"
+#include "../include/common.glsl"
 
 layout(local_size_x = 256) in;
 
-layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
-	ClusteredData clusteredData;
-};
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-	SceneData scene;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
-
 void main()
 {
-	uint visibleCount = VisibleLightCount(frameAddressTable.addrs[ABT_VisibleLightCount]).count;
+	uint visibleCount = getVisibleLightCountBuffer().count;
 	bool useClusterMajor = (visibleCount <= LIGHT_THRESHOLD);
+
+	ClusteredData clustered = getClusteredData();
+	SceneData scene = getSceneData();
 
 	uint globalIndex = gl_GlobalInvocationID.x;
 
@@ -35,17 +24,13 @@ void main()
 		uint clusterCount = clusteredData.clusterCount;
 		if (clusterIndex >= clusterCount) return;
 
-		ClusterTileSliceRanges tsrBuf =
-			ClusterTileSliceRanges(frameAddressTable.addrs[ABT_ClusterTileSliceRanges]);
+		ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
 
-		ClusterCounts countsBuf =
-			ClusterCounts(frameAddressTable.addrs[ABT_ClusterCounts]);
+		ClusterCounts countsBuf = getClusterCountsBuffer();
 
-		VisibleLightIDs visibleIDsBuf =
-			VisibleLightIDs(frameAddressTable.addrs[ABT_VisibleLightIDs]);
+		VisibleLightIDs visibleIDsBuf = getVisibleLightIDsBuffer();
 
-		LightBuffer lightBuf =
-			LightBuffer(frameAddressTable.addrs[ABT_Lights]);
+		LightBuffer lightBuf = getLightBuffer();
 
 		uint tileCountX = clusteredData.tileCountX;
 		uint tileCountY = clusteredData.tileCountY;
@@ -64,14 +49,11 @@ void main()
 			return;
 		}
 
-		ClusterLightIDs lightIDsBuf =
-			ClusterLightIDs(frameAddressTable.addrs[ABT_ClusterLightIDs]);
+		ClusterLightIDs lightIDsBuf = getClusterLightIDsBuffer();
 
-		ClusterOffsets offsetsBuf =
-			ClusterOffsets(frameAddressTable.addrs[ABT_ClusterOffsets]);
+		ClusterOffsets offsetsBuf = getClusterOffsetsBuffer();
 
-		ClusterCursors cursorsBuf =
-			ClusterCursors(frameAddressTable.addrs[ABT_ClusterCursors]);
+		ClusterCursors cursorsBuf = getClusterCursorsBuffer();
 
 		uint baseOffset = offsetsBuf.offsets[clusterIndex];
 		uint localCount = 0u;
@@ -116,19 +98,17 @@ void main()
 		uint visibleIndex = globalIndex;
 		if (visibleIndex >= visibleCount) return;
 
-		VisibleLightIDs visibleIDsBuf =
-			VisibleLightIDs(frameAddressTable.addrs[ABT_VisibleLightIDs]);
+		VisibleLightIDs visibleIDsBuf = getVisibleLightIDsBuffer();
 
 		uint globalLightID = visibleIDsBuf.ids[visibleIndex];
 
-		LightBuffer lightBuf =
-			LightBuffer(frameAddressTable.addrs[ABT_Lights]);
+		LightBuffer lightBuf = getLightBuffer();
 
 		LocalLight light = lightBuf.lights[globalLightID];
 
-	    if (((light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u) &&
-		    !((light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u) &&
-		    !((light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u)) return;
+		if (((light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u) &&
+			!((light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u) &&
+			!((light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u)) return;
 
 		LightClusterBounds lightBounds = computeLightClusterBounds(
 			scene.view,
@@ -145,17 +125,13 @@ void main()
 			scene.cameraClips.y
 		);
 
-		ClusterTileSliceRanges tsrBuf =
-			ClusterTileSliceRanges(frameAddressTable.addrs[ABT_ClusterTileSliceRanges]);
+		ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
 
-		ClusterOffsets offsetsBuf =
-			ClusterOffsets(frameAddressTable.addrs[ABT_ClusterOffsets]);
+		ClusterOffsets offsetsBuf = getClusterOffsetsBuffer();
 
-		ClusterCursors cursorsBuf =
-			ClusterCursors(frameAddressTable.addrs[ABT_ClusterCursors]);
+		ClusterCursors cursorsBuf = getClusterCursorsBuffer();
 
-		ClusterLightIDs lightIDsBuf =
-			ClusterLightIDs(frameAddressTable.addrs[ABT_ClusterLightIDs]);
+		ClusterLightIDs lightIDsBuf = getClusterLightIDsBuffer();
 
 		uint tileCount = clusteredData.tileCountX * clusteredData.tileCountY;
 

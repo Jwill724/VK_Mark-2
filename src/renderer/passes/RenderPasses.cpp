@@ -36,7 +36,7 @@ void RenderPasses::shadowCSMPass(
 		scope.passID
 	);
 
-	auto& shadowImg = ResourceManager::getDirectionalCSMAtlas();
+	auto& shadowImg = ResourceManager::getDirectionalCSMAtlas_Target();
 
 	const VkExtent2D atlasExtent = { shadowImg.extent.width, shadowImg.extent.height };
 
@@ -115,7 +115,7 @@ void RenderPasses::shadowFlashLightPass(
 		scope.passID
 	);
 
-	auto& flashlightShadow = ResourceManager::getFlashLightShadowMap();
+	auto& flashlightShadow = ResourceManager::getFlashLightShadowMap_Target();
 
 	const VkExtent2D extent = { flashlightShadow.extent.width, flashlightShadow.extent.height };
 
@@ -178,11 +178,11 @@ void RenderPasses::BasePrepass(
 		scope.passID
 	);
 
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	auto& prevDepthResolved = ResourceManager::getPrevDepthResolvedImage();
-	auto& normals = ResourceManager::getViewSpaceNormals();
-	auto& velocity = ResourceManager::getVelocityImage();
-	auto& prevVelocity = ResourceManager::getPrevVelocityImage();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& prevDepthResolved = ResourceManager::getPrevDepthResolved_Target();
+	auto& normals = ResourceManager::getViewSpaceNormals_Target();
+	auto& velocity = ResourceManager::getVelocity_Target();
+	auto& prevVelocity = ResourceManager::getPrevVelocity_Target();
 
 	if (isTemporalValid) {
 		ImageUtils::imageCopy(
@@ -286,11 +286,11 @@ void RenderPasses::hiZGenerationPass(
 		scope.passID
 	);
 
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	auto& dummyUint8 = ResourceManager::getDummyUint8();
-	auto nearestClampSampler = ResourceManager::getNearestClampSampler();
-	auto& hiZ = ResourceManager::getHiZ();
-	auto hiZSampler = ResourceManager::getHiZSampler();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& dummyUint8 = ResourceManager::getDummyUint8_Texture();
+	auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
+	auto& hiZ = ResourceManager::getHiZ_Target();
+	auto hiZSampler = ResourceManager::getHiZ_Sampler();
 
 	// Transition all mips to GENERAL for compute writes
 	ImageUtils::transitionImage(
@@ -303,7 +303,7 @@ void RenderPasses::hiZGenerationPass(
 	);
 
 	// First ever transition
-	if (dummyUint8.previousLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
+	if (dummyUint8.currentLayout == VK_IMAGE_LAYOUT_UNDEFINED) {
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
 			dummyUint8,
@@ -325,32 +325,32 @@ void RenderPasses::hiZGenerationPass(
 	VkExtent3D dstExtent = hiZ.extent; // updated after each iteration
 
 	for (uint32_t mip = 0; mip < hiZ.mipLevelCount; ++mip) {
-
-		// Write to this mip
-		VkImageView dstView = hiZ.storageViews[mip];
-
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			depthResolved.imageView,
-			nearestClampSampler,
-			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL);
+			PUSH_BINDING_READ_1,
+			depthResolved,
+			nearestClampSampler);
 
 		if (mip > 0) {
 			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				hiZ.storageViews[static_cast<size_t>(mip - 1u)],
-				hiZSampler);
+				PUSH_BINDING_READ_2,
+				hiZ,
+				hiZSampler,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				(mip - 1u));
 		}
 		else {
 			// Empty image for first copy stage at mip 0
 			frameCtx.descriptorWriter.writePushImage(
-				PUSH_BINDING_INPUT_2_TEX,
-				dummyUint8.imageView,
+				PUSH_BINDING_READ_2,
+				dummyUint8,
 				hiZSampler);
 		}
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_OUTPUT_1_TEX,
-			dstView);
+			PUSH_BINDING_WRITE_1,
+			hiZ,
+			VK_NULL_HANDLE,
+			VK_IMAGE_LAYOUT_GENERAL,
+			mip);
 
 		push.mipLevel = mip;
 		push.invSize = {
@@ -394,17 +394,17 @@ void RenderPasses::GTAOPass(
 		frameCtx.cmdBuffer,
 		scope.passID
 	);
-	auto& depthPyramid = ResourceManager::getHiZ();
-	auto& normal = ResourceManager::getViewSpaceNormals();
-	auto& rawAO = ResourceManager::getAORawImage();
-	auto& aoTemp = ResourceManager::getAOTempImage();
-	auto& edgeInfo = ResourceManager::getEdgeInfoImage();
-	auto& bentNormals = ResourceManager::getBentNormals();
+	auto& depthPyramid = ResourceManager::getHiZ_Target();
+	auto& normal = ResourceManager::getViewSpaceNormals_Target();
+	auto& rawAO = ResourceManager::getAORaw_Target();
+	auto& aoTemp = ResourceManager::getAOTemp_Target();
+	auto& edgeInfo = ResourceManager::getAOEdgeInfo_Target();
+	auto& bentNormals = ResourceManager::getBentNormals_Target();
 
-	auto nearestClampSampler = ResourceManager::getNearestClampSampler();
-	auto depthPyramidSampler = ResourceManager::getHiZSampler();
-	auto aoSampler = ResourceManager::getLinearLODClampSampler();
-	auto nearSampler = ResourceManager::getDefaultSamplerNearest();
+	auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
+	auto depthPyramidSampler = ResourceManager::getHiZ_Sampler();
+	auto aoSampler = ResourceManager::getLinearLODClamp_Sampler();
+	auto nearSampler = ResourceManager::getDefaultNearest_Sampler();
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -426,28 +426,28 @@ void RenderPasses::GTAOPass(
 	// Inputs
 	// Depth pyramid
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		depthPyramid.imageView,
+		PUSH_BINDING_READ_1,
+		depthPyramid,
 		depthPyramidSampler);
 	// Normals
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		normal.imageView,
+		PUSH_BINDING_READ_2,
+		normal,
 		nearestClampSampler);
 
 	// Outputs
 	// raw ao
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		rawAO.imageView);
+		PUSH_BINDING_WRITE_1,
+		rawAO);
 	// edge info
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_2_TEX,
-		edgeInfo.imageView);
+		PUSH_BINDING_WRITE_2,
+		edgeInfo);
 	// bent normals
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_3_TEX,
-		bentNormals.imageView);
+		PUSH_BINDING_WRITE_3,
+		bentNormals);
 
 
 	dispatchComputePass(
@@ -483,22 +483,22 @@ void RenderPasses::GTAOPass(
 	// Inputs
 	// ao
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		rawAO.imageView,
+		PUSH_BINDING_READ_1,
+		rawAO,
 		aoSampler
 	);
 	// edge info
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		edgeInfo.imageView,
+		PUSH_BINDING_READ_2,
+		edgeInfo,
 		nearSampler
 	);
 
 	// Output
 	// Filtered horizontal
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		aoTemp.imageView
+		PUSH_BINDING_WRITE_1,
+		aoTemp
 	);
 
 	scope.editPush<GTAOPush>(
@@ -530,22 +530,22 @@ void RenderPasses::GTAOPass(
 	// Inputs
 	// Filtered Horionzal ao
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		aoTemp.imageView,
+		PUSH_BINDING_READ_1,
+		aoTemp,
 		aoSampler
 	);
 	// edge info
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		edgeInfo.imageView,
+		PUSH_BINDING_READ_2,
+		edgeInfo,
 		nearSampler
 	);
 
 	// Output
 	// final filtered ao
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		rawAO.imageView
+		PUSH_BINDING_WRITE_1,
+		rawAO
 	);
 
 	scope.editPush<GTAOPush>(
@@ -577,10 +577,10 @@ void RenderPasses::screenSpaceContactShadowsPass(
 		scope.passID
 	);
 
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
 
-	auto& finalShadowMask = ResourceManager::getScreenSpaceShadowMask();
-	const auto pointSampler = ResourceManager::getPointBorderSampler();
+	auto& finalShadowMask = ResourceManager::getScreenSpaceShadowMask_Target();
+	const auto pointSampler = ResourceManager::getPointBorder_Sampler();
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -610,14 +610,13 @@ void RenderPasses::screenSpaceContactShadowsPass(
 			});
 
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			depthResolved.imageView,
-			pointSampler,
-			VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+			PUSH_BINDING_READ_1,
+			depthResolved,
+			pointSampler
 		);
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_OUTPUT_1_TEX,
-			finalShadowMask.imageView
+			PUSH_BINDING_WRITE_1,
+			finalShadowMask
 		);
 
 		scope.groupCountX = disp.waveCount[0];
@@ -649,12 +648,12 @@ void RenderPasses::volumetricLightingPass(
 		frameCtx.cmdBuffer,
 		scope.passID
 	);
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	auto& volumetricLight = ResourceManager::getVolumetricLightImage();
-	auto& volumetricBlur = ResourceManager::getVolumetricBlurImage();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& volumetricLight = ResourceManager::getVolumetricLight_Target();
+	auto& volumetricBlur = ResourceManager::getVolumetricBlur_Target();
 
-	const auto nearestClampSampler = ResourceManager::getNearestClampSampler();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
 
 	// === VOLUMETRIC LIGHT RAY MARCH ===
 
@@ -665,15 +664,14 @@ void RenderPasses::volumetricLightingPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		depthResolved.imageView,
-		nearestClampSampler,
-		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+		PUSH_BINDING_READ_1,
+		depthResolved,
+		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		volumetricLight.imageView
+		PUSH_BINDING_WRITE_1,
+		volumetricLight
 	);
 
 	dispatchComputePass(
@@ -697,21 +695,20 @@ void RenderPasses::volumetricLightingPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		depthResolved.imageView,
-		nearestClampSampler,
-		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+		PUSH_BINDING_READ_1,
+		depthResolved,
+		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		volumetricLight.imageView,
+		PUSH_BINDING_READ_2,
+		volumetricLight,
 		linearClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		volumetricBlur.imageView
+		PUSH_BINDING_WRITE_1,
+		volumetricBlur
 	);
 
 	scope.editPush<VolumetricPush>(
@@ -742,21 +739,20 @@ void RenderPasses::volumetricLightingPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		depthResolved.imageView,
-		nearestClampSampler,
-		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+		PUSH_BINDING_READ_1,
+		depthResolved,
+		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		volumetricBlur.imageView,
+		PUSH_BINDING_READ_2,
+		volumetricBlur,
 		linearClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		volumetricLight.imageView
+		PUSH_BINDING_WRITE_1,
+		volumetricLight
 	);
 
 	scope.editPush<VolumetricPush>(
@@ -795,31 +791,31 @@ void RenderPasses::exposurePass(
 
 	AllocatedImage opaque{};
 	if (profiler.debugToggles.aaMode == AA_TAA && isTemporalValid && hasVisibles) {
-		opaque = ResourceManager::getColorHistoryWrite();
+		opaque = ResourceManager::getColorHistoryWrite_Target();
 	}
 	else {
-		opaque = ResourceManager::getOpaqueImage();
+		opaque = ResourceManager::getOpaque_Target();
 	}
 
-	auto& transparent = ResourceManager::getTransparentImage();
-	auto& dummy = ResourceManager::getDummyImage();
-	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
+	auto& transparent = ResourceManager::getTransparentResolved_Target();
+	auto& dummy = ResourceManager::getDummy_Texture();
+	const auto linearSampler = ResourceManager::getDefaultLinear_Sampler();
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		opaque.imageView,
+		PUSH_BINDING_READ_1,
+		opaque,
 		linearSampler);
 
 	if (transparentVisible) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			transparent.imageView,
+			PUSH_BINDING_READ_2,
+			transparent,
 			linearSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_2,
+			dummy,
 			linearSampler);
 	}
 
@@ -843,13 +839,13 @@ void RenderPasses::exposurePass(
 	struct alignas(16) ExposurePush {
 		uint32_t totalTiles;
 		float cameraExposure;
-		float deltaTime;
 		float adaptationSpeed;
+		float deltaTime;
 	} expPush{};
 	expPush.totalTiles = totalTiles;
 	expPush.cameraExposure = profiler.toneMappingSettings.cameraExposure;
 	//expPush.adaptationSpeed = 0.5f;
-	//expPush.deltaTime = Engine::getProfiler().getStats().deltaSecondsRaw;
+	//expPush.deltaTime = profiler().getStats().deltaSecondsRaw;
 	scope.setPush(expPush);
 
 	dispatchComputePass(
@@ -877,22 +873,22 @@ void RenderPasses::finalCompositePass(
 
 	AllocatedImage opaque{};
 	if (profiler.debugToggles.aaMode == AA_TAA && isTemporalValid && hasVisibles) {
-		opaque = ResourceManager::getColorHistoryWrite();
+		opaque = ResourceManager::getColorHistoryWrite_Target();
 	}
 	else {
-		opaque = ResourceManager::getOpaqueImage();
+		opaque = ResourceManager::getOpaque_Target();
 	}
 
-	auto& transparent = ResourceManager::getTransparentImage();
-	auto& dummy = ResourceManager::getDummyImage();
-	auto& toneMap = ResourceManager::getToneMapImage();
+	auto& transparent = ResourceManager::getTransparentResolved_Target();
+	auto& dummy = ResourceManager::getDummy_Texture();
+	auto& toneMap = ResourceManager::getToneMap_Target();
 
-	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
-	auto& volLight = ResourceManager::getVolumetricLightImage();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
-	auto& lensFlareColor = ResourceManager::getLensFlareColorImage();
+	const auto linearSampler = ResourceManager::getDefaultLinear_Sampler();
+	auto& volLight = ResourceManager::getVolumetricLight_Target();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
+	auto& lensFlareColor = ResourceManager::getLensFlareColor_Target();
 
-	auto& cmaa2 = ResourceManager::getAAColor();
+	auto& cmaa2 = ResourceManager::getAAColor_Target();
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -900,8 +896,8 @@ void RenderPasses::finalCompositePass(
 		VK_IMAGE_LAYOUT_GENERAL);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		toneMap.imageView);
+		PUSH_BINDING_WRITE_1,
+		toneMap);
 
 	if (profiler.debugToggles.aaMode == AA_CMAA2) {
 		ImageUtils::transitionImage(
@@ -910,57 +906,57 @@ void RenderPasses::finalCompositePass(
 			VK_IMAGE_LAYOUT_GENERAL);
 
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_OUTPUT_2_TEX,
-			cmaa2.imageView);
+			PUSH_BINDING_WRITE_2,
+			cmaa2);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_OUTPUT_2_TEX,
-			toneMap.imageView);
+			PUSH_BINDING_WRITE_2,
+			toneMap);
 	}
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		opaque.imageView,
+		PUSH_BINDING_READ_1,
+		opaque,
 		linearSampler);
 
 
 	if (transparentVisible) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			transparent.imageView,
+			PUSH_BINDING_READ_2,
+			transparent,
 			linearSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_2,
+			dummy,
 			linearSampler);
 	}
 
 	if (hasVisibles && profiler.debugToggles.enableVolumetrics && profiler.debugToggles.enableShadows) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			volLight.imageView,
+			PUSH_BINDING_READ_3,
+			volLight,
 			linearClampSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_3,
+			dummy,
 			linearClampSampler);
 	}
 
 	if (hasVisibles && profiler.debugToggles.enableLensFlare) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_4_TEX,
-			lensFlareColor.imageView,
+			PUSH_BINDING_READ_4,
+			lensFlareColor,
 			linearClampSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_4_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_4,
+			dummy,
 			linearClampSampler);
 	}
 
@@ -988,10 +984,10 @@ void RenderPasses::chromaticAberrationPass(
 		scope.passID
 	);
 
-	auto& aaColor = ResourceManager::getAAColor();
-	auto& tonemap = ResourceManager::getToneMapImage();
-	auto& finalComposite = ResourceManager::getPostNonAAComposite();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
+	auto& aaColor = ResourceManager::getAAColor_Target();
+	auto& tonemap = ResourceManager::getToneMap_Target();
+	auto& finalComposite = ResourceManager::getPostNonAAComposite_Target();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
 
 	if (hasVisibles && (profiler.debugToggles.aaMode != AA_OFF && profiler.debugToggles.aaMode != AA_TAA)) {
 		ImageUtils::transitionImage(
@@ -1001,15 +997,15 @@ void RenderPasses::chromaticAberrationPass(
 		);
 
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			aaColor.imageView,
+			PUSH_BINDING_READ_1,
+			aaColor,
 			linearClampSampler
 		);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_1_TEX,
-			tonemap.imageView,
+			PUSH_BINDING_READ_1,
+			tonemap,
 			linearClampSampler
 		);
 	}
@@ -1021,8 +1017,8 @@ void RenderPasses::chromaticAberrationPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		finalComposite.imageView
+		PUSH_BINDING_WRITE_1,
+		finalComposite
 	);
 
 	dispatchComputePass(
@@ -1048,20 +1044,20 @@ void RenderPasses::lensFlarePass(
 	);
 	AllocatedImage opaque{};
 	if (profiler.debugToggles.aaMode == AA_TAA && isTemporalValid && hasVisibles) {
-		opaque = ResourceManager::getColorHistoryWrite();
+		opaque = ResourceManager::getColorHistoryWrite_Target();
 	}
 	else {
-		opaque = ResourceManager::getOpaqueImage();
+		opaque = ResourceManager::getOpaque_Target();
 	}
-	auto& transparent = ResourceManager::getTransparentImage();
-	auto& dummy = ResourceManager::getDummyImage();
-	auto& flareBright = ResourceManager::getFlareBrightImage();
-	auto& lensFlareColor = ResourceManager::getLensFlareColorImage();
-	const auto linearSampler = ResourceManager::getDefaultSamplerLinear();
-	auto& volLight = ResourceManager::getVolumetricLightImage();
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
-	auto& hiZ = ResourceManager::getHiZ();
-	const auto hiZSampler = ResourceManager::getHiZSampler();
+	auto& transparent = ResourceManager::getTransparentResolved_Target();
+	auto& dummy = ResourceManager::getDummy_Texture();
+	auto& flareBright = ResourceManager::getFlareBright_Target();
+	auto& lensFlareColor = ResourceManager::getLensFlareColor_Target();
+	const auto linearSampler = ResourceManager::getDefaultLinear_Sampler();
+	auto& volLight = ResourceManager::getVolumetricLight_Target();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
+	auto& hiZ = ResourceManager::getHiZ_Target();
+	const auto hiZSampler = ResourceManager::getHiZ_Sampler();
 
 	// Get both lens flare outputs ready
 	ImageUtils::transitionImage(
@@ -1076,37 +1072,37 @@ void RenderPasses::lensFlarePass(
 
 	// === FLARE BRIGHT STAGE ===
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		flareBright.imageView);
+		PUSH_BINDING_WRITE_1,
+		flareBright);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		opaque.imageView,
+		PUSH_BINDING_READ_1,
+		opaque,
 		linearSampler);
 
 	if (transparentVisible) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			transparent.imageView,
+			PUSH_BINDING_READ_2,
+			transparent,
 			linearSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_2_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_2,
+			dummy,
 			linearSampler);
 	}
 
 	if (hasVisibles && profiler.debugToggles.enableVolumetrics && profiler.debugToggles.enableShadows) {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			volLight.imageView,
+			PUSH_BINDING_READ_3,
+			volLight,
 			linearClampSampler);
 	}
 	else {
 		frameCtx.descriptorWriter.writePushImage(
-			PUSH_BINDING_INPUT_3_TEX,
-			dummy.imageView,
+			PUSH_BINDING_READ_3,
+			dummy,
 			linearClampSampler);
 	}
 
@@ -1124,17 +1120,17 @@ void RenderPasses::lensFlarePass(
 
 	// === LENS FLARE COLOR STAGE ===
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		lensFlareColor.imageView);
+		PUSH_BINDING_WRITE_1,
+		lensFlareColor);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		hiZ.imageView,
+		PUSH_BINDING_READ_1,
+		hiZ,
 		hiZSampler);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		flareBright.imageView,
+		PUSH_BINDING_READ_2,
+		flareBright,
 		linearClampSampler);
 
 	dispatchComputePass(
@@ -1207,13 +1203,13 @@ void RenderPasses::clusteredPass(
 	BarrierUtils::bufferFillToComputeRW(frameCtx.cmdBuffer, frameCtx.clusterScanScratch_GPU);
 	BarrierUtils::bufferFillToComputeRW(frameCtx.cmdBuffer, frameCtx.dispatchIndirectArgs_GPU);
 
-	const auto& hiZ = ResourceManager::getHiZ();
-	const auto hiZSampler = ResourceManager::getHiZSampler();
+	auto& hiZ = ResourceManager::getHiZ_Target();
+	const auto hiZSampler = ResourceManager::getHiZ_Sampler();
 
 	// === Tile slice ranges ===
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		hiZ.imageView,
+		PUSH_BINDING_READ_1,
+		hiZ,
 		hiZSampler);
 
 	dispatchComputePass(
@@ -1318,13 +1314,13 @@ void RenderPasses::SMAAPass(
 		frameCtx.cmdBuffer,
 		scope.passID
 	);
-	auto& tonemap = ResourceManager::getToneMapImage();
-	auto& smaaColor = ResourceManager::getAAColor();
-	auto& smaaEdges = ResourceManager::getSMAAEdges();
-	auto& smaaWeights = ResourceManager::getSMAAWeights();
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	const auto linearSampler = ResourceManager::getLinearLODClampSampler();
-	const auto nearestClampSampler = ResourceManager::getNearestClampSampler();
+	auto& tonemap = ResourceManager::getToneMap_Target();
+	auto& smaaColor = ResourceManager::getAAColor_Target();
+	auto& smaaEdges = ResourceManager::getSMAAEdges_Target();
+	auto& smaaWeights = ResourceManager::getSMAAWeights_Target();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	const auto linearSampler = ResourceManager::getLinearLODClamp_Sampler();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
 
 	// Push constant only required for weight blending
 	scope.skipPushConstant = true;
@@ -1348,19 +1344,19 @@ void RenderPasses::SMAAPass(
 
 	// SMAA STAGE 1 EDGE CALCULATION
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		tonemap.imageView,
+		PUSH_BINDING_READ_1,
+		tonemap,
 		linearSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		depthResolved.imageView,
+		PUSH_BINDING_READ_2,
+		depthResolved,
 		nearestClampSampler,
 		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		smaaEdges.imageView
+		PUSH_BINDING_WRITE_1,
+		smaaEdges
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1378,13 +1374,13 @@ void RenderPasses::SMAAPass(
 
 	// SMAA STAGE 2 WEIGHT BLENDING
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		smaaEdges.imageView,
+		PUSH_BINDING_READ_1,
+		smaaEdges,
 		linearSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		smaaWeights.imageView
+		PUSH_BINDING_WRITE_1,
+		smaaWeights
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1402,18 +1398,18 @@ void RenderPasses::SMAAPass(
 
 	// SMAA STAGE 3 NEIGHBOURHOOD BLENDING
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		tonemap.imageView,
+		PUSH_BINDING_READ_1,
+		tonemap,
 		linearSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		smaaWeights.imageView,
+		PUSH_BINDING_READ_2,
+		smaaWeights,
 		nearestClampSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		smaaColor.imageView
+		PUSH_BINDING_WRITE_1,
+		smaaColor
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1433,10 +1429,10 @@ void RenderPasses::CMAA2Pass(
 		scope.passID
 	);
 
-	auto& cmaa2Color = ResourceManager::getAAColor();
-	auto& cmaa2WorkingEdges = ResourceManager::getCMAA2WorkingEdges();
-	auto& tonemap = ResourceManager::getToneMapImage();
-	const auto nearestClampSampler = ResourceManager::getNearestClampSampler();
+	auto& cmaa2Color = ResourceManager::getAAColor_Target();
+	auto& cmaa2WorkingEdges = ResourceManager::getCMAA2WorkingEdges_Target();
+	auto& tonemap = ResourceManager::getToneMap_Target();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
 	VkDeviceSize processOffsetBytes = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES * DISPATCH_SLOT_STRIDE_BYTES;
 	VkDeviceSize deferredOffsetBytes = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED * DISPATCH_SLOT_STRIDE_BYTES;
 
@@ -1469,13 +1465,13 @@ void RenderPasses::CMAA2Pass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		tonemap.imageView,
+		PUSH_BINDING_READ_1,
+		tonemap,
 		nearestClampSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		cmaa2WorkingEdges.imageView
+		PUSH_BINDING_WRITE_1,
+		cmaa2WorkingEdges
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1520,13 +1516,13 @@ void RenderPasses::CMAA2Pass(
 	scope.setPush(frameCtx.cmaa2Push);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		tonemap.imageView,
+		PUSH_BINDING_READ_1,
+		tonemap,
 		nearestClampSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		cmaa2WorkingEdges.imageView,
+		PUSH_BINDING_READ_2,
+		cmaa2WorkingEdges,
 		nearestClampSampler
 	);
 
@@ -1560,19 +1556,19 @@ void RenderPasses::CMAA2Pass(
 	scope.setIndirect(frameCtx.dispatchIndirectArgs_GPU.buffer, deferredOffsetBytes);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		tonemap.imageView,
+		PUSH_BINDING_READ_1,
+		tonemap,
 		nearestClampSampler
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		cmaa2WorkingEdges.imageView,
+		PUSH_BINDING_READ_2,
+		cmaa2WorkingEdges,
 		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		cmaa2Color.imageView
+		PUSH_BINDING_WRITE_1,
+		cmaa2Color
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1592,16 +1588,16 @@ void RenderPasses::TAAPass(
 		scope.passID
 	);
 
-	auto& opaqueColor = ResourceManager::getOpaqueImage();
-	auto& colorHistoryRead = ResourceManager::getColorHistoryRead();
-	auto& colorHistoryWrite = ResourceManager::getColorHistoryWrite();
-	auto& depthResolved = ResourceManager::getDepthResolvedImage();
-	auto& prevDepthResolved = ResourceManager::getPrevDepthResolvedImage();
-	auto& velocity = ResourceManager::getVelocityImage();
-	auto& prevVelocity = ResourceManager::getPrevVelocityImage();
+	auto& opaqueColor = ResourceManager::getOpaque_Target();
+	auto& colorHistoryRead = ResourceManager::getColorHistoryRead_Target();
+	auto& colorHistoryWrite = ResourceManager::getColorHistoryWrite_Target();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& prevDepthResolved = ResourceManager::getPrevDepthResolved_Target();
+	auto& velocity = ResourceManager::getVelocity_Target();
+	auto& prevVelocity = ResourceManager::getPrevVelocity_Target();
 
-	const auto nearestClampSampler = ResourceManager::getNearestClampSampler();
-	const auto taaSampler = ResourceManager::getTaaHistorySampler();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
+	const auto taaSampler = ResourceManager::getTaaHistory_Sampler();
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -1616,45 +1612,45 @@ void RenderPasses::TAAPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		opaqueColor.imageView,
+		PUSH_BINDING_READ_1,
+		opaqueColor,
 		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_2_TEX,
-		colorHistoryRead.imageView,
+		PUSH_BINDING_READ_2,
+		colorHistoryRead,
 		taaSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_3_TEX,
-		velocity.imageView,
+		PUSH_BINDING_READ_3,
+		velocity,
 		nearestClampSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_4_TEX,
-		prevVelocity.imageView,
+		PUSH_BINDING_READ_4,
+		prevVelocity,
 		taaSampler
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_5_TEX,
-		depthResolved.imageView,
+		PUSH_BINDING_READ_5,
+		depthResolved,
 		nearestClampSampler,
 		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 	);
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_6_TEX,
-		prevDepthResolved.imageView,
+		PUSH_BINDING_READ_6,
+		prevDepthResolved,
 		nearestClampSampler,
 		VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		colorHistoryWrite.imageView
+		PUSH_BINDING_WRITE_1,
+		colorHistoryWrite
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1682,7 +1678,7 @@ void RenderPasses::FXAAPass(
 		scope.passID
 	);
 
-	auto& fxaaColor = ResourceManager::getAAColor();
+	auto& fxaaColor = ResourceManager::getAAColor_Target();
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -1691,14 +1687,14 @@ void RenderPasses::FXAAPass(
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_INPUT_1_TEX,
-		ResourceManager::getToneMapImage().imageView,
-		ResourceManager::getLinearLODClampSampler()
+		PUSH_BINDING_READ_1,
+		ResourceManager::getToneMap_Target(),
+		ResourceManager::getLinearLODClamp_Sampler()
 	);
 
 	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_OUTPUT_1_TEX,
-		fxaaColor.imageView
+		PUSH_BINDING_WRITE_1,
+		fxaaColor
 	);
 
 	dispatchComputePass(frameCtx.cmdBuffer,
@@ -1746,6 +1742,57 @@ void RenderPasses::skyboxPass(
 	if (profiler.debugToggles.enableProfilerView) {
 		profiler.addDirect(1, 1);
 	}
+}
+
+void RenderPasses::transparentResolvePass(
+	FrameContext& frameCtx,
+	ComputeScope scope,
+	Profiler& profiler)
+{
+	auto tracyPass = profiler.profilePass(
+		frameCtx,
+		frameCtx.cmdBuffer,
+		scope.passID
+	);
+
+	auto& transparentResolve = ResourceManager::getTransparentResolved_Target();
+	auto& transparentAccum = ResourceManager::getTransparentAccumulation_Target();
+	auto& transparentReveal = ResourceManager::getTransparentRevealage_Target();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
+
+	ImageUtils::transitionImage(
+		frameCtx.cmdBuffer,
+		transparentResolve,
+		VK_IMAGE_LAYOUT_GENERAL);
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_READ_1,
+		transparentAccum,
+		nearestClampSampler
+	);
+
+	frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_READ_2,
+		transparentReveal,
+		nearestClampSampler
+	);
+
+	 frameCtx.descriptorWriter.writePushImage(
+		PUSH_BINDING_WRITE_1,
+		transparentResolve
+	);
+
+	dispatchComputePass(
+		frameCtx.cmdBuffer,
+		Pipelines::getHandle(PipelineID::TransparentResolve),
+		scope,
+		frameCtx.descriptorWriter
+	);
+
+	 ImageUtils::transitionImage(
+		frameCtx.cmdBuffer,
+		transparentResolve,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 void RenderPasses::opaqueMeshPass(

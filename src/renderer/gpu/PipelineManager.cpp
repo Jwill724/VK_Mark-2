@@ -51,8 +51,21 @@ namespace PipelinePresets {
 
 void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	// === GRAPHIC PIPELINES ===
+	PipelinePresets::writeShaderStage(PipelineID::Opaque, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Opaque, FRAGMENT_STAGE, "res/shaders/core/opaque_forward.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::Wireframe, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Wireframe, FRAGMENT_STAGE, "res/shaders/core/opaque_forward.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::OBBLine, VERTEX_STAGE, "res/shaders/debug/obb_lineVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::OBBLine, FRAGMENT_STAGE, "res/shaders/debug/obb_lineFS.spv");
+
+	PipelinePresets::writeShaderStage(PipelineID::Skybox, VERTEX_STAGE, "res/shaders/environment/skyboxVS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Skybox, FRAGMENT_STAGE, "res/shaders/environment/skyboxFS.spv");
+
 	PipelinePresets::writeShaderStage(PipelineID::Transparent, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
-	PipelinePresets::writeShaderStage(PipelineID::Transparent, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
+	PipelinePresets::writeShaderStage(PipelineID::Transparent, FRAGMENT_STAGE, "res/shaders/core/transparent_forward.spv");
+	PipelinePresets::writeShaderStage(PipelineID::TransparentResolve, COMPUTE_STAGE, "res/shaders/core/transparent_resolve.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::Prepass, VERTEX_STAGE, "res/shaders/core/prepassVS.spv");
 	PipelinePresets::writeShaderStage(PipelineID::Prepass, FRAGMENT_STAGE, "res/shaders/core/prepassFS.spv");
@@ -105,19 +118,6 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::ScreenSpaceContactShadows, COMPUTE_STAGE, "res/shaders/shadows/bend_sss.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::ChromaticAberration, COMPUTE_STAGE, "res/shaders/post_process/chromatic_aberration.spv");
-
-	PipelinePresets::writeShaderStage(PipelineID::Opaque, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
-	PipelinePresets::writeShaderStage(PipelineID::Opaque, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
-
-	PipelinePresets::writeShaderStage(PipelineID::Wireframe, VERTEX_STAGE, "res/shaders/core/forwardVS.spv");
-	PipelinePresets::writeShaderStage(PipelineID::Wireframe, FRAGMENT_STAGE, "res/shaders/core/forwardFS.spv");
-
-	PipelinePresets::writeShaderStage(PipelineID::OBBLine, VERTEX_STAGE, "res/shaders/debug/obb_lineVS.spv");
-	PipelinePresets::writeShaderStage(PipelineID::OBBLine, FRAGMENT_STAGE, "res/shaders/debug/obb_lineFS.spv");
-
-	PipelinePresets::writeShaderStage(PipelineID::Skybox, VERTEX_STAGE, "res/shaders/environment/skyboxVS.spv");
-	PipelinePresets::writeShaderStage(PipelineID::Skybox, FRAGMENT_STAGE, "res/shaders/environment/skyboxFS.spv");
-
 
 	for (size_t i = 0; i < static_cast<size_t>(PipelineID::Count); ++i) {
 		setupShaders(PipelinePresets::pipelinePresetBuilder[i], dq);
@@ -255,7 +255,6 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === SKYBOX PIPELINE ===
 	PipelinePreset& skyboxPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Skybox);
-	//skyboxPreset.depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
@@ -267,15 +266,40 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	// === TRANSPARENT PIPELINE ===
 	PipelinePreset& transparentPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Transparent);
 	transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
-	//transparentPreset.colorFormats.push_back(VK_FORMAT_R16G16B16A16_SFLOAT);
-	transparentPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
+	transparentPreset.colorFormats.push_back(VK_FORMAT_R16_SFLOAT);
+	transparentPreset.depthFormat    = VK_FORMAT_D32_SFLOAT;
 	transparentPreset.enableBlending = true;
+	transparentPreset.depthCompareOp = VK_COMPARE_OP_GREATER;
+
+	VkPipelineColorBlendAttachmentState accumBlend{};
+	accumBlend.blendEnable         = VK_TRUE;
+	accumBlend.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+									  VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	accumBlend.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	accumBlend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	accumBlend.colorBlendOp        = VK_BLEND_OP_ADD;
+	accumBlend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	accumBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	accumBlend.alphaBlendOp        = VK_BLEND_OP_ADD;
+
+	VkPipelineColorBlendAttachmentState revealBlend{};
+	revealBlend.blendEnable         = VK_TRUE;
+	revealBlend.colorWriteMask      = VK_COLOR_COMPONENT_R_BIT;
+	revealBlend.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	revealBlend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+	revealBlend.colorBlendOp        = VK_BLEND_OP_ADD;
+	revealBlend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	revealBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+	revealBlend.alphaBlendOp        = VK_BLEND_OP_ADD;
+
+	transparentPreset.blendAttachments = { accumBlend, revealBlend };
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
 		PipelineID::Transparent,
 		PipelineCategory::Raster,
-		"Transparent");
+		"Transparent",
+		false);
 
 	// === PREPASS PIPELINE ===
 	PipelinePreset& prepassPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Prepass);
@@ -307,6 +331,12 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		"Shadow");
 
 	// === COMPUTE PIPELINE SETUP STAGE ===
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::TransparentResolve,
+		PipelineCategory::Compute,
+		"TransparentResolve");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,PipelineID::FinalComposite,
@@ -576,7 +606,12 @@ void PipelineManager::setupPipelineConfig(PipelineBuilder& pipeline, PipelinePre
 
 	PipelineConfigs::colorBlendingConfig(pipeline._colorBlendAttachment,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-		settings.enableBlending, VK_BLEND_FACTOR_ONE);
+		settings.enableBlending,
+		VK_BLEND_FACTOR_ONE);
+
+	if (!settings.blendAttachments.empty()) {
+		pipeline._colorBlendAttachments = settings.blendAttachments;
+	}
 
 	PipelineConfigs::depthStencilConfig(
 		pipeline._depthStencil,

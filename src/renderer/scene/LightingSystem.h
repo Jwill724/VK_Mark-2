@@ -129,7 +129,7 @@ namespace LightingSystem {
 		float shadowBias = 0.0001f;
 		float radiusTexels = 1.0f;
 
-		float intensity = 50.0f;
+		float intensity = 20.0f;
 		float radius = 20.0f;
 		float outerDeg = 38.0f;
 		float innerDeg = 22.0f;

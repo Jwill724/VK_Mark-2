@@ -3,6 +3,9 @@
 #include "UserInput.h"
 #include "engine/platform/profiler/Profiler.h"
 
+constexpr float CAMERA_MIN_FOV = 70.0f;
+constexpr float CAMERA_MAX_FOV = 103.0f;
+
 class Camera {
 public:
 	Camera() = default;

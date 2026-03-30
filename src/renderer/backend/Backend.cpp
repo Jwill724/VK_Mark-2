@@ -230,6 +230,7 @@ void Backend::createLogicalDevice() {
 	baseFeatures.features.shaderStorageImageExtendedFormats = VK_TRUE;
 	baseFeatures.features.robustBufferAccess = VK_TRUE;
 	baseFeatures.features.shaderInt16 = VK_TRUE;
+	baseFeatures.features.independentBlend = VK_TRUE;
 
 	VkPhysicalDeviceVulkan11Features features11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
 	features11.shaderDrawParameters = VK_TRUE;                         // InstanceIndex
@@ -255,6 +256,8 @@ void Backend::createLogicalDevice() {
 	features12.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
 	features12.drawIndirectCount = VK_TRUE;
 	features12.shaderFloat16 = VK_TRUE;
+	features12.shaderInt8 = VK_TRUE;
+	features12.storageBuffer8BitAccess = VK_TRUE;
 
 	if (features12.shaderBufferInt64Atomics)
 		features12.shaderBufferInt64Atomics = VK_TRUE;

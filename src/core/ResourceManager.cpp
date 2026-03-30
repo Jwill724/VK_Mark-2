@@ -16,176 +16,178 @@ namespace ResourceManager {
 	glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) }; // ssbo
 
 	// primary render image
-	AllocatedImage _opaqueImage;
-	AllocatedImage& getOpaqueImage() { return _opaqueImage; }
-	AllocatedImage _transparentImage;
-	AllocatedImage& getTransparentImage() { return _transparentImage; }
-	AllocatedImage _toneMapImage;
-	AllocatedImage& getToneMapImage() { return _toneMapImage; }
+	AllocatedImage _opaque;
+	AllocatedImage& getOpaque_Target() { return _opaque; }
 
-	AllocatedImage _depthResolvedImage;
-	AllocatedImage& getDepthResolvedImage() { return _depthResolvedImage; }
+	AllocatedImage _transparentResolved;
+	AllocatedImage& getTransparentResolved_Target() { return _transparentResolved; }
+	// For OIT
+	AllocatedImage _transparentAccumulation;
+	AllocatedImage& getTransparentAccumulation_Target() { return _transparentAccumulation; }
+	AllocatedImage _transparentRevealage;
+	AllocatedImage& getTransparentRevealage_Target() { return _transparentRevealage; }
 
-	AllocatedImage _depthImage;
-	AllocatedImage& getDepthImage() { return _depthImage; }
+	AllocatedImage _toneMap;
+	AllocatedImage& getToneMap_Target() { return _toneMap; }
 
-	AllocatedImage _prevDepthResolvedImage;
-	AllocatedImage& getPrevDepthResolvedImage() { return _prevDepthResolvedImage; }
+	AllocatedImage _depthResolved;
+	AllocatedImage& getDepthResolved_Target() { return _depthResolved; }
 
-	AllocatedImage _prevVelocityImage;
-	AllocatedImage& getPrevVelocityImage() { return _prevVelocityImage; }
+	AllocatedImage _depthRaw;
+	AllocatedImage& getDepthRaw_Target() { return _depthRaw; }
+
+	AllocatedImage _prevDepthResolved;
+	AllocatedImage& getPrevDepthResolved_Target() { return _prevDepthResolved; }
+
+	AllocatedImage _prevVelocity;
+	AllocatedImage& getPrevVelocity_Target() { return _prevVelocity; }
 
 	// Max lod = mip count
 	VkSampler _hiZSampler;
-	const VkSampler getHiZSampler() { return _hiZSampler; }
+	const VkSampler getHiZ_Sampler() { return _hiZSampler; }
 
 	AllocatedImage _hiZ;
-	AllocatedImage& getHiZ() { return _hiZ; }
+	AllocatedImage& getHiZ_Target() { return _hiZ; }
 
 	VkSampler _linearLODClampSampler;
-	const VkSampler getLinearLODClampSampler() { return _linearLODClampSampler; }
+	const VkSampler getLinearLODClamp_Sampler() { return _linearLODClampSampler; }
 
 	VkSampler _pointBorderSampler;
-	const VkSampler getPointBorderSampler() { return _pointBorderSampler; }
+	const VkSampler getPointBorder_Sampler() { return _pointBorderSampler; }
 
 	VkSampler _taaHistorySampler;
-	const VkSampler getTaaHistorySampler() { return _taaHistorySampler; }
+	const VkSampler getTaaHistory_Sampler() { return _taaHistorySampler; }
 
 	VkSampler _noiseSampler;
-	const VkSampler getNoiseSampler() { return _noiseSampler; }
+	const VkSampler getNoise_Sampler() { return _noiseSampler; }
 
 	AllocatedImage _viewSpaceNormals;
-	AllocatedImage& getViewSpaceNormals() { return _viewSpaceNormals; }
+	AllocatedImage& getViewSpaceNormals_Target() { return _viewSpaceNormals; }
 
 	AllocatedImage _bentNormals;
-	AllocatedImage& getBentNormals() { return _bentNormals; }
+	AllocatedImage& getBentNormals_Target() { return _bentNormals; }
 
 	// ao images
-	AllocatedImage _edgeInfoImage;
-	AllocatedImage& getEdgeInfoImage() { return _edgeInfoImage; }
-	AllocatedImage _aoRawImage;
-	AllocatedImage& getAORawImage() { return _aoRawImage; }
-	AllocatedImage _aoTempImage;
-	AllocatedImage& getAOTempImage() { return _aoTempImage; }
+	AllocatedImage _aoEdgeInfo;
+	AllocatedImage& getAOEdgeInfo_Target() { return _aoEdgeInfo; }
+	AllocatedImage _aoRaw;
+	AllocatedImage& getAORaw_Target() { return _aoRaw; }
+	AllocatedImage _aoTemp;
+	AllocatedImage& getAOTemp_Target() { return _aoTemp; }
 
 	// COLOR HISTORY
 	uint32_t _colorHistoryIndex = 0;
-	AllocatedImage _colorHistoryImages[2];
-	AllocatedImage& getColorHistoryRead() {
-		return _colorHistoryImages[_colorHistoryIndex];
+	AllocatedImage _colorHistory[2];
+	AllocatedImage& getColorHistoryRead_Target() {
+		return _colorHistory[_colorHistoryIndex];
 	}
-	AllocatedImage& getColorHistoryWrite() {
-		return _colorHistoryImages[_colorHistoryIndex ^ 1u];
+	AllocatedImage& getColorHistoryWrite_Target() {
+		return _colorHistory[_colorHistoryIndex ^ 1u];
 	}
 	void flipColorHistory() { _colorHistoryIndex ^= 1u; }
 	void resetColorHistoryIndex() { _colorHistoryIndex = 0; }
 
 	AllocatedImage _aaColor;
-	AllocatedImage& getAAColor() { return _aaColor; }
+	AllocatedImage& getAAColor_Target() { return _aaColor; }
 
 	AllocatedImage _postNonAAComposite;
-	AllocatedImage& getPostNonAAComposite() { return _postNonAAComposite; }
+	AllocatedImage& getPostNonAAComposite_Target() { return _postNonAAComposite; }
 
 	AllocatedImage _cmaa2WorkingEdges;
-	AllocatedImage& getCMAA2WorkingEdges() { return _cmaa2WorkingEdges; }
+	AllocatedImage& getCMAA2WorkingEdges_Target() { return _cmaa2WorkingEdges; }
 
-	AllocatedImage _areaTex;
-	AllocatedImage& getAreaTex() { return _areaTex; }
-	AllocatedImage _searchTex;
-	AllocatedImage& getSearchTex() { return _searchTex; }
 	AllocatedImage _smaaEdges;
-	AllocatedImage& getSMAAEdges() { return _smaaEdges; }
+	AllocatedImage& getSMAAEdges_Target() { return _smaaEdges; }
 	AllocatedImage _smaaWeights;
-	AllocatedImage& getSMAAWeights() { return _smaaWeights; }
+	AllocatedImage& getSMAAWeights_Target() { return _smaaWeights; }
 
-	AllocatedImage _flareBrightImage;
-	AllocatedImage& getFlareBrightImage() { return _flareBrightImage; }
+	AllocatedImage _flareBright;
+	AllocatedImage& getFlareBright_Target() { return _flareBright; }
 
-	AllocatedImage _lensFlareColorImage;
-	AllocatedImage& getLensFlareColorImage() { return _lensFlareColorImage; }
+	AllocatedImage _lensFlareColor;
+	AllocatedImage& getLensFlareColor_Target() { return _lensFlareColor; }
 
-	AllocatedImage _rainbowLUTImage;
-	AllocatedImage& getRainbowLUTImage() { return _rainbowLUTImage; }
 
-	AllocatedImage _velocityImage;
-	AllocatedImage& getVelocityImage() { return _velocityImage; }
+	AllocatedImage _velocity;
+	AllocatedImage& getVelocity_Target() { return _velocity; }
 
-	AllocatedImage _volumetricLightImage;
-	AllocatedImage& getVolumetricLightImage() { return _volumetricLightImage; }
+	AllocatedImage _volumetricLight;
+	AllocatedImage& getVolumetricLight_Target() { return _volumetricLight; }
 
-	AllocatedImage _volumetricBlurImage;
-	AllocatedImage& getVolumetricBlurImage() { return _volumetricBlurImage; }
-
-	//AllocatedImage _4x4NoiseImage;
-	//AllocatedImage& get4x4NoiseImage() { return _4x4NoiseImage; }
+	AllocatedImage _volumetricBlur;
+	AllocatedImage& getVolumetricBlur_Target() { return _volumetricBlur; }
 
 	AllocatedImage _directionalCSMAtlas;
-	AllocatedImage& getDirectionalCSMAtlas() { return _directionalCSMAtlas; }
+	AllocatedImage& getDirectionalCSMAtlas_Target() { return _directionalCSMAtlas; }
 
 	VkSampler _shadowMapSampler;
-	const VkSampler getShadowMapSampler() { return _shadowMapSampler; }
+	const VkSampler getShadowMap_Sampler() { return _shadowMapSampler; }
 
 	AllocatedImage _screenSpaceShadowMask;
-	AllocatedImage& getScreenSpaceShadowMask() { return _screenSpaceShadowMask; }
+	AllocatedImage& getScreenSpaceShadowMask_Target() { return _screenSpaceShadowMask; }
 
 	AllocatedImage _flashLightShadowMap;
-	AllocatedImage& getFlashLightShadowMap() { return _flashLightShadowMap; }
+	AllocatedImage& getFlashLightShadowMap_Target() { return _flashLightShadowMap; }
 
-	AllocatedImage _cookieGoboImage;
-	AllocatedImage& getCookieGoboImage() { return _cookieGoboImage; }
+	AllocatedImage _areaSMAATexture;
+	AllocatedImage& getAreaSMAA_Texture() { return _areaSMAATexture; }
+	AllocatedImage _searchSMAATexture;
+	AllocatedImage& getSearchSMAA_Texture() { return _searchSMAATexture; }
 
-	AllocatedImage _dummyUint8;
-	AllocatedImage& getDummyUint8() { return _dummyUint8; }
+	AllocatedImage _cookieGoboTexture;
+	AllocatedImage& getCookieGobo_Texture() { return _cookieGoboTexture; }
 
-	//std::vector<VkDescriptorSet> _shadowMapDescriptors; // Only meant for debugging visually in imgui
-	//std::vector<VkDescriptorSet>& getShadowMapDescriptors() { return _shadowMapDescriptors; }
+	AllocatedImage _rainbowLUTTexture;
+	AllocatedImage& getRainbowLUT_Texture() { return _rainbowLUTTexture; }
 
+	AllocatedImage _dummyUint8Texture;
+	AllocatedImage& getDummyUint8_Texture() { return _dummyUint8Texture; }
 
-	AllocatedImage _whiteMat;
-	AllocatedImage& getWhiteMat() { return _whiteMat; }
+	AllocatedImage _whiteTexture;
+	AllocatedImage& getWhiteMat_Texture() { return _whiteTexture; }
 
-	AllocatedImage _metalRoughMat;
-	AllocatedImage& getMetalRoughMat() { return _metalRoughMat; }
+	AllocatedImage _metalRoughTexture;
+	AllocatedImage& getMetalRough_Texture() { return _metalRoughTexture; }
 
-	AllocatedImage _emissiveMat;
-	AllocatedImage& getEmissiveMat() { return _emissiveMat; }
+	AllocatedImage _emissiveTexture;
+	AllocatedImage& getEmissive_Texture() { return _emissiveTexture; }
 
-	AllocatedImage _aoMat;
-	AllocatedImage& getAOMat() { return _aoMat; }
-	AllocatedImage _normalMat;
-	AllocatedImage& getNormaMat() { return _normalMat; }
-	AllocatedImage _errorCheckerboardTex;
-	AllocatedImage& getCheckboardTex() { return _errorCheckerboardTex; }
+	AllocatedImage _aoTexture;
+	AllocatedImage& getAO_Texture() { return _aoTexture; }
+	AllocatedImage _normalTexture;
+	AllocatedImage& getNormal_Texture() { return _normalTexture; }
+	AllocatedImage _errorCheckerboardTexture;
+	AllocatedImage& getCheckboard_Texture() { return _errorCheckerboardTexture; }
 
-	AllocatedImage _dummyImage;
-	AllocatedImage& getDummyImage() { return _dummyImage; }
+	AllocatedImage _dummyTexture;
+	AllocatedImage& getDummy_Texture() { return _dummyTexture; }
 
-	VkSampler _defaultSamplerLinear;
-	const VkSampler getDefaultSamplerLinear() { return _defaultSamplerLinear; }
+	VkSampler _defaultLinearSampler;
+	const VkSampler getDefaultLinear_Sampler() { return _defaultLinearSampler; }
 
-	VkSampler _defaultSamplerNearest;
-	const VkSampler getDefaultSamplerNearest() { return _defaultSamplerNearest; }
+	VkSampler _defaultNearestSampler;
+	const VkSampler getDefaultNearest_Sampler() { return _defaultNearestSampler; }
 
 	VkSampler _nearestClampSampler;
-	const VkSampler getNearestClampSampler() { return _nearestClampSampler; }
+	const VkSampler getNearestClamp_Sampler() { return _nearestClampSampler; }
 
 	VkSampler _linearClampSampler;
-	const VkSampler getLinearClampSampler() { return _linearClampSampler; }
+	const VkSampler getLinearClamp_Sampler() { return _linearClampSampler; }
 
 	VkSampler _skyBoxSampler;
-	const VkSampler getSkyBoxSampler() { return _skyBoxSampler; }
+	const VkSampler getSkyBox_Sampler() { return _skyBoxSampler; }
 
 	VkSampler _specularPrefilterSampler;
-	const VkSampler getSpecularPrefilterSampler() { return _specularPrefilterSampler; }
+	const VkSampler getSpecularPrefilter_Sampler() { return _specularPrefilterSampler; }
 
 	VkSampler _irradianceSampler;
-	const VkSampler getIrradianceSampler() { return _irradianceSampler; }
+	const VkSampler getIrradiance_Sampler() { return _irradianceSampler; }
 
-	AllocatedImage _brdfLutImage;
-	AllocatedImage& getBRDFImage() { return _brdfLutImage; }
+	AllocatedImage _brdfLut;
+	AllocatedImage& getBRDF_Texture() { return _brdfLut; }
 
 	VkSampler _brdfSampler;
-	const VkSampler getBRDFSampler() { return _brdfSampler; }
+	const VkSampler getBRDF_Sampler() { return _brdfSampler; }
 }
 
 
@@ -320,83 +322,108 @@ void ResourceManager::initUniformRenderTargets(
 	};
 
 	// Opaque
-	//_opaqueImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-	_opaqueImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_opaqueImage.extent = drawExtent;
+	//_opaque.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	_opaque.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_opaque.extent = drawExtent;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
-		_opaqueImage,
+		_opaque,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
 	// Transparent
-	_transparentImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_transparentImage.extent = drawExtent;
+	_transparentResolved.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_transparentResolved.extent = drawExtent;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
-		_transparentImage,
+		_transparentResolved,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	_transparentAccumulation.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_transparentAccumulation.extent = drawExtent;
+
+	ImageUtils::createRenderTarget(
+		device,
+		_transparentAccumulation,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
 
+	_transparentRevealage.format = VK_FORMAT_R16_SFLOAT;
+	_transparentRevealage.extent = drawExtent;
+
+	ImageUtils::createRenderTarget(
+		device,
+		_transparentRevealage,
+		drawImageUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+
 	// Depth resolved image
-	_depthResolvedImage.format = BASE_DEPTH_FORMAT;
-	_depthResolvedImage.extent = drawExtent;
+	_depthResolved.format = BASE_DEPTH_FORMAT;
+	_depthResolved.extent = drawExtent;
 	VkImageUsageFlags depthResolvedUsages{};
 	depthResolvedUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	depthResolvedUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	depthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 	depthResolvedUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
-		_depthResolvedImage,
+		_depthResolved,
 		depthResolvedUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
-	_prevDepthResolvedImage.format = BASE_DEPTH_FORMAT;
-	_prevDepthResolvedImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_prevDepthResolved.format = BASE_DEPTH_FORMAT;
+	_prevDepthResolved.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_prevDepthResolvedImage,
+		_prevDepthResolved,
 		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
-	_depthImage.format = BASE_DEPTH_FORMAT;
-	_depthImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_depthRaw.format = BASE_DEPTH_FORMAT;
+	_depthRaw.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_depthImage,
+		_depthRaw,
 		depthResolvedUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
 	// base ao image
-	_aoRawImage.format = VK_FORMAT_R8_UNORM;
-	_aoRawImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_aoRaw.format = VK_FORMAT_R8_UNORM;
+	_aoRaw.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_aoRawImage,
+		_aoRaw,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator);
 
 	// ao temp
-	_aoTempImage.format = VK_FORMAT_R8_UNORM;
-	_aoTempImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_aoTemp.format = VK_FORMAT_R8_UNORM;
+	_aoTemp.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_aoTempImage,
+		_aoTemp,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -405,12 +432,12 @@ void ResourceManager::initUniformRenderTargets(
 	// color history images
 	resetColorHistoryIndex();
 	for (uint32_t i = 0; i < 2; ++i) {
-		_colorHistoryImages[i].format = VK_FORMAT_R16G16B16A16_SFLOAT;
-		_colorHistoryImages[i].extent = drawExtent;
+		_colorHistory[i].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+		_colorHistory[i].extent = drawExtent;
 
-		ImageUtils::createRenderImage(
+		ImageUtils::createRenderTarget(
 			device,
-			_colorHistoryImages[i],
+			_colorHistory[i],
 			baseComputeUsages,
 			VK_SAMPLE_COUNT_1_BIT,
 			targetQueue,
@@ -418,11 +445,11 @@ void ResourceManager::initUniformRenderTargets(
 	}
 
 	// Edge image
-	_edgeInfoImage.format = VK_FORMAT_R8_UNORM;
-	_edgeInfoImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_aoEdgeInfo.format = VK_FORMAT_R8_UNORM;
+	_aoEdgeInfo.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_edgeInfoImage,
+		_aoEdgeInfo,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -430,21 +457,21 @@ void ResourceManager::initUniformRenderTargets(
 	);
 
 	// Velocity
-	_velocityImage.format = VK_FORMAT_R16G16_SFLOAT;
-	_velocityImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_velocity.format = VK_FORMAT_R16G16_SFLOAT;
+	_velocity.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_velocityImage,
+		_velocity,
 		drawImageUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
-	_prevVelocityImage.format = VK_FORMAT_R16G16_SFLOAT;
-	_prevVelocityImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_prevVelocity.format = VK_FORMAT_R16G16_SFLOAT;
+	_prevVelocity.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_prevVelocityImage,
+		_prevVelocity,
 		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -455,7 +482,7 @@ void ResourceManager::initUniformRenderTargets(
 	// View space normals
 	_viewSpaceNormals.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	_viewSpaceNormals.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_viewSpaceNormals,
 		drawImageUsages,
@@ -465,11 +492,11 @@ void ResourceManager::initUniformRenderTargets(
 	);
 
 	// Tone map
-	_toneMapImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_toneMapImage.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	_toneMap.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_toneMap.extent = drawExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_toneMapImage,
+		_toneMap,
 		baseComputeUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -481,7 +508,7 @@ void ResourceManager::initUniformRenderTargets(
 	_hiZ.extent = drawExtent;
 	_hiZ.mipLevelCount = HI_Z_MIP_COUNT;
 	_hiZ.perMipStorageViews = true;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_hiZ,
 		baseComputeUsages,
@@ -491,21 +518,21 @@ void ResourceManager::initUniformRenderTargets(
 	);
 
 	// Volumetric light images
-	_volumetricLightImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_volumetricLightImage.extent = halfExtent;
-	ImageUtils::createRenderImage(
+	_volumetricLight.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_volumetricLight.extent = halfExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_volumetricLightImage,
+		_volumetricLight,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
-	_volumetricBlurImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_volumetricBlurImage.extent = halfExtent;
-	ImageUtils::createRenderImage(
+	_volumetricBlur.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_volumetricBlur.extent = halfExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_volumetricBlurImage,
+		_volumetricBlur,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -514,21 +541,21 @@ void ResourceManager::initUniformRenderTargets(
 
 
 	// Lens flare images
-	_flareBrightImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_flareBrightImage.extent = quarterExtent;
-	ImageUtils::createRenderImage(
+	_flareBright.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_flareBright.extent = quarterExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_flareBrightImage,
+		_flareBright,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator
 	);
-	_lensFlareColorImage.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	_lensFlareColorImage.extent = quarterExtent;
-	ImageUtils::createRenderImage(
+	_lensFlareColor.format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_lensFlareColor.extent = quarterExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_lensFlareColorImage,
+		_lensFlareColor,
 		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
@@ -539,7 +566,7 @@ void ResourceManager::initUniformRenderTargets(
 
 	_aaColor.extent = drawExtent;
 	_aaColor.format = VK_FORMAT_R16G16B16A16_SFLOAT;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_aaColor,
 		baseComputeUsages,
@@ -550,7 +577,7 @@ void ResourceManager::initUniformRenderTargets(
 
 	_cmaa2WorkingEdges.extent = { halfExtent.width, drawExtent.height, 1u };
 	_cmaa2WorkingEdges.format = VK_FORMAT_R8_UINT;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_cmaa2WorkingEdges,
 		baseComputeUsages,
@@ -561,7 +588,7 @@ void ResourceManager::initUniformRenderTargets(
 
 	_smaaEdges.extent = drawExtent;
 	_smaaEdges.format = VK_FORMAT_R8G8_UNORM;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_smaaEdges,
 		computeMinimalUsages,
@@ -572,7 +599,7 @@ void ResourceManager::initUniformRenderTargets(
 
 	_smaaWeights.extent = drawExtent;
 	_smaaWeights.format = VK_FORMAT_R8G8B8A8_UNORM;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_smaaWeights,
 		computeMinimalUsages,
@@ -583,7 +610,7 @@ void ResourceManager::initUniformRenderTargets(
 
 	_screenSpaceShadowMask.extent = drawExtent;
 	_screenSpaceShadowMask.format = VK_FORMAT_R8_UNORM;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_screenSpaceShadowMask,
 		computeMinimalUsages,
@@ -595,7 +622,7 @@ void ResourceManager::initUniformRenderTargets(
 	// Bent normals
 	_bentNormals.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_bentNormals.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_bentNormals,
 		baseComputeUsages,
@@ -607,7 +634,7 @@ void ResourceManager::initUniformRenderTargets(
 	// post non aa composite
 	_postNonAAComposite.format = VK_FORMAT_R16G16B16A16_SFLOAT;
 	_postNonAAComposite.extent = drawExtent;
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_postNonAAComposite,
 		baseComputeUsages,
@@ -623,8 +650,6 @@ void ResourceManager::initShadowMapImages(
 	const VmaAllocator allocator)
 {
 	VkExtent3D csmExtent = { 4096, 4096, 1 };
-	//VkExtent3D csmExtent = { 2048, 2048, 1 };
-	//VkExtent3D csmExtent = { 8192, 8192, 1 };
 
 	// Directional cascaded shadow map atlas
 	_directionalCSMAtlas.format = BASE_DEPTH_FORMAT;
@@ -634,7 +659,7 @@ void ResourceManager::initShadowMapImages(
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_directionalCSMAtlas,
 		shadowUsages,
@@ -648,7 +673,7 @@ void ResourceManager::initShadowMapImages(
 	_flashLightShadowMap.extent = flashlightExtent;
 	_flashLightShadowMap.format = BASE_DEPTH_FORMAT;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		_flashLightShadowMap,
 		shadowUsages,
@@ -723,19 +748,19 @@ void ResourceManager::initRenderSamplers(
 	// Default samplers
 
 	// *Need to recreate due to having a set af level
-	_defaultSamplerLinear = ImageUtils::createSampler(
+	_defaultLinearSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX,
+		VK_LOD_CLAMP_NONE,
 		CURRENT_AF_LVL,
 		&queue);
 
-	_defaultSamplerNearest = ImageUtils::createSampler(
+	_defaultNearestSampler = ImageUtils::createSampler(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_REPEAT,
-		FLT_MAX,
+		VK_LOD_CLAMP_NONE,
 		1.0f,
 		&queue);
 
@@ -743,7 +768,7 @@ void ResourceManager::initRenderSamplers(
 		device,
 		VK_FILTER_NEAREST,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		FLT_MAX,
+		VK_LOD_CLAMP_NONE,
 		1.0f,
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
@@ -753,7 +778,7 @@ void ResourceManager::initRenderSamplers(
 		device,
 		VK_FILTER_LINEAR,
 		VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		FLT_MAX,
+		VK_LOD_CLAMP_NONE,
 		1.0f,
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_LINEAR
@@ -777,7 +802,7 @@ void ResourceManager::initRenderSamplers(
 		1.0f,
 		&queue,
 		VK_SAMPLER_MIPMAP_MODE_NEAREST
-);
+	);
 }
 
 EnvironmentSet ResourceManager::initEnvironmentSetImages(
@@ -799,7 +824,7 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 	env.skybox.isCubeMap = true;
 	env.skybox.mipmapped = true;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		env.skybox,
 		usage | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -814,7 +839,7 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 	env.specular.perMipStorageViews = true;
 	env.specular.mipLevelCount = Environment::SPECULAR_PREFILTERED_MIP_LEVELS;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		env.specular,
 		usage,
@@ -827,7 +852,7 @@ EnvironmentSet ResourceManager::initEnvironmentSetImages(
 	env.irradiance.format = environmentFormat;
 	env.irradiance.isCubeMap = true;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
 		env.irradiance,
 		usage,
@@ -868,12 +893,12 @@ void ResourceManager::initStaticEnvironmentImages(
 		&queue);
 
 
-	_brdfLutImage.extent = Environment::LUT_IMAGE_EXTENT;
-	_brdfLutImage.format = VK_FORMAT_R16G16_SFLOAT;
+	_brdfLut.extent = Environment::LUT_IMAGE_EXTENT;
+	_brdfLut.format = VK_FORMAT_R16G16_SFLOAT;
 
-	ImageUtils::createRenderImage(
+	ImageUtils::createRenderTarget(
 		device,
-		_brdfLutImage,
+		_brdfLut,
 		VK_IMAGE_USAGE_STORAGE_BIT |
 		VK_IMAGE_USAGE_SAMPLED_BIT,
 		VK_SAMPLE_COUNT_1_BIT,
@@ -924,32 +949,32 @@ void ResourceManager::initTextures(
 	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
 
 
-	_aoMat.extent = texExtent;
-	_aoMat.format = VK_FORMAT_R8_UNORM;
-	_aoMat.mipmapped = true;
+	_aoTexture.extent = texExtent;
+	_aoTexture.format = VK_FORMAT_R8_UNORM;
+	_aoTexture.mipmapped = true;
 
 	uint8_t aoPixel = static_cast<uint8_t>(1.0f * 255); // full ambient lighting
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&aoPixel,
-		_aoMat,
+		_aoTexture,
 		usage,
 		samples,
 		imageQueue,
 		bufferQueue,
 		allocator);
 
-	_normalMat.extent = texExtent;
-	_normalMat.format = VK_FORMAT_R8G8B8A8_UNORM;
-	_normalMat.mipmapped = true;
+	_normalTexture.extent = texExtent;
+	_normalTexture.format = VK_FORMAT_R8G8B8A8_UNORM;
+	_normalTexture.mipmapped = true;
 
 	uint32_t flatNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f)); // X = 128, Y = 128, Z = 255, A = 255
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&flatNormal,
-		_normalMat,
+		_normalTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -957,25 +982,25 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_emissiveMat.extent = texExtent;
-	_emissiveMat.format = format;
-	_emissiveMat.mipmapped = true;
+	_emissiveTexture.extent = texExtent;
+	_emissiveTexture.format = format;
+	_emissiveTexture.mipmapped = true;
 
 	uint32_t blackEmissive = glm::packUnorm4x8(glm::vec4(0, 0, 0, 1)); // No emission
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&blackEmissive,
-		_emissiveMat,
+		_emissiveTexture,
 		usage,
 		samples,
 		imageQueue,
 		bufferQueue,
 		allocator);
 
-	_metalRoughMat.extent = texExtent;
-	_metalRoughMat.format = VK_FORMAT_R8G8B8A8_UNORM;
-	_metalRoughMat.mipmapped = true;
+	_metalRoughTexture.extent = texExtent;
+	_metalRoughTexture.format = VK_FORMAT_R8G8B8A8_UNORM;
+	_metalRoughTexture.mipmapped = true;
 
 	// From what I've read about modern GLTF pbr, g is roughness and b is metallic.
 	uint8_t mrPixelData[4] {
@@ -984,11 +1009,11 @@ void ResourceManager::initTextures(
 		static_cast<uint8_t>(0.0f * 255), // metallic?
 		static_cast<uint8_t>(1.0f * 255)
 	};
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&mrPixelData,
-		_metalRoughMat,
+		_metalRoughTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -996,16 +1021,16 @@ void ResourceManager::initTextures(
 		allocator);
 
 
-	_dummyImage.extent = texExtent;
-	_dummyImage.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
-	//_dummyImage.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	_dummyTexture.extent = texExtent;
+	_dummyTexture.format = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+	//_dummyTexture.initialLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	glm::vec4 black = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&black,
-		_dummyImage,
+		_dummyTexture,
 		usage,
 		VK_SAMPLE_COUNT_1_BIT,
 		imageQueue,
@@ -1013,16 +1038,16 @@ void ResourceManager::initTextures(
 		allocator
 	);
 
-	_whiteMat.extent = texExtent;
-	_whiteMat.format = format;
-	_whiteMat.mipmapped = true;
+	_whiteTexture.extent = texExtent;
+	_whiteTexture.format = format;
+	_whiteTexture.mipmapped = true;
 
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		(void*)&white,
-		_whiteMat,
+		_whiteTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1040,14 +1065,14 @@ void ResourceManager::initTextures(
 
 	VkExtent3D checkerboardedImageExtent{ 16, 16, 1 };
 
-	_errorCheckerboardTex.extent = checkerboardedImageExtent;
-	_errorCheckerboardTex.format = format;
-	_errorCheckerboardTex.mipmapped = true;
-	ImageUtils::createTextureImage(
+	_errorCheckerboardTexture.extent = checkerboardedImageExtent;
+	_errorCheckerboardTexture.format = format;
+	_errorCheckerboardTexture.mipmapped = true;
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		pixels.data(),
-		_errorCheckerboardTex,
+		_errorCheckerboardTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1074,7 +1099,7 @@ void ResourceManager::initTextures(
 	//_4x4NoiseImage.format = VK_FORMAT_R16G16_SFLOAT;
 	//_4x4NoiseImage.extent = { 4, 4, 1 };
 
-	//ImageUtils::createTextureImage(
+	//ImageUtils::createTexture(
 	//	device,
 	//	cmdPool,
 	//	noise4x4Data.data(),
@@ -1107,14 +1132,14 @@ void ResourceManager::initTextures(
 	}
 
 
-	_rainbowLUTImage.format = VK_FORMAT_R8G8B8A8_UNORM;
-	_rainbowLUTImage.extent = { lutWidth, lutHeight, 1u };
+	_rainbowLUTTexture.format = VK_FORMAT_R8G8B8A8_UNORM;
+	_rainbowLUTTexture.extent = { lutWidth, lutHeight, 1u };
 
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		lutPixels.data(),
-		_rainbowLUTImage,
+		_rainbowLUTTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1138,14 +1163,14 @@ void ResourceManager::initTextures(
 		fmt::print("Failed to load Cookie texture: {}\n", stbi_failure_reason());
 		ASSERT(true);
 	}
-	_cookieGoboImage.extent = { 512, 512, 1 };
-	_cookieGoboImage.format = VK_FORMAT_R8_UNORM;
+	_cookieGoboTexture.extent = { 512, 512, 1 };
+	_cookieGoboTexture.format = VK_FORMAT_R8_UNORM;
 
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		cookieData,
-		_cookieGoboImage,
+		_cookieGoboTexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1156,14 +1181,14 @@ void ResourceManager::initTextures(
 	stbi_image_free(cookieData);
 
 
-	_areaTex.extent = { AREATEX_WIDTH, AREATEX_HEIGHT, 1 };
-	_areaTex.format = VK_FORMAT_R8G8_UNORM;
+	_areaSMAATexture.extent = { AREATEX_WIDTH, AREATEX_HEIGHT, 1 };
+	_areaSMAATexture.format = VK_FORMAT_R8G8_UNORM;
 
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		areaTexBytes,
-		_areaTex,
+		_areaSMAATexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1171,14 +1196,14 @@ void ResourceManager::initTextures(
 		allocator
 	);
 
-	_searchTex.extent = { SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1 };
-	_searchTex.format = VK_FORMAT_R8_UNORM;
+	_searchSMAATexture.extent = { SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 1 };
+	_searchSMAATexture.format = VK_FORMAT_R8_UNORM;
 
-	ImageUtils::createTextureImage(
+	ImageUtils::createTexture(
 		device,
 		cmdPool,
 		searchTexBytes,
-		_searchTex,
+		_searchSMAATexture,
 		usage,
 		samples,
 		imageQueue,
@@ -1187,11 +1212,11 @@ void ResourceManager::initTextures(
 	);
 
 
-	_dummyUint8.format = VK_FORMAT_R8_UINT;
-	_dummyUint8.extent = texExtent;
-	ImageUtils::createRenderImage(
+	_dummyUint8Texture.format = VK_FORMAT_R8_UINT;
+	_dummyUint8Texture.extent = texExtent;
+	ImageUtils::createRenderTarget(
 		device,
-		_dummyUint8,
+		_dummyUint8Texture,
 		usage,
 		samples,
 		imageQueue,

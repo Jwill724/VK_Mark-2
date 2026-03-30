@@ -3,6 +3,7 @@
 #include "EditorImgui.h"
 
 #include "renderer/scene/RenderScene.h"
+#include "renderer/Renderer.h"
 #include "renderer/backend/Backend.h"
 
 static float SETTINGS_SIZE_X = 500.0f;
@@ -247,33 +248,35 @@ namespace
 
 			const auto& pos = camera.getPosition();
 			ImGui::Text("World Position: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
-
 			const auto& camVelo = camera.getVelocity();
 			ImGui::Text("Velocity: %.2f %.2f %.2f", camVelo.x, camVelo.y, camVelo.z);
 
-			int camSens = static_cast<int>(camera.getSensitivity());
-			ImGui::SliderInt("Sensitivity", &camSens, 1, 100);
-			camera.setSensitivity(static_cast<float>(camSens));
+			if (ImGui::CollapsingHeader("Camera Settings"))
+			{
+				float camSens = camera.getSensitivity();
+				ImGui::SliderFloat("Sensitivity", &camSens, 1.0, 100.0, "%.0f");
+				camera.setSensitivity(camSens);
 
-			int camFOV = static_cast<int>(camera.getFovY());
-			ImGui::SliderInt("FOV", &camFOV, 60, 120);
-			camera.setFovY(static_cast<float>(camFOV));
+				float camFOV = camera.getFovY();
+				ImGui::SliderFloat("FOV", &camFOV, CAMERA_MIN_FOV, CAMERA_MAX_FOV, "%.0f");
+				camera.setFovY(camFOV);
 
-			int maxSpeed = static_cast<int>(camera.getMaxSpeed());
-			ImGui::SliderInt("Max Speed", &maxSpeed , 1, 100);
-			camera.setMaxSpeed(static_cast<float>(maxSpeed));
+				float maxSpeed = camera.getMaxSpeed();
+				ImGui::SliderFloat("Max Speed", &maxSpeed, 1.0, 100.0, "%.0f");
+				camera.setMaxSpeed(maxSpeed);
 
-			int minSpeed = static_cast<int>(camera.getMinSpeed());
-			ImGui::SliderInt("Min Speed", &minSpeed , 1, 100);
-			camera.setMinSpeed(static_cast<float>(minSpeed));
+				float minSpeed = camera.getMinSpeed();
+				ImGui::SliderFloat("Min Speed", &minSpeed,  1.0, 100.0, "%.0f");
+				camera.setMinSpeed(minSpeed);
 
-			int accel = static_cast<int>(camera.getAcceleration());
-			ImGui::SliderInt("Acceleration", &accel , 1, 100);
-			camera.setAcceleration(static_cast<float>(accel));
+				float accel = camera.getAcceleration();
+				ImGui::SliderFloat("Acceleration", &accel, 1.0, 100.0, "%.0f");
+				camera.setAcceleration(accel);
 
-			int damping = static_cast<int>(camera.getDamping());
-			ImGui::SliderInt("Damping", &damping , 1, 100);
-			camera.setDamping(static_cast<float>(damping));
+				float damping = camera.getDamping();
+				ImGui::SliderFloat("Damping", &damping, 1.0, 100.0, "%.0f");
+				camera.setDamping(damping);
+			}
 		}
 
 		UI::separatorText("Shadows");
@@ -288,6 +291,54 @@ namespace
 
 		if (dbg.enableShadows) {
 			//ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
+
+			//auto& sc = RenderScene::_shadowControl;
+			//ImGui::Separator();
+			//ImGui::Text("Cascade Radii (FOV Stabilization)");
+
+			//float* shadowRadii = RenderScene::_shadowControl.shadowRadii;
+
+			//for (int i = MAX_SHADOW_CASCADES - 1u; i < MAX_SHADOW_CASCADES; ++i) {
+			//	int cascade = i + 1;
+			//	ImGui::PushID(cascade);
+
+			//	ImGui::Text("Cascade %d", cascade);
+
+			//	ImGui::SliderFloat(
+			//		"Radius",
+			//		&shadowRadii[i],
+			//		400.0f,
+			//		2000.0f,
+			//		"%.0f"
+			//	);
+
+			//	ImGui::PopID();
+			//}
+
+			//ImGui::Text("Shadow Caster Culling (per cascade)");
+
+			//for (int i = 0; i < MAX_SHADOW_CASCADES; ++i) {
+			//	int cascade = i;
+			//	cascade++;
+			//	ImGui::PushID(cascade);
+			//	ImGui::Text("Cascade %d", cascade);
+			//	ImGui::SliderFloat("Max Caster Dist", &sc.maxCasterDistance[i], 100.0f, 6000.0f, "%.0f");
+			//	ImGui::PopID();
+			//}
+
+			//ImGui::SliderFloat("XY Padding", &sc.xyPadding, 0.0f, 500.0f, "%.0f");
+			//ImGui::SliderFloat("LS Epsilon", &sc.lsEpsilon, 1.0f, 100.0f, "%.1f");
+			//ImGui::SliderFloat("Dir Epsilon", &sc.dirEpsilon, 1.0f, 100.0f, "%.1f");
+
+			//if (ImGui::Button("Reset to defaults")) {
+			//	sc.maxCasterDistance[0] = 3000.0f;
+			//	sc.maxCasterDistance[1] = 4000.0f;
+			//	sc.maxCasterDistance[2] = 5000.0f;
+			//	sc.maxCasterDistance[3] = 6000.0f;
+			//	sc.xyPadding = 150.0f;
+			//	sc.lsEpsilon = 5.0f;
+			//	sc.dirEpsilon = 20.0f;
+			//}
 
 			if (ImGui::Checkbox("Enable Screen Space Contact Shadows##rt", &contact)) {
 				dbg.enableSSS = contact ? 1u : 0u;
@@ -345,6 +396,10 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+
+		UI::separatorText("Transparency");
+		auto& forwardPC = Renderer::getForwardPush();
+		ImGui::SliderFloat("OIT Z Scale", &forwardPC.oitDepthScale, 50.0f, 2000.0f, "%.0f");
 
 		UI::separatorText("Shading Overlay");
 
@@ -451,7 +506,8 @@ namespace
 
 		ImGui::SliderFloat3("Sun Dir##light", glm::value_ptr(sunDir), -0.5f, 0.5f);
 		ImGui::SliderFloat3("Sun Color##light", glm::value_ptr(sunCol), 0.0f, 1.0f);
-		ImGui::SliderFloat("Sun Intensity##light", &sunI, 0.0f, 5.0f);
+
+		ImGui::SliderFloat("Sun Intensity##light", &sunI, 2.5f, 20.0f);
 
 		scene.sunlightColor = glm::vec4(sunCol, sunI);
 		scene.sunlightDirection = glm::vec4(sunDir, 0.0f);
@@ -501,22 +557,22 @@ namespace
 			dbg.aoMode = (uint32_t)current;
 		}
 
-		if (dbg.aoMode == AO_GTAO) {
-			auto& g = profiler.gtaoSettings;
-
+		auto& gtaoSettings = profiler.gtaoSettings;
+		if (dbg.aoMode != AO_OFF) {
 			// Core gtao settings
-			ImGui::SliderFloat("Radius##gtao", &g.effectRadius, 0.1f, 0.50f, "%.3f");
-			ImGui::SliderFloat("Falloff Range##gtao", &g.effectFalloffRange, 0.20f, 1.0f, "%.2f");
-			ImGui::SliderFloat("Distribution##gtao", &g.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
-			ImGui::SliderFloat("Thin Occluder Comp##gtao", &g.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Radius##gtao", &gtaoSettings.effectRadius, 0.1f, 0.50f, "%.3f");
+			ImGui::SliderFloat("Falloff Range##gtao", &gtaoSettings.effectFalloffRange, 0.20f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Distribution##gtao", &gtaoSettings.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
+			ImGui::SliderFloat("Thin Occluder Comp##gtao", &gtaoSettings.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
 
-			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&g.sliceCount), 4, 8);
-			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&g.stepsPerSliceCount), 2, 8);
+			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&gtaoSettings.sliceCount), 4, 8);
+			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&gtaoSettings.stepsPerSliceCount), 2, 8);
 
-			ImGui::SliderFloat("Filter Sharpness##gtao", &g.sharpness, 0.5f, 5.0f);
-			ImGui::SliderFloat("Filter Radius##gtao", &g.radius, 1.0f, 6.0f);
+			ImGui::SliderFloat("Filter Sharpness##gtao", &gtaoSettings.sharpness, 0.5f, 5.0f);
+			ImGui::SliderFloat("Filter Radius##gtao", &gtaoSettings.radius, 1.0f, 6.0f);
+
+			//ImGui::SliderFloat("Constant Thickness", &gtaoSettings.constantThickness, 0.3f, 0.6f, "%.2f");
 		}
-
 
 		ImGui::NewLine();
 		UI::separatorText("Volumetrics");

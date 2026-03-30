@@ -3,12 +3,10 @@
 #extension GL_ARB_separate_shader_objects : require
 #extension GL_GOOGLE_include_directive : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
-
-layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-	SceneData scene;
-};
+//#include "../include/set_bindings.glsl"
+#include "../include/common.glsl"
+//#include "../include/image_types.glsl"
+//#include "../include/buffer_types.glsl"
 
 layout(buffer_reference, scalar) readonly buffer OBBLineBuffer
 {
@@ -24,6 +22,6 @@ layout(push_constant) uniform PushConstants
 void main()
 {
 	vec3 pos = pc.vertBuffer.vertices[gl_VertexIndex];
-
+	SceneData scene = getSceneData();
 	gl_Position = scene.viewProj * vec4(pos, 1.0f);
 }

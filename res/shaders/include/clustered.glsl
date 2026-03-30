@@ -1,9 +1,6 @@
 #ifndef CLUSTERED_GLSL
 #define CLUSTERED_GLSL
 
-#extension GL_EXT_buffer_reference : require
-#extension GL_EXT_scalar_block_layout : require
-
 const uint LIGHT_TYPE_POINT = 0u;
 const uint LIGHT_TYPE_SPOT  = 1u;
 
@@ -21,36 +18,6 @@ const uint LIGHT_LIST_SLOT_FLASHLIGHT = 0u;
 const uint MAX_VISIBLE_LIGHTS = 4096u - LIGHT_LIST_STATIC_COUNT;
 //const uint MAX_VISIBLE_LIGHTS = 8192u - LIGHT_LIST_STATIC_COUNT;
 //const uint MAX_VISIBLE_LIGHTS = 10240u - LIGHT_LIST_STATIC_COUNT;
-
-struct LocalLight {
-	uint lightType;
-
-	vec3 position;
-	float radius;
-
-	vec3 color;
-	float intensity;
-
-	vec3 direction;
-	float innerCos;
-
-	float outerCos;
-	uint flags;
-	uint shadowMapID;
-	uint cookieTexID;
-};
-
-struct ClusteredData {
-	uint tileSizeX;
-	uint tileSizeY;
-	uint zSlices;
-	uint maxLightsPerCluster;
-	uint tileCountX;
-	uint tileCountY;
-	uint clusterCount;
-	uint maxVisibleLights;
-	vec4 pad0[6];
-};
 
 struct ClusterGrid {
 	uvec2 tileCoord;
@@ -215,46 +182,5 @@ LightClusterBounds computeLightClusterBounds(
 	bounds.tileMax.y = clampU32(tileMaxY, 0u, maxTileY);
 	return bounds;
 }
-
-
-// clustered shading buffers
-
-layout(buffer_reference, scalar) buffer VisibleLightCount {
-	uint count;
-};
-
-layout(buffer_reference, scalar) buffer VisibleLightIDs {
-	uint ids[];
-};
-
-layout(buffer_reference, scalar) buffer ClusterCounts {
-	uint counts[];
-};
-
-layout(buffer_reference, scalar) buffer ClusterOffsets {
-	uint offsets[];
-};
-
-layout(buffer_reference, scalar) buffer ClusterCursors {
-	uint cursors[];
-};
-
-layout(buffer_reference, scalar) buffer ClusterLightIDs {
-	uint lightIDs[];
-};
-
-// One per tile: (minSlice, maxSlice)
-layout(buffer_reference, scalar) buffer ClusterTileSliceRanges {
-	uvec2 ranges[];
-};
-
-// Scratch for scan
-layout(buffer_reference, scalar) buffer ClusterScanScratch {
-	uint scratch[];
-};
-
-layout(buffer_reference, scalar) readonly buffer LightBuffer {
-	LocalLight lights[];
-};
 
 #endif

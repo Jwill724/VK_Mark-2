@@ -25,6 +25,7 @@ namespace RenderScene {
 	std::vector<AABB> _visibleWorldAABBs;
 
 	Frustum _cascadeFrustums[MAX_SHADOW_CASCADES];
+	glm::mat4 _cascadeLightViews[MAX_SHADOW_CASCADES];
 
 	Camera _mainCamera;
 	glm::mat4 _curCamView;
@@ -47,7 +48,7 @@ namespace RenderScene {
 	glm::vec2 _currentJitterNDC = glm::vec2(0.0f);
 	glm::vec2 _previousJitterNDC = glm::vec2(0.0f);
 
-	float _shadowFar = 800.0f;
+	float _shadowFar = 1000.0f;
 
 	float _cachedAspectRatio = 0.0f;
 
@@ -141,8 +142,8 @@ void RenderScene::setScene(bool assetsLoaded) {
 	_mainCamera.setFovY(90.0f);
 
 	_mainCamera.setSensitivity(50.0f); // Feels good on 1600dpi
-	_mainCamera.setMaxSpeed(20.0f);
-	_mainCamera.setMinSpeed(5.0f);
+	_mainCamera.setMaxSpeed(16.0f);
+	_mainCamera.setMinSpeed(4.0f);
 
 	_mainCamera.setAcceleration(20.0f);
 	_mainCamera.setDamping(8.0f);
@@ -155,8 +156,8 @@ void RenderScene::setScene(bool assetsLoaded) {
 	_lastViewProjUnjittered = glm::mat4(1.0f);
 	_lastViewProjJittered = glm::mat4(1.0f);
 
-	_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 2.5f);    // golden sun
-	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 2.5f); // white
+	_sceneData.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 10.0f);    // golden sun
+	//_sceneData.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 10.0f); // white
 	_sceneData.sunlightDirection = glm::vec4(0.36f, 0.46f, -0.09f, 0.0f);
 }
 
@@ -190,7 +191,8 @@ void RenderScene::updateCamera() {
 	_sceneData.view = _curCamView;
 	_sceneData.invView = glm::inverse(_curCamView);
 
-	if (profiler.debugToggles.aaMode == AA_TAA) {
+	const auto& aaMode = profiler.debugToggles.aaMode;
+	if (aaMode == AA_TAA) {
 		_sceneData.proj = _curCamProjJittered;
 		_sceneData.invProj = glm::inverse(_curCamProjJittered);
 		_sceneData.viewProj = currentViewProjJittered;
@@ -281,7 +283,7 @@ static inline glm::vec4 buildAtlasUV(
 
 void RenderScene::initCSMAtlasUVs()
 {
-	const auto& atlas = ResourceManager::getDirectionalCSMAtlas();
+	const auto& atlas = ResourceManager::getDirectionalCSMAtlas_Target();
 
 	const VkExtent2D atlasExtent = {
 		atlas.extent.width,
@@ -316,13 +318,12 @@ void RenderScene::initCSMAtlasUVs()
 // Pipeline depth compare LESS
 // CULL MODE: FRONT BIT
 void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
-	const auto& shadowAtlas = ResourceManager::getDirectionalCSMAtlas();
-	const float shadowResWidth = static_cast<float>(shadowAtlas.extent.width);
-	const float tileRes = static_cast<float>(shadowResWidth / 2u);
+	const auto& shadowAtlas = ResourceManager::getDirectionalCSMAtlas_Target();
+	const float tileRes = static_cast<float>(shadowAtlas.extent.width / 2u);
 	// Define all csm parameters once
 	if (_shadowCSM.params.y == 0.0f) {
 		_shadowControl.splitLambda = 0.97f;
-		_shadowControl.bias = 0.0001f;
+		_shadowCSM.params.x = 0.0001f;
 		_shadowCSM.params.z = static_cast<float>(MAX_SHADOW_CASCADES);
 		_shadowCSM.params.y = static_cast<float>(shadowAtlas.lutEntry.combinedImageIndex);
 		_shadowCSM.params.w = 1.0f / tileRes;
@@ -330,15 +331,18 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		initCSMAtlasUVs();
 	}
 
+	static const float CASCADE_RADIUS[MAX_SHADOW_CASCADES] = {
+		17.0f,
+		46.0f,
+		160.0f,
+		500.0f // sss carries last cascade
+	};
+
 	const float aspect = _sceneData.viewportSize.x / _sceneData.viewportSize.y;
-
 	if (_cachedAspectRatio != aspect) {
-		_cachedAspectRatio = aspect;
-
 		const float nearClip = _mainCamera.getNearClip();
-		const float farClip = _shadowFar;
-		const float clipRange = farClip - nearClip;
-		const float ratio = farClip / nearClip;
+		const float clipRange = _shadowFar - nearClip;
+		const float ratio = _shadowFar / nearClip;
 
 		// Compute split distances in view space (absolute units)
 		for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
@@ -353,57 +357,39 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 	for (uint32_t i = 0; i < MAX_SHADOW_CASCADES; ++i) {
 		const float curSplit = _shadowCSM.cascadeSplits[i];
 
-		// world-space corners of the slice
-		glm::mat4 proj = glm::perspective(glm::radians(_mainCamera.getFovY()), aspect, lastSplitDist, curSplit);
-		glm::mat4 invVp = glm::inverse(proj * _curCamView);
+		const float splitMid = (lastSplitDist + curSplit) * 0.5f;
 
-		// Zero to one depth
-		glm::vec4 frustumCorners[8] = {
-			{ -1.0f,  1.0f, 0.0f, 1.0f }, // near
-			{  1.0f,  1.0f, 0.0f, 1.0f },
-			{  1.0f, -1.0f, 0.0f, 1.0f },
-			{ -1.0f, -1.0f, 0.0f, 1.0f },
-			{ -1.0f,  1.0f, 1.0f, 1.0f }, // far
-			{  1.0f,  1.0f, 1.0f, 1.0f },
-			{  1.0f, -1.0f, 1.0f, 1.0f },
-			{ -1.0f, -1.0f, 1.0f, 1.0f }
-		};
+		const glm::vec3 camPos = _mainCamera.getPosition();
+		const glm::vec3 camForward = _mainCamera.getView();
 
-		glm::vec3 frustumCenter(0.0f);
-		for (auto& v : frustumCorners) {
-			glm::vec4 cornerWorld = invVp * v;
-			v = cornerWorld / cornerWorld.w;
-			frustumCenter += glm::vec3(v);
-		}
+		glm::vec3 frustumCenter = camPos + camForward * splitMid;
 
-		// center in world space
-		frustumCenter /= 8.0f;
+		float radius = CASCADE_RADIUS[i];
 
-		float radius = 0.0f;
-		for (const auto& v : frustumCorners) {
-			float distance = glm::length(glm::vec3(v) - frustumCenter);
-			radius = glm::max(radius, distance);
-		}
-		radius = std::ceil(radius * 16.0f) / 16.0f;
+		const float worldUnitsPerTexel = (radius * 2.0f) / tileRes;
+		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+		//_shadowCSM.cascadeBias[i] = worldUnitsPerTexel * 0.0005f;
+		//_shadowCSM.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
 
 		glm::vec3 max = glm::vec3(radius);
 		glm::vec3 min = -max;
 
 		// Light view
 		const glm::vec3 lightPos = frustumCenter + lightDir;
-		const glm::mat4 lightView = glm::lookAt(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		_cascadeLightViews[i] = lightView;
 
-		// Extend depth range
-		// The scale factors cover edge cases for stability,
-		// depending on distance with the occluder and the view.
+		// Extend depth range to keep shadow visuals consistent
 		const float depthRange = max.z - min.z;
+		min.z -= depthRange;
 
-		// These two scale factors keep shadows working
-		min.z -= depthRange * 5.0f;
-		max.z += depthRange * 2.0f;
+		// Scale factor that fixes issues with large assets
+		min.z *= 5.0f;
 
 		// Orthographic projection
-		glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
+		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
+
 		glm::mat4 shadowMatrix = lightProj * lightView;
 
 		// This works beautifully, it keeps the shadows 100% stable during movement
@@ -618,8 +604,8 @@ void RenderScene::updateScene(
 
 	flashLightChanged = LightingSystem::_mainFlashLight.updateFlashLight(
 		LightingSystem::_globalLightList,
-		ResourceManager::getFlashLightShadowMap().lutEntry.combinedImageIndex,
-		ResourceManager::getCookieGoboImage().lutEntry.combinedImageIndex,
+		ResourceManager::getFlashLightShadowMap_Target().lutEntry.combinedImageIndex,
+		ResourceManager::getCookieGobo_Texture().lutEntry.combinedImageIndex,
 		_mainCamera.getPosition(),
 		_mainCamera.getView(),
 		deltaTime,
@@ -771,7 +757,6 @@ void RenderScene::updateDrawDataCPUPath(
 		frameCtx.visibleInstances,
 		_visibleWorldAABBs);
 
-
 	if (!frameCtx.visibleInstances.empty()) {
 		frameCtx.visibleCount = static_cast<uint32_t>(frameCtx.visibleInstances.size());
 
@@ -784,21 +769,45 @@ void RenderScene::updateDrawDataCPUPath(
 		if (debug.enableShadows) {
 			frameCtx.shadowCasterInstances.reserve(std::max(1024u, frameCtx.visibleCount * 2u));
 
+			AABB visibleReceiverWS = computeVisibleReceiverAABB(_visibleWorldAABBs);
+
 			for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
-
-				// First 3 cascades can get foilage shadows
-				const bool allowAlphaMasked = (cascadeIndex != MAX_SHADOW_CASCADES - 1u);
-
 				PassRange& cascadeRange = frameCtx.shadowCastersRanges[cascadeIndex];
-				cascadeRange.firstInstance =
-					static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
+				cascadeRange.firstInstance = static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
 
-				Visibility::cullBVHCollectShadowCasters(
+				// Transform to light space
+				glm::vec3 centerWS = visibleReceiverWS.origin;
+				glm::vec3 extentWS = visibleReceiverWS.extent;
+
+				glm::vec3 centerLS = glm::vec3(_cascadeLightViews[cascadeIndex] * glm::vec4(centerWS, 1.0f));
+				glm::mat3 absLightMat = glm::mat3(
+					glm::abs(_cascadeLightViews[cascadeIndex][0]),
+					glm::abs(_cascadeLightViews[cascadeIndex][1]),
+					glm::abs(_cascadeLightViews[cascadeIndex][2]));
+
+				glm::vec3 extentLS = absLightMat * extentWS;
+
+				glm::vec3 receiverLSMin = centerLS - extentLS;
+				glm::vec3 receiverLSMax = centerLS + extentLS;
+
+				// Extend toward the light (higher Z)
+				receiverLSMax.z += _shadowControl.maxCasterDistance[cascadeIndex];
+
+				// Small safety padding
+				receiverLSMin.x -= _shadowControl.xyPadding;
+				receiverLSMin.y -= _shadowControl.xyPadding;
+				receiverLSMax.x += _shadowControl.xyPadding;
+				receiverLSMax.y += _shadowControl.xyPadding;
+
+				Visibility::cullBVHCollectShadowCastersReceivers(
+					cascadeIndex,
 					_visState,
 					_cascadeFrustums[cascadeIndex],
+					_cascadeLightViews[cascadeIndex],
+					receiverLSMin,
+					receiverLSMax,
 					frameCtx.shadowCasterInstances,
-					gpuResources.getMaterialFlagsByID(),
-					allowAlphaMasked
+					gpuResources.getMaterialFlagsByID()
 				);
 
 				cascadeRange.visibleCount =

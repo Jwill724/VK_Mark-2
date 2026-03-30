@@ -1,16 +1,8 @@
 #ifndef PBR_GLSL
 #define PBR_GLSL
 
-const float PI = 3.1415926535897932384626433832795;
-const float HALF_PI = 1.5707963267948966192313216916398;
-
 float saturatePBR(float x) { return clamp(x, 0.0, 1.0); }
 float linearRough(float r) { return max(r * r, 0.001); }
-
-float luminance(vec3 color)
-{
-	return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
-}
 
 // GGX (Trowbridge-Reitz) NDF
 float D_GGX(vec3 N, vec3 H, float roughness)
@@ -41,8 +33,8 @@ float FRESNEL_POWER_UNREAL(vec3 V, vec3 H) {
 }
 vec3 F_SCHLICK(vec3 V, vec3 H, vec3 F0)
 {
-	return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
-	//return F0 + (1.0 - F0) * pow(1.0 - saturatePBR(dot(V,H)), 5.0);
+	//return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
+	return F0 + (1.0 - F0) * pow(1.0 - saturatePBR(dot(V,H)), 5.0);
 }
 
 // Disney/Burley diffuse (what frostbite uses)
@@ -101,12 +93,6 @@ float MicroShadowVisibility(float NdotL, float occlusion)
 	float ao = clamp(occlusion, 0.0, 1.0);
 	float visibility = (NdotL + ao) / (1.0 + ao);
 	return clamp(visibility, 0.0, 1.0);
-}
-
-vec3 Spec_BlinnPhong(vec3 F0, float shininess, float NdotH)
-{
-	float specPow = pow(max(NdotH, 0.0), shininess);
-	return F0 * specPow;
 }
 
 #endif

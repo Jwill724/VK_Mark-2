@@ -201,6 +201,30 @@ static const char* textureSemanticToString(TextureSemantic semantic)
 	}
 }
 
+// Add this helper near the top of AssetManager.cpp (or in a utils file)
+static bool isTreeMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf)
+{
+	if (!mat.name.empty()) {
+		std::string lowerName(mat.name.begin(), mat.name.end());
+
+		// Convert to lowercase for matching
+		std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
+			[](unsigned char c) { return std::tolower(c); });
+
+		if (lowerName.find("tree") != std::string::npos/* ||
+			lowerName.find("leaf") != std::string::npos ||
+			lowerName.find("foliage") != std::string::npos ||
+			lowerName.find("branch") != std::string::npos ||
+			lowerName.find("pine") != std::string::npos ||
+			lowerName.find("palm") != std::string::npos ||
+			lowerName.find("bark") != std::string::npos*/) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void AssetManager::decodeImages(
 	ThreadContext& threadCtx,
 	const VmaAllocator allocator,
@@ -220,7 +244,8 @@ void AssetManager::decodeImages(
 		scene.runtime.images.clear();
 		scene.runtime.images.reserve(gltf.images.size());
 
-		for (fastgltf::Image& image : gltf.images) {
+		for (size_t imgIdx = 0; imgIdx < gltf.images.size(); imgIdx++) {
+			fastgltf::Image& image = gltf.images[imgIdx];
 			std::string imageName;
 			if (!image.name.empty()) {
 				imageName = image.name;
@@ -249,7 +274,7 @@ void AssetManager::decodeImages(
 				runtimeImage.semantic = TextureSemantic::Unknown;
 			}
 			else {
-				runtimeImage.image = ResourceManager::getCheckboardTex();
+				runtimeImage.image = ResourceManager::getCheckboard_Texture();
 				runtimeImage.semantic = TextureSemantic::Unknown;
 
 				JobSystem::log(
@@ -281,13 +306,18 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 		auto& scene = *context->scene;
 
 		for (fastgltf::Sampler& sampler : gltf.samplers) {
+			VkFilter magFilter = TextureLoader::extract_filter(
+				sampler.magFilter.value_or(fastgltf::Filter::Linear));
 
-			VkFilter filter = TextureLoader::extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
-			VkSamplerMipmapMode mipmapMode = TextureLoader::extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+			VkFilter minFilter = TextureLoader::extract_filter(
+				sampler.minFilter.value_or(fastgltf::Filter::LinearMipMapLinear));
+
+			VkSamplerMipmapMode mipmapMode = TextureLoader::extract_mipmap_mode(
+				sampler.minFilter.value_or(fastgltf::Filter::LinearMipMapLinear));
 
 			VkSampler newSampler = ImageUtils::createSampler(
 				device,
-				filter,
+				minFilter,
 				VK_SAMPLER_ADDRESS_MODE_REPEAT,
 				VK_LOD_CLAMP_NONE,
 				CURRENT_AF_LVL,
@@ -338,20 +368,20 @@ void AssetManager::processMaterials(
 	std::vector<GPUMaterial> materialUploadList;
 	materialUploadList.reserve(totalMatCount);
 
-	const auto defaultLinear = ResourceManager::getDefaultSamplerLinear();
-	const auto defaultNearest = ResourceManager::getDefaultSamplerNearest();
+	const auto defaultLinear = ResourceManager::getDefaultLinear_Sampler();
+	const auto defaultNearest = ResourceManager::getDefaultNearest_Sampler();
 
 	// Default/fallback images
 	MaterialResources materialResources {
-		.albedoImage = ResourceManager::getWhiteMat(),
+		.albedoImage = ResourceManager::getWhiteMat_Texture(),
 		.albedoSampler = defaultLinear,
-		.metalRoughImage = ResourceManager::getMetalRoughMat(),
+		.metalRoughImage = ResourceManager::getMetalRough_Texture(),
 		.metalRoughSampler = defaultNearest,
-		.aoImage = ResourceManager::getAOMat(),
+		.aoImage = ResourceManager::getAO_Texture(),
 		.aoSampler = defaultNearest,
-		.normalImage = ResourceManager::getNormaMat(),
+		.normalImage = ResourceManager::getNormal_Texture(),
 		.normalSampler = defaultLinear,
-		.emissiveImage = ResourceManager::getEmissiveMat(),
+		.emissiveImage = ResourceManager::getEmissive_Texture(),
 		.emissiveSampler = defaultLinear,
 	};
 
@@ -545,6 +575,10 @@ void AssetManager::processMaterials(
 				newMaterial.flags &= ~MATERIAL_FLAG_CASTS_SHADOWS;
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
+
+			if (isTreeMaterial(mat, gltf)) {
+				newMaterial.flags |= MATERIAL_FLAG_IS_TREE;
+			}
 
 			materialFlags[static_cast<size_t>(baseOffset + currentMat)] = newMaterial.flags;
 
@@ -741,6 +775,13 @@ void AssetManager::processMeshes(
 						vertices[vtxOff + i] = vtx;
 					});
 
+				auto toSnorm16 = [](float value) -> int16_t {
+					float clamped = glm::clamp(value, -1.0f, 1.0f);
+					int32_t scaled = static_cast<int32_t>(std::round(clamped * 32767.0f));
+					scaled = std::min<int32_t>(32767, std::max<int32_t>(-32767, scaled));
+					return static_cast<int16_t>(scaled);
+				};
+
 				if (auto normals = p.findAttribute("NORMAL"); normals != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
 						[&](glm::vec3 v, size_t i) {
@@ -761,15 +802,31 @@ void AssetManager::processMeshes(
 								enc = (glm::vec2(1.0f) - glm::abs(glm::vec2(enc.y, enc.x))) * signNotZero;
 							}
 
-							auto toSnorm16 = [](float value) -> int16_t {
-								float clamped = glm::clamp(value, -1.0f, 1.0f);
-								int32_t scaled = static_cast<int32_t>(std::round(clamped * 32767.0f));
-								scaled = std::min<int32_t>(32767, std::max<int32_t>(-32767, scaled));
-								return static_cast<int16_t>(scaled);
-							};
-
 							vertex.normalX = toSnorm16(enc.x);
 							vertex.normalY = toSnorm16(enc.y);
+						});
+				}
+
+				if (auto tangents = p.findAttribute("TANGENT"); tangents != p.attributes.end()) {
+					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->accessorIndex],
+						[&](glm::vec4 v, size_t i) {
+							Vertex& vertex = vertices[vtxOff + i];
+
+							glm::vec3 t = glm::normalize(glm::vec3(v.x, v.y, v.z));
+
+							glm::vec3 oct = t / (abs(t.x) + abs(t.y) + abs(t.z));
+							glm::vec2 enc = glm::vec2(oct.x, oct.y);
+							if (oct.z < 0.0f) {
+								glm::vec2 signNotZero = glm::vec2(
+									(enc.x >= 0.0f) ? 1.0f : -1.0f,
+									(enc.y >= 0.0f) ? 1.0f : -1.0f
+								);
+								enc = (glm::vec2(1.0f) - glm::abs(glm::vec2(enc.y, enc.x))) * signNotZero;
+							}
+
+							vertex.tangentX = toSnorm16(enc.x);
+							vertex.tangentY = toSnorm16(enc.y);
+							vertex.tangentW = (v.w >= 0.0f) ? 1 : -1;
 						});
 				}
 
@@ -1282,12 +1339,12 @@ void ModelAsset::clearAll() {
 	for (auto& img : runtime.images) {
 		// holy naming
 		if (img.image.image == VK_NULL_HANDLE ||
-			img.image.image == ResourceManager::getCheckboardTex().image ||
-			img.image.image == ResourceManager::getWhiteMat().image ||
-			img.image.image == ResourceManager::getMetalRoughMat().image ||
-			img.image.image == ResourceManager::getAOMat().image ||
-			img.image.image == ResourceManager::getNormaMat().image ||
-			img.image.image == ResourceManager::getEmissiveMat().image) {
+			img.image.image == ResourceManager::getCheckboard_Texture().image ||
+			img.image.image == ResourceManager::getWhiteMat_Texture().image ||
+			img.image.image == ResourceManager::getMetalRough_Texture().image ||
+			img.image.image == ResourceManager::getAO_Texture().image ||
+			img.image.image == ResourceManager::getNormal_Texture().image ||
+			img.image.image == ResourceManager::getEmissive_Texture().image) {
 			continue;
 		}
 
@@ -1296,8 +1353,8 @@ void ModelAsset::clearAll() {
 
 	for (auto& sampler : runtime.samplers) {
 		if (sampler == VK_NULL_HANDLE ||
-			sampler == ResourceManager::getDefaultSamplerLinear() ||
-			sampler == ResourceManager::getDefaultSamplerNearest()) {
+			sampler == ResourceManager::getDefaultLinear_Sampler() ||
+			sampler == ResourceManager::getDefaultNearest_Sampler()) {
 			continue;
 		}
 

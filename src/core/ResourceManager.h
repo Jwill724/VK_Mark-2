@@ -113,58 +113,64 @@ namespace ResourceManager {
 
 	extern glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS];
 
-	// TODO: Should change the naming style to remove -Image
-	AllocatedImage& getOpaqueImage();
-	AllocatedImage& getTransparentImage();
-	AllocatedImage& getToneMapImage();
-	AllocatedImage& getDepthResolvedImage();
-	AllocatedImage& getPrevDepthResolvedImage();
-	AllocatedImage& getDepthImage();
-	AllocatedImage& getViewSpaceNormals();
-	AllocatedImage& getAORawImage();
-	AllocatedImage& getAOTempImage();
+	AllocatedImage& getOpaque_Target();
+	AllocatedImage& getTransparentResolved_Target();
+	// For OIT
+	AllocatedImage& getTransparentAccumulation_Target();
+	AllocatedImage& getTransparentRevealage_Target();
 
-	AllocatedImage& getColorHistoryRead();
-	AllocatedImage& getColorHistoryWrite();
+	AllocatedImage& getToneMap_Target();
+
+	// Pre pass depth
+	AllocatedImage& getDepthResolved_Target();
+	AllocatedImage& getPrevDepthResolved_Target();
+	AllocatedImage& getHiZ_Target();
+
+	// An empty base depth
+	AllocatedImage& getDepthRaw_Target();
+
+	AllocatedImage& getViewSpaceNormals_Target();
+	AllocatedImage& getAORaw_Target();
+	AllocatedImage& getAOTemp_Target();
+
+	AllocatedImage& getColorHistoryRead_Target();
+	AllocatedImage& getColorHistoryWrite_Target();
 	void flipColorHistory();
 	void resetColorHistoryIndex();
 
-	AllocatedImage& getFlareBrightImage();
-	AllocatedImage& getLensFlareColorImage();
-	AllocatedImage& getRainbowLUTImage();
-	AllocatedImage& getVelocityImage();
-	AllocatedImage& getPrevVelocityImage();
-	AllocatedImage& getVolumetricLightImage();
-	AllocatedImage& getVolumetricBlurImage();
-	AllocatedImage& getDirectionalCSMAtlas();
-	AllocatedImage& getScreenSpaceShadowMask();
-	AllocatedImage& getBentNormals();
-	AllocatedImage& getHiZ();
-	AllocatedImage& getEdgeInfoImage();
-	AllocatedImage& getAAColor();
-	AllocatedImage& getPostNonAAComposite();
-	AllocatedImage& getCMAA2WorkingEdges();
-	AllocatedImage& getSMAAEdges();
-	AllocatedImage& getSMAAWeights();
-	AllocatedImage& getFlashLightShadowMap();
-	AllocatedImage& getCookieGoboImage();
-	AllocatedImage& getAreaTex();
-	AllocatedImage& getSearchTex();
-	const VkSampler getNearestClampSampler();
-	const VkSampler getLinearClampSampler();
-	const VkSampler getHiZSampler();
-	const VkSampler getLinearLODClampSampler();
-	const VkSampler getPointBorderSampler();
-	const VkSampler getTaaHistorySampler();
-	const VkSampler getNoiseSampler();
-	const VkSampler getShadowMapSampler();
+	AllocatedImage& getFlareBright_Target();
+	AllocatedImage& getLensFlareColor_Target();
+	AllocatedImage& getVelocity_Target();
+	AllocatedImage& getPrevVelocity_Target();
+	AllocatedImage& getVolumetricLight_Target();
+	AllocatedImage& getVolumetricBlur_Target();
+	AllocatedImage& getDirectionalCSMAtlas_Target();
+	AllocatedImage& getScreenSpaceShadowMask_Target();
+	AllocatedImage& getBentNormals_Target();
+	AllocatedImage& getAOEdgeInfo_Target();
+	AllocatedImage& getAAColor_Target();
+	AllocatedImage& getPostNonAAComposite_Target();
+	AllocatedImage& getCMAA2WorkingEdges_Target();
+	AllocatedImage& getSMAAEdges_Target();
+	AllocatedImage& getSMAAWeights_Target();
+	AllocatedImage& getFlashLightShadowMap_Target();
+
+	AllocatedImage& getRainbowLUT_Texture();
+	AllocatedImage& getCookieGobo_Texture();
+	AllocatedImage& getAreaSMAA_Texture();
+	AllocatedImage& getSearchSMAA_Texture();
+
+	const VkSampler getNearestClamp_Sampler();
+	const VkSampler getLinearClamp_Sampler();
+	const VkSampler getHiZ_Sampler();
+	const VkSampler getLinearLODClamp_Sampler();
+	const VkSampler getPointBorder_Sampler();
+	const VkSampler getTaaHistory_Sampler();
+	const VkSampler getNoise_Sampler();
+	const VkSampler getShadowMap_Sampler();
 
 	// Empty black image
-	AllocatedImage& getDummyImage();
-
-	//AllocatedImage& get4x4NoiseImage();
-
-	//std::vector<VkDescriptorSet>& getShadowMapDescriptors();
+	AllocatedImage& getDummy_Texture();
 
 	void initRenderSamplers(
 		const VkDevice device,
@@ -181,15 +187,15 @@ namespace ResourceManager {
 		const VmaAllocator allocator,
 		const VkExtent3D drawExtent);
 
-	AllocatedImage& getMetalRoughMat();
-	AllocatedImage& getWhiteMat();
-	AllocatedImage& getEmissiveMat();
-	AllocatedImage& getAOMat();
-	AllocatedImage& getNormaMat();
-	AllocatedImage& getCheckboardTex();
-	AllocatedImage& getDummyUint8();
-	const VkSampler getDefaultSamplerLinear();
-	const VkSampler getDefaultSamplerNearest();
+	AllocatedImage& getMetalRough_Texture();
+	AllocatedImage& getWhiteMat_Texture();
+	AllocatedImage& getEmissive_Texture();
+	AllocatedImage& getAO_Texture();
+	AllocatedImage& getNormal_Texture();
+	AllocatedImage& getCheckboard_Texture();
+	AllocatedImage& getDummyUint8_Texture();
+	const VkSampler getDefaultLinear_Sampler();
+	const VkSampler getDefaultNearest_Sampler();
 	void initTextures(
 		const VkDevice device,
 		VkCommandPool cmdPool,
@@ -197,11 +203,11 @@ namespace ResourceManager {
 		DeletionQueue& bufferQueue,
 		const VmaAllocator allocator);
 
-	AllocatedImage& getBRDFImage();
-	const VkSampler getBRDFSampler();
-	const VkSampler getSpecularPrefilterSampler();
-	const VkSampler getIrradianceSampler();
-	const VkSampler getSkyBoxSampler();
+	AllocatedImage& getBRDF_Texture();
+	const VkSampler getBRDF_Sampler();
+	const VkSampler getSpecularPrefilter_Sampler();
+	const VkSampler getIrradiance_Sampler();
+	const VkSampler getSkyBox_Sampler();
 
 	EnvironmentSet initEnvironmentSetImages(
 		const VkDevice device,

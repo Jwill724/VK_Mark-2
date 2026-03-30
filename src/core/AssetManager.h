@@ -55,6 +55,7 @@ struct ModelAsset {
 		std::vector<RuntimeImage> images;
 		std::vector<VkSampler> samplers;
 		std::vector<GPUMaterial> materials;
+		std::vector<bool> normalMapFlags;
 
 		std::vector<uint32_t> bakedNodeIDs;    // nodes to search each inner transform tree
 		std::vector<uint32_t> uniqueNodeIDs;   // compact list of node indices that own a transform

@@ -7,7 +7,7 @@
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
 - GLTF asset pipeline enabled (kinda) with multithreading (EnkiTS)
 - AABB BVH culling and OBB visual debug
-- Transparent depth sorting
+- Order-independent-transparency(OIT)
 - ImGui debugging tools
 - SMAA
 - CMAA2

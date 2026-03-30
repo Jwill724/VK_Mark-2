@@ -118,7 +118,7 @@ static void copyImageToImageBlit(
 // TODO: When I get a better image loading library (ktx),
 // I'll rework this to be able to create large staging buffers for many textures into a single cmd
 // TODO: Change this function, the most spaghetti part of the code-base.
-void ImageUtils::createTextureImage(
+void ImageUtils::createTexture(
 	const VkDevice device,
 	VkCommandPool cmdPool,
 	const void* data,
@@ -134,11 +134,21 @@ void ImageUtils::createTextureImage(
 
 	size_t dataSize = static_cast<size_t>(renderImage.extent.width) * renderImage.extent.height * pixelBytes;
 
-	AllocatedBuffer uploadBuffer = BufferUtils::createBuffer(dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, allocator);
+	AllocatedBuffer uploadBuffer = BufferUtils::createBuffer(
+		dataSize,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VMA_MEMORY_USAGE_CPU_TO_GPU,
+		allocator);
 	memcpy(uploadBuffer.info.pMappedData, data, dataSize);
 
-	createRenderImage(device, renderImage, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-		samples, imageQueue, allocator, skipQueueUsage);
+	createRenderTarget(
+		device,
+		renderImage,
+		usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+		samples,
+		imageQueue,
+		allocator,
+		skipQueueUsage);
 
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
 		transitionImage(
@@ -182,9 +192,10 @@ void ImageUtils::createTextureImage(
 	});
 }
 
+
 // TODO: Rework image system to handle new additions to AllocatedImage struct,
 // this should scale toward a render pass and graph system.
-void ImageUtils::createRenderImage(
+void ImageUtils::createRenderTarget(
 	const VkDevice device,
 	AllocatedImage& renderImage,
 	VkImageUsageFlags usage,
@@ -205,7 +216,9 @@ void ImageUtils::createRenderImage(
 	imgInfo.samples = samples;
 	imgInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	renderImage.previousLayout = imgInfo.initialLayout; // Reset layout
+
+	// Layout reset
+	renderImage.currentLayout = imgInfo.initialLayout;
 
 	// enable mip-maps to get levels per extent of image
 	if (renderImage.mipmapped && renderImage.mipLevelCount == 0) {
@@ -385,7 +398,7 @@ void ImageUtils::transitionImage(
 	VkImageLayout oldLayout =
 		(oldLayoutOverride != VK_IMAGE_LAYOUT_UNDEFINED)
 		? oldLayoutOverride
-		: img.previousLayout;
+		: img.currentLayout;
 
 	VkImageMemoryBarrier2 b{ VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2 };
 	b.oldLayout = oldLayout;
@@ -473,7 +486,7 @@ void ImageUtils::transitionImage(
 	vkCmdPipelineBarrier2(cmd, &dep);
 
 	// Assign new layout
-	img.previousLayout = newLayout;
+	img.currentLayout = newLayout;
 }
 
 void ImageUtils::imageCopy(
@@ -808,7 +821,8 @@ void ImageUtils::generateMipmaps(VkCommandBuffer cmd, const AllocatedImage& imag
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
 		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 			0,
 			0, nullptr,
 			0, nullptr,

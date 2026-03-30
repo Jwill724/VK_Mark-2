@@ -4,16 +4,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
-
-layout(set = GLOBAL_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer GlobalAddressTableBuffer {
-	GPUAddressTable globalAddressTable;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
+#include "../include/common.glsl"
 
 layout(push_constant) uniform ShadowPush {
 	mat4 viewproj;
@@ -22,13 +13,13 @@ layout(push_constant) uniform ShadowPush {
 void main()
 {
 	// fetch shadow caster instances
-	Instance inst = VisibleInstances(frameAddressTable.addrs[ABT_VisibleInstances]).instances[gl_InstanceIndex];
+	Instance inst = getInstanceBuffer().instances[gl_InstanceIndex];
 
 	// fetch vertex
-	Vertex vtx = VertexBuffer(globalAddressTable.addrs[ABT_Vertex]).vertices[gl_VertexIndex];
+	Vertex vtx = getVertexBuffer().vertices[gl_VertexIndex];
 
 	// fetch transform
-	mat4 model = TransformsBuffer(frameAddressTable.addrs[ABT_Transforms]).transforms[inst.transformID];
+	mat4 model = getTransformBuffer().transforms[inst.transformID];
 
 	vec4 worldPos = model * vec4(vtx.position, 1.0);
 

@@ -186,7 +186,7 @@ struct AllocatedImage {
 	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
 	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
 
-	VkImageLayout previousLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	VmaAllocation allocation = nullptr;
 	ImageLUTEntry lutEntry;
@@ -285,6 +285,8 @@ struct PipelinePreset {
 	std::vector<VkFormat>colorFormats;
 	VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 
+	std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
+
 	std::vector<ShaderStageInfo> shaderStagesInfo;
 };
 
@@ -314,6 +316,7 @@ enum class PassID : uint16_t {
 	OpaqueForward,
 	OBBLineView,
 	TransparentForward,
+	TransparentResolve,
 	VolumetricLighting,
 	TAA,
 	Exposure,
@@ -495,18 +498,19 @@ struct alignas(16) GTAOPush {
 	glm::vec2 tanHalfFov{0.0f};
 
 	glm::vec2 ndcToViewAdd{ 0.0f };
-	// 4x4 looks better and runs faster than ssao.
-	uint32_t sliceCount = 4;
+	uint32_t sliceCount = 5;
 	uint32_t stepsPerSliceCount = 5;
 
 	float effectRadius = 0.4f;
-	float radiusMultiplier = 1.457f;
 	float effectFalloffRange = 0.6f;
-	float sampleDistributionPower = 3.0f;
+	float sampleDistributionPower = 2.0f;
+	float thinOccluderCompensation = 1.0f;
 
-	float thinOccluderCompensation = 0.9f;
-	float depthMipSamplingOffset = 3.3f;
 	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
+	float depthMipSamplingOffset = 3.3f;
+
+	// Visibility bitmask *not in use
+	float constantThickness = 0.4f;
 
 	// Alongside pixelSize, needed during filtering
 	float sharpness = 2.0;
@@ -522,8 +526,8 @@ struct alignas(16) TAAPush {
 };
 
 struct alignas(16) VolumetricPush {
-	float density = 0.004f;
-	float scatteringStrength = 37.0f;
+	float density = 0.002f;
+	float scatteringStrength = 15.0f;
 	float extinction = 0.08f;
 	float heightFalloff = 0.05f;
 
@@ -607,9 +611,9 @@ struct alignas(16) SSSPush {
 
 struct alignas(16) ForwardPush {
 	uint32_t activeLightCount;
+	float oitDepthScale = 400.0f;
 	float pad0;
 	float pad1;
-	float pad2;
 	glm::mat4 flashlightVP;
 };
 

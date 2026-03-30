@@ -10,6 +10,7 @@ struct PipelineBuilder {
 	VkPipelineInputAssemblyStateCreateInfo _inputAssembly{};
 	VkPipelineRasterizationStateCreateInfo _rasterizer{};
 	VkPipelineColorBlendAttachmentState _colorBlendAttachment{};
+	std::vector<VkPipelineColorBlendAttachmentState> _colorBlendAttachments;
 	VkPipelineMultisampleStateCreateInfo _multisampling{};
 	VkPipelineDepthStencilStateCreateInfo _depthStencil{};
 	VkPipelineRenderingCreateInfo _renderInfo{};

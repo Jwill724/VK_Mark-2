@@ -3,24 +3,15 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/set_bindings.glsl"
-#include "../include/gpu_scene_structures.glsl"
 #include "../include/cmaa2.glsl"
+#include "../include/common.glsl"
 
 // Original implementation: https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
 
 layout(local_size_x = 128) in;
 
-layout(set = FRAME_SET, binding = FRAME_BINDING_SCENE) uniform SceneUBO {
-	SceneData scene;
-};
-
-layout(set = FRAME_SET, binding = ADDRESS_TABLE_BINDING, scalar) readonly buffer FrameAddressTableBuffer {
-	GPUAddressTable frameAddressTable;
-};
-
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_1_TEX) uniform sampler2D inTonemap;
-layout(set = PUSH_SET, binding = PUSH_BINDING_INPUT_2_TEX) uniform usampler2D inWorkingEdges;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inTonemap;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform usampler2D inWorkingEdges;
 
 layout(push_constant) uniform CMAA2Push {
 	uint halfWidth;
@@ -57,18 +48,15 @@ uint buildHeadWithHeader(uint itemIndex, uint offsetXY, bool isComplexShape) {
 void storeDeferredColorSample(
 	ivec2 pixelPos,
 	vec4 colorRGBA,
-	bool isComplexShape) {
-	Cmaa2ControlBuffer control =
-		Cmaa2ControlBuffer(frameAddressTable.addrs[ABT_Cmaa2Control]);
+	bool isComplexShape)
+{
+	Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
 
-	Cmaa2DeferredHeadsBuffer heads =
-		Cmaa2DeferredHeadsBuffer(frameAddressTable.addrs[ABT_Cmaa2DeferredHeads]);
+	Cmaa2DeferredLocationsBuffer locations = getCMAA2DeferredLocationsBuffer();
 
-	Cmaa2DeferredItemsBuffer items =
-		Cmaa2DeferredItemsBuffer(frameAddressTable.addrs[ABT_Cmaa2DeferredItems]);
+	Cmaa2DeferredHeadsBuffer heads = getCMAA2DeferredHeadsBuffer();
 
-	Cmaa2DeferredLocationsBuffer locations =
-		Cmaa2DeferredLocationsBuffer(frameAddressTable.addrs[ABT_Cmaa2DeferredLocations]);
+	Cmaa2DeferredItemsBuffer items = getCMAA2DeferredItemsBuffer();
 
 	uint itemIndex = atomicAdd(control.control[CMAA2_CTRL_DEFERRED_ITEM_COUNT], 1u);
 	if (itemIndex >= pc.maxDeferredItems) return;
@@ -124,7 +112,8 @@ void findZLineLengths(
 	ivec2 screenPos,
 	bool horizontal,
 	bool invertedZShape,
-	ivec2 stepRight) {
+	ivec2 stepRight)
+{
 	uint maskTraceLeft, maskTraceRight;
 	if (horizontal) {
 		maskTraceLeft  = 0x08u; // top
@@ -167,13 +156,15 @@ void findZLineLengths(
 }
 
 void blendZs(
+	ivec2 viewport,
 	ivec2 screenPos,
 	bool horizontal,
 	bool invertedZShape,
 	float shapeQualityScore,
 	float lineLengthLeft,
 	float lineLengthRight,
-	ivec2 stepRight) {
+	ivec2 stepRight)
+{
 	vec2 blendDir = horizontal ? vec2(0.0, -1.0) : vec2(-1.0, 0.0);
 	if (invertedZShape)
 		blendDir = -blendDir;
@@ -200,7 +191,6 @@ void blendZs(
 		lerpK *= dampenEffect;
 
 		ivec2 pixelPos  = screenPos + stepRight * int(i);
-		ivec2 viewport  = ivec2(scene.viewportSize.xy);
 		if (any(lessThan(pixelPos, ivec2(0))) || any(greaterThanEqual(pixelPos, viewport))) continue;
 
 		ivec2 srcPos    = ivec2(vec2(pixelPos) + blendDir * srcOffset);
@@ -253,11 +243,11 @@ vec4 computeSimpleShapeBlendValues(
 }
 
 void main() {
-	Cmaa2ControlBuffer control =
-		Cmaa2ControlBuffer(frameAddressTable.addrs[ABT_Cmaa2Control]);
+	SceneData scene = getSceneData();
 
-	Cmaa2ShapeCandidatesBuffer candidates =
-		Cmaa2ShapeCandidatesBuffer(frameAddressTable.addrs[ABT_Cmaa2ShapeCandidates]);
+	Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
+
+	Cmaa2ShapeCandidatesBuffer candidates = getCMAA2ShapeCandidatesBuffer();
 
 	uint candidateCount = min(control.control[CMAA2_CTRL_SHAPE_CANDIDATE_COUNT], pc.maxShapeCandidates);
 
@@ -346,7 +336,15 @@ void main() {
 			lineLengthRight -= shapeQualityScore;
 
 			if ((lineLengthLeft + lineLengthRight) >= 5.0) {
-				blendZs(pixelPos, horizontal, invertedZ, shapeQualityScore, lineLengthLeft, lineLengthRight, stepRight);
+				blendZs(
+					ivec2(scene.viewportSize.xy),
+					pixelPos,
+					horizontal,
+					invertedZ,
+					shapeQualityScore,
+					lineLengthLeft,
+					lineLengthRight,
+					stepRight);
 			}
 		}
 	}

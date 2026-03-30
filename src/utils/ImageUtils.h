@@ -9,7 +9,7 @@ namespace ImageUtils {
 	// Texture creation just defers the cmd work and buffer deletion
 	// Create texture just holds createrenderimage inside it and skipping the use of a deletion queue is designed only for asset loading
 	// since a ModelAsset type should own its resources
-	void createTextureImage(
+	void createTexture(
 		const VkDevice device,
 		VkCommandPool cmdPool,
 		const void* data,
@@ -20,7 +20,7 @@ namespace ImageUtils {
 		DeletionQueue& bufferQueue,
 		const VmaAllocator allocator,
 		bool skipQueueUsage = false);
-	void createRenderImage(
+	void createRenderTarget(
 		const VkDevice device,
 		AllocatedImage& renderImage,
 		VkImageUsageFlags usage,

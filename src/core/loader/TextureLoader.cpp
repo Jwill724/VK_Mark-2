@@ -51,7 +51,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				}
 				newImage.format = format;
 
-				ImageUtils::createTextureImage(
+				ImageUtils::createTexture(
 					device,
 					ctx.cmdPool,
 					data,
@@ -95,7 +95,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				}
 				newImage.format = format;
 
-				ImageUtils::createTextureImage(
+				ImageUtils::createTexture(
 					device,
 					ctx.cmdPool,
 					data,
@@ -143,7 +143,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						}
 						newImage.format = format;
 
-						ImageUtils::createTextureImage(
+						ImageUtils::createTexture(
 							device,
 							ctx.cmdPool,
 							data,
@@ -201,7 +201,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						}
 						newImage.format = format;
 
-						ImageUtils::createTextureImage(
+						ImageUtils::createTexture(
 							device,
 							ctx.cmdPool,
 							data,

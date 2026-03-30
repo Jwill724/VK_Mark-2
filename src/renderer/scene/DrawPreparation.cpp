@@ -15,7 +15,7 @@ struct CombinedUploadPlan {
 };
 
 struct TransparentEntry {
-	GPUInstance instance;
+	uint32_t instanceIndex;
 	float distSq;
 };
 
@@ -66,18 +66,16 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	const glm::mat4& cameraProj,
 	const DebugToggles& dbg)
 {
-	std::vector<GPUInstance> opaqueInstances;
-	std::vector<TransparentEntry> transparentEntries;
+	std::vector<GPUInstance> visibleInstances;
 
-	opaqueInstances.reserve(frameCtx.visibleInstances.size());
-	transparentEntries.reserve(frameCtx.visibleInstances.size());
+	visibleInstances.reserve(frameCtx.visibleInstances.size());
 
 	ASSERT(frameCtx.visibleInstances.size() == worldAABBs.size() && "Visible Instances should be 1:1 with world AABBs.");
 
 	const glm::vec3 camPos = glm::vec3(cameraPos);
 
-	// === BATCH OPAQUE INSTANCES ===
-	std::unordered_map<OpaqueBatchKey, std::vector<uint32_t>, OpaqueBatchKeyHash> opaqueBatches;
+	// === BATCH INSTANCES ===
+	std::unordered_map<BatchKey, std::vector<uint32_t>, BatchKeyHash> batches;
 
 	for (uint32_t i = 0; i < frameCtx.visibleInstances.size(); ++i) {
 		GPUInstance inst = frameCtx.visibleInstances[i];
@@ -109,30 +107,46 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			inst.meshID = selectedMeshID;
 		}
 
-		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::Opaque) {
-			uint32_t opaqueIndex = static_cast<uint32_t>(opaqueInstances.size());
-			opaqueInstances.push_back(inst);
-			const OpaqueBatchKey key{ inst.meshID, inst.materialID };
-			opaqueBatches[key].push_back(opaqueIndex);
-		}
-		else {
-			AABB aabb = worldAABBs[i];
-			glm::vec3 dist = aabb.origin - camPos;
-			float distSq = glm::dot(dist, dist);
-			transparentEntries.push_back({ inst, distSq });
-		}
+		uint32_t index = static_cast<uint32_t>(visibleInstances.size());
+		visibleInstances.push_back(inst);
+
+		const BatchKey key{ inst.meshID, inst.materialID };
+		batches[key].push_back(index);
 	}
 
-	frameCtx.indirectDraws.reserve(opaqueBatches.size() + transparentEntries.size());
+	frameCtx.indirectDraws.reserve(batches.size());
 
 	// Rebuild instances
 	frameCtx.visibleInstances.clear();
-	frameCtx.visibleInstances.reserve(opaqueInstances.size() + transparentEntries.size() + frameCtx.shadowCasterInstances.size());
+	frameCtx.visibleInstances.reserve(visibleInstances.size() + frameCtx.shadowCasterInstances.size());
+
+	// === SPLIT BATCH KEYS INTO OPAQUE / TRANSPARENT ===
+	std::vector<BatchKey> opaqueKeys;
+	std::vector<BatchKey> transparentKeys;
+
+	opaqueKeys.reserve(batches.size());
+	transparentKeys.reserve(batches.size());
+
+	for (const auto& [key, indices] : batches) {
+		if (indices.empty()) continue;
+
+		const GPUInstance& inst = visibleInstances[indices[0]];
+		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::Opaque) {
+			opaqueKeys.push_back(key);
+		}
+		else {
+			transparentKeys.push_back(key);
+		}
+	}
 
 	// === OPAQUE BATCHES ===
 	frameCtx.opaqueRange.firstCommand = 0;
 	frameCtx.opaqueRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
-	for (const auto& [batchKey, instanceIndices] : opaqueBatches) {
+	frameCtx.opaqueRange.commandCount = 0;
+	frameCtx.opaqueRange.visibleCount = 0;
+
+	for (const BatchKey& batchKey : opaqueKeys) {
+		const std::vector<uint32_t>& instanceIndices = batches[batchKey];
 		const GPUMeshData& mesh = meshes[batchKey.meshID];
 
 		ASSERT(mesh.firstIndex + mesh.indexCount <= dbg.indexCount &&
@@ -152,46 +166,45 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		frameCtx.indirectDraws.push_back(cmd);
 
 		for (uint32_t idx : instanceIndices) {
-			frameCtx.visibleInstances.push_back(opaqueInstances[idx]);
+			frameCtx.visibleInstances.push_back(visibleInstances[idx]);
 		}
 
 		frameCtx.opaqueRange.commandCount++;
 		frameCtx.opaqueRange.visibleCount += cmd.instanceCount;
 	}
 
-	// === SORT AND BUILD TRANSPARENT ===
-	if (!transparentEntries.empty()) {
-		frameCtx.transparentRange.firstCommand = frameCtx.opaqueRange.commandCount;
-		frameCtx.transparentRange.visibleCount = static_cast<uint32_t>(transparentEntries.size());
-		frameCtx.transparentRange.commandCount = static_cast<uint32_t>(transparentEntries.size());
-		frameCtx.transparentRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+	// === TRANSPARENT BATCHES ===
+	frameCtx.transparentRange.firstCommand = frameCtx.opaqueRange.commandCount;
+	frameCtx.transparentRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+	frameCtx.transparentRange.commandCount = 0;
+	frameCtx.transparentRange.visibleCount = 0;
 
-		std::sort(transparentEntries.begin(), transparentEntries.end(),
-			[&](const TransparentEntry& a, const TransparentEntry& b) {
-				return a.distSq > b.distSq;
-			});
+	for (const BatchKey& batchKey : transparentKeys) {
+		const std::vector<uint32_t>& instanceIndices = batches[batchKey];
+		const GPUMeshData& mesh = meshes[batchKey.meshID];
 
-		for (uint32_t i = 0; i < transparentEntries.size(); ++i) {
-			const TransparentEntry& entry = transparentEntries[i];
-			const GPUMeshData& mesh = meshes[entry.instance.meshID];
+		ASSERT(mesh.firstIndex + mesh.indexCount <= dbg.indexCount &&
+			"[DrawPrep] Transparent draws would read past end of index buffer.");
+		ASSERT(mesh.vertexOffset + mesh.vertexCount <= dbg.vertexCount &&
+			"[DrawPrep] Transparent draws would read past end of vertex buffer.");
 
-			ASSERT(mesh.firstIndex + mesh.indexCount <= dbg.indexCount &&
-				"[DrawPrep] Transparent draws would read past end of index buffer.");
-			ASSERT(mesh.vertexOffset + mesh.vertexCount <= dbg.vertexCount &&
-				"[DrawPrep] Transparent draws would read past end of vertex buffer.");
+		const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
 
-			const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+		VkDrawIndexedIndirectCommand cmd{};
+		cmd.indexCount = mesh.indexCount;
+		cmd.instanceCount = static_cast<uint32_t>(instanceIndices.size());
+		cmd.firstIndex = mesh.firstIndex;
+		cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
+		cmd.firstInstance = firstInstance;
 
-			VkDrawIndexedIndirectCommand cmd{};
-			cmd.indexCount = mesh.indexCount;
-			cmd.instanceCount = 1u;
-			cmd.firstIndex = mesh.firstIndex;
-			cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
-			cmd.firstInstance = firstInstance;
+		frameCtx.indirectDraws.push_back(cmd);
 
-			frameCtx.indirectDraws.push_back(cmd);
-			frameCtx.visibleInstances.push_back(entry.instance);
+		for (uint32_t idx : instanceIndices) {
+			frameCtx.visibleInstances.push_back(visibleInstances[idx]);
 		}
+
+		frameCtx.transparentRange.commandCount++;
+		frameCtx.transparentRange.visibleCount += cmd.instanceCount;
 	}
 
 	// === SHADOW CASTERS (per cascade) ===
@@ -213,7 +226,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			for (uint32_t inputIndex = inputStart; inputIndex < inputEnd; ++inputIndex) {
 				const GPUInstance& caster = frameCtx.shadowCasterInstances[inputIndex];
 
-				// Pick a shadow LOD based on cascade index (simple + stable)
 				uint32_t shadowMeshID = caster.meshID;
 				if (shadowMeshID < meshLods.size()) {
 					const MeshLODs& lods = meshLods[shadowMeshID];
@@ -230,7 +242,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				meshToInputIndices[shadowMeshID].push_back(inputIndex);
 			}
 
-			// Sort mesh keys for deterministic command order
 			std::vector<uint32_t> shadowMeshKeys;
 			shadowMeshKeys.reserve(meshToInputIndices.size());
 			for (const auto& it : meshToInputIndices) {
@@ -242,7 +253,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 					return a < b;
 				});
 
-			// Output range in the MEGA buffers (commands + instances)
 			PassRange& outRange = frameCtx.shadowDrawRanges[cascadeIndex];
 			outRange.firstCommand = static_cast<uint32_t>(frameCtx.indirectDraws.size());
 			outRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
@@ -267,7 +277,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 
 				for (uint32_t inputIndex : inputIndices) {
 					GPUInstance inst = frameCtx.shadowCasterInstances[inputIndex];
-					inst.meshID = shadowMeshID; // bake shadow LOD choice into the mega instance buffer
+					inst.meshID = shadowMeshID;
 					frameCtx.visibleInstances.push_back(inst);
 				}
 
@@ -284,7 +294,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			const uint32_t inputStart = inputRange.firstInstance;
 			const uint32_t inputEnd = inputStart + inputRange.visibleCount;
 
-			// Group input indices by chosen shadow mesh ID
 			std::unordered_map<uint32_t, std::vector<uint32_t>> meshToInputIndices;
 			meshToInputIndices.reserve(inputRange.visibleCount);
 
@@ -301,7 +310,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				meshToInputIndices[shadowMeshID].push_back(inputIndex);
 			}
 
-			// Sort mesh keys for deterministic command order
 			std::vector<uint32_t> shadowMeshKeys;
 			shadowMeshKeys.reserve(meshToInputIndices.size());
 			for (const auto& it : meshToInputIndices) {
@@ -314,7 +322,6 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				}
 			);
 
-			// Output range in the MEGA buffers
 			PassRange& outRange = frameCtx.flashLightShadowRange;
 			outRange.firstCommand = static_cast<uint32_t>(frameCtx.indirectDraws.size());
 			outRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
@@ -355,6 +362,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		}
 	}
 }
+
 
 inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 	VmaAllocator alloc,

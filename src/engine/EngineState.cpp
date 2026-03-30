@@ -68,49 +68,49 @@ void EngineState::init() {
 	auto& globalImgManager = ResourceManager::_globalImageManager;
 	auto& engineProfiler = Engine::getProfiler();
 
-	const auto linearClampSampler = ResourceManager::getLinearClampSampler();
-	const auto linearLODClampSampler = ResourceManager::getLinearLODClampSampler();
-	const auto shadowSampler = ResourceManager::getShadowMapSampler();
-	const auto noiseSampler = ResourceManager::getNoiseSampler();
+	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
+	const auto linearLODClampSampler = ResourceManager::getLinearLODClamp_Sampler();
+	const auto shadowSampler = ResourceManager::getShadowMap_Sampler();
+	const auto noiseSampler = ResourceManager::getNoise_Sampler();
 
 	// CSM image
-	auto& shadowImg = ResourceManager::getDirectionalCSMAtlas();
+	auto& shadowImg = ResourceManager::getDirectionalCSMAtlas_Target();
 	shadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(shadowImg.imageView, shadowSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(shadowImg.lutEntry.combinedImageIndex));
 
 	// flashlight shadow image
-	auto& flashlightShadowImg = ResourceManager::getFlashLightShadowMap();
+	auto& flashlightShadowImg = ResourceManager::getFlashLightShadowMap_Target();
 	flashlightShadowImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(flashlightShadowImg.imageView, shadowSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(flashlightShadowImg.lutEntry.combinedImageIndex));
 
 	// cookie gobo image
-	auto& cookieGoboImg = ResourceManager::getCookieGoboImage();
+	auto& cookieGoboImg = ResourceManager::getCookieGobo_Texture();
 	cookieGoboImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(cookieGoboImg.imageView, linearClampSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(cookieGoboImg.lutEntry.combinedImageIndex));
 
 	// Rainbow LUT
-	auto& rainbowLut = ResourceManager::getRainbowLUTImage();
+	auto& rainbowLut = ResourceManager::getRainbowLUT_Texture();
 	rainbowLut.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(rainbowLut.imageView, linearClampSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(rainbowLut.lutEntry.combinedImageIndex));
 	engineProfiler.lensFlareSettings.rainbowLUTIndex = rainbowLut.lutEntry.combinedImageIndex;
 
 	// search and area lut textures
-	auto& searchTex = ResourceManager::getSearchTex();
+	auto& searchTex = ResourceManager::getSearchSMAA_Texture();
 	searchTex.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(searchTex.imageView, linearLODClampSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(searchTex.lutEntry.combinedImageIndex));
 	_resources.smaaTextures.id0 = searchTex.lutEntry.combinedImageIndex;
 
-	auto& areaTex = ResourceManager::getAreaTex();
+	auto& areaTex = ResourceManager::getAreaSMAA_Texture();
 	areaTex.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(areaTex.imageView, linearLODClampSampler);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(areaTex.lutEntry.combinedImageIndex));
 	_resources.smaaTextures.id1 = areaTex.lutEntry.combinedImageIndex;
 
 	// === ENVIRONMENT IMAGE SETUP ===
-	auto skyboxSmpl = ResourceManager::getSkyBoxSampler();
-	auto irradianceSmpl = ResourceManager::getIrradianceSampler();
-	auto specSmpl = ResourceManager::getSpecularPrefilterSampler();
-	auto& brdfImg = ResourceManager::getBRDFImage();
-	auto brdfSmpl = ResourceManager::getBRDFSampler();
+	auto skyboxSmpl = ResourceManager::getSkyBox_Sampler();
+	auto irradianceSmpl = ResourceManager::getIrradiance_Sampler();
+	auto specSmpl = ResourceManager::getSpecularPrefilter_Sampler();
+	auto& brdfImg = ResourceManager::getBRDF_Texture();
+	auto brdfSmpl = ResourceManager::getBRDF_Sampler();
 
 	brdfImg.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(brdfImg.imageView, brdfSmpl);
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(brdfImg.lutEntry.combinedImageIndex));

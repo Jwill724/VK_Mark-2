@@ -51,13 +51,6 @@ struct DescriptorWriter {
 
 	void writeFromImageLUT(const std::vector<ImageLUTEntry>& lut, const ImageTable& table);
 
-	//void writePushBuffer(
-	//	uint32_t binding,
-	//	VkBuffer buffer,
-	//	size_t size,
-	//	size_t offset,
-	//	VkDescriptorType type);
-
 	void writeBuffer(
 		uint32_t binding,
 		VkBuffer buffer,
@@ -70,14 +63,15 @@ struct DescriptorWriter {
 		DescriptorImageType type,
 		VkDescriptorSet set);
 
-	// sampler == read only, combined sampler type
-	// !sampler == storage, general type
-	// Optional manual layout definition
+	// sampler == read only
+	// !sampler == write only
+	// Storage index and override layout meant for accessing mip layers
 	void writePushImage(
 		uint32_t binding,
-		VkImageView view,
+		AllocatedImage& image,
 		VkSampler sampler = VK_NULL_HANDLE,
-		VkImageLayout layoutOverride = VK_IMAGE_LAYOUT_UNDEFINED);
+		VkImageLayout overrideLayout = VK_IMAGE_LAYOUT_MAX_ENUM,
+		uint32_t storageViewIndex = UINT32_MAX);
 
 	// Requires immediate update
 	void writeInlineUniform(
