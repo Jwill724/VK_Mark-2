@@ -20,10 +20,10 @@ constexpr uint32_t FRAME_END_QUERY = PASS_TIMESTAMP_QUERY_COUNT + 1;
 constexpr uint32_t TIMESTAMP_QUERY_COUNT = PASS_TIMESTAMP_QUERY_COUNT + 2;
 
 struct FrameContext {
-	uint32_t frameIndex = 0;
+	uint32_t frameIndex = 0u;
 
 	VkResult swapchainResult = VK_RESULT_MAX_ENUM;
-	uint32_t swapchainImageIndex = 0;
+	uint32_t swapchainImageIndex = 0u;
 
 	VkCommandBuffer cmdBuffer = VK_NULL_HANDLE; // primary graphics command
 	// Deferred transfer work
@@ -89,8 +89,8 @@ struct FrameContext {
 		}
 	}
 
-	uint32_t cachedExtentWidth = 0;
-	uint32_t cachedExtentHeight = 0;
+	uint32_t cachedExtentWidth = 0u;
+	uint32_t cachedExtentHeight = 0u;
 
 	// Persistent light data buffers
 	AllocatedBuffer visibleLightCount_GPU;
@@ -115,7 +115,7 @@ struct FrameContext {
 		clusterTileSliceRanges_GPU = {};
 		clusterScanScratch_GPU = {};
 
-		clusterGPUBuffers.reserve(6);
+		clusterGPUBuffers.reserve(6u);
 	}
 	void createClusterBuffers(
 		const uint32_t extentWidth,
@@ -145,14 +145,14 @@ struct FrameContext {
 		cmaa2DeferredItems_GPU = {};
 		cmaa2DeferredHeads_GPU = {};
 
-		cmaa2GPUBuffers.reserve(5);
+		cmaa2GPUBuffers.reserve(5u);
 	}
 
 	AllocatedBuffer dispatchIndirectArgs_GPU;
 
 	AttachmentDesc attachments;
 
-	size_t stagingHead = 0;
+	size_t stagingHead = 0u;
 	AllocatedBuffer combinedGPUStaging;
 
 	VkQueryPool graphicsTimestampPool = VK_NULL_HANDLE;
@@ -167,7 +167,7 @@ struct FrameContext {
 
 	// Culling data
 	VisibilityPush visPush{};
-	uint32_t visibleCount = 0;
+	uint32_t visibleCount = 0u;
 
 	// TODO: account for dynamic model transforms
 	bool transformsInitialized = false;
@@ -180,6 +180,8 @@ struct FrameContext {
 	// Descriptor use
 	GPUAddressTable addressTable{};
 	AllocatedBuffer addressTable_GPU;
+	void updateAddressTableIfDirty(const VkDevice device);
+	uint32_t pendingAddressTableVersion = 0u;
 
 	AllocatedBuffer shadowCSM_UBO;
 
@@ -191,8 +193,9 @@ struct FrameContext {
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	DescriptorWriter descriptorWriter;
 
-	// Only write once per frame
-	void writeFrameDescriptors(const VkDevice device);
+	void writeFrameUniforms(const VkDevice device);
+
+	void updateFrameSet(const VkDevice device);
 
 	DeletionQueue cpuDeletion;
 };

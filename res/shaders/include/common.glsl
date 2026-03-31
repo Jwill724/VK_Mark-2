@@ -736,4 +736,22 @@ void unpackVertex(
 	tangentHandedness = float(vtx.tangentW);
 }
 
+void unpackVertexMinimal(
+	int id,
+	out vec2 uv,
+	out vec3 normal,
+	out vec3 position)
+{
+	Vertex vtx = getVertexBuffer().vertices[id];
+
+	position = vtx.position;
+
+	uv = unpackUV(vtx.uvX, vtx.uvY);
+
+	vec2 octEnc;
+	octEnc.x = snorm16ToFloat(vtx.normalX);
+	octEnc.y = snorm16ToFloat(vtx.normalY);
+	normal = octDecode(octEnc);
+}
+
 #endif

@@ -790,14 +790,14 @@ void RenderScene::updateDrawDataCPUPath(
 				glm::vec3 receiverLSMin = centerLS - extentLS;
 				glm::vec3 receiverLSMax = centerLS + extentLS;
 
-				// Extend toward the light (higher Z)
-				receiverLSMax.z += _shadowControl.maxCasterDistance[cascadeIndex];
+				//// Extend toward the light (higher Z)
+				//receiverLSMax.z += _shadowControl.maxCasterDistance[cascadeIndex];
 
-				// Small safety padding
-				receiverLSMin.x -= _shadowControl.xyPadding;
-				receiverLSMin.y -= _shadowControl.xyPadding;
-				receiverLSMax.x += _shadowControl.xyPadding;
-				receiverLSMax.y += _shadowControl.xyPadding;
+				//// Small safety padding
+				//receiverLSMin.x -= _shadowControl.xyPadding;
+				//receiverLSMin.y -= _shadowControl.xyPadding;
+				//receiverLSMax.x += _shadowControl.xyPadding;
+				//receiverLSMax.y += _shadowControl.xyPadding;
 
 				Visibility::cullBVHCollectShadowCastersReceivers(
 					cascadeIndex,
@@ -853,16 +853,16 @@ void RenderScene::updateDrawDataCPUPath(
 			_sceneData.cameraPos,
 			_curCamProjUnjittered,
 			debug);
-
-		DrawPreparation::uploadGPUBuffersForFrame(
-			frameCtx,
-			gpuResources,
-			_globalTransforms,
-			LightingSystem::_globalLightList,
-			Backend::getTransferQueue(),
-			bool(_sceneData.temporal.y),
-			Engine::getProfiler().isGPUAccelOn());
 	}
+
+	DrawPreparation::uploadGPUBuffersForFrame(
+		frameCtx,
+		gpuResources,
+		_globalTransforms,
+		LightingSystem::_globalLightList,
+		Backend::getTransferQueue(),
+		bool(_sceneData.temporal.y),
+		Engine::getProfiler().isGPUAccelOn());
 }
 
 // The actual culling and build pass occurs inside the Renderer.cpp, this just handles the transfer queue updates

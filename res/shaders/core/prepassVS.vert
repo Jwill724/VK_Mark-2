@@ -19,18 +19,12 @@ void main()
 	outMaterialID = inst.materialID;
 
 	vec2 uv;
-	vec4 color;
 	vec3 normal;
-	vec3 tangent;
-	float tangentW;
 	vec3 position;
-	unpackVertex(
+	unpackVertexMinimal(
 		gl_VertexIndex,
 		uv,
-		color,
 		normal,
-		tangent,
-		tangentW,
 		position);
 
 	// fetch transform

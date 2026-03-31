@@ -11,6 +11,33 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 	_delta = mouse.delta;
 
 	auto& debug = profiler.debugToggles;
+
+	//ImGuiIO& io = ImGui::GetIO();
+
+	//if (!io.WantCaptureKeyboard) {
+	//	if (keyboard.isPressed(GLFW_KEY_TAB)) {
+	//		debug.enableSettings = 1u - debug.enableSettings;
+	//	}
+	//	if (keyboard.isPressed(GLFW_KEY_P)) {
+	//		debug.enableProfilerView = 1u - debug.enableProfilerView;
+	//	}
+	//}
+	//if (!io.WantCaptureMouse) {
+	//	if (mouse.rightPressed) {
+	//		_yaw -= mouse.delta.x * _sensitivity;
+	//		_pitch += mouse.delta.y * _sensitivity;
+	//		constexpr float maxPitch = 89.0f;
+	//		_pitch = std::clamp(_pitch, -maxPitch, maxPitch);
+	//	}
+	//}
+
+	if (keyboard.isPressed(GLFW_KEY_TAB)) {
+		debug.enableSettings = 1u - debug.enableSettings;
+	}
+	if (keyboard.isPressed(GLFW_KEY_P)) {
+		debug.enableProfilerView = 1u - debug.enableProfilerView;
+	}
+
 	if (mouse.rightPressed) {
 		_yaw -= mouse.delta.x * _sensitivity;
 		_pitch += mouse.delta.y * _sensitivity;
@@ -90,14 +117,6 @@ void Camera::processInput(GLFWwindow* window, Profiler& profiler, bool& isTempor
 	if (keyboard.isPressed(GLFW_KEY_R)) {
 		reset();
 		isTemporalInvalid = true;
-	}
-
-	if (keyboard.isPressed(GLFW_KEY_TAB)) {
-		debug.enableSettings = 1u - debug.enableSettings;
-	}
-
-	if (keyboard.isPressed(GLFW_KEY_P)) {
-		debug.enableProfilerView = 1u - debug.enableProfilerView;
 	}
 }
 

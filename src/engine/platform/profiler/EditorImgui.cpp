@@ -9,8 +9,8 @@
 static float SETTINGS_SIZE_X = 500.0f;
 static float SETTINGS_SIZE_Y = 450.0f;
 
-static float PROFILER_SIZE_X = 285.0f;
-static float PROFILER_SIZE_Y = 850.0f;
+static float PROFILER_SIZE_X = 290.0f;
+static float PROFILER_SIZE_Y = 900.0f;
 
 static void MyWindowFocusCallback(GLFWwindow* window, int focused)
 {
@@ -292,12 +292,11 @@ namespace
 		if (dbg.enableShadows) {
 			//ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
 
-			//auto& sc = RenderScene::_shadowControl;
+			auto& sc = RenderScene::_shadowControl;
+
 			//ImGui::Separator();
 			//ImGui::Text("Cascade Radii (FOV Stabilization)");
-
 			//float* shadowRadii = RenderScene::_shadowControl.shadowRadii;
-
 			//for (int i = MAX_SHADOW_CASCADES - 1u; i < MAX_SHADOW_CASCADES; ++i) {
 			//	int cascade = i + 1;
 			//	ImGui::PushID(cascade);
@@ -602,7 +601,7 @@ namespace
 		ImGui::SliderFloat("Min Transmittance##vol", &volSettings.minTransmittance, 0.9f, 1.0f, "%.2f");
 		ImGui::SliderInt("Beam Power##vol", &volSettings.beamPower, 2, 6);
 		ImGui::SliderFloat("Jitter Strength##vol", &volSettings.jitterStrength, 0.0f, 1.0f);
-		ImGui::SliderInt("Step Count##vol", &volSettings.stepCount, 8, 128);
+		ImGui::SliderInt("Step Count##vol", &volSettings.stepCount, 32, 48);
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("Blur");
@@ -1081,8 +1080,8 @@ namespace EditorImgui
 
 	void renderImgui(Profiler& profiler)
 	{
-		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
+		ImGui_ImplVulkan_NewFrame();
 		ImGui::NewFrame();
 
 		UIContext ui;

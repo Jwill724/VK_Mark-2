@@ -233,13 +233,17 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 			curHeight,
 			alloc
 		);
-	   frameCtx.createCMAA2Buffers(
+		frameCtx.createCMAA2Buffers(
 			curWidth,
 			curHeight,
 			alloc
 		);
 		frameCtx.cachedExtentWidth = curWidth;
 		frameCtx.cachedExtentHeight = curHeight;
+	}
+
+	if (frameCtx.addressTable.isTableDirty()) {
+		frameCtx.addressTable.updateCpuVersion();
 	}
 }
 
@@ -265,8 +269,7 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	waitInfos.push_back(waitImageAvailable);
 
 	// Wait on transfer timeline only up to the first buffer consumers
-	if (frameCtx.transferWaitValue != UINT64_MAX &&
-		frameCtx.transferWaitValue <= _transferSync.signalValue)
+	if (frameCtx.transferWaitValue != UINT64_MAX && frameCtx.transferWaitValue <= _transferSync.signalValue)
 	{
 		ASSERT(frameCtx.transferWaitValue <= _transferSync.signalValue &&
 			"Invalid transfer wait: waiting on unsignaled or future timeline value!");
@@ -392,7 +395,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	bool hasVisibles = frameCtx.visibleCount > 0;
 	bool isTemporalValid = (!isFirstFrame() && scene.temporal.y == 1);
 
-	frameCtx.writeFrameDescriptors(device);
+	ASSERT(!(frameCtx.addressTable.versionMismatch()) && "GPU is about to use stale address table!");
+	frameCtx.updateAddressTableIfDirty(device);
+	frameCtx.writeFrameUniforms(device);
+	frameCtx.updateFrameSet(device);
 
 	VkCommandBufferBeginInfo cmdBeginInfo{};
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -424,7 +430,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
-	if (frameCtx.transformsBufferUploadNeeded && hasVisibles) {
+	if (frameCtx.transformsBufferUploadNeeded) {
 		if (isTemporalValid) {
 			BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.prevTransforms_GPU);
 		}
@@ -433,7 +439,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
 	}
 
-	if (frameCtx.lightsBufferUploadNeeded && hasVisibles) {
+	if (frameCtx.lightsBufferUploadNeeded) {
 		// Compute always reads this first
 		BarrierUtils::bufferComputeWriteToComputeRead(frameCtx.cmdBuffer, frameCtx.lights_GPU);
 		frameCtx.lightsBufferUploadNeeded = false; // Should only set back to false in here
@@ -573,13 +579,14 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	opaqueAttach.imageView = opaque.imageView;
 	opaqueAttach.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	// Default depth read from pre pass
 	AttachmentDesc depthAttach{};
+	depthAttach.clearValue.depthStencil.depth = 0.0f;
+
+	// Default depth read from pre pass
 	depthAttach.imageView = depthResolved.imageView;
 	depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 	depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 	depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthAttach.clearValue.depthStencil.depth = 0.0f;
 
 	// Depth write
 	// Transparent needs the resolved
@@ -591,8 +598,10 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			depth,
 			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-		depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 		depthAttach.imageView = depth.imageView;
+		depthAttach.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+		depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	}
 
 	RenderPasses::GraphicsScope opaqueScope;
@@ -669,7 +678,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// ========================
 	// === TRANSPARENT PASS ===
 	bool transparentVisible = false;
-	if (frameCtx.transparentRange.visibleCount > 0 && hasVisibles) {
+	if (frameCtx.transparentRange.visibleCount > 0) {
 		transparentVisible = true;
 
 		ImageUtils::transitionImage(

@@ -223,8 +223,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		device,
 		PipelineID::Opaque,
 		PipelineCategory::Raster,
-		"Opaque",
-		false);
+		"Opaque");
 
 	// === WIREFRAME PIPELINE ===
 	PipelinePreset& wirePreset = PipelinePresets::getPipelinePresetByID(PipelineID::Wireframe);
@@ -250,8 +249,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		device,
 		PipelineID::OBBLine,
 		PipelineCategory::Raster,
-		"OBBLine",
-		false);
+		"OBBLine");
 
 	// === SKYBOX PIPELINE ===
 	PipelinePreset& skyboxPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Skybox);
@@ -260,8 +258,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		device,
 		PipelineID::Skybox,
 		PipelineCategory::Raster,
-		"Skybox",
-		false);
+		"Skybox");
 
 	// === TRANSPARENT PIPELINE ===
 	PipelinePreset& transparentPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Transparent);
@@ -298,8 +295,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		device,
 		PipelineID::Transparent,
 		PipelineCategory::Raster,
-		"Transparent",
-		false);
+		"Transparent");
 
 	// === PREPASS PIPELINE ===
 	PipelinePreset& prepassPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Prepass);

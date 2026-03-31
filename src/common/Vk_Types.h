@@ -23,6 +23,7 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include "Bounds.h"
+#include "ErrorChecking.h"
 
 // SSBOs
 
@@ -82,80 +83,6 @@ struct GPUMaterial {
 	uint32_t normalID = UINT32_MAX;
 	uint32_t aoID = UINT32_MAX;
 	uint32_t emissiveID = UINT32_MAX;
-};
-
-// GPU only buffers
-enum class AddressBufferType : uint8_t {
-	VisibleInstances,
-	IndirectDraws,
-
-	VisibleLightCount,
-	VisibleLightIDs,
-
-	ClusterCounts,
-	ClusterOffsets,
-	ClusterCursors,
-	ClusterLightIDs,
-	ClusterTileSliceRanges,
-	ClusterScanScratch,
-
-	Cmaa2Control,
-	Cmaa2ShapeCandidates,
-	Cmaa2DeferredLocations,
-	Cmaa2DeferredItems,
-	Cmaa2DeferredHeads,
-
-	DispatchIndirectArgs,
-
-	Lights,
-	Transforms,
-	PrevTransforms,
-	Material,
-	Mesh,
-	Vertex,
-	Index,
-	Luminance,
-
-	Count
-};
-
-// 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
-// Upload address table buffer after new addresses are attached or removed to the table.
-struct alignas(16) GPUAddressTable {
-	std::array<VkDeviceAddress, static_cast<size_t>(AddressBufferType::Count)> addrs{};
-
-	void setAddress(AddressBufferType type, VkDeviceAddress address) {
-		const size_t index = static_cast<size_t>(type);
-
-		if (addrs[index] == address) {
-			return;
-		}
-
-		addrs[index] = address;
-		addressTableDirty = true;
-	}
-
-	void removeAddress(AddressBufferType type) {
-		const size_t index = static_cast<size_t>(type);
-
-		if (addrs[index] == 0) {
-			return;
-		}
-
-		addrs[index] = 0;
-		addressTableDirty = true;
-	}
-
-	bool isTableDirty() const {
-		return addressTableDirty;
-	}
-
-	void clearTableDirty() {
-		addressTableDirty = false;
-	}
-
-private:
-	bool addressTableDirty = false;
 };
 
 // UNIFORM BUFFER TYPES

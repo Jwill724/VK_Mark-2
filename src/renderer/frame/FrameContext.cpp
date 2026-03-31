@@ -342,21 +342,22 @@ void FrameContext::freeStashedCmds(const VkDevice device) {
 	}
 }
 
-void FrameContext::writeFrameDescriptors(const VkDevice device) {
-	constexpr size_t offset = 0;
-
-	if(addressTable.isTableDirty()) {
+void FrameContext::updateAddressTableIfDirty(const VkDevice device) {
+	if (addressTable.isTableDirty()) {
 		descriptorWriter.writeBuffer(
 			ADDRESS_TABLE_BINDING,
 			addressTable_GPU.buffer,
 			sizeof(GPUAddressTable),
-			offset,
+			0,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			set
-		);
+			set);
 
 		addressTable.clearTableDirty();
 	}
+}
+
+void FrameContext::writeFrameUniforms(const VkDevice device) {
+	constexpr size_t offset = 0;
 
 	if (visibleCount > 0) {
 		descriptorWriter.writeBuffer(
@@ -389,7 +390,9 @@ void FrameContext::writeFrameDescriptors(const VkDevice device) {
 		);
 		clusterWriteNeeded = false;
 	}
+}
 
+void FrameContext::updateFrameSet(const VkDevice device) {
 	descriptorWriter.updateSet(device, set);
 }
 

@@ -12,6 +12,7 @@ struct CombinedUploadPlan {
 	// Only required when visibles and draw buffers are created or destroyed.
 	// per-frame address table (frameCtx.addressTable_GPU)
 	size_t fAddrOff = 0, fAddrSize = 0;
+	uint32_t addrVersion = UINT32_MAX;
 };
 
 struct TransparentEntry {
@@ -372,7 +373,7 @@ inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 	auto* mapped = static_cast<uint8_t*>(frame.combinedGPUStaging.info.pMappedData);
 	const size_t cap = frame.combinedGPUStaging.info.size;
 
-	if (!isGPUAccelOn) {
+	if (!isGPUAccelOn && !frame.visibleInstances.empty()) {
 		// visible instances
 		plan.visSize = frame.visibleInstances.size() * sizeof(GPUInstance);
 		plan.visOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.visSize);
@@ -387,11 +388,13 @@ inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 	}
 
 	// frame address table
-	if (frame.addressTable.isTableDirty()) {
+	if (frame.addressTable.versionMismatch()) {
 		plan.fAddrSize = sizeof(GPUAddressTable);
 		plan.fAddrOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.fAddrSize);
 		memcpy(mapped + plan.fAddrOff, &frame.addressTable, plan.fAddrSize);
 		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.fAddrOff, plan.fAddrSize, alloc);
+
+		plan.addrVersion = frame.addressTable.getCpuVersion();
 	}
 
 	return plan;
@@ -452,7 +455,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 
 	// Record big transfer copies for dynamic frame data
 	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
-		if (frameCtx.addressTable.isTableDirty()) {
+		if (plan.fAddrSize > 0) {
 			// frame GPU address table copy
 			VkBufferCopy frameAddressTableCpy{};
 			frameAddressTableCpy.srcOffset = plan.fAddrOff;
@@ -464,6 +467,8 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 				1,
 				&frameAddressTableCpy);
 
+			frameCtx.pendingAddressTableVersion = plan.addrVersion;
+
 			if (isGPUAccelOn) {
 				BarrierUtils::bufferTransferReleaseOnCompute(cmd, frameCtx.addressTable_GPU);
 			}
@@ -472,7 +477,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			}
 		}
 
-		if (!isGPUAccelOn) {
+		if (!isGPUAccelOn && !frameCtx.visibleInstances.empty()) {
 			// visible instance data
 			VkBufferCopy visInstCpy{};
 			visInstCpy.srcOffset = plan.visOff;
@@ -499,7 +504,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			BarrierUtils::bufferTransferReleaseOnIndirect(cmd, frameCtx.indirectDraws_GPU);
 		}
 
-		if (frameCtx.transformsBufferUploadNeeded) {
+		if (!transforms.empty() && frameCtx.transformsBufferUploadNeeded) {
 			if (isTemporalValid) {
 				const auto& lastFrame = Renderer::getLastFrame();
 				// Copy GPU current (last frames data) transforms into previous
@@ -559,6 +564,9 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 
 	frameCtx.stashSubmitted(QueueType::Transfer);
 	frameCtx.transferWaitValue = signalValue;
+
+	// Assigns the cpu version to gpu version for verification of upload
+	frameCtx.addressTable.setGpuVersion(frameCtx.pendingAddressTableVersion);
 }
 
 static glm::mat4 makeGridTransform3D(uint32_t index, uint32_t count, float spacing)

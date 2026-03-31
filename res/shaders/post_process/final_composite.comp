@@ -60,7 +60,6 @@ void main()
 
 	imageStore(toneMapImage, pid, vec4(mapped, 1.0));
 
-	DebugToggles debug = getDebugToggles();
 	if (debug.aaMode == AA_CMAA2) {
 		imageStore(cmaa2ColorImage, pid, vec4(mapped, 1.0));
 	}

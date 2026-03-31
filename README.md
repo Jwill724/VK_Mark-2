@@ -7,21 +7,21 @@
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
 - GLTF asset pipeline enabled (kinda) with multithreading (EnkiTS)
 - AABB BVH culling and OBB visual debug
-- Order-independent-transparency(OIT)
+- Order-independent-transparency (OIT)
 - ImGui debugging tools
 - SMAA
-- CMAA2
+- CMAA2 (Intel)
 - FXAA
 - Cascaded shadow mapping via atlas
 - Flashlight with shadow map
 - Screen space contact shadows (Bend Studios)
-- GTAO (with bent normals)
+- XeGTAO + bent normals
 - Ray marched directional volumetric lights
 - Tonemapping (ACES Film)
 - Push descriptors
 - HI-Z Generation (Depth mip pyramid)
 - Lens Flare
-- Chromatic Aberration
+- Chromatic Aberration (Spartan Engine implementation)
 - Mesh optimizer
 - Tracy profiler
 

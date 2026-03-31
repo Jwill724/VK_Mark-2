@@ -201,8 +201,8 @@ inline AABB computeVisibleReceiverAABB(const std::vector<AABB>& visibleWorldAABB
 		receiver.vmax = glm::max(receiver.vmax, aabb.vmax);
 	}
 
-	receiver.origin = 0.5f * (receiver.vmin + receiver.vmax);
-	receiver.extent = 0.5f * (receiver.vmax - receiver.vmin);
+	receiver.origin = (receiver.vmax + receiver.vmin) * 0.5f;
+	receiver.extent = (receiver.vmax - receiver.vmin) * 0.5f;
 	receiver.sphereRadius = glm::length(receiver.extent);
 
 	return receiver;

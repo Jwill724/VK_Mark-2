@@ -4,6 +4,94 @@
 #include "common/ErrorChecking.h"
 #include "engine/JobSystem.h"
 
+// GPU only buffers
+enum class AddressBufferType : uint8_t {
+	VisibleInstances,
+	IndirectDraws,
+
+	VisibleLightCount,
+	VisibleLightIDs,
+
+	ClusterCounts,
+	ClusterOffsets,
+	ClusterCursors,
+	ClusterLightIDs,
+	ClusterTileSliceRanges,
+	ClusterScanScratch,
+
+	Cmaa2Control,
+	Cmaa2ShapeCandidates,
+	Cmaa2DeferredLocations,
+	Cmaa2DeferredItems,
+	Cmaa2DeferredHeads,
+
+	DispatchIndirectArgs,
+
+	Lights,
+	Transforms,
+	PrevTransforms,
+	Material,
+	Mesh,
+	Vertex,
+	Index,
+	Luminance,
+
+	Count
+};
+
+// 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
+// Upload address table buffer after new addresses are attached or removed to the table.
+struct alignas(16) GPUAddressTable {
+	std::array<uint64_t, static_cast<size_t>(AddressBufferType::Count)> addrs{};
+
+	void setAddress(AddressBufferType type, VkDeviceAddress address) {
+		const size_t index = static_cast<size_t>(type);
+
+		if (addrs[index] == address) {
+			return;
+		}
+
+		addrs[index] = address;
+		addressTableDirty = true;
+	}
+
+	void removeAddress(AddressBufferType type) {
+		const size_t index = static_cast<size_t>(type);
+
+		if (addrs[index] == 0) {
+			return;
+		}
+
+		addrs[index] = 0;
+		addressTableDirty = true;
+	}
+
+	bool isTableDirty() const {
+		return addressTableDirty;
+	}
+
+	// Called after descriptor update
+	void clearTableDirty() {
+		addressTableDirty = false;
+	}
+
+	uint32_t getCpuVersion() const { return cpuVersion; }
+	void updateCpuVersion() { cpuVersion++; }
+
+	uint32_t getGpuVersion() const { return gpuVersion; }
+	void setGpuVersion(uint32_t version) {
+		ASSERT(gpuVersion <= version);
+		gpuVersion = version;
+	}
+
+	bool versionMismatch() const { return cpuVersion != gpuVersion; }
+
+private:
+	uint32_t cpuVersion = 1; // increment when modified
+	uint32_t gpuVersion = 0; // last uploaded version
+	bool addressTableDirty = false;
+};
+
 using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
 
 struct HashPair {
@@ -533,7 +621,7 @@ struct alignas(16) VolumetricPush {
 
 	float maxDistance = 200.0f;
 	float jitterStrength = 0.8f;
-	int stepCount = 48;
+	int stepCount = 32;
 	float pad0;
 
 	float asymmetryFactor = 0.9f;

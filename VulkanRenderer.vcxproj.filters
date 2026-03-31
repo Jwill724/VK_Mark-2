@@ -335,9 +335,6 @@
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <!-- renderer / frame -->
-    <ClInclude Include="src\renderer\frame\FrameContext.h">
-      <Filter>src\renderer\frame</Filter>
-    </ClInclude>
     <!-- renderer / passes -->
     <ClInclude Include="src\renderer\passes\RenderPasses.h">
       <Filter>src\renderer\passes</Filter>
@@ -382,6 +379,9 @@
       <Filter>res\assets</Filter>
     </ClInclude>
     <ClInclude Include="src\engine\platform\profiler\ProfilerTypes.h" />
+    <ClInclude Include="src\renderer\frame\FrameContext.h">
+      <Filter>src\renderer\frame</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat">
