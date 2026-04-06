@@ -12,7 +12,7 @@ layout(location = 3) in vec2 inUV;
 layout(location = 4) flat in uint inTemporalValidation;
 layout(location = 5) flat in uint inMaterialID;
 
-layout(location = 0) out vec4 outNormal;
+layout(location = 0) out vec4 outViewSpaceNormal;
 layout(location = 1) out vec2 outVelocity;
 
 vec2 computeVelocityUV(const vec2 viewport)
@@ -35,7 +35,7 @@ void main() {
 	float alpha = SampleTexture(mat.albedoID, inUV).a * mat.colorFactor.a;
 	if (alpha < mat.alphaCutoff) discard;
 
-	outNormal = vec4(normalize(inViewNormal) * 0.5 + 0.5, 1.0); // [-1,1] -> [0,1]
+	outViewSpaceNormal = vec4(normalize(inViewNormal) * 0.5 + 0.5, 1.0); // [-1,1] -> [0,1]
 
 	SceneData scene = getSceneData();
 	outVelocity = computeVelocityUV(scene.viewportSize.xy);

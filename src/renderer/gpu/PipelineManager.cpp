@@ -88,6 +88,8 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 
 	PipelinePresets::writeShaderStage(PipelineID::GTAO, COMPUTE_STAGE, "res/shaders/ao/gtao_main.spv");
 	PipelinePresets::writeShaderStage(PipelineID::GTAOFilter, COMPUTE_STAGE, "res/shaders/ao/gtao_filter.spv");
+	PipelinePresets::writeShaderStage(PipelineID::GTAODenoise, COMPUTE_STAGE, "res/shaders/ao/gtao_denoise.spv");
+	PipelinePresets::writeShaderStage(PipelineID::GTAODepthPrefilter, COMPUTE_STAGE, "res/shaders/ao/gtao_depth_prefilter.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLight, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light.spv");
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLightBlur, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light_blur.spv");
@@ -106,14 +108,14 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::CMAA2Edges, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_edges.spv");
 	PipelinePresets::writeShaderStage(PipelineID::CMAA2ShapeCandidates, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_shape_candidates.spv");
 	PipelinePresets::writeShaderStage(PipelineID::CMAA2DeferredResolve, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_deferred_resolve.spv");
-	PipelinePresets::writeShaderStage(PipelineID::CMAA2DispatchArgs, COMPUTE_STAGE, "res/shaders/post_process/indirect_args_cmaa2.spv");
+	PipelinePresets::writeShaderStage(PipelineID::CMAA2DispatchArgs, COMPUTE_STAGE, "res/shaders/post_process/cmaa2_indirect_args.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::ClusterTileSliceRanges, COMPUTE_STAGE, "res/shaders/clustered/cluster_tile_slice_ranges.spv");
 	PipelinePresets::writeShaderStage(PipelineID::ClusterCount, COMPUTE_STAGE, "res/shaders/clustered/cluster_count.spv");
 	PipelinePresets::writeShaderStage(PipelineID::ClusterScanOffsets, COMPUTE_STAGE, "res/shaders/clustered/cluster_scan_offsets.spv");
 	PipelinePresets::writeShaderStage(PipelineID::ClusterScatterIDs, COMPUTE_STAGE, "res/shaders/clustered/cluster_scatter_ids.spv");
 	PipelinePresets::writeShaderStage(PipelineID::VisibleLightList, COMPUTE_STAGE, "res/shaders/clustered/visible_light_list.spv");
-	PipelinePresets::writeShaderStage(PipelineID::IndirectArgsLight, COMPUTE_STAGE, "res/shaders/clustered/indirect_args_light.spv");
+	PipelinePresets::writeShaderStage(PipelineID::IndirectArgsLight, COMPUTE_STAGE, "res/shaders/clustered/lights_indirect_args.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::ScreenSpaceContactShadows, COMPUTE_STAGE, "res/shaders/shadows/bend_sss.spv");
 
@@ -299,7 +301,7 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 
 	// === PREPASS PIPELINE ===
 	PipelinePreset& prepassPreset = PipelinePresets::getPipelinePresetByID(PipelineID::Prepass);
-	prepassPreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // Normals
+	prepassPreset.colorFormats.push_back(VK_FORMAT_A2B10G10R10_UNORM_PACK32); // View space normals
 	prepassPreset.colorFormats.push_back(VK_FORMAT_R16G16_SFLOAT);            // Velocity
 	prepassPreset.depthFormat = VK_FORMAT_D32_SFLOAT;
 	prepassPreset.depthCompareOp = VK_COMPARE_OP_GREATER;
@@ -398,6 +400,18 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 		PipelineID::GTAOFilter,
 		PipelineCategory::Compute,
 		"GTAOFilter");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::GTAODenoise,
+		PipelineCategory::Compute,
+		"GTAODenoise");
+	PipelinePresets::createPipeline(
+		PipelinePresets::_defaultBuilder,
+		device,
+		PipelineID::GTAODepthPrefilter,
+		PipelineCategory::Compute,
+		"GTAODepthPrefilter");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,

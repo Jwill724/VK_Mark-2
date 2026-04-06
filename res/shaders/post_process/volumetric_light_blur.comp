@@ -19,14 +19,11 @@ layout(push_constant) uniform VolumetricPush
 
 	float maxDistance;         // max ray length in world/view units
 	float jitterStrength;      // scales step jitter for banding hiding
-	int stepCount;             // march steps
-	float pad0;
-
-	float asymmetryFactor;     // phase function asymmetry factor
+	float asymmetryFactor;     // phase function asymmetry factor (g)
 	float minTransmittance;    // minimum remaining light before fully attenuated
-	vec2 pixelSize;            // 1.0 / halfResExtent (x,y)
 
-	int beamPower;             // Determines how tight or wide beams are
+	int   beamPower;           // Determines how tight or wide beams are
+
 	// Blur (shared by X/Y passes)
 	float blurRadius;          // kernel radius in half-res pixels
 	float blurDepthSigma;      // depth sensitivity for bilateral blur
@@ -42,7 +39,10 @@ void main()
 
 	if (any(greaterThanEqual(pixelCoord, imageSizeOut))) return;
 
-	vec2 uv = (vec2(pixelCoord) + 0.5) * pc.pixelSize;
+	SceneData scene = getSceneData();
+	vec2 halfPixelSize = vec2(scene.pixelSizes.z, scene.pixelSizes.w);
+
+	vec2 uv = (vec2(pixelCoord) + 0.5) * halfPixelSize;
 
 	vec3 centerColor = texture(inVolumetricLight, uv).rgb;
 
@@ -55,7 +55,7 @@ void main()
 	float centerDepth = texture(inDepth, uv).r;
 
 	// Step in UV per 1-pixel move along blurDirection at half-res
-	vec2 texelStep = pc.pixelSize * pc.blurDirection;
+	vec2 texelStep = halfPixelSize * pc.blurDirection;
 
 	vec3 accumulatedColor = vec3(0.0);
 	float weightSum = 0.0;
@@ -75,7 +75,7 @@ void main()
 	float depthSigma = max(pc.blurDepthSigma, 1e-4);
 	float twoDepthSigma2 = 2.0 * depthSigma * depthSigma;
 
-	vec2 uvMin = 0.5 * pc.pixelSize;
+	vec2 uvMin = 0.5 * halfPixelSize;
 	vec2 uvMax = vec2(1.0) - uvMin;
 
 	for (int i = 1; i <= radius; ++i) {

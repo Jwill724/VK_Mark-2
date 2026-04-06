@@ -25,12 +25,11 @@ layout(push_constant) uniform GTAOPush {
 	float thinOccluderCompensation;
 
 	vec2 ndcToViewMul_x_PixelSize;
-	float depthMipSamplingOffset;
-	float constantThickness;  // Not in use
+	float depthLinearizeMult;
+	float depthLinearizeAdd;
 
 	float sharpness;
 	float radius;
-
 	vec2 blurDirection;
 } pc;
 
@@ -39,7 +38,7 @@ void main()
 	const ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
 
 	SceneData scene = getSceneData();
-	const vec2 fullPixelSize = vec2(scene.pixelSizes.x, scene.pixelSizes.y);
+	const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
 	vec2 uv = (vec2(pix) + 0.5) * fullPixelSize;
 
 	// center sample

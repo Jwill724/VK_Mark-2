@@ -5,19 +5,10 @@
 #include "RenderScene.h"
 
 namespace Visibility {
-	// === HELPERS ===
-
 	// min/max-only union
 	inline void growMinMax(AABB& dst, const AABB& src) {
 		dst.vmin = glm::min(dst.vmin, src.vmin);
 		dst.vmax = glm::max(dst.vmax, src.vmax);
-	}
-
-	// finalize origin/extent/sphere once, after unions
-	inline void finalizeFromMinMax(AABB& b) {
-		b.origin = 0.5f * (b.vmin + b.vmax);
-		b.extent = 0.5f * (b.vmax - b.vmin);
-		b.sphereRadius = glm::length(b.extent);
 	}
 
 	inline uint32_t transformIDFor(const GlobalInstance& gi, uint32_t copy, uint32_t localSlot) {
@@ -515,10 +506,13 @@ void Visibility::cullBVHCollectShadowCastersReceivers(
 
 		if (!boxInFrustum(node.box, frus)) continue;
 
+		const glm::vec3 nodeOrigin = 0.5f * (node.box.vmin + node.box.vmax);
+		const glm::vec3 nodeExtent = 0.5f * (node.box.vmax - node.box.vmin);
+
 		// Node test against loose receiver
-		glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(node.box.origin, 1.0f));
+		glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(nodeOrigin, 1.0f));
 		glm::vec3 extentLS = glm::mat3(
-			glm::abs(lightView[0]), glm::abs(lightView[1]), glm::abs(lightView[2])) * node.box.extent;
+			glm::abs(lightView[0]), glm::abs(lightView[1]), glm::abs(lightView[2])) * nodeExtent;
 
 		glm::vec3 nMin = centerLS - extentLS;
 		glm::vec3 nMax = centerLS + extentLS;
@@ -548,15 +542,19 @@ void Visibility::cullBVHCollectShadowCastersReceivers(
 
 				const AABB& wb = vs.worldAABBs[idx];
 
-				//float casterProj = glm::dot(lightDirWS, wb.origin);
+				const glm::vec3 originWB = 0.5f * (node.box.vmin + node.box.vmax);
+
+				//float casterProj = glm::dot(lightDirWS, originWB);
 				//if (casterProj > DIR_EPSILON) continue;
 
-				glm::vec3 casterCenterLS = glm::vec3(lightView * glm::vec4(wb.origin, 1.0f));
+				const glm::vec3 extentWB = 0.5f * (node.box.vmax - node.box.vmin);
+
+				glm::vec3 casterCenterLS = glm::vec3(lightView * glm::vec4(originWB, 1.0f));
 				glm::mat3 absLight = glm::mat3(
 					glm::abs(lightView[0]),
 					glm::abs(lightView[1]),
 					glm::abs(lightView[2]));
-				glm::vec3 casterExtentLS = absLight * wb.extent;
+				glm::vec3 casterExtentLS = absLight * extentWB;
 
 				float casterZMin = casterCenterLS.z - casterExtentLS.z;
 				float casterZMax = casterCenterLS.z + casterExtentLS.z;
@@ -641,17 +639,17 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	glm::vec3 cmin(1e30f), cmax(-1e30f);
 	for (uint32_t i = 0; i < count; ++i) {
 		const AABB& a = world[leafIndex[first + i]];
+		const glm::vec3 origin = 0.5f * (a.vmin + a.vmax);
 		if (i == 0) {
-			nodeB = a; // copies vmin/vmax/origin/extent/radius;
-			cmin = cmax = a.origin;
+			nodeB = a; // copies vmin/vmax
+			cmin = cmax = origin;
 		}
 		else {
 			growMinMax(nodeB, a); // min/max only
-			cmin = glm::min(cmin, a.origin);
-			cmax = glm::max(cmax, a.origin);
+			cmin = glm::min(cmin, origin);
+			cmax = glm::max(cmax, origin);
 		}
 	}
-	finalizeFromMinMax(nodeB); // compute origin/extent/radius once
 
 	const uint32_t idx = static_cast<uint32_t>(nodes.size());
 	nodes.push_back(node);
@@ -672,7 +670,9 @@ uint32_t Visibility::buildMedianBVHRecursive(
 	const uint32_t mid = first + count / 2;
 	std::nth_element(leafIndex.begin() + first, leafIndex.begin() + mid, leafIndex.begin() + first + count,
 		[&](uint32_t ia, uint32_t ib) {
-			return world[ia].origin[axis] < world[ib].origin[axis];
+			const glm::vec3 worldAOrigin = 0.5f * (world[ia].vmin + world[ia].vmax);
+			const glm::vec3 worldBOrigin = 0.5f * (world[ib].vmin + world[ib].vmax);
+			return worldAOrigin[axis] < worldBOrigin[axis];
 		});
 
 	// recurse
@@ -700,7 +700,6 @@ void Visibility::refitBVH(
 			const AABB& w = world[leafIndex[n.first + i]];
 			if (i == 0) b = w; else growMinMax(b, w);
 		}
-		finalizeFromMinMax(b);
 		n.box = b;
 		return;
 	}
@@ -713,7 +712,6 @@ void Visibility::refitBVH(
 	AABB b{};
 	b.vmin = glm::min(L.box.vmin, R.box.vmin);
 	b.vmax = glm::max(L.box.vmax, R.box.vmax);
-	finalizeFromMinMax(b);
 	n.box = b;
 }
 
@@ -725,11 +723,12 @@ void Visibility::refitBVH(
 // CPU Sided culling
 // Frustum culling method https://iquilezles.org/articles/frustumcorrect/
 bool Visibility::boxInFrustum(const AABB& box, const Frustum& fru, bool useCorners) {
-	const glm::vec3 center = box.origin;
-	const glm::vec3 extents = box.extent;
+	const glm::vec3 center = 0.5f * (box.vmin + box.vmax);
+	const glm::vec3 extents = 0.5f * (box.vmax - box.vmin);
+	const float sphereRadius = glm::length(extents);
 
-	const float minSafeRadius = box.sphereRadius * 0.01f;
-	const float safeRadius = glm::max(box.sphereRadius, minSafeRadius);
+	const float minSafeRadius = sphereRadius * 0.01f;
+	const float safeRadius = glm::max(sphereRadius, minSafeRadius);
 
 	//For each plane in the frustum
 	for (int i = 0; i < 6; ++i) {

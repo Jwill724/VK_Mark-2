@@ -242,6 +242,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 		frameCtx.cachedExtentHeight = curHeight;
 	}
 
+	// Handles initialization and any updates during runtime
 	if (frameCtx.addressTable.isTableDirty()) {
 		frameCtx.addressTable.updateCpuVersion();
 	}
@@ -368,11 +369,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	auto& transparentReveal = ResourceManager::getTransparentRevealage_Target();
 	auto& toneMap = ResourceManager::getToneMap_Target();
 	auto& aoRaw = ResourceManager::getAORaw_Target();
+	auto& bentNormals = ResourceManager::getBentNormals_Target();
 	auto& depthResolved = ResourceManager::getDepthResolved_Target();
 	auto& depth = ResourceManager::getDepthRaw_Target();
 	auto& volLight = ResourceManager::getVolumetricLight_Target();
 	auto& shadowMask = ResourceManager::getScreenSpaceShadowMask_Target();
-	const auto aoSampler = ResourceManager::getLinearLODClamp_Sampler();
+	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
 	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
 
 	auto& debug = profiler.debugToggles;
@@ -507,6 +509,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 			const auto& proj = scene.proj;
 
+			gtaoPush.depthLinearizeMult = -proj[3][2];
+			gtaoPush.depthLinearizeAdd  =  proj[2][2];
+			if (gtaoPush.depthLinearizeMult * gtaoPush.depthLinearizeAdd < 0.0) {
+				gtaoPush.depthLinearizeAdd = -gtaoPush.depthLinearizeAdd;
+			}
+
 			gtaoPush.tanHalfFov.x = 1.0f / proj[0][0];
 			gtaoPush.tanHalfFov.y = 1.0f / proj[1][1];
 
@@ -514,6 +522,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			gtaoPush.ndcToViewAdd = { gtaoPush.tanHalfFov.x * -1.0f, gtaoPush.tanHalfFov.y * 1.0f };
 
 			gtaoPush.ndcToViewMul_x_PixelSize = gtaoPush.ndcToViewMul * fullPixelSize;
+
+			gtaoPush.noiseIndex = frameCtx.frameIndex % 64u;
+			gtaoPush.isFinalPass = 0u; // Reset each frame
 
 			RenderPasses::ComputeScope gtaoScope;
 			gtaoScope.passID = PassID::GTAO;
@@ -528,6 +539,12 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			ImageUtils::transitionImage(
 				frameCtx.cmdBuffer,
 				aoRaw,
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			);
+
+			ImageUtils::transitionImage(
+				frameCtx.cmdBuffer,
+				bentNormals,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 			);
 		}
@@ -628,27 +645,17 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	RenderPasses::skyboxPass(frameCtx, skyboxScope, profiler, hasVisibles);
 
 	if (hasVisibles) {
-		// Final ao output
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_READ_1,
 			aoRaw,
-			aoSampler
+			nearestClampSampler
 		);
 
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_READ_2,
 			shadowMask,
-			ResourceManager::getNearestClamp_Sampler()
+			nearestClampSampler
 		);
-
-		AllocatedImage bentNormals;
-		if (debug.aoMode == AO_GTAO) {
-			bentNormals = ResourceManager::getBentNormals_Target();
-		}
-		else {
-			// pointless write
-			bentNormals = aoRaw;
-		}
 
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_READ_3,
@@ -740,10 +747,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		glm::uvec2 halfRes{ volLight.extent.width, volLight.extent.height };
 
 		auto& volLightPush = profiler.volLightSettings;
-		volLightPush.pixelSize = {
-			1.0f / static_cast<float>(halfRes.x),
-			1.0f / static_cast<float>(halfRes.y)
-		};
 
 		RenderPasses::ComputeScope volLightScope;
 		volLightScope.passID = PassID::VolumetricLighting;
@@ -791,12 +794,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			brightFlare.extent.width,
 			brightFlare.extent.height
 		};
-
-		lensFlarePush.fullRes = glm::vec2(
-			static_cast<float>(winExtent.width),
-			static_cast<float>(winExtent.height)
-		);
-		lensFlarePush.invFullRes = 1.0f / lensFlarePush.fullRes;
 
 		lensFlarePush.outputRes = glm::vec2(
 			static_cast<float>(quarterRes.width),
@@ -937,7 +934,6 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			false);
 	}
-
 
 	if (debug.enableSettings || debug.enableProfilerView) {
 		ImageUtils::transitionImage(

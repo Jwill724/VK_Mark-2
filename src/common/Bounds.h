@@ -13,9 +13,6 @@ struct Frustum {
 struct AABB {
 	glm::vec3 vmin; // origin: 0.5f * (vmin + vmax)
 	glm::vec3 vmax; // extent: 0.5f * (vmax - vmin)
-	glm::vec3 origin;
-	glm::vec3 extent;
-	float sphereRadius;
 };
 
 inline Frustum extractFrustum(const glm::mat4& viewproj) {
@@ -86,9 +83,6 @@ inline AABB AABBtoWorldSpace(const AABB& localBox, const glm::mat4& transform) {
 	AABB worldBox{};
 	worldBox.vmin = newVmin;
 	worldBox.vmax = newVmax;
-	worldBox.origin = (newVmax + newVmin) * 0.5f;
-	worldBox.extent = (newVmax - newVmin) * 0.5f;
-	worldBox.sphereRadius = glm::length(worldBox.extent);
 
 	return worldBox;
 }
@@ -184,9 +178,7 @@ inline AABB mergeAABB(const AABB& a, const AABB& b)
 	AABB result{};
 	result.vmin = glm::min(a.vmin, b.vmin);
 	result.vmax = glm::max(a.vmax, b.vmax);
-	result.origin = (result.vmax + result.vmin) * 0.5f;
-	result.extent = (result.vmax - result.vmin) * 0.5f;
-	result.sphereRadius = glm::length(result.extent);
+
 	return result;
 }
 
@@ -200,10 +192,6 @@ inline AABB computeVisibleReceiverAABB(const std::vector<AABB>& visibleWorldAABB
 		receiver.vmin = glm::min(receiver.vmin, aabb.vmin);
 		receiver.vmax = glm::max(receiver.vmax, aabb.vmax);
 	}
-
-	receiver.origin = (receiver.vmax + receiver.vmin) * 0.5f;
-	receiver.extent = (receiver.vmax - receiver.vmin) * 0.5f;
-	receiver.sphereRadius = glm::length(receiver.extent);
 
 	return receiver;
 }

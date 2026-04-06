@@ -180,9 +180,9 @@ void RenderPasses::BasePrepass(
 
 	auto& depthResolved = ResourceManager::getDepthResolved_Target();
 	auto& prevDepthResolved = ResourceManager::getPrevDepthResolved_Target();
-	auto& normals = ResourceManager::getViewSpaceNormals_Target();
 	auto& velocity = ResourceManager::getVelocity_Target();
 	auto& prevVelocity = ResourceManager::getPrevVelocity_Target();
+	auto& viewSpaceNormals = ResourceManager::getViewSpaceNormals_Target();
 
 	if (isTemporalValid) {
 		ImageUtils::imageCopy(
@@ -201,40 +201,33 @@ void RenderPasses::BasePrepass(
 	else {
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
+			depthResolved,
+			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
 			velocity,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 	}
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
-		depthResolved,
-		VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
-
-	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
-		normals,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
+		viewSpaceNormals,
+		VK_IMAGE_LAYOUT_GENERAL);
 
 	AttachmentDesc prepassDepth{};
 	prepassDepth.imageView = depthResolved.imageView;
 	prepassDepth.layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-	prepassDepth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	prepassDepth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	prepassDepth.clearValue.depthStencil.depth = 0.0f;
 
 	AttachmentDesc prepassNormal{};
-	prepassNormal.imageView = normals.imageView;
+	prepassNormal.imageView = viewSpaceNormals.imageView;
 	prepassNormal.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	prepassNormal.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	prepassNormal.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	prepassNormal.clearValue.color = { { 0.5f, 0.5f, 1.0f, 1.0f } };
 
 	AttachmentDesc prepassVelocity{};
 	prepassVelocity.imageView = velocity.imageView;
 	prepassVelocity.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	prepassVelocity.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	prepassVelocity.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	prepassVelocity.clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
 	beginRendering(
@@ -266,12 +259,12 @@ void RenderPasses::BasePrepass(
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
-		normals,
+		velocity,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
-		velocity,
+		viewSpaceNormals,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
@@ -297,9 +290,8 @@ void RenderPasses::hiZGenerationPass(
 		frameCtx.cmdBuffer,
 		hiZ,
 		VK_IMAGE_LAYOUT_GENERAL,
-		0,                         // Start at base mip
-		hiZ.mipLevelCount,         // All levels transitioned
-		VK_IMAGE_LAYOUT_UNDEFINED
+		0u,                        // Start at base mip
+		hiZ.mipLevelCount          // All levels transitioned
 	);
 
 	// First ever transition
@@ -394,17 +386,63 @@ void RenderPasses::GTAOPass(
 		frameCtx.cmdBuffer,
 		scope.passID
 	);
-	auto& depthPyramid = ResourceManager::getHiZ_Target();
-	auto& normal = ResourceManager::getViewSpaceNormals_Target();
+	auto& depthResolved = ResourceManager::getDepthResolved_Target();
+	auto& linearizedMinHiZ = ResourceManager::getLinearizedMinHiZ_Target();
 	auto& rawAO = ResourceManager::getAORaw_Target();
 	auto& aoTemp = ResourceManager::getAOTemp_Target();
 	auto& edgeInfo = ResourceManager::getAOEdgeInfo_Target();
 	auto& bentNormals = ResourceManager::getBentNormals_Target();
+	auto& viewSpaceNormals = ResourceManager::getViewSpaceNormals_Target();
 
 	auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
 	auto depthPyramidSampler = ResourceManager::getHiZ_Sampler();
 	auto aoSampler = ResourceManager::getLinearLODClamp_Sampler();
 	auto nearSampler = ResourceManager::getDefaultNearest_Sampler();
+
+	// ============================
+	// === GTAO DEPTH PREFILTER ===
+	{
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_READ_1,
+			depthResolved,
+			nearestClampSampler);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			linearizedMinHiZ,
+			VK_IMAGE_LAYOUT_GENERAL,
+			0u,
+			linearizedMinHiZ.mipLevelCount);
+
+		uint32_t pushWriteBinding = PUSH_BINDING_WRITE_1;
+		for (uint32_t i = 0u; i < HI_Z_MIP_COUNT; i++) {
+			ASSERT(pushWriteBinding <= PUSH_BINDING_WRITE_5);
+
+			frameCtx.descriptorWriter.writePushImage(
+				pushWriteBinding,
+				linearizedMinHiZ,
+				VK_NULL_HANDLE,
+				VK_IMAGE_LAYOUT_GENERAL,
+				i);
+			pushWriteBinding++;
+		}
+
+		dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::GTAODepthPrefilter),
+			scope,
+			frameCtx.descriptorWriter);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			linearizedMinHiZ,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			0u,
+			linearizedMinHiZ.mipLevelCount);
+	}
+
+	// =================
+	// === GTAO MAIN ===
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -420,19 +458,16 @@ void RenderPasses::GTAOPass(
 		bentNormals,
 		VK_IMAGE_LAYOUT_GENERAL);
 
-	// =================
-	// === GTAO MAIN ===
-
 	// Inputs
 	// Depth pyramid
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_READ_1,
-		depthPyramid,
+		linearizedMinHiZ,
 		depthPyramidSampler);
-	// Normals
+	// View space normals
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_READ_2,
-		normal,
+		viewSpaceNormals,
 		nearestClampSampler);
 
 	// Outputs
@@ -449,7 +484,6 @@ void RenderPasses::GTAOPass(
 		PUSH_BINDING_WRITE_3,
 		bentNormals);
 
-
 	dispatchComputePass(
 		frameCtx.cmdBuffer,
 		Pipelines::getHandle(PipelineID::GTAO),
@@ -461,15 +495,14 @@ void RenderPasses::GTAOPass(
 		bentNormals,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	// ==============================
-	// === GTAO FILTER HORIZONTAL ===
+ 
+	// Spatial filtering / Denoising initial setup
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
 		rawAO,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-	// Transition edge info once for both filter passes
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
 		edgeInfo,
@@ -495,69 +528,130 @@ void RenderPasses::GTAOPass(
 	);
 
 	// Output
-	// Filtered horizontal
 	frameCtx.descriptorWriter.writePushImage(
 		PUSH_BINDING_WRITE_1,
 		aoTemp
 	);
 
-	scope.editPush<GTAOPush>(
-		[](GTAOPush& push)
-		{
-			push.blurDirection = { 1.0f, 0.0f }; // Horizontal
-		});
+	// Bi-lateral blur filter
+	if (profiler.debugToggles.aaMode != AA_TAA) {
+		// ==============================
+		// === GTAO FILTER HORIZONTAL ===
 
-	dispatchComputePass(
-		frameCtx.cmdBuffer,
-		Pipelines::getHandle(PipelineID::GTAOFilter),
-		scope,
-		frameCtx.descriptorWriter);
+		scope.editPush<GTAOPush>(
+			[](GTAOPush& push)
+			{
+				push.blurDirection = { 1.0f, 0.0f }; // Horizontal
+			});
 
-	// ============================
-	// === GTAO FILTER VERTICAL ===
+		dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::GTAOFilter),
+			scope,
+			frameCtx.descriptorWriter);
 
-	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
-		aoTemp,
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		// ============================
+		// === GTAO FILTER VERTICAL ===
 
-	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
-		rawAO,
-		VK_IMAGE_LAYOUT_GENERAL);
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			aoTemp,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			rawAO,
+			VK_IMAGE_LAYOUT_GENERAL);
 
 
-	// Inputs
-	// Filtered Horionzal ao
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_READ_1,
-		aoTemp,
-		aoSampler
-	);
-	// edge info
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_READ_2,
-		edgeInfo,
-		nearSampler
-	);
+		// Inputs
+		// Filtered Horionzal ao
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_READ_1,
+			aoTemp,
+			aoSampler
+		);
+		// edge info
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_READ_2,
+			edgeInfo,
+			nearSampler
+		);
 
-	// Output
-	// final filtered ao
-	frameCtx.descriptorWriter.writePushImage(
-		PUSH_BINDING_WRITE_1,
-		rawAO
-	);
+		// Output
+		// final filtered ao
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_WRITE_1,
+			rawAO
+		);
 
-	scope.editPush<GTAOPush>(
-		[](GTAOPush& push)
-		{
-			push.blurDirection = { 0.0f, 1.0f }; // Vertical
-		});
-	dispatchComputePass(
-		frameCtx.cmdBuffer,
-		Pipelines::getHandle(PipelineID::GTAOFilter),
-		scope,
-		frameCtx.descriptorWriter);
+		scope.editPush<GTAOPush>(
+			[](GTAOPush& push)
+			{
+				push.blurDirection = { 0.0f, 1.0f }; // Vertical
+			});
+		dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::GTAOFilter),
+			scope,
+			frameCtx.descriptorWriter);
+	}
+	// XeGTAO Denoise (TAA required)
+	else {
+		// ===========================
+		// === GTAO DENOISE PASS 1 ===
+
+		// Works over 2x1 pixels
+		scope.workgroupSize = { 32u, 16u, 1u };
+
+		dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::GTAODenoise),
+			scope,
+			frameCtx.descriptorWriter);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			aoTemp,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		ImageUtils::transitionImage(
+			frameCtx.cmdBuffer,
+			rawAO,
+			VK_IMAGE_LAYOUT_GENERAL);
+
+
+		// ===========================
+		// === GTAO DENOISE PASS 2 ===
+
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_READ_1,
+			aoTemp,
+			aoSampler
+		);
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_READ_2,
+			edgeInfo,
+			nearSampler
+		);
+
+		frameCtx.descriptorWriter.writePushImage(
+			PUSH_BINDING_WRITE_1,
+			rawAO
+		);
+
+		scope.editPush<GTAOPush>(
+			[](GTAOPush& push)
+			{
+				push.isFinalPass = 1u;
+			});
+
+		dispatchComputePass(
+			frameCtx.cmdBuffer,
+			Pipelines::getHandle(PipelineID::GTAODenoise),
+			scope,
+			frameCtx.descriptorWriter);
+	}
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,

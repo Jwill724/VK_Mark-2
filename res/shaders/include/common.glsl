@@ -174,9 +174,6 @@ struct Instance {
 struct AABB {
 	vec3 vmin; // origin: 0.5f * (vmin + vmax)
 	vec3 vmax; // extent: 0.5f * (vmax - vmin)
-	vec3 origin;
-	vec3 extent;
-	float sphereRadius;
 };
 
 struct Material {
@@ -221,6 +218,12 @@ struct Vertex {
 	uint16_t uvY;
 	uint     colorRGBA8;
 };
+
+vec2 octEncode(vec3 n) {
+	n /= abs(n.x) + abs(n.y) + abs(n.z);
+	if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * sign(n.xy);
+	return n.xy * 0.5 + 0.5;
+}
 
 vec3 octDecode(vec2 e) {
 	vec3 v = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
@@ -279,7 +282,40 @@ float interleavedGradientNoise(vec2 pixel) {
 	return fract(magic.z * fract(dot(pixel, magic.xy)));
 }
 
+// https://github.com/PanosK92/SpartanEngine/blob/4a0fe6d6d6ae54be08d5e9541a75adfb9d32d35f/data/shaders/common.hlsl#L434
+float temporalNoiseInterleavedGradient(vec2 screen_pos, int frame_count, float taaOn) {
+	const float RPC_16 = 0.0625;
+
+	// temporal factor
+	float animate      = saturate(taaOn + 1.0);
+	float frame_step   = float(frame_count % 16) * RPC_16 * animate;
+	screen_pos.x      += frame_step * 4.7526;
+	screen_pos.y      += frame_step * 3.1914;
+
+	vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+	return fract(magic.z * fract(dot(screen_pos, magic.xy)));
+}
+
+// fast 1d hash
+float hash(float p) {
+	// scale input, convert to uint for bit manipulation
+	uint u = floatBitsToUint(p * 3141592653.0);
+	
+	// mix with multiply and xor, normalize to [0,1)
+	return float(u * u * 3141592653u) / 4294967295.0;
+}
+
+// fast 2d hash
+float hash(vec2 p) {
+	// scale each component, convert to uint2
+	uvec2 u = floatBitsToUint(p * vec2(141421356.0, 2718281828.0));
+	
+	// combine with xor, mix, normalize to [0,1)
+	return float((u.x ^ u.y) * 3141592653u) / 4294967295.0;
+}
+
 const uint MAX_CASCADES = 4u;
+const uint MAX_CASCADES_INDEX = MAX_CASCADES - 1u;
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	vec4 cascadeSplits;
@@ -288,7 +324,7 @@ struct ShadowCSM {
 	// xy = uvScale, zw = uvOffset (per cascade)
 	vec4 atlasUV[MAX_CASCADES];
 	vec4 maxFilterRadiusTexels;
-	//float cascadeBias[MAX_CASCADES];
+	float cascadeBias[MAX_CASCADES];
 	//float cascadeNormalOffset[MAX_CASCADES];
 };
 
@@ -736,11 +772,11 @@ void unpackVertex(
 	tangentHandedness = float(vtx.tangentW);
 }
 
-void unpackVertexMinimal(
+void unpackVertexPrepass(
 	int id,
 	out vec2 uv,
-	out vec3 normal,
-	out vec3 position)
+	out vec3 position,
+	out vec3 normal)
 {
 	Vertex vtx = getVertexBuffer().vertices[id];
 

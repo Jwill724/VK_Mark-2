@@ -15,9 +15,6 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inFlareB
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outLensFlareColor;
 
 layout(push_constant) uniform LensFlarePush {
-	vec2 fullRes;
-	vec2 invFullRes;
-
 	vec2 outputRes;
 	vec2 invOutputRes;
 
@@ -62,7 +59,7 @@ struct SunPick
 	float coverage;
 };
 SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv);
-float computeSunOcclusion(vec2 sunUv, float nearClip, float farClip);
+float computeSunOcclusion(vec2 sunUv, float nearClip, float farClip, vec2 invFullSize);
 float distNormMinDim(vec2 uvA, vec2 uvB, vec2 outputRes);
 
 void main()
@@ -79,6 +76,8 @@ void main()
 
 	SceneData scene = getSceneData();
 	DebugToggles debug = getDebugToggles();
+
+	vec2 invFullSize = vec2(scene.pixelSizes.xy);
 
 	vec2 uv = (vec2(pixelCoord) + 0.5) / vec2(dim);
 
@@ -99,7 +98,7 @@ void main()
 	vec3 brightColor = sunPick.color;
 	float brightLum = sunPick.lum;
 
-	float occlusion = computeSunOcclusion(sunUv, scene.cameraClips.x, scene.cameraClips.y);
+	float occlusion = computeSunOcclusion(sunUv, scene.cameraClips.x, scene.cameraClips.y, invFullSize);
 
 	float brightnessGate = 1.0 - exp(-brightLum * 0.55);
 
@@ -313,14 +312,14 @@ SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv)
 	return outPick;
 }
 
-float computeSunOcclusion(vec2 sunUv, float nearPlane, float farPlane)
+float computeSunOcclusion(vec2 sunUv, float nearPlane, float farPlane, vec2 invFullSize)
 {
 	float fade = max(pc.occlusionFade, 1e-6);
 
 	float radiusHalfRes = max(pc.occlusionRadiusPixels * 0.5, 0.0);
 
 	float tapSpacingPixels = max(pc.occlusionRadiusPixels * 0.75, 1.0);
-	vec2 tapSpacingUv = tapSpacingPixels * pc.invFullRes;
+	vec2 tapSpacingUv = tapSpacingPixels * invFullSize;
 
 	float bestVis = 0.0;
 

@@ -54,12 +54,12 @@ float gaussianWeight(vec2 diskPos)
 
 // Used for volumetric lights shadow map samples
 float PCFPoissonLow(
-	mat2      poissonRotation,
-	uint      shadowMapID,
-	vec2      shadowUV,
-	float     receiverDepth,
-	float     bias,
-	float     texel)
+	mat2  poissonRotation,
+	uint  shadowMapID,
+	vec2  shadowUV,
+	float receiverDepth,
+	float bias,
+	float texel)
 {
 	float sum      = 0.0;
 	float depthPos = receiverDepth + bias;
@@ -74,13 +74,13 @@ float PCFPoissonLow(
 
 // Used in primary shadow rendering
 float PCFPoissonHigh(
-	mat2      poissonRotation,
-	uint      shadowMapID,
-	vec2      shadowUV,
-	float     receiverDepth,
-	float     bias,
-	float     texel,
-	float     radius)
+	mat2  poissonRotation,
+	uint  shadowMapID,
+	vec2  shadowUV,
+	float receiverDepth,
+	float bias,
+	float texel,
+	float radius)
 {
 	float samplePos = texel * radius;   // UV-space kernel radius
 	float depthPos  = receiverDepth + bias;

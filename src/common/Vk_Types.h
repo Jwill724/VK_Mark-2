@@ -104,7 +104,7 @@ struct alignas(16) GPUSceneData {
 	glm::vec4 sunlightDirection{}; // w for sun power
 	glm::vec4 sunlightColor{};
 	glm::vec4 cameraPos{};         // xyz pos, .w exposure
-	glm::vec4 cameraClips{};       // .x near and .y far, .z invScreenWidth, .w invScreenHeight
+	glm::vec4 cameraClips{};       // .x near and .y far
 	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
 	glm::vec4 pixelSizes{};        // .x/.y = 1 / full extent .z/.w = = 1 / half extent
 };
@@ -122,7 +122,7 @@ struct alignas(16) GPUShadowCSM {
 	// xy = uvScale, zw = uvOffset (per cascade)
 	glm::vec4 atlasUV[MAX_SHADOW_CASCADES]{};
 	glm::vec4 maxFilterRadiusTexels{};
-	//float cascadeBias[MAX_SHADOW_CASCADES]{};
+	float cascadeBias[MAX_SHADOW_CASCADES]{};
 	//float cascadeNormalOffset[MAX_SHADOW_CASCADES]{};
 };
 

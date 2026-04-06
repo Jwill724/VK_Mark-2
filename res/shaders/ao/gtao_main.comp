@@ -3,7 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
 
-// Ideas and most code pulled from here, thanks Will
+// Core xegtao glsl implementation guideline, thanks Will
 // https://github.com/Williscool13/WillEngineV2/blob/87a90f41f0486acfd6a589346b919f3bc9629172/shaders/ambient_occlusion/ground_truth/gtao_main_pass.comp
 
 // Original XE_GTAO implementation
@@ -18,17 +18,22 @@
 layout(local_size_x = 16, local_size_y = 16) in;
 
 const float GTAO_RADIUS_MULTIPLIER = 1.457;
+const float GTAO_DEPTH_MIP_SAMPLING_OFFSET = 3.3;
+
+const uint SECTOR_COUNT = 32u;
+const float CONSTANT_THICKNESS = 0.2;
+
+const float AO_INTENSITY = 2.2;
+
+const float offsets[]    = { 0.0, 0.5, 0.25, 0.75 };
+const float rotations[]  = { 0.1666, 0.8333, 0.5, 0.6666, 0.3333, 0.0 };
 
 const uint XE_HILBERT_LEVEL = 6u;
 const uint XE_HILBERT_WIDTH = (1u << XE_HILBERT_LEVEL);
 
-// Depth pyramid texture
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D inHiZ;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inHiZ;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inViewSpaceNormals;
 
-// View space normal texture
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D normal;
-
-// GTAO outputs
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outRawAO;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2) writeonly uniform image2D outEdgeInfo;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_3) writeonly uniform image2D outBentNormals;
@@ -48,13 +53,14 @@ layout(push_constant) uniform GTAOPush {
 	float thinOccluderCompensation;
 
 	vec2 ndcToViewMul_x_PixelSize;
-	float depthMipSamplingOffset;
-	float constantThickness; // Not in use
+	float depthLinearizeMult;
+	float depthLinearizeAdd;
 
 	float sharpness;
 	float radius;
-
 	vec2 blurDirection;
+
+	uint noiseIndex;
 } pc;
 
 // https://h14s.p5r.org/2012/09/0x5f3759df.html
@@ -71,8 +77,8 @@ float fastAcos(float inX) {
 	return (inX >= 0.0) ? r : (PI - r);
 }
 
-vec3 reconstructViewPos(vec2 uv, float depthVS) {
-	// Cheap mode used by XEGTAO
+vec3 cheapReconstructViewSpacePosition(vec2 uv, float depthVS)
+{
 	vec3 pos;
 	pos.xy = (pc.ndcToViewMul * uv + pc.ndcToViewAdd) * depthVS;
 	pos.z = -depthVS;
@@ -87,8 +93,7 @@ vec4 computeEdges(float center, float left, float right, float top, float bottom
 
 	vec4 dz2 = dz + vec4(slopeLR, -slopeLR, slopeTB, -slopeTB);
 	dz = min(abs(dz), abs(dz2));
-
-	return clamp((1.25 - dz / (center * 0.011)), 0.0, 1.0);
+	return saturate((1.25 - dz / (center * 0.011)));
 }
 
 // 2 bits per edge mean 4 gradient values (0, 0.33, 0.66, 1) for smoother transitions!
@@ -125,69 +130,92 @@ uint XE_GTAO_HilbertIndex(uint posX, uint posY) {
 	return index;
 }
 
-vec2 XE_GTAO_SpatioTemporalNoise(ivec2 pixCoord, uint temporalIndex) {
+vec2 XE_GTAO_SpatioTemporalNoise(ivec2 pixCoord) {
 	uint index = XE_GTAO_HilbertIndex(uint(pixCoord.x), uint(pixCoord.y));
-	index += 288u * (temporalIndex % 64u);
+	index += 288u * (pc.noiseIndex);
 	return vec2(fract(0.5 + index * vec2(0.75487766624669276005, 0.5698402909980532659114)));
+}
+
+// Visibility bitfield functions
+// Provided from Spartan Engine
+// https://github.com/PanosK92/SpartanEngine/blob/master/data/shaders/ssao.hlsl
+vec2 fastAcos2(vec2 x) {
+	return (-0.69813170 * x * x - 0.87266463) * x + 1.57079633;
+}
+
+uint updateSectors(float minHorizon, float maxHorizon, uint globalOccludedbitmask) {
+	// convert horizon angles to bitmask
+	uint startHorizonInt        = uint(minHorizon * SECTOR_COUNT);
+	float angleHorizon          = (maxHorizon - minHorizon) * SECTOR_COUNT;
+	uint angleHorizonInt        = uint(ceil(angleHorizon));
+	uint angleHorizonbitmask    = angleHorizonInt > 0 ? (0xFFFFFFFFu >> (SECTOR_COUNT - angleHorizonInt)) : 0u;
+	uint currentOccludedbitmask = angleHorizonbitmask << startHorizonInt;
+	return globalOccludedbitmask | currentOccludedbitmask;
+}
+
+vec2 getFrontBackHorizons(float samplingDirection, vec3 deltaPos, vec3 viewVec, float n) {
+	// compute horizon angles for front and back faces
+	samplingDirection     = -samplingDirection;
+	vec3 deltaPosBackface = deltaPos - viewVec * CONSTANT_THICKNESS;
+	vec2 frontBackHorizon = vec2(dot(normalize(deltaPos), viewVec), dot(normalize(deltaPosBackface), viewVec));
+	frontBackHorizon      = fastAcos2(frontBackHorizon);
+	frontBackHorizon      = saturate((samplingDirection * -frontBackHorizon - n + HALF_PI) / PI);
+	frontBackHorizon      = samplingDirection >= 0.0 ? frontBackHorizon.yx : frontBackHorizon.xy;
+
+	return frontBackHorizon;
 }
 
 void main()
 {
 	const ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
 	SceneData scene = getSceneData();
+	DebugToggles debug = getDebugToggles();
 	if (pix.x >= int(scene.viewportSize.x) || pix.y >= int(scene.viewportSize.y)) return;
-	const vec2 fullPixelSize = vec2(scene.pixelSizes.x, scene.pixelSizes.y);
+	const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
+	const vec2 fullScreenSize = vec2(scene.viewportSize.xy);
 	vec2 uv = (vec2(pix) + 0.5) * fullPixelSize;
 
 	vec2 gatherCenter = vec2(pix) * fullPixelSize;
-	uvec4 UL = textureGather(inHiZ, gatherCenter, 0);
-	uvec4 BR = textureGatherOffset(inHiZ, gatherCenter, ivec2(1, 1), 0);
+	vec4 UL = textureGather(inHiZ, gatherCenter, 0);
+	vec4 BR = textureGatherOffset(inHiZ, gatherCenter, ivec2(1), 0);
 
-	// In view space
-	float centerRaw = unpackNearRaw(UL.y);
-	float leftRaw   = unpackNearRaw(UL.x);
-	float topRaw    = unpackNearRaw(UL.z);
-	float rightRaw  = unpackNearRaw(BR.z);
-	float botRaw    = unpackNearRaw(BR.x);
-
-	float centerZ       = linearizeDepth(centerRaw, scene.cameraClips.x, scene.cameraClips.y);
-	const float leftZ   = linearizeDepth(leftRaw,   scene.cameraClips.x, scene.cameraClips.y);
-	const float topZ    = linearizeDepth(topRaw,    scene.cameraClips.x, scene.cameraClips.y);
-	const float rightZ  = linearizeDepth(rightRaw,  scene.cameraClips.x, scene.cameraClips.y);
-	const float botZ    = linearizeDepth(botRaw,    scene.cameraClips.x, scene.cameraClips.y);
-
-	DebugToggles debug = getDebugToggles();
+	// Prefiltered linearized xegtao min Hi Z
+	float centerZ       = UL.y;
+	const float leftZ   = UL.x;
+	const float rightZ  = UL.z;
+	const float topZ    = BR.z;
+	const float botZ    = BR.x;
 
 	// Edge detection
 	vec4 edges = computeEdges(centerZ, leftZ, rightZ, topZ, botZ);
 	float packed = packEdges(edges);
 	imageStore(outEdgeInfo, pix, vec4(packed));
 
-	// View space normals
-	vec3 N = normalize(texture(normal, uv).rgb * 2.0 - 1.0);
+	// View space normal
+	const vec3 N = normalize(texture(inViewSpaceNormals, uv).rgb * 2.0 - 1.0);
 
 	// Per Intel: Moves center pixel a bit to avoid imprecision artifacts.
-	centerZ *= 0.99920;
+	centerZ *= 0.99999; // Good for d32
 
-//	float depthVS = centerZ;
-//	// Depth fade for GTAO
-//	float depthFade = 500.0;
-//	float maxDepth = 1000.0;
-//	float fadeStart = maxDepth * 0.9;
-//	// start fading at 90% of range
-//	if (depthVS > fadeStart) {
-//		float t = clamp((depthVS - fadeStart) / (maxDepth - fadeStart), 0.0, 1.0);
-//		depthFade = 1.0 - t;
-//		if (depthFade <= 0.0) {
-//			// Completely outside GTAO range: no occlusion
-//			imageStore(outRawAO, pix, vec4(1.0));
-//			imageStore(outBentNormals, pix, vec4(N, 1.0));
-//			return;
-//		}
-//	}
+	float depthVS = centerZ;
+	// Fade ao output
+	float depthFade = 50.0;
+	const float maxDepth = 100.0;
+	const float fadeStart = maxDepth * 0.9;
+	// start fading at 90% of range
+	if (depthVS > fadeStart) {
+		float t = saturate((depthVS - fadeStart) / (maxDepth - fadeStart));
+		depthFade = 1.0 - t;
+		if (depthFade <= 0.0) {
+			// Completely outside GTAO range: no occlusion
+			imageStore(outRawAO, pix, vec4(1.0));
+			imageStore(outBentNormals, pix, vec4(N, 1.0));
+			return;
+		}
+	}
 
 	// Reconstruct view space pos
-	vec3 vPos = reconstructViewPos(uv, centerZ);
+	vec3 vPos = cheapReconstructViewSpacePosition(uv, centerZ);
 	vec3 viewVec = normalize(-vPos);
 
 	// GTAO sampling parameters
@@ -199,16 +227,28 @@ void main()
 	const float falloffAdd = falloffFrom / falloffRange + 1.0;
 
 	// noise
-	vec2 noise;
+	float noiseSlice = 0.0;
+	float noiseSample = 0.0;
 	if (debug.aaMode == AA_TAA) {
-		noise = XE_GTAO_SpatioTemporalNoise(pix, scene.temporal.x);
+		vec2 noise = XE_GTAO_SpatioTemporalNoise(pix);
+		noiseSlice = noise.x;
+		noiseSample = noise.y;
 	}
 	else {
-		noise = getNoise(pix);
+		vec2 noise = getNoise(pix);
+		noiseSlice = noise.x;
+		noiseSample = noise.y;
 	}
 
-	const float noiseSlice = noise.x;
-	const float noiseSample = noise.y;
+//	// Spartan Engine noise setup
+//	const int frameIndex = int(scene.temporal.x);
+//	const float noiseGradientTemporal             = temporalNoiseInterleavedGradient(pix, frameIndex, float(scene.temporal.y));
+//	const float offsetSpatial                     = 0.25 * float((pix.y - pix.x) & 3);
+//	const float offsetTemporal                    = offsets[frameIndex % 4];
+//	const float offsetRotationTemporal            = rotations[frameIndex % 6];
+//	const float rayOffset                         = fract(offsetSpatial + offsetTemporal) + (hash(uv) * 2.0 - 1.0) * 0.25;
+//	const float noiseSlice                        = noiseGradientTemporal + offsetRotationTemporal;
+//	const float noiseSample                       = rayOffset;
 
 	const vec2 pixelDirRBViewSpaceSizeAtCenterZ = vec2(centerZ) * pc.ndcToViewMul_x_PixelSize;
 
@@ -218,10 +258,11 @@ void main()
 	const float pixelTooCloseThreshold = 1.3;
 
 	float visibility = 0.0;
-	visibility += clamp((10.0 - screenspaceRadius) / 100.0, 0.0, 1.0) * 0.5;
+	visibility += saturate((10.0 - screenspaceRadius) / 100.0) * 0.5;
 
-	if (screenspaceRadius < pixelTooCloseThreshold) {
-		visibility = clamp(visibility, 0.0, 1.0);
+	if (screenspaceRadius < pixelTooCloseThreshold)
+	{
+		visibility = saturate(visibility);
 
 		imageStore(outRawAO, pix, vec4(visibility));
 		imageStore(outBentNormals, pix, vec4(N, 1.0));
@@ -238,116 +279,103 @@ void main()
 	// Define hemisphere slices for outer loop
 	const float sliceCount = float(pc.sliceCount);
 	const float stepsPerSlice = float(pc.stepsPerSliceCount);
+
 	for (float slice = 0.0; slice < sliceCount; slice++) {
-		float sliceK = (slice + noiseSlice) / sliceCount;
-
 		// Slice direction angle
-		float phi = sliceK * PI;
-		float cosPhi = cos(phi);
-		float sinPhi = sin(phi);
-
-		vec2 omega = vec2(cosPhi, -sinPhi) * screenspaceRadius;
-		const vec3 dirVec = vec3(cosPhi, sinPhi, 0.0);
+		float sliceK                = (slice + noiseSlice) / sliceCount;
+		float phi                   = sliceK * PI;
+		float cosPhi                = cos(phi);
+		float sinPhi                = sin(phi);
+		vec2 omega                  = vec2(cosPhi, -sinPhi) * screenspaceRadius;
+		const vec3 dirVec           = vec3(cosPhi, sinPhi, 0.0);
 
 		// Orthogonal projection basis
-		const vec3 orthoDirVec = dirVec - (dot(dirVec, viewVec) * viewVec);
-		const vec3 axisVec = normalize(cross(orthoDirVec, viewVec));
-
-		vec3 projectedNormalVec = N - axisVec * dot(N, axisVec);
-		float signNorm = sign(dot(orthoDirVec, projectedNormalVec));
-
+		const vec3 orthoDirVec      = dirVec - (dot(dirVec, viewVec) * viewVec);
+		const vec3 axisVec          = normalize(cross(orthoDirVec, viewVec));
+		vec3 projectedNormalVec     = N - axisVec * dot(N, axisVec);
+		float signNorm              = sign(dot(orthoDirVec, projectedNormalVec));
 		float projectedNormalLength = length(projectedNormalVec);
-		projectedNormalLength = max(projectedNormalLength, 1e-6);
-		float cosNorm = clamp(dot(projectedNormalVec, viewVec) / projectedNormalLength, 0.0, 1.0);
+		projectedNormalLength       = max(projectedNormalLength, 1e-6);
+		float cosNorm               = saturate(dot(projectedNormalVec, viewVec) / projectedNormalLength);
+		float n                     = signNorm * fastAcos(cosNorm);
 
-		float n = signNorm * fastAcos(cosNorm);
+		// Horizon logic
+		const float lowHorizonCos0  = cos(n + HALF_PI);
+		const float lowHorizonCos1  = cos(n - HALF_PI);
+		float horizonCos0           = lowHorizonCos0;
+		float horizonCos1           = lowHorizonCos1;
 
-		const float lowHorizonCos0 = cos(n + HALF_PI);
-		const float lowHorizonCos1 = cos(n - HALF_PI);
-
-		float horizonCos0 = lowHorizonCos0;
-		float horizonCos1 = lowHorizonCos1;
+		// Visibility bitmask
+		uint occlusionBitmask = 0u;
 
 		// Inner loop ray march along slice direction
 		for (float step = 0.0; step < stepsPerSlice; step++) {
 			// R1 quasi-random progression
-			const float stepBaseNoise = (slice + step * stepsPerSlice) * 0.61803398874989484;
+			const float stepBaseNoise = (slice + step * stepsPerSlice) * 0.6180339887498948482; // <- this should unroll
+			float stepNoise           = fract(noiseSample + stepBaseNoise);
+			float s                   = (step + stepNoise) / stepsPerSlice;
+			s                         = pow(s, pc.sampleDistributionPower);
+			s                        += minS; // Avoids sampling middle pixel
 
-			float stepNoise = fract(noiseSample + stepBaseNoise);
-
-			float s = (step + stepNoise) / stepsPerSlice;
-			s = pow(s, pc.sampleDistributionPower);
-
-			// Avoids sampling middle pixel
-			s += minS;
-
-			vec2 sampleOffset = s * omega;
-			float sampleOffsetLength = length(sampleOffset);
+			// Sample position
+			vec2 sampleOffset         = s * omega;
+			float sampleOffsetLength  = length(sampleOffset);
 
 			// Snap pixel to center to avoid artifacts
-			sampleOffset = round(sampleOffset) * fullPixelSize;
-
-			// Sample + opposite sample
-			vec2 sampleScreenPos0 = uv + sampleOffset;
-			vec2 sampleScreenPos1 = uv - sampleOffset;
+			sampleOffset              = round(sampleOffset) * fullPixelSize;
 
 			// Selected mip level in depth pyramid
-			const float mipLevel = clamp(
-				log2(sampleOffsetLength) - pc.depthMipSamplingOffset,
-				0.0,
-				float(HI_Z_MIP_COUNT - 1u)
-			);
+			const float mipLevel      = clamp(log2(sampleOffsetLength) - GTAO_DEPTH_MIP_SAMPLING_OFFSET, 0.0, HI_Z_MIP_CLAMPED);
 
-			// Two depth sample positions
-			uvec4 sample0 = textureLod(inHiZ, sampleScreenPos0, mipLevel);
-			uvec4 sample1 = textureLod(inHiZ, sampleScreenPos1, mipLevel);
+			vec2 sampleScreenPos0     = uv + sampleOffset;
+			float SZ0                 = textureLod(inHiZ, sampleScreenPos0, mipLevel).r;
+			vec3 samplePos0           = cheapReconstructViewSpacePosition(sampleScreenPos0, SZ0);
+			vec3 delta0               = samplePos0 - vPos;
+			float dist0               = length(delta0);
+			vec3 horizonVec0          = delta0 / dist0;
 
-			float nearRaw0 = unpackNearRaw(sample0.r);
-			float nearRaw1 = unpackNearRaw(sample1.r);
+			vec2 sampleScreenPos1     = uv - sampleOffset;
+			float SZ1                 = textureLod(inHiZ, sampleScreenPos1, mipLevel).r;
+			vec3 samplePos1           = cheapReconstructViewSpacePosition(sampleScreenPos1, SZ1);
+			vec3 delta1               = samplePos1 - vPos;
+			float dist1               = length(delta1);
+			vec3 horizonVec1          = delta1 / dist1;
 
-			float SZ0 = linearizeDepth(nearRaw0, scene.cameraClips.x, scene.cameraClips.y);
-			float SZ1 = linearizeDepth(nearRaw1, scene.cameraClips.x, scene.cameraClips.y);
-
-			vec3 samplePos0 = reconstructViewPos(sampleScreenPos0, SZ0);
-			vec3 samplePos1 = reconstructViewPos(sampleScreenPos1, SZ1);
-
-			vec3 delta0 = samplePos0 - vPos;
-			vec3 delta1 = samplePos1 - vPos;
-
-			float dist0 = length(delta0);
-			float dist1 = length(delta1);
-
-			vec3 horizonVec0 = delta0 / dist0;
-			vec3 horizonVec1 = delta1 / dist1;
+			// Sample weights
+			float weight0             = saturate(dist0 * falloffMul + falloffAdd);
+			float weight1             = saturate(dist1 * falloffMul + falloffAdd);
 
 			// Sample horizon cos
-			float shc0 = dot(horizonVec0, viewVec);
-			float shc1 = dot(horizonVec1, viewVec);
-
-			// Thickness heuristic
-			float falloffBase0 = length(vec3(delta0.x, delta0.y, delta0.z * (1.0 + pc.thinOccluderCompensation)));
-			float falloffBase1 = length(vec3(delta1.x, delta1.y, delta1.z * (1.0 + pc.thinOccluderCompensation)));
-			float weight0 = clamp(falloffBase0 * falloffMul + falloffAdd, 0.0, 1.0);
-			float weight1 = clamp(falloffBase1 * falloffMul + falloffAdd, 0.0, 1.0);
+			float shc0                = dot(horizonVec0, viewVec);
+			float shc1                = dot(horizonVec1, viewVec);
 
 			// Discard unwanted samples
-			shc0 = mix(lowHorizonCos0, shc0, weight0);
-			shc1 = mix(lowHorizonCos1, shc1, weight1);
+			shc0                      = mix(lowHorizonCos0, shc0, weight0);
+			shc1                      = mix(lowHorizonCos1, shc1, weight1);
 
-			horizonCos0 = max(horizonCos0, shc0);
-			horizonCos1 = max(horizonCos1, shc1);
+			horizonCos0               = max(horizonCos0, shc0);
+			horizonCos1               = max(horizonCos1, shc1);
+
+			// Update bitmasks
+			vec2 fbh0                 = getFrontBackHorizons(1.0, delta0, viewVec, n);
+			occlusionBitmask          = updateSectors(fbh0.x, fbh0.y, occlusionBitmask);
+
+			vec2 fbh1                 = getFrontBackHorizons(-1.0, delta1, viewVec, n);
+			occlusionBitmask          = updateSectors(fbh1.x, fbh1.y, occlusionBitmask);
 		}
 
 		// Slant correction hack
-		projectedNormalLength = mix(projectedNormalLength, 1.0, 0.05);
+		projectedNormalLength     = mix(projectedNormalLength, 1.0, 0.05);
 
-		// Integrate visibility from horizon angles
-		float h0 = -fastAcos(horizonCos1);
-		float h1 = fastAcos(horizonCos0);
-		float iarc0 = (cosNorm + 2.0 * h0 * sin(n) - cos(2.0 * h0 - n)) / 4.0;
-		float iarc1 = (cosNorm + 2.0 * h1 * sin(n) - cos(2.0 * h1 - n)) / 4.0;
-		float localVisibility = projectedNormalLength * (iarc0 + iarc1);
-		visibility += localVisibility;
+		// Accumulate visibility
+		float bitmaskVisibility   = 1.0 - float(bitCount(occlusionBitmask)) / float(SECTOR_COUNT);
+		visibility               += bitmaskVisibility;
+
+		// Compute horizon angles
+		float h0                  = -fastAcos(horizonCos1);
+		float h1                  = fastAcos(horizonCos0);
+		h0                        = n + clamp(h0 - n, -HALF_PI, HALF_PI);
+		h1                        = n + clamp(h1 - n, -HALF_PI, HALF_PI);
 
 		// Bent normals integration
 		float t0 = (6.0 * sin(h0 - n)
@@ -374,13 +402,15 @@ void main()
 	// Normalize
 	visibility /= sliceCount;
 
-	visibility = pow(visibility, 2.2);
+	visibility = pow(visibility, AO_INTENSITY);
 	visibility = max(0.03, visibility);
-	visibility = clamp(visibility, 0.0, 1.0);
+	visibility = saturate(visibility);
+	imageStore(outRawAO, pix, vec4(visibility));
+
+	// Convert view space bent normals to world space
+	bentNormal = normalize(bentNormal);
+	vec3 worldSpaceBent = normalize(mat3(scene.invView) * bentNormal);
 
 	float coneAngle = bentConeAngleAccum / sliceCount;
-	bentNormal = normalize(bentNormal);
-	imageStore(outBentNormals, pix, vec4(bentNormal, coneAngle));
-
-	imageStore(outRawAO, pix, vec4(visibility));
+	imageStore(outBentNormals, pix, vec4(worldSpaceBent, coneAngle));
 }

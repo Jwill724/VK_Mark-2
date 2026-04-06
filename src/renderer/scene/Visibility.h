@@ -10,8 +10,15 @@ namespace Visibility {
 		uint32_t usedCopies = 0u;
 	};
 
+	AllocatedBuffer& getRenderables();
+	AllocatedBuffer& getWorldAABBs();
+	AllocatedBuffer& getTransformIDs();
+
 	struct BVHNode {
 		AABB box; // node bounds
+		glm::vec3 extent;
+		glm::vec3 origin;
+		float sphereRadius;
 		int left = -1; // child indices; -1 => leaf
 		int right = -1;
 		uint32_t first = 0; // start index into leafIndex[]

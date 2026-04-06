@@ -15,9 +15,6 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D inVolume
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outFlareBright;
 
 layout(push_constant) uniform LensFlarePush {
-	vec2 fullRes;
-	vec2 invFullRes;
-
 	vec2 outputRes;
 	vec2 invOutputRes;
 
@@ -64,8 +61,11 @@ void main()
 
 	vec2 uv = (vec2(outCoord) + 0.5) / vec2(outDim);
 
-	ivec2 fullCoord = ivec2(uv * pc.fullRes);
-	fullCoord = clamp(fullCoord, ivec2(0), ivec2(pc.fullRes) - ivec2(1));
+	SceneData scene = getSceneData();
+	vec2 fullRes = vec2(scene.viewportSize.xy);
+
+	ivec2 fullCoord = ivec2(uv * fullRes);
+	fullCoord = clamp(fullCoord, ivec2(0), ivec2(fullRes) - ivec2(1));
 
 	vec3 hdrOpaque = texelFetch(inOpaque, fullCoord, 0).rgb;
 	vec3 hdrTransparent = texelFetch(inTransparent, fullCoord, 0).rgb;

@@ -24,7 +24,7 @@ namespace RenderPasses {
 
 	struct ComputeScope {
 		PassID passID = PassID::None;
-		VkExtent2D extent{ 0u, 0u }; // Always set extent to storage output
+		VkExtent2D extent{ 0u, 0u };
 		VkExtent3D workgroupSize{ 8u, 8u, 1u };
 		uint32_t groupCountX = 0u;
 		uint32_t groupCountY = 0u;

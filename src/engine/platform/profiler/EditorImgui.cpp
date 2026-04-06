@@ -536,9 +536,9 @@ namespace
 		ImGui::SliderFloat("Intensity##light", &flashlight.intensity, 10.0f, 500.0f);
 		//ImGui::SliderFloat("light outer degree##light", &flashlight.outerDeg, 10.0f, 40.0f);
 		//ImGui::SliderFloat("light inner degree##light", &flashlight.innerDeg, 10.0f, 40.0f);
-		ImGui::SliderFloat("Offset R##light", &flashlight.offsetRight, -0.2f, 0.2f, "%.2f");
-		ImGui::SliderFloat("Offset D##light", &flashlight.offsetDown, -0.2f, 0.2f, "%.2f");
-		ImGui::SliderFloat("Offset L##light", &flashlight.offsetFwd, -0.2f, 0.2f, "%.2f");
+		//ImGui::SliderFloat("Offset R##light", &flashlight.offsetRight, -0.2f, 0.2f, "%.2f");
+		//ImGui::SliderFloat("Offset D##light", &flashlight.offsetDown, -0.2f, 0.2f, "%.2f");
+		//ImGui::SliderFloat("Offset L##light", &flashlight.offsetFwd, -0.2f, 0.2f, "%.2f");
 		//ImGui::SliderFloat("fov y scale##light", &flashlight.fovYScale, 0.1f, 5.0f);
 
 		//ImGui::SliderFloat("near projection##light", &flashlight.nearProj, 0.1f, 3.0f);
@@ -549,28 +549,24 @@ namespace
 		ImGui::NewLine();
 		UI::separatorText("Screen Space Ambient Occlusion");
 
-		const char* aoModes[] = { "Off", "GTAO" };
-		int current = (int)dbg.aoMode;
-
-		if (ImGui::Combo("AO Method", &current, aoModes, IM_ARRAYSIZE(aoModes))) {
-			dbg.aoMode = (uint32_t)current;
+		bool currentAO = dbg.aoMode != 0u;
+		if (ImGui::Checkbox("On", &currentAO)) {
+			dbg.aoMode = currentAO ? 1u : 0u;
 		}
 
 		auto& gtaoSettings = profiler.gtaoSettings;
 		if (dbg.aoMode != AO_OFF) {
 			// Core gtao settings
-			ImGui::SliderFloat("Radius##gtao", &gtaoSettings.effectRadius, 0.1f, 0.50f, "%.3f");
+			ImGui::SliderFloat("Radius##gtao", &gtaoSettings.effectRadius, 0.2f, 1.5f, "%.2f");
 			ImGui::SliderFloat("Falloff Range##gtao", &gtaoSettings.effectFalloffRange, 0.20f, 1.0f, "%.2f");
 			ImGui::SliderFloat("Distribution##gtao", &gtaoSettings.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
 			ImGui::SliderFloat("Thin Occluder Comp##gtao", &gtaoSettings.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
 
-			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&gtaoSettings.sliceCount), 4, 8);
-			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&gtaoSettings.stepsPerSliceCount), 2, 8);
+			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&gtaoSettings.sliceCount), 2, 6);
+			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&gtaoSettings.stepsPerSliceCount), 2, 6);
 
 			ImGui::SliderFloat("Filter Sharpness##gtao", &gtaoSettings.sharpness, 0.5f, 5.0f);
 			ImGui::SliderFloat("Filter Radius##gtao", &gtaoSettings.radius, 1.0f, 6.0f);
-
-			//ImGui::SliderFloat("Constant Thickness", &gtaoSettings.constantThickness, 0.3f, 0.6f, "%.2f");
 		}
 
 		ImGui::NewLine();
@@ -601,15 +597,14 @@ namespace
 		ImGui::SliderFloat("Min Transmittance##vol", &volSettings.minTransmittance, 0.9f, 1.0f, "%.2f");
 		ImGui::SliderInt("Beam Power##vol", &volSettings.beamPower, 2, 6);
 		ImGui::SliderFloat("Jitter Strength##vol", &volSettings.jitterStrength, 0.0f, 1.0f);
-		ImGui::SliderInt("Step Count##vol", &volSettings.stepCount, 32, 48);
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("Blur");
 		ImGui::Separator();
 
-		ImGui::SliderFloat("Blur Radius##vol", &volSettings.blurRadius, 1.0f, 10.0f);
-		ImGui::SliderFloat("Blur Depth Sigma##vol", &volSettings.blurDepthSigma, 0.0f, 5.0f);
-		ImGui::SliderFloat("Blur Weight Sigma##vol", &volSettings.blurWeightSigma, 0.5f, 5.0f);
+		ImGui::SliderFloat("Blur Radius##vol", &volSettings.blurRadius, 1.0f, 4.0f, "%.0f");
+		ImGui::SliderFloat("Blur Depth Sigma##vol", &volSettings.blurDepthSigma, 0.005f, 0.02f, "%.3f");
+		ImGui::SliderFloat("Blur Weight Sigma##vol", &volSettings.blurWeightSigma, 0.5f, 2.0f, "%.2f");
 	}
 
 	static void drawCategoryPostFX(UIContext& ui)

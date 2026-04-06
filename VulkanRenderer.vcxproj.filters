@@ -240,7 +240,9 @@
     <ClCompile Include="vendor\meshoptimizer\vfetchoptimizer.cpp">
       <Filter>vendor</Filter>
     </ClCompile>
-    <ClCompile Include="vendor\tracy\TracyClient.cpp" />
+    <ClCompile Include="vendor\tracy\TracyClient.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <!-- common -->
@@ -335,6 +337,9 @@
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <!-- renderer / frame -->
+    <ClInclude Include="src\renderer\frame\FrameContext.h">
+      <Filter>src\renderer\frame</Filter>
+    </ClInclude>
     <!-- renderer / passes -->
     <ClInclude Include="src\renderer\passes\RenderPasses.h">
       <Filter>src\renderer\passes</Filter>
@@ -349,7 +354,6 @@
     <ClInclude Include="src\renderer\scene\DrawPreparation.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
-    <!-- renderer / graph -->
     <!-- utils -->
     <ClInclude Include="src\utils\VulkanUtils.h">
       <Filter>src\utils</Filter>
@@ -377,10 +381,6 @@
     </ClInclude>
     <ClInclude Include="res\assets\SearchTex.h">
       <Filter>res\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="src\engine\platform\profiler\ProfilerTypes.h" />
-    <ClInclude Include="src\renderer\frame\FrameContext.h">
-      <Filter>src\renderer\frame</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -430,6 +430,12 @@
       <Filter>res\shaders\ao</Filter>
     </None>
     <None Include="res\shaders\ao\gtao_filter.comp">
+      <Filter>res\shaders\ao</Filter>
+    </None>
+    <None Include="res\shaders\ao\gtao_denoise.comp">
+      <Filter>res\shaders\ao</Filter>
+    </None>
+    <None Include="res\shaders\ao\gtao_depth_prefilter.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
     <None Include="res\shaders\shadows\shadow_depthVS.vert">
@@ -513,10 +519,10 @@
     <None Include="res\shaders\post_process\cmaa2_deferred_resolve.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\clustered\indirect_args_light.comp">
+    <None Include="res\shaders\clustered\lights_indirect_args.comp">
       <Filter>res\shaders\clustered</Filter>
     </None>
-    <None Include="res\shaders\post_process\indirect_args_cmaa2.comp">
+    <None Include="res\shaders\post_process\cmaa2_indirect_args.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
     <None Include="res\shaders\post_process\taa.comp">

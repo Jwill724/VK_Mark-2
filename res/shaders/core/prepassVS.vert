@@ -19,47 +19,47 @@ void main()
 	outMaterialID = inst.materialID;
 
 	vec2 uv;
-	vec3 normal;
 	vec3 position;
-	unpackVertexMinimal(
+	vec3 normal;
+	unpackVertexPrepass(
 		gl_VertexIndex,
 		uv,
-		normal,
-		position);
+		position,
+		normal);
 
-	// fetch transform
 	mat4 model = getTransformBuffer().transforms[inst.transformID];
 
-	SceneData scene = getSceneData();
+	SceneData scene    = getSceneData();
+	DebugToggles debug = getDebugToggles();
 
 	mat4 prevModel = model;
 	if (scene.temporal.y == 1u) {
 		prevModel = getPrevTransformBuffer().prevTransforms[inst.transformID];
 	}
 
-	// World space -> view space
 	mat3 normalMatrix = mat3(scene.view * model);
 	outViewNormal     = normalMatrix * normal;
 
-	vec4 worldPos     = model * vec4(position, 1.0);
+	vec4 worldPos     = model     * vec4(position, 1.0);
 	vec4 prevWorldPos = prevModel * vec4(position, 1.0);
 
-	vec4 currClipPos = scene.viewProj * worldPos;
-
-	vec4 currClipUnj = scene.viewProjUnjittered * worldPos;
-	vec4 prevClipUnj = scene.prevViewProj * prevWorldPos;
+	vec4 currClip = scene.viewProj     * worldPos;
+	vec4 prevClip = scene.prevViewProj * prevWorldPos;
 
 	outUV = uv;
-	bool currValid = currClipPos.w > 0.0 && prevClipUnj.w > 0.0;
+
+	bool currValid = currClip.w > 0.0 && prevClip.w > 0.0;
+
 	if (!currValid) {
-		outCurrNdc = vec2(0.0);
-		outPrevNdc = vec2(0.0);
+		outCurrNdc            = vec2(0.0);
+		outPrevNdc            = vec2(0.0);
 		outTemporalValidation = 0u;
-	} else {
-		outCurrNdc = currClipUnj.xy / currClipUnj.w; // unjittered
-		outPrevNdc = prevClipUnj.xy / prevClipUnj.w; // unjittered
+	} 
+	else {
+		outCurrNdc            = currClip.xy / currClip.w;
+		outPrevNdc            = prevClip.xy / prevClip.w;
 		outTemporalValidation = scene.temporal.y;
 	}
 
-	gl_Position = currClipPos;
+	gl_Position = currClip;
 }

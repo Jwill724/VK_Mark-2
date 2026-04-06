@@ -661,7 +661,8 @@ void AssetManager::processMaterials(
 // Catches tiny meshes for light leak potential
 static bool isThinMeshForShadows(const GPUMeshData& mesh)
 {
-	const glm::vec3 extent = mesh.localAABB.extent * 2.0f; // full size
+
+	const glm::vec3 extent = (0.5f + (mesh.localAABB.vmax - mesh.localAABB.vmin)) * 2.0f; // full size
 
 	const float minAxis = std::min(extent.x, std::min(extent.y, extent.z));
 	const float maxAxis = std::max(extent.x, std::max(extent.y, extent.z));
@@ -983,9 +984,7 @@ void AssetManager::processMeshes(
 
 				newMesh.localAABB.vmin = vmin;
 				newMesh.localAABB.vmax = vmax;
-				newMesh.localAABB.origin = (vmin + vmax) * 0.5f;
-				newMesh.localAABB.extent = (vmax - vmin) * 0.5f;
-				newMesh.localAABB.sphereRadius = glm::length(newMesh.localAABB.extent);
+				glm::vec3 extent = (vmax - vmin) * 0.5f;
 
 				GPUInstance newInst{};
 

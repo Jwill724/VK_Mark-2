@@ -180,8 +180,14 @@ void RenderScene::updateCamera() {
 
 	_previousJitterNDC = _currentJitterNDC;
 
-	glm::vec2 currentJitterPixels = buildTemporalJitterPixels(_sceneData.temporal.x);
-	_currentJitterNDC = convertJitterPixelsToNDC(currentJitterPixels, width, height);
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	if (profiler.debugToggles.aaMode == AA_TAA) {
+		glm::vec2 jitterPixels = buildTemporalJitterPixels(_sceneData.temporal.x);
+		jitterNDC = convertJitterPixelsToNDC(jitterPixels, width, height);
+	}
+
+	_currentJitterNDC = jitterNDC;
 	_curCamProjJittered = applyProjectionJitter(_curCamProjUnjittered, _currentJitterNDC);
 
 	// Compute both unjittered and jittered viewprojs up front
@@ -196,23 +202,28 @@ void RenderScene::updateCamera() {
 		_sceneData.proj = _curCamProjJittered;
 		_sceneData.invProj = glm::inverse(_curCamProjJittered);
 		_sceneData.viewProj = currentViewProjJittered;
+
+		_sceneData.prevViewProj = _lastViewProjJittered;
+
+		_sceneData.temporalJitter = glm::vec4(
+			_currentJitterNDC.x,
+			_currentJitterNDC.y,
+			_previousJitterNDC.x,
+			_previousJitterNDC.y);
 	}
 	else {
 		_sceneData.proj = _curCamProjUnjittered;
 		_sceneData.invProj = glm::inverse(_curCamProjUnjittered);
 		_sceneData.viewProj = currentViewProjUnjittered;
+
+		_sceneData.prevViewProj = _lastViewProjUnjittered;
+
+		_sceneData.temporalJitter = glm::vec4(0.0f);
 	}
 
 	_sceneData.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
 
-	_sceneData.prevViewProj = _lastViewProjUnjittered;         // unjittered previous — velocity prev NDC
-
 	_sceneData.cameraPos = glm::vec4(_mainCamera.getPosition(), 0.0f);
-	_sceneData.temporalJitter = glm::vec4(
-		_currentJitterNDC.x,
-		_currentJitterNDC.y,
-		_previousJitterNDC.x,
-		_previousJitterNDC.y);
 
 	_currentFrustum = extractFrustum(currentViewProjUnjittered);
 	_lastViewProjUnjittered = currentViewProjUnjittered;
@@ -229,8 +240,6 @@ void RenderScene::updateCamera() {
 		uint32_t heightU = static_cast<uint32_t>(height);
 
 		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
-		_sceneData.cameraClips.z = fullPixelSize.x;
-		_sceneData.cameraClips.w = fullPixelSize.y;
 
 		VkExtent3D halfExtent = {
 			(widthU + 1u) >> 1,
@@ -340,6 +349,8 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 
 	const float aspect = _sceneData.viewportSize.x / _sceneData.viewportSize.y;
 	if (_cachedAspectRatio != aspect) {
+		_cachedAspectRatio = aspect;
+
 		const float nearClip = _mainCamera.getNearClip();
 		const float clipRange = _shadowFar - nearClip;
 		const float ratio = _shadowFar / nearClip;
@@ -369,7 +380,7 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		const float worldUnitsPerTexel = (radius * 2.0f) / tileRes;
 		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
 
-		//_shadowCSM.cascadeBias[i] = worldUnitsPerTexel * 0.0005f;
+		//_shadowCSM.cascadeBias[i] = worldUnitsPerTexel * 0.005f;
 		//_shadowCSM.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
 
 		glm::vec3 max = glm::vec3(radius);
@@ -770,15 +781,14 @@ void RenderScene::updateDrawDataCPUPath(
 			frameCtx.shadowCasterInstances.reserve(std::max(1024u, frameCtx.visibleCount * 2u));
 
 			AABB visibleReceiverWS = computeVisibleReceiverAABB(_visibleWorldAABBs);
+			const glm::vec3 centerWS = 0.5f * (visibleReceiverWS.vmin + visibleReceiverWS.vmax);
+			const glm::vec3 extentWS = 0.5f * (visibleReceiverWS.vmax - visibleReceiverWS.vmin);
 
 			for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
 				PassRange& cascadeRange = frameCtx.shadowCastersRanges[cascadeIndex];
 				cascadeRange.firstInstance = static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
 
 				// Transform to light space
-				glm::vec3 centerWS = visibleReceiverWS.origin;
-				glm::vec3 extentWS = visibleReceiverWS.extent;
-
 				glm::vec3 centerLS = glm::vec3(_cascadeLightViews[cascadeIndex] * glm::vec4(centerWS, 1.0f));
 				glm::mat3 absLightMat = glm::mat3(
 					glm::abs(_cascadeLightViews[cascadeIndex][0]),

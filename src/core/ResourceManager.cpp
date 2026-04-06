@@ -42,12 +42,18 @@ namespace ResourceManager {
 	AllocatedImage _prevVelocity;
 	AllocatedImage& getPrevVelocity_Target() { return _prevVelocity; }
 
+	AllocatedImage _viewSpaceNormals;
+	AllocatedImage& getViewSpaceNormals_Target() { return _viewSpaceNormals; }
+
 	// Max lod = mip count
 	VkSampler _hiZSampler;
 	const VkSampler getHiZ_Sampler() { return _hiZSampler; }
 
 	AllocatedImage _hiZ;
 	AllocatedImage& getHiZ_Target() { return _hiZ; }
+
+	AllocatedImage _linearizedMinHiZ;
+	AllocatedImage& getLinearizedMinHiZ_Target() { return _linearizedMinHiZ; }
 
 	VkSampler _linearLODClampSampler;
 	const VkSampler getLinearLODClamp_Sampler() { return _linearLODClampSampler; }
@@ -60,9 +66,6 @@ namespace ResourceManager {
 
 	VkSampler _noiseSampler;
 	const VkSampler getNoise_Sampler() { return _noiseSampler; }
-
-	AllocatedImage _viewSpaceNormals;
-	AllocatedImage& getViewSpaceNormals_Target() { return _viewSpaceNormals; }
 
 	AllocatedImage _bentNormals;
 	AllocatedImage& getBentNormals_Target() { return _bentNormals; }
@@ -408,7 +411,7 @@ void ResourceManager::initUniformRenderTargets(
 		allocator);
 
 	// base ao image
-	_aoRaw.format = VK_FORMAT_R8_UNORM;
+	_aoRaw.format = VK_FORMAT_R16_SFLOAT;
 	_aoRaw.extent = drawExtent;
 	ImageUtils::createRenderTarget(
 		device,
@@ -419,7 +422,7 @@ void ResourceManager::initUniformRenderTargets(
 		allocator);
 
 	// ao temp
-	_aoTemp.format = VK_FORMAT_R8_UNORM;
+	_aoTemp.format = VK_FORMAT_R16_SFLOAT;
 	_aoTemp.extent = drawExtent;
 	ImageUtils::createRenderTarget(
 		device,
@@ -478,7 +481,6 @@ void ResourceManager::initUniformRenderTargets(
 		allocator
 	);
 
-
 	// View space normals
 	_viewSpaceNormals.format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
 	_viewSpaceNormals.extent = drawExtent;
@@ -511,7 +513,21 @@ void ResourceManager::initUniformRenderTargets(
 	ImageUtils::createRenderTarget(
 		device,
 		_hiZ,
-		baseComputeUsages,
+		computeMinimalUsages,
+		VK_SAMPLE_COUNT_1_BIT,
+		targetQueue,
+		allocator
+	);
+
+	// Linearized Min Hi Z
+	_linearizedMinHiZ.format = VK_FORMAT_R32_SFLOAT;
+	_linearizedMinHiZ.extent = drawExtent;
+	_linearizedMinHiZ.mipLevelCount = HI_Z_MIP_COUNT;
+	_linearizedMinHiZ.perMipStorageViews = true;
+	ImageUtils::createRenderTarget(
+		device,
+		_linearizedMinHiZ,
+		computeMinimalUsages,
 		VK_SAMPLE_COUNT_1_BIT,
 		targetQueue,
 		allocator

@@ -78,14 +78,16 @@ void main()
 	vec3 F  = F_SchlickRoughness(F0, NdotV, rough);
 	vec3 kD = (1.0 - F) * (1.0 - metal);
 
+	// Disney/Frostbite direct lighting
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
 
-	const uint envMapID                = debug.activeEnvMap;
+	// ENVIRONMENT INDICES
+	const uint             envMapID    = debug.activeEnvMap;
 	const EnvMapIndexArray envMapArray = getEnvIdxArray();
-	const uint irrIdx                  = envMapArray.indices[envMapID].x;
-	const uint specIdx                 = envMapArray.indices[envMapID].y;
-	const uint brdfIdx                 = envMapArray.indices[envMapID].z;
+	const uint             irrIdx      = envMapArray.indices[envMapID].x;
+	const uint             specIdx     = envMapArray.indices[envMapID].y;
+	const uint             brdfIdx     = envMapArray.indices[envMapID].z; // All using the same index
 
 	vec2 brdf = SampleTexture(brdfIdx, vec2(NdotV, rough)).rg;
 	spec *= MultiScatterEnergyComp(F0, brdf);

@@ -84,8 +84,11 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		if (inst.meshID < meshLods.size()) {
 			const MeshLODs& lods = meshLods[inst.meshID];
 
-			const glm::vec3 aabbOrigin = worldAABBs[i].origin;
-			const float sphereRadius = worldAABBs[i].sphereRadius;
+			const AABB& worldAABB = worldAABBs[i];
+
+			const glm::vec3 aabbOrigin = 0.5f * (worldAABB.vmin + worldAABB.vmax);
+			const glm::vec3 extent = 0.5f * (worldAABB.vmax - worldAABB.vmin);
+			const float sphereRadius = glm::length(extent);
 
 			float dist = glm::length(aabbOrigin - camPos) - sphereRadius;
 			dist = std::max(0.0f, dist);

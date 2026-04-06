@@ -390,6 +390,7 @@ struct AllocatedBuffer {
 	uint8_t qmask = 0; // bit0=graphics, bit1=transfer, bit2=compute
 };
 
+// Defined in order of execution in pipeline
 enum class PassID : uint16_t {
 	None = 0,
 
@@ -586,24 +587,31 @@ struct alignas(16) GTAOPush {
 	glm::vec2 tanHalfFov{0.0f};
 
 	glm::vec2 ndcToViewAdd{ 0.0f };
-	uint32_t sliceCount = 5;
-	uint32_t stepsPerSliceCount = 5;
+	uint32_t sliceCount = 3;
+	uint32_t stepsPerSliceCount = 6;
 
 	float effectRadius = 0.4f;
 	float effectFalloffRange = 0.6f;
 	float sampleDistributionPower = 2.0f;
-	float thinOccluderCompensation = 1.0f;
+	float thinOccluderCompensation = 0.7f;
 
 	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
-	float depthMipSamplingOffset = 3.3f;
 
-	// Visibility bitmask *not in use
-	float constantThickness = 0.4f;
+	float depthLinearizeMult = 0.0f;
+	float depthLinearizeAdd = 0.0f;
 
-	// Alongside pixelSize, needed during filtering
+	// Bi-lateral blur
 	float sharpness = 2.0;
 	float radius = 4.0;
 	glm::vec2 blurDirection{ 0.0f };
+
+	// For TAA spatio temporal noise
+	uint32_t noiseIndex = 0u; // FrameIndex % 64u
+
+	// Denoise
+	float denoiseBlurBeta = 1.2f;
+	uint32_t isFinalPass = 0u;
+	uint32_t pad0;
 };
 
 struct alignas(16) TAAPush {
@@ -621,26 +629,19 @@ struct alignas(16) VolumetricPush {
 
 	float maxDistance = 200.0f;
 	float jitterStrength = 0.8f;
-	int stepCount = 32;
-	float pad0;
-
 	float asymmetryFactor = 0.9f;
 	float minTransmittance = 0.9f;
-	glm::vec2 pixelSize{ 0.0f };
 
 	int beamPower = 2;
-	float blurRadius = 2.0f;
-	float blurDepthSigma = 1.5f;
-	float blurWeightSigma = 5.0f;
+	float blurRadius = 4.0f;
+	float blurDepthSigma = 0.015f;
+	float blurWeightSigma = 1.6f;
 
 	glm::vec2 blurDirection{ 0.0f };
-	glm::vec2 pad1{ 0.0f };
+	glm::vec2 pad0{ 0.0f };
 };
 
 struct alignas(16) LensFlarePush {
-	glm::vec2 fullRes{ 0.0f };
-	glm::vec2 invFullRes{ 0.0f };
-
 	// Quarter res
 	glm::vec2 outputRes{ 0.0f };
 	glm::vec2 invOutputRes{ 0.0f };

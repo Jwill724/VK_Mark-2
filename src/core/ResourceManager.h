@@ -124,12 +124,12 @@ namespace ResourceManager {
 	// Pre pass depth
 	AllocatedImage& getDepthResolved_Target();
 	AllocatedImage& getPrevDepthResolved_Target();
-	AllocatedImage& getHiZ_Target();
+	AllocatedImage& getHiZ_Target(); // r32uint packed min/max
+	AllocatedImage& getLinearizedMinHiZ_Target(); // r32f linearized min
 
 	// An empty base depth
 	AllocatedImage& getDepthRaw_Target();
 
-	AllocatedImage& getViewSpaceNormals_Target();
 	AllocatedImage& getAORaw_Target();
 	AllocatedImage& getAOTemp_Target();
 
@@ -142,6 +142,7 @@ namespace ResourceManager {
 	AllocatedImage& getLensFlareColor_Target();
 	AllocatedImage& getVelocity_Target();
 	AllocatedImage& getPrevVelocity_Target();
+	AllocatedImage& getViewSpaceNormals_Target();
 	AllocatedImage& getVolumetricLight_Target();
 	AllocatedImage& getVolumetricBlur_Target();
 	AllocatedImage& getDirectionalCSMAtlas_Target();

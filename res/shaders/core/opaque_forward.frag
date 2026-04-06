@@ -46,7 +46,7 @@ void main()
 	ClusteredData clusteredData = getClusteredData();
 	DebugToggles debug          = getDebugToggles();
 
-	vec2 screenspace_uv = (gl_FragCoord.xy) / scene.viewportSize.xy;
+	vec2 screenspace_uv = gl_FragCoord.xy / vec2(scene.viewportSize.xy);
 
 	// Right handed view on the -z
 	float viewDepth = -inViewPos.z;
@@ -152,18 +152,20 @@ void main()
 		shadowHash = createHashTemporal(gl_FragCoord.xy, scene.temporal.x);
 	}
 	if (DBG(enableShadows)) {
-		ShadowCSM csm                = getShadowCSM();
-		const uint      cascadeCount = uint(csm.params.z);
-		const uint      shadowMapID  = uint(csm.params.y);
-		const float     shadowBias   = csm.params.x;
-		const float     texel        = csm.params.w;
-
-		const uint maxCascade = cascadeCount - 1u;
+		ShadowCSM   csm          = getShadowCSM();
+		const uint  cascadeCount = uint(csm.params.z);
+		const uint  shadowMapID  = uint(csm.params.y);
+		const float shadowBias   = csm.params.x;
+		const float texel        = csm.params.w;
 
 		// cascade index for split
 		uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
 
-//		const float shadowBias    = csm.cascadeBias[cascadeIdx];
+		const float angleScale = (0.25 + (1.0 - NdotL) * 0.65);
+		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
+		//const float shadowBias = csm.cascadeBias[cascadeIdx];
+		const float bias       = shadowBias * angleScale;
+
 //		const float normalOffset  = csm.cascadeNormalOffset[cascadeIdx];
 //
 //		float NdotLRaw    = dot(geometricNormalWS, L);       // signed, not clamped
@@ -190,29 +192,25 @@ void main()
 			  shadowUV.y < 0.0 || shadowUV.y > 1.0  ||
 			  curDepth   < 0.0 || curDepth   > 1.0))
 		{
-			const float angleScale = 1.0 - NdotL;
-			const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
-			const float bias       = shadowBias * (0.25 + angleScale * 0.65);
-
 			vec4 atlas   = csm.atlasUV[cascadeIdx];
 			vec2 atlasUV = shadowUV * atlas.xy + atlas.zw;
 
 			float sA = PCFPoissonHigh(
-					shadowHash,
-					shadowMapID,
-					atlasUV,
-					curDepth,
-					bias,
-					texel,
-					radius);
+				shadowHash,
+				shadowMapID,
+				atlasUV,
+				curDepth,
+				bias,
+				texel,
+				radius);
 
 			shadow = sA;
 
 			// https://github.com/Williscool13/WillEngineV3/blob/54ea902fc64796c1b88ae63e2ad2ffb0da957b21/shaders/shadow_functions.slang#L89
 			// The code for comparing view depth with splits and the blend itself copied from this.
 			// Blending between cascades for smooth transitions.
-			if (cascadeIdx < maxCascade) {
-				uint  nextIdx    = min(cascadeIdx + 1u, maxCascade);
+			if (cascadeIdx < MAX_CASCADES_INDEX) {
+				uint  nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
 				float blendEnd   = csm.cascadeSplits[cascadeIdx];
 				float blendStart = blendEnd * 0.90;
 
@@ -229,18 +227,20 @@ void main()
 						nextShadowUV.y   < 0.0 || nextShadowUV.y > 1.0 ||
 						nextDepth        < 0.0 || nextDepth      > 1.0))
 					{
-						vec4 nextAtlas = csm.atlasUV[nextIdx];
-						vec2 nextAtlasUV = nextShadowUV * nextAtlas.xy + nextAtlas.zw;
+						vec4 nextAtlas         = csm.atlasUV[nextIdx];
+						vec2 nextAtlasUV       = nextShadowUV * nextAtlas.xy + nextAtlas.zw;
 						const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
+						//const float nextBias   = csm.cascadeBias[nextIdx] * angleScale;
 
 						float sB = PCFPoissonHigh(
-								shadowHash,
-								shadowMapID,
-								nextAtlasUV,
-								nextDepth,
-								bias,
-								texel,
-								nextRadius);
+							shadowHash,
+							shadowMapID,
+							nextAtlasUV,
+							nextDepth,
+							//nextBias,
+							bias,
+							texel,
+							nextRadius);
 
 						// smoothstep goes 0 at blendStart -> 1 at blendEnd,
 						float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
@@ -330,6 +330,9 @@ void main()
 					aoTerm,
 					spotNdotL);
 
+				float spotMicroVis = MicroShadowVisibility(spotNdotL, aoTerm);
+				lightResult *= spotMicroVis;
+
 				bool castsShadow = (light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u;
 				// Shadow only for flashlight for now
 				if (castsShadow && isFlashLight && !isFlashLightOff) {
@@ -366,7 +369,6 @@ void main()
 						lightResult *= shadowTerm;
 					}
 
-
 					// Cookie / gobo (projected spotlight mask)
 					if (light.cookieTexID != 0xFFFFFFFFu) {
 
@@ -376,7 +378,8 @@ void main()
 						if (!(flashlightShadowUV.x < 0.0 || flashlightShadowUV.x > 1.0 ||
 							  flashlightShadowUV.y < 0.0 || flashlightShadowUV.y > 1.0))
 						{
-							cookieGobo = SampleTexture(light.cookieTexID, flashlightShadowUV).r;
+							float rawCookie = SampleTexture(light.cookieTexID, flashlightShadowUV).r;
+							cookieGobo      = pow(rawCookie, 2.0);
 						}
 
 						lightResult *= cookieGobo;
@@ -400,8 +403,7 @@ void main()
 	// GTAO Bent Normals used only on diffuse
 	if (DBG(aoMode)) {
 		vec4 bentSample = texture(bentNormals, screenspace_uv);
-		vec3 bent       = normalize(bentSample.rgb);
-		vec3 bentWS     = normalize(mat3(scene.invView) * bent);
+		vec3 bentWS     = normalize(bentSample.rgb);
 
 		// Keep bent normal in the same surface hemisphere
 		float bentGeomDot = dot(bentWS, geometricNormalWS);
@@ -432,10 +434,10 @@ void main()
 	float specAO         = SpecAO_Conservative(aoTerm, NdotV, rough);
 	vec3 ambientSpecular = iblSpec * specAO;
 
-	// Fake sky visibility term
-	float skyFacing    = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
-	float skyOcclusion = mix(0.5, 1.0, skyFacing);
-	ambientDiffuse    *= skyOcclusion;
+//	// Fake sky visibility term
+//	float skyFacing    = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+//	float skyOcclusion = mix(0.5, 1.0, skyFacing);
+//	ambientDiffuse    *= skyOcclusion;
 
 	vec3 ambient = ambientDiffuse + ambientSpecular;
 

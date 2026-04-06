@@ -31,6 +31,8 @@ enum class PipelineID : uint8_t {
 
 	GTAO,
 	GTAOFilter,
+	GTAODenoise,
+	GTAODepthPrefilter,
 
 	VolumetricLight,
 	VolumetricLightBlur,

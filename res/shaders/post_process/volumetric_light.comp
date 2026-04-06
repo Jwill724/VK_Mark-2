@@ -14,8 +14,9 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-// At 48 steps 99% of banding is gone, no need to go higher.
-const int MAX_STEPS = 48;
+// 32 steps is perfectly sufficient
+// At 48 steps 99% of banding is gone, no need to ever go higher.
+const int MAX_STEPS = 32;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inDepth;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outVolumetricLight;
@@ -29,12 +30,8 @@ layout(push_constant) uniform VolumetricPush
 
 	float maxDistance;         // max ray length in world/view units
 	float jitterStrength;      // scales step jitter for banding hiding
-	int   stepCount;           // march steps
-	float pad0;
-
 	float asymmetryFactor;     // phase function asymmetry factor (g)
 	float minTransmittance;    // minimum remaining light before fully attenuated
-	vec2  pixelSize;           // 1.0 / halfResExtent (x,y)
 
 	int   beamPower;           // Determines how tight or wide beams are
 
@@ -112,11 +109,13 @@ void main()
 	DebugToggles debug = getDebugToggles();
 	ShadowCSM    csm   = getShadowCSM();
 
+	vec2 halfPixelSize = vec2(scene.pixelSizes.z, scene.pixelSizes.w);
+
 	// Shadow map rotation hash
 	mat2 poissonRotation = createHash(vec2(pixelCoord));
 
 	// Half-res UV
-	vec2 uv = (vec2(pixelCoord) + 0.5) * pc.pixelSize;
+	vec2 uv = (vec2(pixelCoord) + 0.5) * halfPixelSize;
 
 	if (debug.aaMode == AA_TAA) {
 		// Remove jitter from UV before depth sample to get stable world position reconstruction
@@ -127,8 +126,7 @@ void main()
 	vec4  depths     = textureGather(inDepth, uv, 0);
 	float depthValue = texture(inDepth, uv).r;
 
-	ViewReconstructResult reconstructPos;
-	reconstructPos      = reconstructWorldPosFromDepth(uv, depthValue, scene.invProj, scene.invView);
+	ViewReconstructResult reconstructPos = reconstructWorldPosFromDepth(uv, depthValue, scene.invProj, scene.invView);
 
 	vec3 cameraWorldPos = scene.cameraPos.xyz;
 	vec3 viewRay        = reconstructPos.pos - cameraWorldPos;
@@ -153,7 +151,7 @@ void main()
 	bool  hasHitGeometry    = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 
 	if (hasHitGeometry) maxRayDistance = min(maxRayDistance, distanceToSurface);
-	if (maxRayDistance <= 0.0 || pc.stepCount <= 0) {
+	if (maxRayDistance <= 0.0 || MAX_STEPS <= 0) {
 		imageStore(outVolumetricLight, pixelCoord, vec4(0.0));
 		return;
 	}
@@ -164,7 +162,7 @@ void main()
 	float phase = phaseHenyeyGreenstein(cosTheta, pc.asymmetryFactor);
 
 	// Jitter the starting position along the ray to reduce banding
-	float stepLength = maxRayDistance / float(pc.stepCount);
+	float stepLength = maxRayDistance / float(MAX_STEPS);
 	float jitter     = sampleJitter(pixelCoord) * pc.jitterStrength * stepLength;
 	float rayT       = max(jitter, 0.0);
 
@@ -176,11 +174,11 @@ void main()
 	vec3 baseScatter      = sunColor * pc.density * phase * dirMask * pc.scatteringStrength;
 
 	// Shadow info
-	const uint cascadeCount = uint(csm.params.z);
-	uint       cascadeIdx   = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
-	float      nextSplit    = csm.cascadeSplits[min(cascadeIdx, cascadeCount - 1u)];
-	vec4       atlas        = csm.atlasUV[cascadeIdx];
-	mat4       cascadeVP    = csm.cascadeVP[cascadeIdx];
+	uint  cascadeCount = uint(csm.params.z); 
+	uint  cascadeIdx   = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
+	float nextSplit    = csm.cascadeSplits[min(cascadeIdx, MAX_CASCADES_INDEX)];
+	vec4  atlas        = csm.atlasUV[cascadeIdx];
+	mat4  cascadeVP    = csm.cascadeVP[cascadeIdx];
 
 	vec3  camForward = -vec3(scene.invView[0][2], scene.invView[1][2], scene.invView[2][2]);
 	float forwardDot = dot(camForward, viewDir);
@@ -193,9 +191,7 @@ void main()
 	vec3  accumulatedLight = vec3(0.0);
 	float transmittance    = 1.0;
 
-	const int stepCount = (pc.stepCount < MAX_STEPS) ? pc.stepCount : MAX_STEPS;
-
-	for (int i = 0; i < stepCount; ++i) {
+	for (int i = 0; i < MAX_STEPS; ++i) {
 		if (rayT > maxRayDistance) break;
 
 		vec3 samplePos           = cameraWorldPos + viewDir * rayT;
@@ -205,7 +201,7 @@ void main()
 		// Only re-check cascade when approaching the next split
 		if (reconstructPos.viewDepth > nextSplit) {
 			cascadeIdx = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
-			nextSplit = (cascadeIdx < cascadeCount - 1u)
+			nextSplit = (cascadeIdx < MAX_CASCADES_INDEX)
 				? csm.cascadeSplits[cascadeIdx + 1u]
 				: 1e30;
 		}
