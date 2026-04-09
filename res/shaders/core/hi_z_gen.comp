@@ -45,11 +45,9 @@ void main()
 		dstHeight = max(1, srcHeight / 2);
 	}
 
-	// Bounds check on destination
 	if (dstCoord.x >= dstWidth || dstCoord.y >= dstHeight) return;
 
 	if (pc.mipLevel == 0u) {
-		// Read raw depth from resolve, pack into HZB mip0.
 		float rawDepth = texelFetch(inDepthResolved, dstCoord, 0).r;
 
 		// In ratio scheme both min/max in [0,1]. For mip0 min==max.

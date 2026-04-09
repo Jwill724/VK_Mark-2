@@ -19,25 +19,18 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_3) writeonly uniform image2D
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_4) writeonly uniform image2D outMip3;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_5) writeonly uniform image2D outMip4;
 
-layout(push_constant) uniform GTAOPush {
-	vec2 ndcToViewMul;
+layout(push_constant) uniform PushConstantData {
 	vec2 tanHalfFov;
-
-	vec2 ndcToViewAdd;
-	uint sliceCount;
-	uint stepsPerSliceCount;
-
 	float effectRadius;
 	float effectFalloffRange;
-	float sampleDistributionPower;
-	float thinOccluderCompensation;
+
+	vec2 ndcToViewAdd;
+	vec2 ndcToViewMul;
 
 	vec2 ndcToViewMul_x_PixelSize;
 	float depthLinearizeMult;
 	float depthLinearizeAdd;
 } pc;
-
-const float GTAO_RADIUS_MULTIPLIER = 1.457;
 
 shared float g_scratch[8][8];
 

@@ -95,7 +95,7 @@ namespace RenderPasses {
 		FrameContext& frameCtx,
 		GraphicsScope scope,
 		Profiler& profiler);
-	void GTAOPass(
+	void SSAOPass(
 		FrameContext& frameCtx,
 		ComputeScope scope,
 		Profiler& profiler,

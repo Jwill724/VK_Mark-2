@@ -73,7 +73,7 @@ struct alignas(4) DebugToggles {
 	uint32_t enableSettings = 1;
 	uint32_t aaMode = AA_CMAA2;
 
-	uint32_t aoMode = AO_GTAO;
+	uint32_t aoMode = AO_GTAO_BENT_NORMALS;
 	uint32_t enableShadows = 1;
 	uint32_t enableVolumetrics = 1;
 	uint32_t activeEnvMap = 0;

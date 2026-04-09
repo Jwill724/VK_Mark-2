@@ -397,7 +397,7 @@ enum class PassID : uint16_t {
 	Prepass,
 	HiZGeneration,
 	ClusteredLightBuild,
-	GTAO,
+	SSAO,
 	DirectionalCSM,
 	FlashlightShadow,
 	ScreenSpaceContactShadows,
@@ -582,36 +582,31 @@ struct DispatchList {
 
 // === RENDER PASS PUSH CONSTANTS ===
 
-struct alignas(16) GTAOPush {
-	glm::vec2 ndcToViewMul{ 0.0f };
+struct alignas(16) SSAOPush {
 	glm::vec2 tanHalfFov{0.0f};
+	float effectRadius = 0.5f;
+	float effectFalloffRange = 0.6f;
 
 	glm::vec2 ndcToViewAdd{ 0.0f };
-	uint32_t sliceCount = 3;
-	uint32_t stepsPerSliceCount = 6;
-
-	float effectRadius = 0.4f;
-	float effectFalloffRange = 0.6f;
-	float sampleDistributionPower = 2.0f;
-	float thinOccluderCompensation = 0.7f;
+	glm::vec2 ndcToViewMul{ 0.0f };
 
 	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
 
 	float depthLinearizeMult = 0.0f;
 	float depthLinearizeAdd = 0.0f;
 
-	// Bi-lateral blur
+	// Bilateral blur
 	float sharpness = 2.0;
 	float radius = 4.0;
 	glm::vec2 blurDirection{ 0.0f };
 
-	// For TAA spatio temporal noise
+	// For temporal noise
 	uint32_t noiseIndex = 0u; // FrameIndex % 64u
+	uint32_t hilbertLutID = UINT32_MAX;
 
 	// Denoise
 	float denoiseBlurBeta = 1.2f;
 	uint32_t isFinalPass = 0u;
-	uint32_t pad0;
 };
 
 struct alignas(16) TAAPush {

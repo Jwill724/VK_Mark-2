@@ -146,7 +146,8 @@ enum class DrawType : uint32_t {
 
 enum AOMode : uint32_t {
 	AO_OFF,
-	AO_GTAO  // Ground Truth Ambient Occlusion
+	AO_GTAO, // Ground Truth Ambient Occlusion
+	AO_GTAO_BENT_NORMALS
 };
 
 enum AAMode : uint32_t {

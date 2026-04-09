@@ -49,7 +49,7 @@ void main()
 	vec2 screenspace_uv = gl_FragCoord.xy / vec2(scene.viewportSize.xy);
 
 	// Right handed view on the -z
-	float viewDepth = -inViewPos.z;
+	const float viewDepth = -inViewPos.z;
 
 	// geometry basis (world space)
 	const vec3 geometricNormalWS = normalize(inNormal);
@@ -155,7 +155,7 @@ void main()
 		ShadowCSM   csm          = getShadowCSM();
 		const uint  cascadeCount = uint(csm.params.z);
 		const uint  shadowMapID  = uint(csm.params.y);
-		const float shadowBias   = csm.params.x;
+		//const float shadowBias   = csm.params.x;
 		const float texel        = csm.params.w;
 
 		// cascade index for split
@@ -163,14 +163,13 @@ void main()
 
 		const float angleScale = (0.25 + (1.0 - NdotL) * 0.65);
 		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
-		//const float shadowBias = csm.cascadeBias[cascadeIdx];
-		const float bias       = shadowBias * angleScale;
+		const float shadowBias = csm.cascadeBias[cascadeIdx];
+		const float bias       = max(shadowBias * angleScale, MIN_SHADOW_BIAS);
 
 //		const float normalOffset  = csm.cascadeNormalOffset[cascadeIdx];
-//
 //		float NdotLRaw    = dot(geometricNormalWS, L);       // signed, not clamped
 //		float offsetScale = clamp(1.0 - NdotLRaw, 0.0, 1.0); // 0 on lit face, 1 on dark face
-//		vec3  offsetPos   = inWorldPos + geometricNormalWS * (normalOffset * offsetScale);
+//		vec3 offsetPos    = inWorldPos + geometricNormalWS * (normalOffset * offsetScale);
 
 		// Debug view for cascade splits
 		if (DBG(showCascadeSplits)) {
@@ -188,21 +187,26 @@ void main()
 		shadowUV.y         = 1.0 - shadowUV.y;                    // Flip y orientation
 		float curDepth     = projCoords.z;                        // z already in [0, 1]
 
-		if (!(shadowUV.x < 0.0 || shadowUV.x > 1.0  ||
-			  shadowUV.y < 0.0 || shadowUV.y > 1.0  ||
+		if (!(shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
+			  shadowUV.y < 0.0 || shadowUV.y > 1.0 ||
 			  curDepth   < 0.0 || curDepth   > 1.0))
 		{
 			vec4 atlas   = csm.atlasUV[cascadeIdx];
 			vec2 atlasUV = shadowUV * atlas.xy + atlas.zw;
 
-			float sA = PCFPoissonHigh(
+			vec2 atlasMin = atlas.zw;
+			vec2 atlasMax = atlas.zw + atlas.xy;
+
+			float sA = PCFVogel(
 				shadowHash,
 				shadowMapID,
 				atlasUV,
 				curDepth,
 				bias,
 				texel,
-				radius);
+				radius,
+				atlasMin,
+				atlasMax);
 
 			shadow = sA;
 
@@ -215,6 +219,9 @@ void main()
 				float blendStart = blendEnd * 0.90;
 
 				if (viewDepth >= blendStart) {
+					const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
+//					const float nextNormalOffset  = csm.cascadeNormalOffset[nextIdx];
+//					vec3 nextOffsetPos = inWorldPos + geometricNormalWS * (nextNormalOffset * offsetScale);
 					vec4 nextLightVP = csm.cascadeVP[nextIdx] * vec4(inWorldPos, 1.0);
 					vec3 nextProjCoords = nextLightVP.xyz / nextLightVP.w;
 
@@ -229,18 +236,21 @@ void main()
 					{
 						vec4 nextAtlas         = csm.atlasUV[nextIdx];
 						vec2 nextAtlasUV       = nextShadowUV * nextAtlas.xy + nextAtlas.zw;
-						const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
-						//const float nextBias   = csm.cascadeBias[nextIdx] * angleScale;
+						const float nextBias   = max(csm.cascadeBias[nextIdx] * angleScale, MIN_SHADOW_BIAS);
 
-						float sB = PCFPoissonHigh(
+						vec2 nextAtlasMin = nextAtlas.zw;
+						vec2 nextAtlasMax = nextAtlas.zw + nextAtlas.xy;
+
+						float sB = PCFVogel(
 							shadowHash,
 							shadowMapID,
 							nextAtlasUV,
 							nextDepth,
-							//nextBias,
-							bias,
+							nextBias,
 							texel,
-							nextRadius);
+							nextRadius,
+							nextAtlasMin,
+							nextAtlasMax);
 
 						// smoothstep goes 0 at blendStart -> 1 at blendEnd,
 						float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
@@ -352,18 +362,16 @@ void main()
 					{
 						float angleScale = 1.0 - clamp(spotNdotL, 0.0, 1.0);
 
-						float baseBias = 0.0001;
-						float flashlightShadowBias = baseBias * (0.25 + angleScale * 0.65);
+						float flashlightShadowBias = MIN_SHADOW_BIAS * (0.25 + angleScale * 0.65);
 						float radiusTexels = 1.0;
 
-						float shadowTerm = PCFPoissonHigh(
+						float shadowTerm = PCFPoissonLow(
 							shadowHash,
 							light.shadowMapID,
 							flashlightShadowUV,
 							flashlightShadowZ,
 							flashlightShadowBias,
-							flashlightShadowTexel, // predefined const
-							radiusTexels
+							flashlightShadowTexel
 						);
 
 						lightResult *= shadowTerm;
@@ -400,25 +408,19 @@ void main()
 
 	// IBL diffuse
 	vec3 irradianceN = N;
-	// GTAO Bent Normals used only on diffuse
-	if (DBG(aoMode)) {
-		vec4 bentSample = texture(bentNormals, screenspace_uv);
-		vec3 bentWS     = normalize(bentSample.rgb);
-
-		// Keep bent normal in the same surface hemisphere
-		float bentGeomDot = dot(bentWS, geometricNormalWS);
-		if (bentGeomDot < 0.0) {
-			bentWS = normalize(bentWS - geometricNormalWS * bentGeomDot);
-		}
+	// Bent Normals used only on diffuse
+	if (debug.aoMode == AO_VBAO_BENT_NORMALS) {
+		vec4 bentSample      = texture(bentNormals, screenspace_uv);
+		vec3 bentWS          = normalize(bentSample.rgb);
+		float bentConeAngle  = bentSample.a;
 
 		float bentDeviation = 1.0 - saturate(dot(N, bentWS));
 
 		// Cone confidence - wide cone = less occluded = less redirection needed
-		float bentConeAngle  = bentSample.a;
 		float coneConfidence = 1.0 - saturate(bentConeAngle / HALF_PI);
 
 		float bentBlend = bentDeviation * coneConfidence;
-		bentBlend       = clamp(bentBlend, 0.0, 0.8);
+		bentBlend       = clamp(bentBlend, 0.0, 0.5);
 
 		if (DBG(showBentNormals)) {
 			RET(vec3(bentBlend), 1.0);
@@ -434,10 +436,10 @@ void main()
 	float specAO         = SpecAO_Conservative(aoTerm, NdotV, rough);
 	vec3 ambientSpecular = iblSpec * specAO;
 
-//	// Fake sky visibility term
-//	float skyFacing    = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
-//	float skyOcclusion = mix(0.5, 1.0, skyFacing);
-//	ambientDiffuse    *= skyOcclusion;
+	// Fake sky visibility term
+	float skyFacing    = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+	float skyOcclusion = mix(0.5, 1.0, skyFacing);
+	ambientDiffuse    *= skyOcclusion;
 
 	vec3 ambient = ambientDiffuse + ambientSpecular;
 

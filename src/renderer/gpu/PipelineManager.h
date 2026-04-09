@@ -29,10 +29,10 @@ enum class PipelineID : uint8_t {
 	Shadow,
 	HiZGen,
 
-	GTAO,
-	GTAOFilter,
-	GTAODenoise,
-	GTAODepthPrefilter,
+	SSAO,
+	SSAOFilter,
+	SSAODenoise,
+	SSAODepthPrefilter,
 
 	VolumetricLight,
 	VolumetricLightBlur,

@@ -86,10 +86,10 @@ void PipelineManager::initPipelineShaders(DeletionQueue& dq) {
 	PipelinePresets::writeShaderStage(PipelineID::DiffuseIrradiance, COMPUTE_STAGE, "res/shaders/environment/diffuse_irradiance.spv");
 	PipelinePresets::writeShaderStage(PipelineID::BRDFLUT, COMPUTE_STAGE, "res/shaders/environment/brdf_lut.spv");
 
-	PipelinePresets::writeShaderStage(PipelineID::GTAO, COMPUTE_STAGE, "res/shaders/ao/gtao_main.spv");
-	PipelinePresets::writeShaderStage(PipelineID::GTAOFilter, COMPUTE_STAGE, "res/shaders/ao/gtao_filter.spv");
-	PipelinePresets::writeShaderStage(PipelineID::GTAODenoise, COMPUTE_STAGE, "res/shaders/ao/gtao_denoise.spv");
-	PipelinePresets::writeShaderStage(PipelineID::GTAODepthPrefilter, COMPUTE_STAGE, "res/shaders/ao/gtao_depth_prefilter.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SSAO, COMPUTE_STAGE, "res/shaders/ao/ssao_main.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SSAOFilter, COMPUTE_STAGE, "res/shaders/ao/ssao_filter.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SSAODenoise, COMPUTE_STAGE, "res/shaders/ao/ssao_denoise.spv");
+	PipelinePresets::writeShaderStage(PipelineID::SSAODepthPrefilter, COMPUTE_STAGE, "res/shaders/ao/ssao_depth_prefilter.spv");
 
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLight, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light.spv");
 	PipelinePresets::writeShaderStage(PipelineID::VolumetricLightBlur, COMPUTE_STAGE, "res/shaders/post_process/volumetric_light_blur.spv");
@@ -391,27 +391,27 @@ void PipelineManager::initPipelines(DeletionQueue& queue) {
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
-		PipelineID::GTAO,
+		PipelineID::SSAO,
 		PipelineCategory::Compute,
 		"GTAO");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
-		PipelineID::GTAOFilter,
+		PipelineID::SSAOFilter,
 		PipelineCategory::Compute,
-		"GTAOFilter");
+		"SSAOFilter");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
-		PipelineID::GTAODenoise,
+		PipelineID::SSAODenoise,
 		PipelineCategory::Compute,
-		"GTAODenoise");
+		"SSAODenoise");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,
-		PipelineID::GTAODepthPrefilter,
+		PipelineID::SSAODepthPrefilter,
 		PipelineCategory::Compute,
-		"GTAODepthPrefilter");
+		"SSAODepthPrefilter");
 	PipelinePresets::createPipeline(
 		PipelinePresets::_defaultBuilder,
 		device,

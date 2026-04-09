@@ -162,6 +162,9 @@ namespace ResourceManager {
 	AllocatedImage _errorCheckerboardTexture;
 	AllocatedImage& getCheckboard_Texture() { return _errorCheckerboardTexture; }
 
+	AllocatedImage _hilbertCurveLUT;
+	AllocatedImage& getHilbertCurveLUT_Texture() { return _hilbertCurveLUT; } 
+
 	AllocatedImage _dummyTexture;
 	AllocatedImage& getDummy_Texture() { return _dummyTexture; }
 
@@ -249,7 +252,6 @@ void GPUResources::cleanup(VkDevice device) {
 	}
 
 	materialFlagsIDs.clear();
-
 
 	if (lightListStagingBuffer.buffer != VK_NULL_HANDLE)
 		BufferUtils::destroyAllocatedBuffer(lightListStagingBuffer, allocator);
@@ -411,7 +413,7 @@ void ResourceManager::initUniformRenderTargets(
 		allocator);
 
 	// base ao image
-	_aoRaw.format = VK_FORMAT_R16_SFLOAT;
+	_aoRaw.format = VK_FORMAT_R8_UNORM;
 	_aoRaw.extent = drawExtent;
 	ImageUtils::createRenderTarget(
 		device,
@@ -422,7 +424,7 @@ void ResourceManager::initUniformRenderTargets(
 		allocator);
 
 	// ao temp
-	_aoTemp.format = VK_FORMAT_R16_SFLOAT;
+	_aoTemp.format = VK_FORMAT_R8_UNORM;
 	_aoTemp.extent = drawExtent;
 	ImageUtils::createRenderTarget(
 		device,
@@ -950,6 +952,30 @@ static glm::vec3 hsvToRgb(const float hue01, const float sat, const float val)
 	return rgb + glm::vec3(m);
 }
 
+// https://github.com/GameTechDev/XeGTAO/blob/a5b1686c7ea37788eeb3576b5be47f7c03db532c/Source/Rendering/Shaders/XeGTAO.h#L120
+static const uint32_t HILBERT_LEVEL = 6u;
+static const uint32_t HILBERT_WIDTH = 1u << HILBERT_LEVEL;
+static const uint32_t HILBERT_AREA = HILBERT_WIDTH * HILBERT_WIDTH;
+
+static uint32_t HilbertIndex(uint32_t posX, uint32_t posY) {
+	uint32_t index = 0u;
+	for (uint32_t curLevel = HILBERT_WIDTH / 2u; curLevel > 0u; curLevel /= 2u) {
+		uint32_t regionX = (posX & curLevel) > 0u;
+		uint32_t regionY = (posY & curLevel) > 0u;
+		index += curLevel * curLevel * ( (3u * regionX) ^ regionY);
+		if (regionY == 0u) {
+			if (regionX == 1u) {
+				posX = static_cast<uint32_t>(HILBERT_WIDTH - 1u) - posX;
+				posY = static_cast<uint32_t>(HILBERT_WIDTH - 1u) - posY;
+			}
+		}
+		uint32_t temp = posX;
+		posX = posY;
+		posY = temp;
+	}
+	return index;
+}
+
 void ResourceManager::initTextures(
 	const VkDevice device,
 	VkCommandPool cmdPool,
@@ -1095,37 +1121,6 @@ void ResourceManager::initTextures(
 		bufferQueue,
 		allocator);
 
-
-	//// 4x4noise texture
-	//std::vector<glm::vec2> noise4x4Data;
-	//noise4x4Data.reserve(16);
-
-	//std::uniform_real_distribution<float> dist4x4(-1.0f, 1.0f);
-	//std::default_random_engine rng4x4;
-
-	//for (uint32_t i = 0; i < 16; ++i) {
-	//	glm::vec2 noise(
-	//		dist4x4(rng4x4),
-	//		dist4x4(rng4x4)
-	//	);
-
-	//	noise4x4Data.push_back(noise);
-	//}
-
-	//_4x4NoiseImage.format = VK_FORMAT_R16G16_SFLOAT;
-	//_4x4NoiseImage.extent = { 4, 4, 1 };
-
-	//ImageUtils::createTexture(
-	//	device,
-	//	cmdPool,
-	//	noise4x4Data.data(),
-	//	_4x4NoiseImage,
-	//	usage,
-	//	samples,
-	//	imageQueue,
-	//	bufferQueue,
-	//	allocator);
-
 	// Rainbow lut
 	const uint32_t lutWidth = 256u;
 	const uint32_t lutHeight = 1u;
@@ -1227,6 +1222,31 @@ void ResourceManager::initTextures(
 		allocator
 	);
 
+	// Hilbert curve lut
+	std::vector<uint16_t> hcData;
+	hcData.resize(64 * 64);
+	for (int x = 0; x < 64; x++) {
+		for (int y = 0; y < 64; y++) {
+			uint32_t r2index = HilbertIndex(x, y);
+			ASSERT(r2index < 65536);
+			hcData[static_cast<size_t>(x + 64 * y)] = static_cast<uint16_t>(r2index);
+		}
+	}
+
+	_hilbertCurveLUT.extent = { 64u, 64u, 1u };
+	_hilbertCurveLUT.format = VK_FORMAT_R16_UINT;
+
+	ImageUtils::createTexture(
+		device,
+		cmdPool,
+		hcData.data(),
+		_hilbertCurveLUT,
+		usage,
+		samples,
+		imageQueue,
+		bufferQueue,
+		allocator
+	);
 
 	_dummyUint8Texture.format = VK_FORMAT_R8_UINT;
 	_dummyUint8Texture.extent = texExtent;

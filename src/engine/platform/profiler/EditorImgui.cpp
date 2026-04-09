@@ -549,25 +549,21 @@ namespace
 		ImGui::NewLine();
 		UI::separatorText("Screen Space Ambient Occlusion");
 
-		bool currentAO = dbg.aoMode != 0u;
-		if (ImGui::Checkbox("On", &currentAO)) {
-			dbg.aoMode = currentAO ? 1u : 0u;
+		const char* aoModes[] = { "Off", "VBAO", "VBAO + Bent Normals" };
+		int currentAO = (int)dbg.aoMode;
+
+		if (ImGui::Combo("AO Method", &currentAO, aoModes, IM_ARRAYSIZE(aoModes))) {
+			dbg.aoMode = static_cast<uint32_t>(currentAO);
 		}
 
-		auto& gtaoSettings = profiler.gtaoSettings;
-		if (dbg.aoMode != AO_OFF) {
-			// Core gtao settings
-			ImGui::SliderFloat("Radius##gtao", &gtaoSettings.effectRadius, 0.2f, 1.5f, "%.2f");
-			ImGui::SliderFloat("Falloff Range##gtao", &gtaoSettings.effectFalloffRange, 0.20f, 1.0f, "%.2f");
-			ImGui::SliderFloat("Distribution##gtao", &gtaoSettings.sampleDistributionPower, 1.0f, 4.0f, "%.2f");
-			ImGui::SliderFloat("Thin Occluder Comp##gtao", &gtaoSettings.thinOccluderCompensation, 0.0f, 1.0f, "%.2f");
-
-			ImGui::SliderInt("Slice Count##gtao", reinterpret_cast<int*>(&gtaoSettings.sliceCount), 2, 6);
-			ImGui::SliderInt("Steps Per Slice##gtao", reinterpret_cast<int*>(&gtaoSettings.stepsPerSliceCount), 2, 6);
-
-			ImGui::SliderFloat("Filter Sharpness##gtao", &gtaoSettings.sharpness, 0.5f, 5.0f);
-			ImGui::SliderFloat("Filter Radius##gtao", &gtaoSettings.radius, 1.0f, 6.0f);
-		}
+		//auto& ssaoSettings = profiler.ssaoSettings;
+		//if (dbg.aoMode != AO_OFF) {
+		//	// Core ao settings
+		//	//ImGui::SliderFloat("Radius##gtao", &ssaoSettings.effectRadius, 0.2f, 0.5f, "%.2f");
+		//	//ImGui::SliderFloat("Falloff Range##gtao", &ssaoSettings.effectFalloffRange, 0.20f, 1.0f, "%.3f");
+		//	//ImGui::SliderFloat("Filter Sharpness##gtao", &ssaoSettings.sharpness, 0.5f, 5.0f);
+		//	//ImGui::SliderFloat("Filter Radius##gtao", &ssaoSettings.radius, 1.0f, 6.0f);
+		//}
 
 		ImGui::NewLine();
 		UI::separatorText("Volumetrics");

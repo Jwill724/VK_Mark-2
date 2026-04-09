@@ -503,36 +503,38 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		glm::vec2 halfPixelSize = glm::vec2(scene.pixelSizes.z, scene.pixelSizes.w);
 
 		// =================
-		// === GTAO PASS ===
-		if (debug.aoMode == AO_GTAO) {
-			auto& gtaoPush = profiler.gtaoSettings;
+		// === SSAO PASS ===
+		if (debug.aoMode != AO_OFF) {
+			auto& ssaoPush = profiler.ssaoSettings;
 
 			const auto& proj = scene.proj;
 
-			gtaoPush.depthLinearizeMult = -proj[3][2];
-			gtaoPush.depthLinearizeAdd  =  proj[2][2];
-			if (gtaoPush.depthLinearizeMult * gtaoPush.depthLinearizeAdd < 0.0) {
-				gtaoPush.depthLinearizeAdd = -gtaoPush.depthLinearizeAdd;
+			ssaoPush.depthLinearizeMult = -proj[3][2];
+			ssaoPush.depthLinearizeAdd  =  proj[2][2];
+			if (ssaoPush.depthLinearizeMult * ssaoPush.depthLinearizeAdd < 0.0) {
+				ssaoPush.depthLinearizeAdd = -ssaoPush.depthLinearizeAdd;
 			}
 
-			gtaoPush.tanHalfFov.x = 1.0f / proj[0][0];
-			gtaoPush.tanHalfFov.y = 1.0f / proj[1][1];
+			ssaoPush.tanHalfFov.x = 1.0f / proj[0][0];
+			ssaoPush.tanHalfFov.y = 1.0f / proj[1][1];
 
-			gtaoPush.ndcToViewMul = { gtaoPush.tanHalfFov.x * 2.0f, gtaoPush.tanHalfFov.y * -2.0f };
-			gtaoPush.ndcToViewAdd = { gtaoPush.tanHalfFov.x * -1.0f, gtaoPush.tanHalfFov.y * 1.0f };
+			ssaoPush.ndcToViewMul = { ssaoPush.tanHalfFov.x * 2.0f, ssaoPush.tanHalfFov.y * -2.0f };
+			ssaoPush.ndcToViewAdd = { ssaoPush.tanHalfFov.x * -1.0f, ssaoPush.tanHalfFov.y * 1.0f };
 
-			gtaoPush.ndcToViewMul_x_PixelSize = gtaoPush.ndcToViewMul * fullPixelSize;
+			ssaoPush.ndcToViewMul_x_PixelSize = ssaoPush.ndcToViewMul * fullPixelSize;
 
-			gtaoPush.noiseIndex = frameCtx.frameIndex % 64u;
-			gtaoPush.isFinalPass = 0u; // Reset each frame
+			ssaoPush.noiseIndex = frameCtx.frameIndex % 64u;
+			ssaoPush.isFinalPass = 0u; // Reset each frame
 
-			RenderPasses::ComputeScope gtaoScope;
-			gtaoScope.passID = PassID::GTAO;
-			gtaoScope.setPush(gtaoPush);
-			gtaoScope.extent = { aoRaw.extent.width, aoRaw.extent.height };
-			gtaoScope.workgroupSize = workgroupSize;
+			ssaoPush.blurDirection = { 1.0f, 0.0f }; // Horizontal first
 
-			RenderPasses::GTAOPass(frameCtx, gtaoScope, profiler, isTemporalValid);
+			RenderPasses::ComputeScope ssaoScope;
+			ssaoScope.passID = PassID::SSAO;
+			ssaoScope.setPush(ssaoPush);
+			ssaoScope.extent = { aoRaw.extent.width, aoRaw.extent.height };
+			ssaoScope.workgroupSize = workgroupSize;
+
+			RenderPasses::SSAOPass(frameCtx, ssaoScope, profiler, isTemporalValid);
 		}
 		else {
 			// AO OFF

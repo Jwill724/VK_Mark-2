@@ -5,6 +5,8 @@ const float flashlightShadowTexel = 1.0 / 512.0;
 
 const float shadowFar = 1000.0;
 
+const float MIN_SHADOW_BIAS = 0.0001;
+
 const uint SHADOW_FILTER_PCF  = 0u;
 //const uint SHADOW_FILTER_PCSS = 1u;
 
@@ -52,7 +54,7 @@ float gaussianWeight(vec2 diskPos)
 	return exp(-d2 * 2.0);
 }
 
-// Used for volumetric lights shadow map samples
+// Used for volumetric directional and flashlight
 float PCFPoissonLow(
 	mat2  poissonRotation,
 	uint  shadowMapID,
@@ -72,7 +74,8 @@ float PCFPoissonLow(
 	return sum * (1.0 / 8.0);
 }
 
-// Used in primary shadow rendering
+// Remaining PCF functions for primary directional shadow map
+
 float PCFPoissonHigh(
 	mat2  poissonRotation,
 	uint  shadowMapID,
@@ -80,7 +83,9 @@ float PCFPoissonHigh(
 	float receiverDepth,
 	float bias,
 	float texel,
-	float radius)
+	float radius,
+	vec2 atlasMin,
+	vec2 atlasMax)
 {
 	float samplePos = texel * radius;   // UV-space kernel radius
 	float depthPos  = receiverDepth + bias;
@@ -92,10 +97,54 @@ float PCFPoissonHigh(
 		vec2  diskPos    = poisson16[i];
 		vec2  offset     = (poissonRotation * diskPos) * samplePos;
 
-		float depthSample = SampleTexture(shadowMapID, shadowUV + offset).r;
+		vec2 sampleUV = clamp(shadowUV + offset, atlasMin, atlasMax);
+
+		float depthSample = SampleTexture(shadowMapID, sampleUV).r;
 		float shadow      = depthSample >= depthPos ? 1.0 : 0.0;
 
 		// Gaussian weight keyed to unit-disk distance
+		float w    = gaussianWeight(diskPos);
+		sum       += shadow * w;
+		weightSum += w;
+	}
+
+	return weightSum > 1e-6 ? sum / weightSum : 1.0;
+}
+
+vec2 vogelSample(int i, int count, float phi) {
+	float r     = sqrt(float(i) + 0.5) / sqrt(float(count));
+	float theta = float(i) * 2.4 + phi; // 2.4 = golden angle in radians
+	return vec2(r * cos(theta), r * sin(theta));
+}
+
+float PCFVogel(
+	mat2  poissonRotation,
+	uint  shadowMapID,
+	vec2  shadowUV,
+	float receiverDepth,
+	float bias,
+	float texel,
+	float radius,
+	vec2 atlasMin,
+	vec2 atlasMax)
+{
+	float samplePos = texel * radius;
+	float depthPos  = receiverDepth + bias;
+
+	float phi = atan(poissonRotation[0][1], poissonRotation[0][0]);
+
+	float sum       = 0.0;
+	float weightSum = 0.0;
+
+	for (int i = 0; i < 16; ++i) {
+		vec2  diskPos = vogelSample(i, 16, phi);
+		vec2  offset  = diskPos * samplePos;
+
+		vec2 sampleUV = clamp(shadowUV + offset, atlasMin, atlasMax);
+
+		float depthSample = SampleTexture(shadowMapID, sampleUV).r;
+		float shadow      = depthSample >= depthPos ? 1.0 : 0.0;
+
 		float w    = gaussianWeight(diskPos);
 		sum       += shadow * w;
 		weightSum += w;

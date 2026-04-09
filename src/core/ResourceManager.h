@@ -194,6 +194,7 @@ namespace ResourceManager {
 	AllocatedImage& getAO_Texture();
 	AllocatedImage& getNormal_Texture();
 	AllocatedImage& getCheckboard_Texture();
+	AllocatedImage& getHilbertCurveLUT_Texture();
 	AllocatedImage& getDummyUint8_Texture();
 	const VkSampler getDefaultLinear_Sampler();
 	const VkSampler getDefaultNearest_Sampler();

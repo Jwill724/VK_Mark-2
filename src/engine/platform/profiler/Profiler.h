@@ -127,7 +127,7 @@ public:
 	DebugToggles debugToggles;
 	PipelineOverride pipeOverride;
 
-	GTAOPush gtaoSettings;
+	SSAOPush ssaoSettings;
 	TAAPush taaSettings;
 	VolumetricPush volLightSettings;
 	LensFlarePush lensFlareSettings;

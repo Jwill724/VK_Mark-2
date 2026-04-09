@@ -27,8 +27,9 @@ const uint AA_TAA   = 4u;
 const uint TM_ACESFILM = 0u;
 const uint TM_GT7      = 1u;
 
-const uint AO_OFF  = 0u;
-const uint AO_GTAO = 1u;
+const uint AO_OFF               = 0u;
+const uint AO_VBAO              = 1u;
+const uint AO_VBAO_BENT_NORMALS = 2u;
 
 const uint PASS_OPAQUE      = 0u;
 const uint PASS_TRANSPARENT = 1u;
@@ -40,6 +41,7 @@ const uint MATERIAL_FLAG_IS_TREE        = (1u << 3u);
 
 const uint MAX_LUMINANCE_GROUPS = 65536u;
 
+const float GTAO_RADIUS_MULTIPLIER = 1.457;
 
 // =============================
 // === SET_BINDINGS_BINDINGS ===
@@ -696,7 +698,11 @@ uniform samplerCube envMaps[];
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER)
 uniform sampler2D combinedSamplers[];
 
+layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_COMBINED_SAMPLER)
+uniform usampler2D combinedSamplersU[];
+
 #define TEX2D(id) combinedSamplers[nonuniformEXT(id)]
+#define TEXU2D(id) combinedSamplersU[nonuniformEXT(id)]
 #define TEXCUBE(id) envMaps[nonuniformEXT(id)]
 
 #define INVALID_TEXTURE_ID 0xFFFFFFFFu
@@ -706,6 +712,13 @@ vec4 SampleTexture(uint id, vec2 uv) {
 		return vec4(1.0);
 	}
 	return texture(TEX2D(id), uv);
+}
+
+uvec4 SampleTexelFetch(uint id, ivec2 uv, int lod) {
+	if (id == INVALID_TEXTURE_ID) {
+		return uvec4(1u);
+	}
+	return texelFetch(TEXU2D(id), uv, lod);
 }
 
 vec4 SampleTextureLod(uint id, vec2 uv, float lod) {

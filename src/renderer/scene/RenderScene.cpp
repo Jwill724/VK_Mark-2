@@ -373,30 +373,31 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 		const glm::vec3 camPos = _mainCamera.getPosition();
 		const glm::vec3 camForward = _mainCamera.getView();
 
-		glm::vec3 frustumCenter = camPos + camForward * splitMid;
-
-		float radius = CASCADE_RADIUS[i];
-
-		const float worldUnitsPerTexel = (radius * 2.0f) / tileRes;
-		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
-
-		//_shadowCSM.cascadeBias[i] = worldUnitsPerTexel * 0.005f;
-		//_shadowCSM.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
-
-		glm::vec3 max = glm::vec3(radius);
-		glm::vec3 min = -max;
+		const glm::vec3 frustumCenter = camPos + camForward * splitMid;
 
 		// Light view
 		const glm::vec3 lightPos = frustumCenter + lightDir;
 		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 		_cascadeLightViews[i] = lightView;
 
+		float radius = CASCADE_RADIUS[i];
+
+		const float worldUnitsPerTexel = (radius * 2.0f) / tileRes;
+		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+		//_shadowCSM.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
+
+		glm::vec3 max = glm::vec3(radius);
+		glm::vec3 min = -max;
+
 		// Extend depth range to keep shadow visuals consistent
 		const float depthRange = max.z - min.z;
 		min.z -= depthRange;
 
-		// Scale factor that fixes issues with large assets
-		min.z *= 5.0f;
+		// Scale factor hack that fixes issues with large assets
+		//min.z *= 5.0f;
+
+		_shadowCSM.cascadeBias[i] = (worldUnitsPerTexel / depthRange) * 0.5f;
 
 		// Orthographic projection
 		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
@@ -620,7 +621,7 @@ void RenderScene::updateScene(
 		_mainCamera.getPosition(),
 		_mainCamera.getView(),
 		deltaTime,
-		_mainCamera.getDelta(),
+		UserInput::mouse.rightPressed ? _mainCamera.getDelta() : glm::vec2(0.0f),
 		_mainCamera.getView()
 	);
 

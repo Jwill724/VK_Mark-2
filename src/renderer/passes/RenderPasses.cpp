@@ -213,7 +213,7 @@ void RenderPasses::BasePrepass(
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
 		viewSpaceNormals,
-		VK_IMAGE_LAYOUT_GENERAL);
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	AttachmentDesc prepassDepth{};
 	prepassDepth.imageView = depthResolved.imageView;
@@ -375,7 +375,7 @@ void RenderPasses::hiZGenerationPass(
 	}
 }
 
-void RenderPasses::GTAOPass(
+void RenderPasses::SSAOPass(
 	FrameContext& frameCtx,
 	ComputeScope scope,
 	Profiler& profiler,
@@ -400,7 +400,7 @@ void RenderPasses::GTAOPass(
 	auto nearSampler = ResourceManager::getDefaultNearest_Sampler();
 
 	// ============================
-	// === GTAO DEPTH PREFILTER ===
+	// === SSAO DEPTH PREFILTER ===
 	{
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_READ_1,
@@ -429,7 +429,7 @@ void RenderPasses::GTAOPass(
 
 		dispatchComputePass(
 			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::GTAODepthPrefilter),
+			Pipelines::getHandle(PipelineID::SSAODepthPrefilter),
 			scope,
 			frameCtx.descriptorWriter);
 
@@ -442,7 +442,7 @@ void RenderPasses::GTAOPass(
 	}
 
 	// =================
-	// === GTAO MAIN ===
+	// === SSAO MAIN ===
 
 	ImageUtils::transitionImage(
 		frameCtx.cmdBuffer,
@@ -486,7 +486,7 @@ void RenderPasses::GTAOPass(
 
 	dispatchComputePass(
 		frameCtx.cmdBuffer,
-		Pipelines::getHandle(PipelineID::GTAO),
+		Pipelines::getHandle(PipelineID::SSAO),
 		scope,
 		frameCtx.descriptorWriter);
 
@@ -536,22 +536,16 @@ void RenderPasses::GTAOPass(
 	// Bi-lateral blur filter
 	if (profiler.debugToggles.aaMode != AA_TAA) {
 		// ==============================
-		// === GTAO FILTER HORIZONTAL ===
-
-		scope.editPush<GTAOPush>(
-			[](GTAOPush& push)
-			{
-				push.blurDirection = { 1.0f, 0.0f }; // Horizontal
-			});
+		// === SSAO FILTER HORIZONTAL ===
 
 		dispatchComputePass(
 			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::GTAOFilter),
+			Pipelines::getHandle(PipelineID::SSAOFilter),
 			scope,
 			frameCtx.descriptorWriter);
 
 		// ============================
-		// === GTAO FILTER VERTICAL ===
+		// === SSAO FILTER VERTICAL ===
 
 		ImageUtils::transitionImage(
 			frameCtx.cmdBuffer,
@@ -585,28 +579,28 @@ void RenderPasses::GTAOPass(
 			rawAO
 		);
 
-		scope.editPush<GTAOPush>(
-			[](GTAOPush& push)
+		scope.editPush<SSAOPush>(
+			[](SSAOPush& push)
 			{
 				push.blurDirection = { 0.0f, 1.0f }; // Vertical
 			});
 		dispatchComputePass(
 			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::GTAOFilter),
+			Pipelines::getHandle(PipelineID::SSAOFilter),
 			scope,
 			frameCtx.descriptorWriter);
 	}
 	// XeGTAO Denoise (TAA required)
 	else {
 		// ===========================
-		// === GTAO DENOISE PASS 1 ===
+		// === SSAO DENOISE PASS 1 ===
 
 		// Works over 2x1 pixels
 		scope.workgroupSize = { 32u, 16u, 1u };
 
 		dispatchComputePass(
 			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::GTAODenoise),
+			Pipelines::getHandle(PipelineID::SSAODenoise),
 			scope,
 			frameCtx.descriptorWriter);
 
@@ -622,7 +616,7 @@ void RenderPasses::GTAOPass(
 
 
 		// ===========================
-		// === GTAO DENOISE PASS 2 ===
+		// === SSAO DENOISE PASS 2 ===
 
 		frameCtx.descriptorWriter.writePushImage(
 			PUSH_BINDING_READ_1,
@@ -640,15 +634,15 @@ void RenderPasses::GTAOPass(
 			rawAO
 		);
 
-		scope.editPush<GTAOPush>(
-			[](GTAOPush& push)
+		scope.editPush<SSAOPush>(
+			[](SSAOPush& push)
 			{
 				push.isFinalPass = 1u;
 			});
 
 		dispatchComputePass(
 			frameCtx.cmdBuffer,
-			Pipelines::getHandle(PipelineID::GTAODenoise),
+			Pipelines::getHandle(PipelineID::SSAODenoise),
 			scope,
 			frameCtx.descriptorWriter);
 	}

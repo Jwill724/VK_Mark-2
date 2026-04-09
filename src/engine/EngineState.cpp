@@ -105,6 +105,12 @@ void EngineState::init() {
 	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(areaTex.lutEntry.combinedImageIndex));
 	_resources.smaaTextures.id1 = areaTex.lutEntry.combinedImageIndex;
 
+	// hilbert curve lut
+	auto& hilbertLut = ResourceManager::getHilbertCurveLUT_Texture();
+	hilbertLut.lutEntry.combinedImageIndex = globalImgManager.addCombinedImage(hilbertLut.imageView, noiseSampler);
+	_resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(hilbertLut.lutEntry.combinedImageIndex));
+	engineProfiler.ssaoSettings.hilbertLutID = hilbertLut.lutEntry.combinedImageIndex;
+
 	// === ENVIRONMENT IMAGE SETUP ===
 	auto skyboxSmpl = ResourceManager::getSkyBox_Sampler();
 	auto irradianceSmpl = ResourceManager::getIrradiance_Sampler();

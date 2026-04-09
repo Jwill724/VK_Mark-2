@@ -15,10 +15,10 @@
 - Cascaded shadow mapping via atlas
 - Flashlight with shadow map
 - Screen space contact shadows (Bend Studios)
-- XeGTAO + bent normals
+- Visibility bitmask ambient occlusion + bent normals (XeGTAO based)
 - Ray marched directional volumetric lights
 - Tonemapping (ACES Film)
-- Push descriptors
+- Push descriptors handling runtime render targets
 - HI-Z Generation (Depth mip pyramid)
 - Lens Flare
 - Chromatic Aberration (Spartan Engine implementation)
@@ -42,10 +42,9 @@
 -SSR
 -Planar reflections
 -Parallax corrected cubemaps
--HBAO+?
 -Water shaders
 -Voxel volumetrics
--Make TAA work
+-Make TAA work well
 -Improvements to lens flare quality
 -Ray traced reflections
 

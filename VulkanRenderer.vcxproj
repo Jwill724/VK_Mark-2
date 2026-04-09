@@ -331,10 +331,10 @@
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
-    <None Include="res\shaders\ao\gtao_denoise.comp" />
-    <None Include="res\shaders\ao\gtao_depth_prefilter.comp" />
-    <None Include="res\shaders\ao\gtao_filter.comp" />
-    <None Include="res\shaders\ao\gtao_main.comp" />
+    <None Include="res\shaders\ao\ssao_denoise.comp" />
+    <None Include="res\shaders\ao\ssao_depth_prefilter.comp" />
+    <None Include="res\shaders\ao\ssao_filter.comp" />
+    <None Include="res\shaders\ao\ssao_main.comp" />
     <None Include="res\shaders\clustered\cluster_count.comp" />
     <None Include="res\shaders\clustered\cluster_scan_offsets.comp" />
     <None Include="res\shaders\clustered\cluster_scatter_ids.comp" />

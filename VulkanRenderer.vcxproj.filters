@@ -426,16 +426,16 @@
     <None Include="res\shaders\visibility\visibility.comp">
       <Filter>res\shaders\visibility</Filter>
     </None>
-    <None Include="res\shaders\ao\gtao_main.comp">
+    <None Include="res\shaders\ao\ssao_main.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
-    <None Include="res\shaders\ao\gtao_filter.comp">
+    <None Include="res\shaders\ao\ssao_filter.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
-    <None Include="res\shaders\ao\gtao_denoise.comp">
+    <None Include="res\shaders\ao\ssao_denoise.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
-    <None Include="res\shaders\ao\gtao_depth_prefilter.comp">
+    <None Include="res\shaders\ao\ssao_depth_prefilter.comp">
       <Filter>res\shaders\ao</Filter>
     </None>
     <None Include="res\shaders\shadows\shadow_depthVS.vert">

@@ -48,7 +48,7 @@ void main() {
 
 	// Prevents overly bright spots, not physically accurate
 	float maxL = max(max(color.r, color.g), color.b);
-	if (maxL > 1000.0) color *= 1000.0 / maxL;
+	if (maxL > 50.0) color *= 50.0 / maxL;
 
 	imageStore(skyboxStorage, storePos, color);
 }
