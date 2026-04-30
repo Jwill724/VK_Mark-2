@@ -59,8 +59,9 @@ namespace RendererDefinitions
 	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT_OFF     = 1u << 2;
 
 	// Static lights in global list
-	inline constexpr uint32_t LIGHT_LIST_STATIC_COUNT    = 1u;
-	inline constexpr uint32_t LIGHT_LIST_SLOT_FLASHLIGHT = 0u;
+	inline constexpr uint32_t LIGHT_LIST_STATIC_COUNT     = 1u;
+	//inline constexpr uint32_t LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
+	inline constexpr uint32_t LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
 
 	inline constexpr float ANISOTROPY_LEVEL_16        = 16.0f;
 	inline constexpr float ANISOTROPY_LEVEL_8         = 8.0f;

@@ -643,9 +643,9 @@ void RenderScene::updateScene(
 		frameCtx.m_uploadedFlashlightVersion = _lightStateVersion;
 	}
 
-	mainList = LightingSystem::updateLightList();
+	mainList = LightingSystem::UpdateLightList();
 	if (LightingSystem::_dynamicLightsEnabled) {
-		dynamicList = LightingSystem::updateDynamicLightsOrbit(deltaTime);
+		dynamicList = LightingSystem::UpdateDynamicLightsOrbit(deltaTime);
 		frameCtx.m_bRecentDynamicLightsTransform = true;
 	}
 	else {

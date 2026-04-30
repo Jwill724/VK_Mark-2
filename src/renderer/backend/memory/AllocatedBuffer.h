@@ -30,18 +30,31 @@ struct AllocatedBuffer
 
 	bool IsValid()  const noexcept { return m_buffer != VK_NULL_HANDLE; }
 	void Reset() { *this = AllocatedBuffer{}; }
+
+	static size_t AlignUp(size_t value, size_t alignment) noexcept
+	{
+		return (value + alignment - 1) & ~(alignment - 1);
+	}
 };
 
-// 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
+// Bindless indirect table, stores ssbo bda pointers.
 // Upload address table buffer after new addresses are attached or removed to the table.
 // Buffer cleanup needs to be done by the Allocator class, where AllocatedBuffer types are created
-class BindlessBufferTable
+class BindlessBDATable
 {
 public:
-	BindlessBufferTable() = default;
-	BindlessBufferTable(AllocatedBuffer addressTableBuffer)
+	static constexpr size_t GPU_ADDRESS_TABLE_SIZE_GPU_BYTES = static_cast<size_t>(RD::Renderer_Buffer::Count) * sizeof(uint64_t);
+
+	// Set this one time at start, lasts for duration of renderer lifetime.
+	void Init(AllocatedBuffer addressTableBuffer)
 	{
-		m_addressTableBuffer = addressTableBuffer;
+		INVARIANT(addressTableBuffer.IsValid());
+		INVARIANT(!m_addressTableBuffer.IsValid()); // must only init once
+
+		if (!m_addressTableBuffer.IsValid())
+			m_addressTableBuffer = addressTableBuffer;
+
+		INVARIANT(m_addressTableBuffer.IsValid());
 	}
 
 	const std::array<uint64_t, static_cast<size_t>(RendererDefinitions::Renderer_Buffer::Count)>& GetTable() const { return m_addrs; }

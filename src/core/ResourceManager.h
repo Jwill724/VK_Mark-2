@@ -24,7 +24,7 @@ public:
 
 	void Init(const VkDevice device);
 
-	BindlessBufferTable& GetAddressTable() { return gpuAddresses; }
+	BindlessBDATable& GetAddressTable() { return gpuAddresses; }
 	AllocatedBuffer& GetAddressTableBuffer() { return addressTableBuffer; }
 
 	AllocatedBuffer& GetGPUAddrsBuffer(BufferSlot type) { return gpuBuffers.at(type); }
@@ -74,7 +74,7 @@ public:
 	BindlessAccessPush smaaTextures;
 
 private:
-	BindlessBufferTable gpuAddresses{};
+	BindlessBDATable gpuAddresses{};
 	AllocatedBuffer addressTableBuffer; // descriptor written buffer, mapped from gpuaddresses
 	AllocatedBuffer addressTableStagingBuffer;
 	mutable std::mutex addressTableMutex;

@@ -399,7 +399,7 @@ inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 
 	// frame address table
 	if (frame.m_gpuAddressTable.IsVersionMismatched()) {
-		plan.fAddrSize = sizeof(BindlessBufferTable);
+		plan.fAddrSize = sizeof(BindlessBDATable);
 		plan.fAddrOff = BufferUtils::ReserveStaging(frame.m_gpuCopyStagingHead, cap, plan.fAddrSize);
 		memcpy(mapped + plan.fAddrOff, &frame.m_gpuAddressTable, plan.fAddrSize);
 		BufferUtils::FlushStagingRange(frame.m_gpuCopyStaging.m_allocation, plan.fAddrOff, plan.fAddrSize, alloc);

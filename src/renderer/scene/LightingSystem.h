@@ -1,35 +1,12 @@
 #pragma once
 
 #include "ResourceTypes.h"
+
+#include "renderer/frame/FrameResources.h"
 #include "Bounds.h"
 
 namespace RD = RendererDefinitions;
 
-//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = RD::MAX_LIGHTS * sizeof(uint32_t);
-
-enum class LightType
-{
-	Directional,
-	Point,
-	Spot
-};
-
-struct LocalLight
-{
-	LightType type = LightType::Point;
-
-	glm::vec3 position = glm::vec3(0.0f);
-	float radius = 1.0f;
-
-	glm::vec3 color = glm::vec3(1.0f);
-	float intensity = 1.0f;
-
-	glm::vec3 direction = { 0.0f, -1.0f, 0.0f }; // for spot
-	float innerCos = 0.9f;
-
-	float outerCos = 0.8f;
-	uint32_t flags = 0;
-};
 
 struct FlashLight final : public LocalLight
 {
@@ -39,29 +16,34 @@ public:
 	bool IsFlashLightActive() const { return flashLightEnabled || flashLightFlagsChanged; }
 	bool IsFlashLightOn() const { return flashLightEnabled; }
 	bool AreFlagsToggled() const { return flashLightFlagsChanged; }
-	inline constexpr void ToggleFlashLight() {
+	constexpr void ToggleFlashLight() noexcept
+	{
 		flashLightEnabled = !flashLightEnabled;
 
 		flashLightFlagsChanged = true;
-		if (flashLightEnabled) {
+		if (flashLightEnabled)
+		{
 			flags |= RD::LIGHT_FLAG_FLASHLIGHT;
 			flags &= ~RD::LIGHT_FLAG_FLASHLIGHT_OFF;
 			flags |= RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 		}
-		else {
+		else
+		{
 			flags &= ~RD::LIGHT_FLAG_FLASHLIGHT;
 			flags |= RD::LIGHT_FLAG_FLASHLIGHT_OFF;
 			flags &= ~RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 		}
 	}
 
-	inline constexpr void InitFlags() {
+	constexpr void InitFlags() noexcept
+	{
 		flags &= ~RD::LIGHT_FLAG_FLASHLIGHT;
 		flags |= RD::LIGHT_FLAG_FLASHLIGHT_OFF;
 		flags &= ~RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 	}
 
-	inline void Init() {
+	void Init()
+	{
 
 	}
 
@@ -76,6 +58,7 @@ public:
 		const glm::vec2 mouseDelta,
 		const glm::vec3 camForward);
 
+private:
 	glm::vec3 smoothedDir{0.0f, 0.0f, -1.0f};
 	glm::vec3 smoothedPos{0.0f};
 
@@ -85,47 +68,15 @@ public:
 	float lagStrength = 40.0f;   // responsiveness
 	float swayStrength = 0.025f; // camera motion
 
-private:
 	bool flashLightFlagsChanged = false;
 	bool flashLightEnabled = false;
 };
 
-//struct LightHandle
-// {
-//	uint32_t index = 0u;
-//	uint32_t generation = 0u;
-//};
-
-constexpr uint32_t MAX_LIGHTS_PER_CLUSTER = 512u;
-constexpr uint32_t MAX_VISIBLE_LIGHTS = RD::MAX_LIGHTS - RD::LIGHT_LIST_STATIC_COUNT;
-
-struct ClusterBufferSizes
+namespace LightingSystem
 {
-	// Derived counts
-	uint32_t tileCountX = 0;
-	uint32_t tileCountY = 0;
-	uint32_t tileCount = 0;
-	uint32_t clusterCount = 0;
 
-	size_t clusterCountsBytes = 0;
-	size_t clusterOffsetsBytes = 0;
-	size_t clusterCursorsBytes = 0;
-	size_t clusterLightIDsBytes = 0;
-
-	size_t clusterTileSliceRangesBytes = 0;
-	size_t clusterScanScratchBytes = 0;
-
-	//size_t clusterDebugStatsBytes = 0;
-};
-
-namespace LightingSystem {
-	inline struct ClusteredSettings {
-		uint32_t tileSizeX = 32;
-		uint32_t tileSizeY = 32;
-		uint32_t zSlices = 24;
-	} _clusteredSettings{};
-
-	inline struct alignas(16) FlashLightSettings {
+	inline struct alignas(16) FlashLightSettings
+	{
 		float offsetRight = 0.07f;
 		float offsetDown = -0.12f;
 		float offsetFwd = 0.07f;
@@ -140,13 +91,11 @@ namespace LightingSystem {
 		float radius = 20.0f;
 		float outerDeg = 38.0f;
 		float innerDeg = 22.0f;
-	} _flashLightSettings{};
+	} _flashlightSettings{};
 
-	ClusterBufferSizes computeClusterBufferSizes(
+	ClusterBufferSizes ComputeClusterBufferSizes(
 		uint32_t screenWidth,
-		uint32_t screenHeight,
-		AllocatedBuffer& clusteredUBO,
-		const VmaAllocator alloc);
+		uint32_t screenHeight);
 
 	inline struct LightIDTable {
 		std::vector<uint32_t> activeLightIDs;
@@ -162,7 +111,8 @@ namespace LightingSystem {
 
 		std::vector<uint32_t> highlightedIDs;
 
-		void Clear() {
+		void Clear()
+		{
 			activeLightIDs.clear();
 			newCopiedIDs.clear();
 			cleanupIDs.clear();
@@ -175,7 +125,8 @@ namespace LightingSystem {
 		}
 	} _lightIDTable;
 
-	inline struct alignas(16) ClusteredData {
+	inline struct alignas(16) ClusteredData
+	{
 		uint32_t tileSizeX = 0;
 		uint32_t tileSizeY = 0;
 		uint32_t zSlices = 0;
@@ -191,16 +142,16 @@ namespace LightingSystem {
 
 	extern bool _dynamicLightsEnabled;
 
-	const uint32_t& getActiveLightCount();
+	const uint32_t& GetActiveLightCount();
 
 	extern std::vector<LocalLight> _globalLightList;
 
-	void setTargetActiveLightCount(uint32_t targetCount);
-	bool updateLightList();
-	bool updateDynamicLightsOrbit(float deltaTime);
+	void SetTargetActiveLightCount(uint32_t targetCount);
+	bool UpdateLightList();
+	bool UpdateDynamicLightsOrbit(float deltaTime);
 
 	extern FlashLight _mainFlashLight;
 
-	void init(GPUResources& resources);
+	void Init(GPUResources& resources);
 	void Cleanup();
 }

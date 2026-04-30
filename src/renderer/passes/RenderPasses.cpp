@@ -1311,7 +1311,7 @@ void RenderPasses::ClusterLightCullingPass(
 
 	scope.workgroupSize = { 256u, 1u, 1u };
 
-	auto activeLightCount = LightingSystem::getActiveLightCount();
+	auto activeLightCount = LightingSystem::GetActiveLightCount();
 
 	// One job per light
 	scope.extent = {

@@ -7,7 +7,7 @@
 using namespace RendererDefinitions;
 
 struct AllocatedBuffer;
-class BindlessBufferTable;
+class BindlessBDATable;
 
 namespace BufferUtils
 {
@@ -26,7 +26,7 @@ namespace BufferUtils
 	// Positions in array are predefined
 	AllocatedBuffer CreateGPUAddressBuffer(
 		Renderer_Buffer bufferSlot,
-		BindlessBufferTable& bufferTable,
+		BindlessBDATable& bufferTable,
 		size_t size,
 		const VmaAllocator allocator);
 

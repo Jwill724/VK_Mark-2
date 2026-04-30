@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vma/vk_mem_alloc.h>
+#include <renderer/backend/memory/VmaForward.h>
 #include <renderer/RendererDefinitions.h>
 #include <renderer/backend/memory/Staging.h>
 
@@ -9,7 +9,7 @@ namespace RD = RendererDefinitions;
 struct AllocatedImage;
 struct AllocatedBuffer;
 struct DeviceContext;
-struct BindlessBufferTable;
+struct BindlessBDATable;
 
 struct BufferDesc;
 struct ImageDesc;
@@ -17,11 +17,6 @@ struct ImageDesc;
 class Allocator final
 {
 public:
-	Allocator() = default;
-	~Allocator() { Shutdown(); }
-	Allocator(const Allocator&)            = delete;
-	Allocator& operator=(const Allocator&) = delete;
-
 	void Init(const DeviceContext& ctx);
 	void Shutdown();
 
@@ -30,11 +25,11 @@ public:
 	// ------------------
 
 	[[nodiscard]] AllocatedBuffer AllocateBuffer(const BufferDesc& desc);
-	void FreeBuffer(AllocatedBuffer& buf);
+	void FreeBuffer(AllocatedBuffer buf) const;
 
 	void AllocateGPUBuffer(
 		RD::Renderer_Buffer slot,
-		BindlessBufferTable& addressTable,
+		BindlessBDATable& addressTable,
 		size_t size);
 
 	template<typename T>
@@ -53,9 +48,6 @@ public:
 	StagingBuffer GlobalStaging; // Dynamically allocates a size
 
 private:
-	VmaMemoryUsage HeapTypeToVma(HeapType heap) const noexcept;
-	VmaAllocationCreateFlags HeapTypeToVmaFlags(HeapType heap, size_t size) const noexcept;
-
 	VmaAllocator  m_vmaAlloc = VK_NULL_HANDLE;
 	DeviceContext m_ctx{};
 };

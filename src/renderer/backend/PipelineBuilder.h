@@ -225,5 +225,4 @@ private:
 
 	VkFormat                                         m_colorFormat     = VK_FORMAT_UNDEFINED;
 	VkFormat                                         m_depthFormat     = VK_FORMAT_UNDEFINED;
-
 };

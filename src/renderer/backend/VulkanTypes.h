@@ -45,6 +45,8 @@ inline const char* vkResultToString(VkResult result)
 		}                                                          \
 	} while (0)
 
+#define INVARIANT(x)                                           \    do {                                                       \        if (!(x)) {                                            \            fmt::println(stderr,                               \                "[FATAL INVARIANT FAILURE] {}:{} - {}",       \                __FILE__, __LINE__, #x);                      \            std::fflush(stderr);                              \            std::abort();                                      \        }                                                      \    } while (0)
+
 
 // Defines push constants usages
 struct PushConstantDef

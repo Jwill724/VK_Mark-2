@@ -20,7 +20,7 @@ struct ForwardPush;
 
 class MeshRegistry;
 class ImageLUTManager;
-class BindlessBufferTable;
+class BindlessBDATable;
 class BindlessImageTable;
 class DeletionQueue;
 
@@ -70,7 +70,7 @@ private:
 	void CleanupFrameResources();
 
 	std::vector<std::unique_ptr<FrameContext>> m_frameContexts;
-	std::unique_ptr<BindlessBufferTable> m_globalAddressTable;
+	std::unique_ptr<BindlessBDATable> m_globalAddressTable;
 
 	//// Staging buffers
 	//AllocatedBuffer m_addressTableStagingBuffer;
@@ -82,7 +82,7 @@ private:
 	std::unique_ptr<MeshRegistry> m_registeredMeshes;
 	std::unique_ptr<ImageLUTManager> m_lutManager;
 
-	std::optional<BindlessBufferTable> m_globalImageManager;
+	std::optional<BindlessBDATable> m_globalImageManager;
 	//EnvironmentSet m_environmentSets[MAX_ENV_SETS];
 	EnvironmentIndexArray m_environmentMapIndices;
 
@@ -93,7 +93,7 @@ private:
 
 	std::unique_ptr<DescriptorManager> m_descriptorManager;
 	std::unique_ptr<PipelineManager> m_pipelineManager;
-	std::unique_ptr<Allocator> m_allocator;
+	Allocator m_allocator;
 	std::unique_ptr<Device> m_device;
 
 	DeletionQueue m_PersistentQueue;   // All static global vulkan state and resources for renderer lifetime

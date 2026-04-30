@@ -1,32 +1,1 @@
-#pragma once
-
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
-#include <glm/detail/func_common.inl>
-#include <glm/mat4x4.hpp>
-
-#include <functional>
-#include <deque>
-#include <queue>
-#include <optional>
-#include <unordered_set>
-#include <unordered_map>
-#include <span>
-#include <string>
-#include <vector>
-#include <array>
-#include <memory>
-#include <mutex>
-#include <atomic>
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-
-#include <fmt/base.h>
-#include <fmt/format.h>
-
-#ifdef NDEBUG
-#define ASSERT(x) ((void)0)
-#else
-#define ASSERT(x) assert(x)
-#endif
+#pragma once#include <glm/vec3.hpp>#include <glm/vec4.hpp>#include <glm/detail/func_common.inl>#include <glm/mat4x4.hpp>#include <functional>#include <deque>#include <queue>#include <optional>#include <unordered_set>#include <unordered_map>#include <span>#include <string>#include <vector>#include <array>#include <memory>#include <mutex>#include <atomic>#include <algorithm>#include <cmath>#include <cstdint>#include <fmt/base.h>#include <fmt/format.h>#ifdef NDEBUG#define ASSERT(x) ((void)0)#else#define ASSERT(x) assert(x)#endif

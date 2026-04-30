@@ -222,7 +222,7 @@ void EngineState::Init() {
 	mainWriter.WriteBuffer(
 		ADDRESS_TABLE_BINDING,
 		_resources.GetAddressTablewBuffer().m_buffer,
-		sizeof(BindlessBufferTable),
+		sizeof(BindlessBDATable),
 		0,
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 		unifiedSet);

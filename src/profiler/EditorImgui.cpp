@@ -516,10 +516,10 @@ namespace
 
 		static uint32_t targetLightCount = 0u;
 		if (UIWidgets::sliderU32("Light Count##light", &targetLightCount, 0u, static_cast<uint32_t>(MAX_VISIBLE_LIGHTS))) {
-			LightingSystem::setTargetActiveLightCount(targetLightCount);
+			LightingSystem::SetTargetActiveLightCount(targetLightCount);
 		}
 
-		const uint32_t activeCount = LightingSystem::getActiveLightCount();
+		const uint32_t activeCount = LightingSystem::GetActiveLightCount();
 		ImGui::Text("Active: %u / %u", activeCount, static_cast<uint32_t>(MAX_VISIBLE_LIGHTS));
 
 		auto& flashlight = LightingSystem::_flashLightSettings;
