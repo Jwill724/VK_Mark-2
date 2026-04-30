@@ -97,7 +97,7 @@
 //      STB_TEXTEDIT_UNDOSTATECOUNT       the number of undo states to allow
 //      STB_TEXTEDIT_UNDOCHARCOUNT        the number of characters to store in the undo buffer
 //
-//   If you don't define these, they are set to permissive types and
+//   If you don't define these, they are m_frameSet to permissive types and
 //   moderate sizes. The undo system does no memory allocations, so
 //   it grows STB_TexteditState by the worst-case storage which is (in bytes):
 //
@@ -228,7 +228,7 @@
 //    state.
 //
 //      initialize_state:
-//          set the textedit state to a known good default state when initially
+//          m_frameSet the textedit state to a known good default state when initially
 //          constructing the textedit.
 //
 //      click:
@@ -253,9 +253,9 @@
 //          call this for keyboard inputs sent to the textfield. you can use it
 //          for "key down" events or for "translated" key events. if you need to
 //          do both (as in Win32), or distinguish Unicode characters from control
-//          inputs, set a high bit to distinguish the two; then you can define the
+//          inputs, m_frameSet a high bit to distinguish the two; then you can define the
 //          various definitions like STB_TEXTEDIT_K_LEFT have the is-key-event bit
-//          set, and make STB_TEXTEDIT_KEYTOCHAR check that the is-key-event bit is
+//          m_frameSet, and make STB_TEXTEDIT_KEYTOCHAR check that the is-key-event bit is
 //          clear. STB_TEXTEDIT_KEYTYPE defaults to int, but you can #define it to
 //          anything other type you want before including.
 //          if the STB_TEXTEDIT_KEYTOTEXT function is defined, selected keys are
@@ -362,7 +362,7 @@ typedef struct STB_TexteditState
 
    int row_count_per_page;
    // page size in number of row.
-   // this value MUST be set to >0 for pageup or pagedown in multilines documents.
+   // this value MUST be m_frameSet to >0 for pageup or pagedown in multilines documents.
 
    /////////////////////
    //

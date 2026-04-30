@@ -317,7 +317,7 @@ std::size_t fg::MappedGltfFile::totalSize() {
 namespace fastgltf {
 	/**
 	 * Global asset manager that can be accessed freely.
-	 * The value of this global should only be set by fastgltf::setAndroidAssetManager.
+	 * The value of this global should only be m_frameSet by fastgltf::setAndroidAssetManager.
 	 */
 	static AAssetManager* androidAssetManager = nullptr;
 }

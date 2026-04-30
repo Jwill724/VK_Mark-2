@@ -2,7 +2,8 @@
 
 #include "core/ResourceManager.h"
 
-namespace Environment {
+namespace Environment
+{
 	constexpr VkExtent3D SKYBOX_EXTENTS{ 512, 512, 1 };
 	constexpr VkExtent3D SPECULAR_EXTENTS{ 256, 256, 1 };
 	constexpr uint32_t SPECULAR_PREFILTERED_MIP_LEVELS{ 9 };

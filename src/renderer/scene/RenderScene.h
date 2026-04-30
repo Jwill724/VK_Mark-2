@@ -8,34 +8,34 @@
 
 struct SceneProfileEntry {
 	std::string name;
-	DrawType drawType;
+	InstancingMethod drawType;
 	uint32_t instanceCount = 1;
 };
 
 // Holds and controls scene data
 namespace RenderScene {
-	GPUSceneData& getCurrentSceneData();
-	GPUShadowCSM& getShadowCSM();
+	SceneInfo& getCurrentSceneData();
+	DirectionalCSMInfo& getShadowCSM();
 
 	inline std::unordered_map<SceneID, std::shared_ptr<ModelAsset>> _loadedScenes;
 
 	inline std::unordered_map<SceneID, SceneProfileEntry> _sceneProfiles {
-		{ SceneID::Sponza, { "Sponza", DrawType::DrawStatic, 1 } },
-		{ SceneID::Bistro, { "Bistro", DrawType::DrawStatic, 1 } },
-		{ SceneID::MRSpheres, { "MRSpheres", DrawType::DrawStatic, 1 } },
-		{ SceneID::Duck, { "Duck", DrawType::DrawStatic, 1 } },
-		{ SceneID::DamagedHelmet, { "DamagedHelmet", DrawType::DrawStatic, 1 } },
-		{ SceneID::DragonAttenuation, { "Dragon", DrawType::DrawStatic, 1 } },
-		{ SceneID::City, { "City", DrawType::DrawStatic, 1 } },
-		{ SceneID::Structure, { "Structure", DrawType::DrawStatic, 1 } },
-		{ SceneID::EmissiveTest, { "EmissiveTest", DrawType::DrawStatic, 1 } },
-		{ SceneID::WrathDragon, { "WrathDragon", DrawType::DrawStatic, 1 } },
-		{ SceneID::Mech, { "Mech", DrawType::DrawStatic, 1 } },
-		{ SceneID::YellowMech, { "YellowMech", DrawType::DrawStatic, 1 } },
-		{ SceneID::Mini, { "Mini", DrawType::DrawStatic, 1 } },
+		{ SceneID::Sponza, { "Sponza", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::Bistro, { "Bistro", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::MRSpheres, { "MRSpheres", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::Duck, { "Duck", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::DamagedHelmet, { "DamagedHelmet", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::DragonAttenuation, { "Dragon", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::City, { "City", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::Structure, { "Structure", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::EmissiveTest, { "EmissiveTest", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::WrathDragon, { "WrathDragon", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::Mech, { "Mech", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::YellowMech, { "YellowMech", InstancingMethod::DrawStatic, 1 } },
+		{ SceneID::Mini, { "Mini", InstancingMethod::DrawStatic, 1 } },
 	};
 
-	extern std::vector<GlobalInstance> _globalInstances;
+	extern std::vector<VirtualInstance> _globalInstances;
 	extern std::vector<glm::mat4> _globalTransforms;
 
 	extern ShadowControl _shadowControl;
@@ -53,5 +53,5 @@ namespace RenderScene {
 	void updateScene(
 		FrameContext& frameCtx,
 		GPUResources& gpuResources,
-		const DebugToggles& debug);
+		const RenderToggles& debug);
 }

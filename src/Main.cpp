@@ -1,5 +1,7 @@
-#include "engine/Engine.h"
+#include "core/Engine.h"
 
-int main() {
-	Engine::run();
+int main()
+{
+	Engine::Run();
+	return 0;
 }

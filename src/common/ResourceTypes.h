@@ -1,440 +1,211 @@
 #pragma once
 
-#include "Vk_Types.h"
-#include "common/ErrorChecking.h"
-#include "engine/JobSystem.h"
+#include "renderer/RendererDefinitions.h"
+#include <glm/fwd.hpp>
+#include "Core.h"
+#include "core/Logging.h"
 
-// GPU only buffers
-enum class AddressBufferType : uint8_t {
-	VisibleInstances,
-	IndirectDraws,
+namespace RD = RendererDefinitions;
 
-	VisibleLightCount,
-	VisibleLightIDs,
-
-	ClusterCounts,
-	ClusterOffsets,
-	ClusterCursors,
-	ClusterLightIDs,
-	ClusterTileSliceRanges,
-	ClusterScanScratch,
-
-	Cmaa2Control,
-	Cmaa2ShapeCandidates,
-	Cmaa2DeferredLocations,
-	Cmaa2DeferredItems,
-	Cmaa2DeferredHeads,
-
-	DispatchIndirectArgs,
-
-	Lights,
-	Transforms,
-	PrevTransforms,
-	Material,
-	Mesh,
-	Vertex,
-	Index,
-	Luminance,
-
-	Count
-};
-
-// 100% bindless indirect table, stores gpu only, ssbo, and bda buffer pointers.
-// Upload address table buffer after new addresses are attached or removed to the table.
-struct alignas(16) GPUAddressTable {
-	std::array<uint64_t, static_cast<size_t>(AddressBufferType::Count)> addrs{};
-
-	void setAddress(AddressBufferType type, VkDeviceAddress address) {
-		const size_t index = static_cast<size_t>(type);
-
-		if (addrs[index] == address) {
-			return;
-		}
-
-		addrs[index] = address;
-		addressTableDirty = true;
-	}
-
-	void removeAddress(AddressBufferType type) {
-		const size_t index = static_cast<size_t>(type);
-
-		if (addrs[index] == 0) {
-			return;
-		}
-
-		addrs[index] = 0;
-		addressTableDirty = true;
-	}
-
-	bool isTableDirty() const {
-		return addressTableDirty;
-	}
-
-	// Called after descriptor update
-	void clearTableDirty() {
-		addressTableDirty = false;
-	}
-
-	uint32_t getCpuVersion() const { return cpuVersion; }
-	void updateCpuVersion() { cpuVersion++; }
-
-	uint32_t getGpuVersion() const { return gpuVersion; }
-	void setGpuVersion(uint32_t version) {
-		ASSERT(gpuVersion <= version);
-		gpuVersion = version;
-	}
-
-	bool versionMismatch() const { return cpuVersion != gpuVersion; }
-
-private:
-	uint32_t cpuVersion = 1; // increment when modified
-	uint32_t gpuVersion = 0; // last uploaded version
-	bool addressTableDirty = false;
-};
-
-using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
-
-struct HashPair {
-	size_t operator()(const ImageViewSamplerKey& key) const {
-		return std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(key.first)) ^
-			(std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(key.second)) << 1);
-	}
-};
-
-struct EqualPair {
-	bool operator()(const ImageViewSamplerKey& a, const ImageViewSamplerKey& b) const {
-		return a.first == b.first && a.second == b.second;
-	}
-};
-
-struct ImageLUTEntry {
+struct ImageLUTEntry
+{
 	uint32_t combinedImageIndex = UINT32_MAX;
 	uint32_t samplerCubeIndex = UINT32_MAX;
 
-	// Used for single index and non lut entry structs
-	static constexpr ImageLUTEntry CombinedOnly(uint32_t id) {
+	// Not in use
+	uint32_t storageImageIndex = UINT32_MAX;
+
+	static constexpr ImageLUTEntry CombinedOnly(uint32_t id) noexcept {
 		return ImageLUTEntry{ .combinedImageIndex = id };
 	}
-	static constexpr ImageLUTEntry SamplerCubeOnly(uint32_t id) {
+	static constexpr ImageLUTEntry SamplerCubeOnly(uint32_t id) noexcept {
 		return ImageLUTEntry{ .samplerCubeIndex = id };
 	}
 
-	inline void reset() noexcept {
+	static constexpr ImageLUTEntry StorageOnly(uint32_t id) noexcept {
+		return ImageLUTEntry{ .storageImageIndex = id };
+	}
+
+	void Reset() noexcept
+	{
 		combinedImageIndex = UINT32_MAX;
 		samplerCubeIndex = UINT32_MAX;
+		storageImageIndex = UINT32_MAX;
 	}
 };
 
-struct ImageLUTManager {
-	std::vector<ImageLUTEntry> entries;
-	std::unordered_set<uint32_t> pushedCombined;
-	std::unordered_set<uint32_t> pushedCube;
-	std::mutex mutex;
+// Stores indices and ensures only unique valid images are written
+class ImageLUTManager final
+{
+public:
+	const std::vector<ImageLUTEntry>& GetEntries() const { return m_entries; }
 
-	void addEntry(const ImageLUTEntry& entry) {
-		std::scoped_lock lock(mutex);
-
-		bool alreadyAdded = false;
-
-		if (entry.combinedImageIndex != UINT32_MAX &&
-			pushedCombined.insert(entry.combinedImageIndex).second) {
-			alreadyAdded = true;
-		}
-		if (entry.samplerCubeIndex != UINT32_MAX &&
-			pushedCube.insert(entry.samplerCubeIndex).second) {
-			alreadyAdded = true;
-		}
-		if (alreadyAdded) {
-			entries.emplace_back(entry);
-		}
+	void AddCombinedID(uint32_t id)
+	{
+		std::scoped_lock lock(m_mutex);
+		if (id != UINT32_MAX && m_pushedCombined.insert(id).second)
+			m_entries.emplace_back(ImageLUTEntry::CombinedOnly(id));
 	}
 
-	void clear() {
-		std::scoped_lock lock(mutex);
-		entries.clear();
-		pushedCombined.clear();
-		pushedCube.clear();
+	void AddCubeID(uint32_t id)
+	{
+		std::scoped_lock lock(m_mutex);
+		if (id != UINT32_MAX && m_pushedCube.insert(id).second)
+			m_entries.emplace_back(ImageLUTEntry::SamplerCubeOnly(id));
 	}
 
-	~ImageLUTManager() {
-		clear();
+	void Clear()
+	{
+		std::scoped_lock lock(m_mutex);
+		m_entries.clear();
+		m_pushedCombined.clear();
+		m_pushedCube.clear();
 	}
 
-	const std::vector<ImageLUTEntry>& getEntries() const { return entries; }
+	~ImageLUTManager() { Clear(); }
+
+private:
+	std::mutex m_mutex;
+	std::vector<ImageLUTEntry> m_entries;
+	std::unordered_set<uint32_t> m_pushedCombined;
+	std::unordered_set<uint32_t> m_pushedCube;
 };
 
-struct ImageTable {
-	std::mutex combinedMutex, samplerCubeMutex;
+// Descriptor arrays setup
+class BindlessImageTable final
+{
+public:
+	using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
 
-	std::vector<VkDescriptorImageInfo> combinedViews;
-	std::vector<VkDescriptorImageInfo> samplerCubeViews;
+	struct HashPair
+	{
+		size_t operator()(const ImageViewSamplerKey& key) const
+		{
+			return std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(key.first)) ^
+				(std::hash<std::uintptr_t>()(reinterpret_cast<std::uintptr_t>(key.second)) << 1);
+		}
+	};
 
-	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> combinedViewHashToID;
-	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> samplerCubeViewHashToID;
+	struct EqualPair
+	{
+		bool operator()(const ImageViewSamplerKey& a, const ImageViewSamplerKey& b) const noexcept
+		{
+			return a.first == b.first && a.second == b.second;
+		}
+	};
 
-	void clearTables() {
-		std::scoped_lock l1(combinedMutex, samplerCubeMutex);
-		combinedViews.clear();
-		combinedViewHashToID.clear();
-		samplerCubeViews.clear();
-		samplerCubeViewHashToID.clear();
-	}
-
-	static ImageViewSamplerKey makeKey(VkImageView view, VkSampler sampler) {
+	ImageViewSamplerKey MakeKey(VkImageView view, VkSampler sampler)
+	{
 		return { view, sampler };
 	}
 
-	uint32_t pushCombined(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr);
-	uint32_t pushSamplerCube(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr);
-};
+	uint32_t PushCombined(
+		VkImageView view,
+		VkSampler sampler,
+		uint32_t threadID = UINT32_MAX,
+		Logging& logger)
+	{
+		std::scoped_lock lock(m_combinedMutex);
+		ASSERT(view && sampler && "Null handle in PushCombined");
+		auto key = MakeKey(view, sampler);
 
-inline uint32_t ImageTable::pushCombined(VkImageView view, VkSampler sampler, ThreadContext* threadCtx) {
-	std::scoped_lock lock(combinedMutex);
-	ASSERT(view && sampler && "Null handle in pushCombined");
-	auto key = makeKey(view, sampler);
+		if (auto it = m_combinedViewHashToID.find(key); it != m_combinedViewHashToID.end())
+			return it->second;
 
-	if (auto it = combinedViewHashToID.find(key); it != combinedViewHashToID.end())
-		return it->second;
+		VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+		uint32_t index = static_cast<uint32_t>(m_combinedViews.size());
+		m_combinedViews.push_back(info);
+		m_combinedViewHashToID[key] = index;
 
-	VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-	uint32_t index = static_cast<uint32_t>(combinedViews.size());
-	combinedViews.push_back(info);
-	combinedViewHashToID[key] = index;
-
-	if (ENABLE_DEBUG_LOGS) {
-		if (threadCtx == nullptr) {
-			fmt::print("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+		if (ENABLE_DEBUG_LOGS)
+		{
+			if (threadID == UINT32_MAX)
+			{
+				fmt::println("[BindlessImageTablePushCombined] New [{}] = view={}, sampler={}", index, (void*)view, (void*)sampler);
+			}
+			else
+			{
+				logger.Log(threadID,
+					fmt::format("[BindlessImageTable:PushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
+			}
 		}
-		else {
-			JobSystem::log(threadCtx->threadID,
-				fmt::format("[ImageTable::pushCombined] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
+
+		return index;
+	}
+	uint32_t PushSamplerCube(
+		VkImageView view,
+		VkSampler sampler,
+		uint32_t threadID = UINT32_MAX,
+		Logging* logger = nullptr)
+	{
+		std::scoped_lock lock(m_samplerCubeMutex);
+		ASSERT(view && sampler && "Null handle in PushSamplerCube");
+		auto key = MakeKey(view, sampler);
+
+		if (auto it = m_samplerCubeViewHashToID.find(key); it != m_samplerCubeViewHashToID.end())
+			return it->second;
+
+		VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+		uint32_t index = static_cast<uint32_t>(m_samplerCubeViews.size());
+		m_samplerCubeViews.push_back(info);
+		m_samplerCubeViewHashToID[key] = index;
+
+		if (ENABLE_DEBUG_LOGS)
+		{
+			if (threadID == UINT32_MAX)
+			{
+				fmt::print("[ImageTable::PushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
+			}
+			else
+			{
+				logger->Log(threadID,
+					fmt::format("[ImageTable::PushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
+			}
 		}
+		return index;
 	}
 
-	return index;
-}
+	//const VkDescriptorImageInfo& GetSamplerCubeDescriptorInfo(uint32_t index) const
+	//{
+	//	ASSERT(index >= 0 && index < m_samplerCubeViews.size());
+	//	return m_samplerCubeViews[index];
+	//}
+	//const VkDescriptorImageInfo& GetCombinedSamplerDescriptorInfo(uint32_t index) const
+	//{
+	//	ASSERT(index >= 0 && index < m_combinedViews.size());
+	//	return m_combinedViews[index];
+	//}
 
-inline uint32_t ImageTable::pushSamplerCube(VkImageView view, VkSampler sampler, ThreadContext* threadCtx) {
-	std::scoped_lock lock(samplerCubeMutex);
-	ASSERT(view && sampler && "Null handle in pushSamplerCube");
-	auto key = makeKey(view, sampler);
+	//uint32_t GetSamplerCubeVectorSize() const noexcept { return m_samplerCubeViews.size(); }
+	//uint32_t GetCombinedSamplerVectorSize() const noexcept { return m_combinedViews.size(); }
 
-	if (auto it = samplerCubeViewHashToID.find(key); it != samplerCubeViewHashToID.end())
-		return it->second;
+	const std::vector<VkDescriptorImageInfo>& GetCombinedSamplerDescriptorInfo_v() const { return m_combinedViews; }
+	const std::vector<VkDescriptorImageInfo>& GetSamplerCubeDescriptorInfo_v() const { return m_samplerCubeViews; }
 
-	VkDescriptorImageInfo info { sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-	uint32_t index = static_cast<uint32_t>(samplerCubeViews.size());
-	samplerCubeViews.push_back(info);
-	samplerCubeViewHashToID[key] = index;
-
-	if (ENABLE_DEBUG_LOGS) {
-		if (threadCtx == nullptr) {
-			fmt::print("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler);
-		}
-		else {
-			JobSystem::log(threadCtx->threadID,
-				fmt::format("[ImageTable::pushSamplerCube] New [{}] = view={}, sampler={}\n", index, (void*)view, (void*)sampler));
-		}
-	}
-	return index;
-}
-
-// Controls bindless image creation, storing indexes
-struct ImageTableManager {
-	ImageTable table;
-
-	uint32_t addCombinedImage(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr) {
-		return table.pushCombined(view, sampler, threadCtx);
-	}
-	uint32_t addCubeImage(VkImageView view, VkSampler sampler, ThreadContext* threadCtx = nullptr) {
-		return table.pushSamplerCube(view, sampler, threadCtx);
+	void ClearTables()
+	{
+		std::scoped_lock l1(m_combinedMutex, m_samplerCubeMutex);
+		m_combinedViews.clear();
+		m_combinedViewHashToID.clear();
+		m_samplerCubeViews.clear();
+		m_samplerCubeViewHashToID.clear();
 	}
 
-	void clear() {
-		table.clearTables();
-	}
-
-	~ImageTableManager() {
-		clear();
-	}
+private:
+	std::mutex m_combinedMutex, m_samplerCubeMutex;
+	std::vector<VkDescriptorImageInfo> m_combinedViews, m_samplerCubeViews;
+	std::unordered_map<ImageViewSamplerKey, uint32_t, HashPair, EqualPair> m_combinedViewHashToID, m_samplerCubeViewHashToID;
 };
 
-struct AllocatedImage {
-	VkImage image = VK_NULL_HANDLE;
-	VkImageView imageView = VK_NULL_HANDLE;
-	std::vector<VkImageView> storageViews{};
-	bool perMipStorageViews = false;
-	VkFormat format = VK_FORMAT_UNDEFINED;
-	VkExtent3D extent{};
-	uint32_t mipLevelCount = 0;
-	uint32_t arrayLayers = 1;
-	std::vector<VkImageView> layerViews{}; // Visual debugging a 2d array
-
-	VkImageType imageType = VK_IMAGE_TYPE_2D;
-	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
-	VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-
-	VkImageLayout currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
-	VmaAllocation allocation = nullptr;
-	ImageLUTEntry lutEntry;
-
-	bool mipmapped = false;
-	bool isCubeMap = false;
-};
-
-struct alignas(16) SpecularPC {
-	float roughness;
-	uint32_t width;
-	uint32_t height;
-	uint32_t sampleCount;
-};
-
-struct EnvironmentSet {
-	AllocatedImage irradiance;
-	AllocatedImage specular;
-	AllocatedImage skybox;
-	uint32_t setIndex = UINT32_MAX;
-	std::vector<SpecularPC> specularPCs{};
-	AllocatedImage equirect; // Temp image
-};
-
-struct ModelDataCounts {
-	uint32_t totalVertexCount = 0u;
-	uint32_t totalIndexCount = 0u;
-	uint32_t totalMaterialCount = 0u;
-	uint32_t totalMeshCount = 0u;
-	uint32_t totalTransformCount = 0u;
-};
-
-
-// Defines push constants usages
-struct PushConstantDef {
-	uint32_t offset;
-	uint32_t size;
-	VkShaderStageFlags stageFlags;
-};
-
-// Holds pipeline layout and push constant data
-// All pipelines use the same setup so its globally accessible
-struct PipelineLayoutConst {
-	VkPipelineLayout layout;
-	PushConstantDef pcRange;
-};
-
-struct ShaderStageInfo {
-	VkShaderStageFlagBits stage;
-	const char* filePath;
-};
-
-struct DescriptorInfo {
-	VkDescriptorType type;
-	uint32_t binding = UINT32_MAX;
-	VkShaderStageFlags stageFlags;
-
-	void* pNext = nullptr;
-};
-
-enum class PipelineCategory {
-	Raster,  // Vertex/frag traditional
-	Compute, // Comptue shader
-	Count
-};
-
-struct PipelineHandle {
-	VkPipeline pipeline = VK_NULL_HANDLE;
-	PipelineCategory type = PipelineCategory::Count;
-	std::string name;
-	bool swappable = false;
-	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
-	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
-};
-
-struct PipelinePreset {
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-
-	// Default pipeline settings
-	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
-	VkCullModeFlagBits cullMode = VK_CULL_MODE_NONE;
-	VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	bool enableBlending = false;
-	bool enableDepthTest = true;
-	bool enableDepthWrite = false;
-	VkCompareOp depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
-
-	bool enableDepthBias = false;
-	float depthBiasConstant = 0.0f;
-	float depthBiasSlope = 0.0f;
-	float depthBiasClamp = 0.0f;
-
-	uint32_t viewMask = 0;
-
-	std::vector<VkFormat>colorFormats;
-	VkFormat depthFormat = VK_FORMAT_UNDEFINED;
-
-	std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
-
-	std::vector<ShaderStageInfo> shaderStagesInfo;
-};
-
-struct AllocatedBuffer {
-	VkBuffer buffer = VK_NULL_HANDLE;
-	VkDeviceAddress address = UINT64_MAX;
-	VmaAllocation allocation{};
-	VmaAllocationInfo info{};
-	void* mapped = nullptr;
-
-	// buffer sharing
-	bool isConcurrent = false;
-	uint8_t qmask = 0; // bit0=graphics, bit1=transfer, bit2=compute
-};
-
-// Defined in order of execution in pipeline
-enum class PassID : uint16_t {
-	None = 0,
-
-	Prepass,
-	HiZGeneration,
-	ClusteredLightBuild,
-	SSAO,
-	DirectionalCSM,
-	FlashlightShadow,
-	ScreenSpaceContactShadows,
-	Skybox,
-	OpaqueForward,
-	OBBLineView,
-	TransparentForward,
-	TransparentResolve,
-	VolumetricLighting,
-	TAA,
-	Exposure,
-	LensFlare,
-	FinalComposite,
-	CMAA2,
-	SMAA,
-	FXAA,
-	ChromaticAberration,
-
-	Count
-};
-
-enum class TextureSemantic : uint8_t {
-	Unknown = 0,
-	BaseColor,
-	Normal,
-	MetalRoughness,
-	Occlusion,
-	Emissive
-};
-
-struct RuntimeImage {
-	AllocatedImage image;
-	TextureSemantic semantic{ TextureSemantic::Unknown };
+struct PassTimestampRange
+{
+	uint32_t beginQuery = UINT32_MAX;
+	uint32_t endQuery = UINT32_MAX;
 };
 
 // Indirect draw buffer can fit in lots of different draws
-struct PassRange {
+struct IndirectDrawRange
+{
 	uint32_t firstCommand = 0;   // first indirect command index in frameCtx.indirectDraws
 	uint32_t commandCount = 0;   // number of VkDrawIndexedIndirectCommand entries for this pass
 	uint32_t visibleCount = 0;   // number of visible instances (sum of cmd.instanceCount)
@@ -442,31 +213,80 @@ struct PassRange {
 };
 
 
-// TODO: Make this range shit clearer
-// world aabb rows within VisibilityState
+struct alignas(16) SpecularPrefilterPush
+{
+	float roughness;
+	uint32_t width;
+	uint32_t height;
+	uint32_t sampleCount;
+};
+
+//struct EnvironmentSet
+//{
+//	AllocatedImage irradiance;
+//	AllocatedImage specular;
+//	AllocatedImage skybox;
+//	uint32_t setIndex = UINT32_MAX;
+//	std::vector<SpecularPrefilterPush> specularPCs{}; 
+//	AllocatedImage equirect; // Temp image
+//};
+//
+//struct TotalAssetDataCounts
+//{
+//	uint32_t totalVertexCount = 0u;
+//	uint32_t totalIndexCount = 0u;
+//	uint32_t totalMaterialCount = 0u;
+//	uint32_t totalMeshCount = 0u;
+//	uint32_t totalTransformCount = 0u;
+//};
+//
+//
+//struct RuntimeImage {
+//	AllocatedImage image;
+//	MaterialType semantic{ MaterialType::Unknown };
+//};
+
+//struct MaterialResources {
+//	AllocatedImage albedoImage;
+//	VkSampler albedoSampler;
+//
+//	AllocatedImage metalRoughImage;
+//	VkSampler metalRoughSampler;
+//
+//	AllocatedImage normalImage;
+//	VkSampler normalSampler;
+//
+//	AllocatedImage emissiveImage;
+//	VkSampler emissiveSampler;
+//};
+
+
 struct DirtyRange {
 	uint32_t offset = 0;
 	uint32_t count = 0;
 };
 
 // === Per-frame sync ===
-// Compares current GlobalInstance.usedCopies/firstTransform to visState.slabs and decides:
+// Compares current VirtualInstance.usedCopies/firstTransform to visState.slabs and decides:
 //  - grow: appendSceneCopies + buildBVH()
 //  - shrink: shrinkSceneCopiesLazy + buildBVH()
 //  - relocate-only: rewriteSceneSlice + refitBVH()
 //  - no change: do nothing
 // Returns whether topology changed or a refit-only is needed, plus any transform upload ranges.
-struct VisibilitySyncResult {
+struct VisibilitySyncResult
+{
 	bool topologyChanged = false;   // grew/shrank -> call buildBVH()
 	bool refitOnly = false;         // only transforms changed -> call refitBVH()
 	std::vector<DirtyRange> dirtyTransformRanges; // for GPU uploads
 };
 
 // Virtual control over instances, enables true instancing with unique transforms
-struct GlobalInstance {
+struct VirtualInstance
+{
 	uint32_t instanceID = UINT32_MAX;         // The singular model index tag
 	uint8_t sceneID = UINT8_MAX;              // Unordered map id to map this back to loadedScenes
-	DrawType drawType = DrawType::DrawStatic; // Controls how an asset is treated in drawing
+	RD::InstancingMethod drawType =
+		RD::InstancingMethod::DrawStatic;     // Controls how an asset is treated in drawing
 	glm::vec3 modelOffset{ 0.0f };            // Divides spacing in world space between models
 
 	// Only first transform should change at runtime to move through the global transform vector
@@ -482,90 +302,7 @@ struct GlobalInstance {
 	float movePhaseRadians = 0.0f;
 };
 
-// In mesh setup all model vertices/indices are collected
-// to be batched in one upload
-struct UploadMeshContext {
-	std::vector<uint32_t> globalIndices;
-	std::vector<Vertex> globalVertices;
-};
 
-struct MeshLODs {
-	uint32_t lod0 = UINT32_MAX;
-	uint32_t lod1 = UINT32_MAX;
-	uint32_t lod2 = UINT32_MAX;
-	uint32_t lod3 = UINT32_MAX;
-
-	uint32_t shadowLod0 = UINT32_MAX;
-	uint32_t shadowLod1 = UINT32_MAX;
-	uint32_t shadowLod2 = UINT32_MAX;
-
-	uint32_t flags = 0;
-};
-constexpr uint32_t MESH_LOD_FLAG_FORCE_SHADOW_LOD0 = 1u << 0;
-
-struct MeshRegistry {
-	std::vector<GPUMeshData> meshData;
-	std::vector<MeshLODs> meshLODs;
-
-	// holds a linear list of meshIDs for gpu access
-	AllocatedBuffer meshIDBuffer;
-
-	inline std::vector<uint32_t> extractAllMeshIDs() const {
-		std::vector<uint32_t> ids;
-		ids.reserve(meshData.size());
-
-		for (uint32_t id = 0; id < meshData.size(); ++id) {
-			ids.push_back(id);
-		}
-
-		return ids;
-	}
-
-	inline uint32_t registerMesh(const GPUMeshData& data) {
-		uint32_t id = static_cast<uint32_t>(meshData.size());
-		ASSERT(id != std::numeric_limits<uint32_t>::max() && "MeshRegistry: MeshID overflow!");
-
-		meshData.push_back(data);
-
-		MeshLODs lods{};
-		lods.lod0 = id;
-		lods.lod1 = id;
-		lods.lod2 = id;
-		lods.lod3 = id;
-		meshLODs.push_back(lods);
-
-		return id;
-	}
-};
-
-
-struct MaterialResources {
-	AllocatedImage albedoImage;
-	VkSampler albedoSampler;
-
-	AllocatedImage metalRoughImage;
-	VkSampler metalRoughSampler;
-
-	AllocatedImage aoImage;
-	VkSampler aoSampler;
-
-	AllocatedImage normalImage;
-	VkSampler normalSampler;
-
-	AllocatedImage emissiveImage;
-	VkSampler emissiveSampler;
-};
-
-struct AttachmentDesc {
-	VkImageView imageView = VK_NULL_HANDLE;
-	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
-	VkImageView resolveView = VK_NULL_HANDLE;
-	VkImageLayout resolveLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	VkClearValue clearValue{ 0.0f };
-};
 
 // For use in bend studios screen space contact shadows
 struct DispatchData {
@@ -696,8 +433,8 @@ struct alignas(16) SSSPush {
 struct alignas(16) ForwardPush {
 	uint32_t activeLightCount;
 	float oitDepthScale = 400.0f;
-	float pad0;
-	float pad1;
+	uint32_t flashlightShadowMapID = UINT32_MAX;
+	uint32_t flashlightCookieTexID = UINT32_MAX;
 	glm::mat4 flashlightVP;
 };
 
@@ -717,14 +454,66 @@ struct alignas(16) BindlessAccessPush {
 	uint32_t id3 = UINT32_MAX;
 };
 
-struct PassTimestampRange {
-	uint32_t beginQuery = UINT32_MAX;
-	uint32_t endQuery = UINT32_MAX;
-};
-
 struct ToneMappingSettings {
 	float cameraExposure = 0.18f;
 	float maxLuminance = 0.0f;
 	float midLuminance = 0.0f;
 	float minLuminance = 0.0f;
+};
+
+// An instance basically = mesh
+struct Instance
+{
+	uint32_t instanceID   = UINT32_MAX;  // Unique runtime tag for a renderables list *not current used
+	uint32_t meshID       = UINT32_MAX;  // global meshBuffer
+	uint32_t materialID   = UINT32_MAX;  // global material buffer
+	uint32_t transformID  = UINT32_MAX;  // global transform/prevTransform buffer
+	uint32_t passType     = UINT32_MAX;  // opaque/transparent material pass
+};
+
+
+
+// UNIFORM BUFFER TYPES
+struct alignas(16) SceneInfo
+{
+	glm::mat4 view{};
+	glm::mat4 proj{};
+	glm::mat4 invView{};
+	glm::mat4 invProj{};
+	glm::mat4 viewProj{};
+	glm::mat4 prevViewProj{};
+	glm::mat4 prevView{};
+	glm::mat4 viewProjUnjittered{};
+	// x = frameIndex, y = historyValid (0/1), z = Hi-Z valid(0/1)
+	glm::uvec4 temporal{};
+	// x = current jitter x ndc
+	// y = current jitter y
+	// z = previous jitter x
+	// w = previous jitter y
+	glm::vec4 temporalJitter{};
+	// w for sun power
+	glm::vec4 sunlightDirection{};
+	glm::vec4 sunlightColor{};
+	glm::vec4 cameraPos{};         // xyz pos, .w exposure
+	glm::vec4 cameraClips{};       // .x near and .y far
+	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
+	glm::vec4 pixelSizes{};        // .x/.y = 1 / full extent .z/.w = = 1 / half extent
+};
+
+// x = diffuse, y = specular, z = brdf, w = skybox
+struct alignas(16) EnvironmentIndexArray {
+	glm::uvec4 indices[RD::MAX_ENV_SETS];
+};
+
+struct alignas(16) DirectionalCSMInfo
+{
+	glm::mat4 cascadeVP[RD::MAX_SHADOW_CASCADES]{0.0f};
+	glm::vec4 cascadeSplits{0.0f};
+	// x=bias, y=shadowAtlasID, z=cascadeCount, w=atlasTexelSize
+	glm::vec4 params{ 0.0f };
+	// xy = uvScale, zw = uvOffset (per cascade)
+	glm::vec4 atlasUV[RD::MAX_SHADOW_CASCADES]{};
+	glm::vec4 maxFilterRadiusTexels{};
+	float cascadeBias[RD::MAX_SHADOW_CASCADES]{};
+	//float cascadeNormalOffset[MAX_SHADOW_CASCADES]{};
 };

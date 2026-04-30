@@ -24,7 +24,7 @@
 #include <stdint.h>
 #include <functional>
 
-// ENKITS_TASK_PRIORITIES_NUM can be set from 1 to 5.
+// ENKITS_TASK_PRIORITIES_NUM can be m_frameSet from 1 to 5.
 // 1 corresponds to effectively no priorities.
 #ifndef ENKITS_TASK_PRIORITIES_NUM
     #define ENKITS_TASK_PRIORITIES_NUM 3
@@ -97,7 +97,7 @@ namespace enki
     };
 
     // ICompletable is a base class used to check for completion.
-    // Can be used with dependencies to wait for their completion.
+    // Can be used with dependencies to Wait for their completion.
     // Derive from ITaskSet or IPinnedTask for running parallel tasks.
     class ICompletable
     {
@@ -161,11 +161,11 @@ namespace enki
         // Set Size - usually the number of data items to be processed, see ExecuteRange. Defaults to 1
         uint32_t     m_SetSize  = 1;
 
-        // Min Range - Minimum size of of TaskSetPartition range when splitting a task set into partitions.
-        // Designed for reducing scheduling overhead by preventing set being
+        // Min Range - Minimum size of of TaskSetPartition range when splitting a task m_frameSet into partitions.
+        // Designed for reducing scheduling overhead by preventing m_frameSet being
         // divided up too small. Ranges passed to ExecuteRange will *not* be a mulitple of this,
         // only attempts to deliver range sizes larger than this most of the time.
-        // This should be set to a value which results in computation effort of at least 10k
+        // This should be m_frameSet to a value which results in computation effort of at least 10k
         // clock cycles to minimize task scheduler overhead.
         // NOTE: The last partition will be smaller than m_MinRange if m_SetSize is not a multiple
         // of m_MinRange.
@@ -195,7 +195,7 @@ namespace enki
         void         OnDependenciesComplete( TaskScheduler* pTaskScheduler_, uint32_t threadNum_ ) override final;
     };
 
-    // TaskSet - a utility task set for creating tasks based on std::func.
+    // TaskSet - a utility task m_frameSet for creating tasks based on std::func.
     typedef std::function<void (TaskSetPartition range, uint32_t threadnum  )> TaskSetFunction;
     class TaskSet : public ITaskSet
     {
@@ -255,7 +255,7 @@ namespace enki
         ProfilerCallbackFunc waitForTaskCompleteSuspendStop;  // thread unsuspended
     };
 
-    // Custom allocator, set in TaskSchedulerConfig. Also see ENKI_CUSTOM_ALLOC_FILE_AND_LINE for file_ and line_
+    // Custom allocator, m_frameSet in TaskSchedulerConfig. Also see ENKI_CUSTOM_ALLOC_FILE_AND_LINE for file_ and line_
     typedef void* (*AllocFunc)( size_t align_, size_t size_, void* userData_, const char* file_, int line_ );
     typedef void  (*FreeFunc)(  void* ptr_,    size_t size_, void* userData_, const char* file_, int line_ );
     ENKITS_API void* DefaultAllocFunc(  size_t align_, size_t size_, void* userData_, const char* file_, int line_ );
@@ -296,7 +296,7 @@ namespace enki
 
         // Initialize() will create GetNumHardwareThreads()-1 tasking threads, which is
         // sufficient to fill the system when including the main thread.
-        // Initialize can be called multiple times - it will wait for completion
+        // Initialize can be called multiple times - it will Wait for completion
         // before re-initializing.
         ENKITS_API void            Initialize();
 
@@ -318,8 +318,8 @@ namespace enki
 
         // while( !GetIsWaitforAllCalled() ) {} can be used in tasks which loop, to check if WaitforAll() has been called.
         // If GetIsWaitforAllCalled() returns false should then exit. Not required for finite tasks
-        // This is intended to be used with code which calls WaitforAll() with flag WAITFORALLFLAGS_INC_WAIT_NEW_PINNED_TASKS set.
-        // This is also set when the the task manager is shutting down, so no need to have an additional check for GetIsRunning()
+        // This is intended to be used with code which calls WaitforAll() with flag WAITFORALLFLAGS_INC_WAIT_NEW_PINNED_TASKS m_frameSet.
+        // This is also m_frameSet when the the task manager is shutting down, so no need to have an additional check for GetIsRunning()
         inline     bool            GetIsWaitforAllCalled() const { return m_bWaitforAllCalled.load( std::memory_order_acquire ); }
 
         // Adds the TaskSet to pipe and returns if the pipe is not full.
@@ -332,15 +332,15 @@ namespace enki
         ENKITS_API void            AddPinnedTask( IPinnedTask* pTask_ );
 
         // This function will run any IPinnedTask* for current thread, but not run other
-        // Main thread should call this or use a wait to ensure it's tasks are run.
+        // Main thread should call this or use a Wait to ensure it's tasks are run.
         ENKITS_API void            RunPinnedTasks();
 
         // Runs the TaskSets in pipe until true == pTaskSet->GetIsComplete();
         // should only be called from thread which created the taskscheduler , or within a task
         // if called with 0 it will try to run tasks, and return if none available.
-        // To run only a subset of tasks, set priorityOfLowestToRun_ to a high priority.
+        // To run only a subset of tasks, m_frameSet priorityOfLowestToRun_ to a high priority.
         // Default is lowest priority available.
-        // Only wait for child tasks of the current task otherwise a deadlock could occur.
+        // Only Wait for child tasks of the current task otherwise a deadlock could occur.
         ENKITS_API void            WaitforTask( const ICompletable* pCompletable_, enki::TaskPriority priorityOfLowestToRun_ = TaskPriority(TASK_PRIORITY_NUM - 1) );
 
         // Waits for all task sets to complete - not guaranteed to work unless we know we
@@ -377,7 +377,7 @@ namespace enki
         // This is implicitly done for the thread which initializes the TaskScheduler
         // Intended for developers who have threads who need to call the TaskScheduler API
         // Returns true if successfull, false if not.
-        // Can only have numExternalTaskThreads registered at any one time, which must be set
+        // Can only have numExternalTaskThreads registered at any one time, which must be m_frameSet
         // at initialization time.
         ENKITS_API bool            RegisterExternalTaskThread();
 
@@ -407,7 +407,7 @@ namespace enki
 
         // DEPRECATED - GetProfilerCallbacks.  Use TaskSchedulerConfig instead
         // Returns the ProfilerCallbacks structure so that it can be modified to
-        // set the callbacks. Should be set prior to initialization.
+        // m_frameSet the callbacks. Should be m_frameSet prior to initialization.
         inline ProfilerCallbacks* GetProfilerCallbacks() { return &m_Config.profilerCallbacks; }
         // -------------  End DEPRECATED Functions  -------------
 

@@ -1,6 +1,5 @@
 #pragma once
 
-// Platform
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -9,7 +8,6 @@
 #include <mmsystem.h>
 #endif
 
-// STL
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -25,15 +23,18 @@
 #include <numeric>
 #include <random>
 
-// Third-party
-#include "fmt/core.h"
-#include <vulkan/vulkan.h>
+#define GLFW_INCLUDE_VULKAN
 #include "glfw/glfw3.h"
+
+#include "fmt/core.h"
 #include <vma/vk_mem_alloc.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <stb_image/stb_image.h>
 #include "enkiTS/TaskScheduler.h"
-#include <meshoptimizer.h>
+#include "conjure_enum/conjure_enum.hpp"
+//#include "conjure_enum/conjure_enum_bitset.hpp"
+//#include "conjure_enum/conjure_enum_ext.hpp"
+//#include "conjure_enum/conjure_type.hpp"
 
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -51,9 +52,9 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
-// Project
-#include "common/ErrorChecking.h"
+#include "renderer/backend/VulkanTypes.h"
 #include "common/glm_common.hpp"
+#include "EngineConstants.h"
 
 #include "assets/AreaTex.h"
 #include "assets/SearchTex.h"

@@ -99,7 +99,7 @@
 #if defined(__x86_64__) || defined(_M_AMD64) || defined(_M_IX86)
 #define FASTGLTF_IS_X86 1
 #elif defined(_M_ARM64) || defined(__aarch64__)
-// __ARM_NEON is only for general Neon availability. It does not guarantee the full A64 instruction set.
+// __ARM_NEON is only for general Neon availability. It does not guarantee the full A64 instruction m_frameSet.
 #define FASTGLTF_IS_A64 1
 #endif
 
@@ -324,7 +324,7 @@ namespace fastgltf {
     using is_any = std::disjunction<std::is_same<T, Ts>...>;
 
     /**
-     * Simple function to check if the given string starts with a given set of characters.
+     * Simple function to check if the given string starts with a given m_frameSet of characters.
      */
     inline bool startsWith(std::string_view str, std::string_view search) {
         return str.rfind(search, 0) == 0;

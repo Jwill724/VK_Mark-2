@@ -4,125 +4,85 @@
 #include "engine/platform/profiler/EditorImgui.h"
 #include "scene/RenderScene.h"
 #include "utils/BufferUtils.h"
-#include "core/AssetManager.h"
 #include "utils/SyncUtils.h"
 #include "renderer/passes/RenderPasses.h"
+#include "backend/Backend.h"
 
-namespace Renderer {
-	VkExtent3D _drawExtent;
-	std::mutex _drawExtentMutex;
-
-	const VkExtent3D getDrawExtent() {
-		std::scoped_lock lock(_drawExtentMutex);
-		return _drawExtent;
-	}
-	void setDrawExtent(VkExtent3D extent) {
-		std::scoped_lock lock(_drawExtentMutex);
-		_drawExtent = extent;
-	}
-
-	uint32_t _frameNumber{ 0 };
-	const uint32_t& getFrameNumber() { return _frameNumber; }
-	uint32_t _framesInFlight{ 0 };
-
-	const bool isFirstFrame() { return _frameNumber == 0; }
-
-	std::mutex _frameAccessMutex;
-
-	FrameContext& getCurrentFrame() {
-		std::scoped_lock lock(_frameAccessMutex);
-		return *_frameContexts[_frameNumber % _framesInFlight];
-	}
-
-	FrameContext& getLastFrame() {
-		std::scoped_lock lock(_frameAccessMutex);
-		const uint32_t lastFrameNumber = _frameNumber + _framesInFlight - 1u;
-		ASSERT(lastFrameNumber >= 0);
-		return *_frameContexts[lastFrameNumber % _framesInFlight];
-	}
-
-	TimelineSync _transferSync;
-	TimelineSync _computeSync;
-
-	ForwardPush _forwardPush;
-	ForwardPush& getForwardPush() { return _forwardPush; }
-}
-
-void Renderer::initRenderer(
-	const VkDevice device,
-	const VkDescriptorSetLayout frameLayout,
-	GPUResources& gpuResources,
-	Profiler& profiler)
+void Renderer::Init()
 {
-	SyncUtils::createTimelineSemaphore(_transferSync, device);
+	SyncUtils::CreateTimelineSemaphore(m_transferSync);
 
-	if (Backend::isComputeAvailable()) {
-		SyncUtils::createTimelineSemaphore(_computeSync, device);
+	if (Backend::IsComputeAvailable())
+	{
+		SyncUtils::CreateTimelineSemaphore(m_computeSync);
 	}
 
-	const auto alloc = gpuResources.getAllocator();
+	InitFrameResources();
 
-	_frameContexts = initFrameContexts(
-		device,
-		frameLayout,
-		alloc,
-		_framesInFlight
-	);
-
-	auto& debug = profiler.debugToggles;
-	const auto& modelDataCounts = gpuResources.modelDataCounts;
-
-	debug.indexCount = modelDataCounts.totalIndexCount;
-	debug.vertexCount = modelDataCounts.totalVertexCount;
-	debug.materialCount = modelDataCounts.totalMaterialCount;
-	debug.transformCount = modelDataCounts.totalTransformCount;
-	debug.meshCount = modelDataCounts.totalMeshCount;
-
-
-	auto& transformStaging = gpuResources.getInstanceTransformsStagingBuffer();
-
-	if (transformStaging.buffer == VK_NULL_HANDLE) {
-		constexpr size_t TRANSFORM_STAGING_BYTES = MAX_INSTANCE_TRANSFORMS * sizeof(glm::mat4);
-		transformStaging = BufferUtils::createBuffer(
-			TRANSFORM_STAGING_BYTES,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-			alloc
+	if (m_transformsStagingBuffer.IsValid())
+	{
+		m_transformsStagingBuffer = BufferUtils::CreateGPUStagingBuffer(
+			MAX_INSTANCE_TRANSFORMS * sizeof(glm::mat4),
+			m_allocator
 		);
-		ASSERT(transformStaging.info.pMappedData);
 	}
 }
+
+void Renderer::InitFrameResources()
+{
+	auto& swapDef = Backend::GetSwapchainDef();
+	m_framesInFlight = swapDef.imageCount;
+	m_frameContexts.resize(m_framesInFlight);
+
+	fmt::println("Frames in flight:[{}]", m_framesInFlight);
+
+	uint32_t graphicsIndex = Backend::GetGraphicsQueue().GetFamilyIndex();
+	uint32_t transferIndex = Backend::GetTransferQueue().GetFamilyIndex();
+	uint32_t computeIndex = Backend::GetComputeQueue().GetFamilyIndex();
+
+	size_t totalGPUStagingSize =
+		MAX_GPU_INSTANCE_SIZE_BYTES +
+		MAX_GPU_INDIRECT_SIZE_BYTES +
+		sizeof(BindlessBufferTable);
+
+
+}
+
+
 
 // =============================================
 // === CLEAR DATA AND AQUIRE SWAPCHAIN INDEX ===
-void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator alloc) {
-	auto device = Backend::getDevice();
-	auto& swapDef = Backend::getSwapchainDef();
+void Renderer::PrepareFrame()
+{
+	auto device = Backend::GetDevice();
+	auto& swapDef = Backend::GetSwapchainDef();
 
-	VkFence fence = swapDef.inFlightFences[frameCtx.frameIndex];
+	auto& frameCtx = GetCurrentFrame();
+
+	VkFence fence = swapDef.inFlightFences[frameCtx.m_frameIndex];
 	VK_CHECK(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
 	VK_CHECK(vkResetFences(device, 1, &fence));
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
-		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE &&
-		frameCtx.hasTimestampResultsPending)
+	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue()) &&
+		frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE &&
+		frameCtx.m_bHasTimestampResultsPending)
 	{
-		const float timestampPeriod = Backend::getTimestampPeriod();
+		const float timestampPeriod = Backend::GetTimestampPeriod();
 
 		bool allReady = true;
 
 		for (uint32_t passIndex = 1; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
 		{
-			if (!frameCtx.timestampPassUsed[passIndex]) continue;
+			if (!frameCtx.m_timestampPassUsed[passIndex]) continue;
 
 			const PassID passID = static_cast<PassID>(passIndex);
-			const auto& range = frameCtx.passTimestampRanges[passIndex];
+			const auto& range = frameCtx.m_passTimestampRanges[passIndex];
 
 			uint64_t queryPair[2]{};
 
 			VkResult res = vkGetQueryPoolResults(
 				device,
-				frameCtx.graphicsTimestampPool,
+				frameCtx.m_graphicsTimestampPool,
 				range.beginQuery,
 				2,
 				sizeof(queryPair),
@@ -149,10 +109,10 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 					(double(deltaTicks) * double(timestampPeriod)) / 1000000.0
 				);
 
-				Engine::getProfiler().addGpuPassTime(passID, gpuMs);
+				Engine::GetProfiler().addGpuPassTime(passID, gpuMs);
 			}
 
-			frameCtx.timestampPassUsed[passIndex] = false;
+			frameCtx.m_timestampPassUsed[passIndex] = false;
 		}
 
 		// Frame timestamps
@@ -161,7 +121,7 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 
 			VkResult res = vkGetQueryPoolResults(
 				device,
-				frameCtx.graphicsTimestampPool,
+				frameCtx.m_graphicsTimestampPool,
 				FRAME_BEGIN_QUERY,
 				2,
 				sizeof(queryPair),
@@ -184,82 +144,79 @@ void Renderer::prepareFrameContext(FrameContext& frameCtx, const VmaAllocator al
 						(double(delta) * double(timestampPeriod)) / 1000000.0
 					);
 
-					auto& stats = Engine::getProfiler().getStats();
+					auto& stats = Engine::GetProfiler().getStats();
 					stats.gpuFrameTimeRawMs = gpuMs;
 					stats.gpuFrameTime.add(gpuMs);
 				}
 			}
 		}
 
-		frameCtx.hasTimestampResultsPending = !allReady;
+		frameCtx.m_bHasTimestampResultsPending = !allReady;
 	}
 
 	uint32_t imageIndex = 0;
-	frameCtx.swapchainResult = vkAcquireNextImageKHR(
+	frameCtx.m_swapchainResult = vkAcquireNextImageKHR(
 		device,
 		swapDef.swapchain,
 		UINT64_MAX,
-		swapDef.imageAvailableSemaphores[frameCtx.frameIndex],
+		swapDef.imageAvailableSemaphores[frameCtx.m_frameIndex],
 		VK_NULL_HANDLE,
 		&imageIndex);
 
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR ||
-		frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR)
+	if (frameCtx.m_swapchainResult == VK_ERROR_OUT_OF_DATE_KHR ||
+		frameCtx.m_swapchainResult == VK_SUBOPTIMAL_KHR)
 	{
-		Backend::getGraphicsQueue().waitIdle();
-		Backend::resizeSwapchain();
+		Backend::GetGraphicsQueue().WaitIdle();
+		Backend::ResizeSwapchain();
 		return;
 	}
-	ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
+	ASSERT(frameCtx.m_swapchainResult == VK_SUCCESS && "Failed to acquire swapchain image!");
 
-	frameCtx.swapchainImageIndex = imageIndex;
+	frameCtx.m_swapchainImageIndex = imageIndex;
 
 	// Mark image as in use
-	swapDef.imageInFlightFrame[imageIndex] = frameCtx.frameIndex;
+	swapDef.imageInFlightFrame[imageIndex] = frameCtx.m_frameIndex;
 
-	VK_CHECK(vkResetCommandBuffer(frameCtx.cmdBuffer, 0));
+	VK_CHECK(vkResetCommandBuffer(frameCtx.m_commandBuffer, 0));
 
-	frameCtx.freeStashedCmds(device);
-	frameCtx.stagingHead = 0;
+	frameCtx.FreeStashedCmds();
+	frameCtx.m_gpuCopyStagingHead = 0;
 
-	frameCtx.cpuDeletion.flush();
+	frameCtx.m_cpuDeletionQueue.Flush();
 
-	const uint32_t curWidth = _drawExtent.width;
-	const uint32_t curHeight = _drawExtent.height;
+	const uint32_t curWidth = m_drawExtent.width;
+	const uint32_t curHeight = m_drawExtent.height;
 
-	if (frameCtx.cachedExtentWidth != curWidth || frameCtx.cachedExtentHeight != curHeight) {
-		frameCtx.createClusterBuffers(
+	if (frameCtx.m_cachedDrawExtentW != curWidth || frameCtx.m_cachedDrawExtentH != curHeight) {
+		frameCtx.CreateClusterBuffers(
 			curWidth,
 			curHeight,
-			alloc
+			m_allocator
 		);
-		frameCtx.createCMAA2Buffers(
+		frameCtx.CreateCMAA2Buffers(
 			curWidth,
 			curHeight,
-			alloc
+			m_allocator
 		);
-		frameCtx.cachedExtentWidth = curWidth;
-		frameCtx.cachedExtentHeight = curHeight;
+		frameCtx.m_cachedDrawExtentW = curWidth;
+		frameCtx.m_cachedDrawExtentH = curHeight;
 	}
 
 	// Handles initialization and any updates during runtime
-	if (frameCtx.addressTable.isTableDirty()) {
-		frameCtx.addressTable.updateCpuVersion();
+	if (frameCtx.m_gpuAddressTable.IsTableDirty()) {
+		frameCtx.m_gpuAddressTable.UpdateCpuVersion();
 	}
 }
 
 // ===============================================
 // === SYNC FRAME SEMAPHORES AND PRESENT FRAME ===
-void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
-	auto& swapDef = Backend::getSwapchainDef();
-	uint32_t imageIndex = frameCtx.swapchainImageIndex;
+void Renderer::SubmitFrame()
+{
+	auto& frameCtx = GetCurrentFrame();
 
-	VkSemaphore presentSem = swapDef.imageAvailableSemaphores[frameCtx.frameIndex];
-
-	// Use image-indexed render finished semaphore and fence
-	VkSemaphore renderSem = swapDef.renderFinishedSemaphores[imageIndex];
-
-	VkFence fence = swapDef.inFlightFences[frameCtx.frameIndex];
+	VkSemaphore presentSem = m_swapchain.GetAvailableSemaphore();
+	VkSemaphore renderSem  = m_swapchain.GetFinishedSemaphore();
+	VkFence     fence      = m_swapchain.GetInFlightFence();
 
 	std::vector<VkSemaphoreSubmitInfo> waitInfos;
 
@@ -270,13 +227,13 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	waitInfos.push_back(waitImageAvailable);
 
 	// Wait on transfer timeline only up to the first buffer consumers
-	if (frameCtx.transferWaitValue != UINT64_MAX && frameCtx.transferWaitValue <= _transferSync.signalValue)
+	if (frameCtx.transferWaitValue != UINT64_MAX && frameCtx.transferWaitValue <= m_transferSync.signalValue)
 	{
-		ASSERT(frameCtx.transferWaitValue <= _transferSync.signalValue &&
-			"Invalid transfer wait: waiting on unsignaled or future timeline value!");
+		ASSERT(frameCtx.transferWaitValue <= m_transferSync.signalValue &&
+			"Invalid transfer Wait: waiting on unsignaled or future timeline value!");
 
 		VkSemaphoreSubmitInfo waitTransfer{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
-		waitTransfer.semaphore = _transferSync.semaphore;
+		waitTransfer.semaphore = m_transferSync.semaphore;
 		waitTransfer.value = frameCtx.transferWaitValue;
 		waitTransfer.stageMask =
 			VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
@@ -285,14 +242,14 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 		waitInfos.push_back(waitTransfer);
 	}
 
-	if (frameCtx.computeWaitValue != UINT64_MAX && frameCtx.computeWaitValue <= _computeSync.signalValue)
+	if (frameCtx.m_computeWaitValue != UINT64_MAX && frameCtx.m_computeWaitValue <= m_computeSync.signalValue)
 	{
-		ASSERT(frameCtx.computeWaitValue <= _computeSync.signalValue &&
-			"Invalid compute wait: waiting on unsignaled or future timeline value!");
+		ASSERT(frameCtx.m_computeWaitValue <= m_computeSync.signalValue &&
+			"Invalid compute Wait: waiting on unsignaled or future timeline value!");
 
 		VkSemaphoreSubmitInfo waitCompute{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
-		waitCompute.semaphore = _computeSync.semaphore;
-		waitCompute.value = frameCtx.computeWaitValue;
+		waitCompute.semaphore = m_computeSync.semaphore;
+		waitCompute.value = frameCtx.m_computeWaitValue;
 		waitCompute.stageMask =
 			VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
 			VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
@@ -302,7 +259,7 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	}
 
 	VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
-	cmdInfo.commandBuffer = frameCtx.cmdBuffer;
+	cmdInfo.commandBuffer = frameCtx.m_commandBuffer;
 
 	// Signal render finished semaphore
 	VkSemaphoreSubmitInfo signalRender{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
@@ -317,10 +274,10 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	submitInfo.signalSemaphoreInfoCount = 1;
 	submitInfo.pSignalSemaphoreInfos = &signalRender;
 
-	auto& gQueue = Backend::getGraphicsQueue();
-	auto& pQueue = Backend::getPresentQueue();
+	auto& gQueue = Backend::GetGraphicsQueue();
+	auto& pQueue = Backend::GetPresentQueue();
 
-	VK_CHECK(vkQueueSubmit2(gQueue.queue, 1, &submitInfo, fence));
+	VK_CHECK(vkQueueSubmit2(gQueue.GetQueue(), 1, &submitInfo, fence));
 
 	// Present using the image-indexed renderSem
 	VkPresentInfoKHR presentInfo{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
@@ -330,29 +287,30 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 	presentInfo.pSwapchains = &swapDef.swapchain;
 	presentInfo.pImageIndices = &imageIndex;
 
-	frameCtx.swapchainResult = vkQueuePresentKHR(pQueue.queue, &presentInfo);
-	if (frameCtx.swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.swapchainResult == VK_SUBOPTIMAL_KHR) {
-		if (gQueue.queue != pQueue.queue)
-			pQueue.waitIdle();
+	frameCtx.m_swapchainResult = vkQueuePresentKHR(pQueue.GetQueue(), &presentInfo);
+	if (frameCtx.m_swapchainResult == VK_ERROR_OUT_OF_DATE_KHR || frameCtx.m_swapchainResult == VK_SUBOPTIMAL_KHR)
+	{
+		if (gQueue.GetQueue() != pQueue.GetQueue())
+			pQueue.WaitIdle();
 		else
-			gQueue.waitIdle();
+			gQueue.WaitIdle();
 
-		Backend::resizeSwapchain();
+		Backend::ResizeSwapchain();
 
-		auto& targetQ1 = resources.getRenderTargetDQueue();
-		targetQ1.flush();
+		m_renderTargetDeletionQueue.Flush();
 		// Recreate all render targets with extent updates
-		ResourceManager::initUniformRenderTargets(
-			Backend::getDevice(),
-			targetQ1,
-			resources.getAllocator(),
-			_drawExtent);
+		ResourceManager::InitUniformRenderTargets(
+			Backend::GetDevice(),
+			m_renderTargetDeletionQueue,
+			m_allocator,
+			m_drawExtent);
 	}
-	else {
-		ASSERT(frameCtx.swapchainResult == VK_SUCCESS && "Failed to present swapchain image!");
+	else
+	{
+		ASSERT(frameCtx.m_swapchainResult == VK_SUCCESS && "Failed to present swapchain image!");
 	}
 
-	_frameNumber++;
+	m_frameNumber++;
 }
 
 // Render Pass System V1
@@ -361,113 +319,122 @@ void Renderer::submitFrame(FrameContext& frameCtx, GPUResources& resources) {
 // === MAIN GRAPHICS RECORDING FOR ALL PASSES ===
 // ==============================================
 // All recorded in a single graphics queue
-void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
-	const auto device = Backend::getDevice();
-	auto& swp = Backend::getSwapchainDef();
-	auto& opaque = ResourceManager::getOpaque_Target();
-	auto& transparentAccum = ResourceManager::getTransparentAccumulation_Target();
-	auto& transparentReveal = ResourceManager::getTransparentRevealage_Target();
-	auto& toneMap = ResourceManager::getToneMap_Target();
-	auto& aoRaw = ResourceManager::getAORaw_Target();
-	auto& bentNormals = ResourceManager::getBentNormals_Target();
-	auto& depthResolved = ResourceManager::getDepthResolved_Target();
-	auto& depth = ResourceManager::getDepthRaw_Target();
-	auto& volLight = ResourceManager::getVolumetricLight_Target();
-	auto& shadowMask = ResourceManager::getScreenSpaceShadowMask_Target();
-	const auto nearestClampSampler = ResourceManager::getNearestClamp_Sampler();
-	const auto linearClampSampler = ResourceManager::getLinearClamp_Sampler();
+void Renderer::RecordRenderCommand()
+{
+	const auto device = Backend::GetDevice();
+	auto& swp = Backend::GetSwapchainDef();
+	auto& opaque = ResourceManager::GetOpaque_Target();
+	auto& transparentAccum = ResourceManager::GetTransparentAccumulation_Target();
+	auto& transparentReveal = ResourceManager::GetTransparentRevealage_Target();
+	auto& toneMap = ResourceManager::GetToneMap_Target();
+	auto& aoRaw = ResourceManager::GetAORaw_Target();
+	auto& bentNormals = ResourceManager::GetBentNormals_Target();
+	auto& depthResolved = ResourceManager::GetDepthResolved_Target();
+	auto& depth = ResourceManager::GetDepthRaw_Target();
+	auto& volLight = ResourceManager::GetVolumetricLight_Target();
+	auto& shadowMask = ResourceManager::GetScreenSpaceShadowMask_Target();
+	const auto nearestClampSampler = ResourceManager::GetNearestClamp_Sampler();
+	const auto linearClampSampler = ResourceManager::GetLinearClamp_Sampler();
+
+	auto& frameCtx = GetCurrentFrame();
 
 	auto& debug = profiler.debugToggles;
 
-	const VkExtent2D fullExtent = { _drawExtent.width, _drawExtent.height };
+	const VkExtent2D fullExtent = { m_drawExtent.width, m_drawExtent.height };
 	const VkExtent3D workgroupSize = { 16u, 16u, 1u };
 
-	const auto& winExtent = Engine::getWindowExtent();
+	const auto& winExtent = Engine::GetWindowExtent();
 
-	const auto unifiedSet = DescriptorSetOverwatch::getUnifiedDescriptor().descriptorSet;
+	const auto unifiedSet = DescriptorSetOverwatch::GetUnifiedDescriptor().descriptorSet;
 	const VkDescriptorSet sets[2]{
 		unifiedSet,
-		frameCtx.set
+		frameCtx.m_frameSet
 	};
-
-	auto& gpuResources = Engine::getState().getGPUResources();
 
 	auto& scene = RenderScene::getCurrentSceneData();
 
-	bool hasVisibles = frameCtx.visibleCount > 0;
-	bool isTemporalValid = (!isFirstFrame() && scene.temporal.y == 1);
+	bool hasVisibles = frameCtx.m_visibleCount > 0;
+	bool isTemporalValid = !IsFirstFrame() && scene.temporal.y == 1;
 
-	ASSERT(!(frameCtx.addressTable.versionMismatch()) && "GPU is about to use stale address table!");
-	frameCtx.updateAddressTableIfDirty(device);
-	frameCtx.writeFrameUniforms(device);
-	frameCtx.updateFrameSet(device);
+	bool isGpuVersionValid = frameCtx.m_gpuAddressTable.IsVersionMismatched();
+	if (!isGpuVersionValid)
+	{
+		ASSERT(!isGpuVersionValid && "GPU is about to use stale address table!"); // On debug build just kills program
+		return; // Release mode early exit, honestly shouldn't ever occur
+	}
+	frameCtx.UpdateAddressTableIfDirty();
+	frameCtx.WriteFrameUniforms();
+	frameCtx.UpdateFrameSet();
 
 	VkCommandBufferBeginInfo cmdBeginInfo{};
 	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	VK_CHECK(vkBeginCommandBuffer(frameCtx.cmdBuffer, &cmdBeginInfo));
+	VK_CHECK(vkBeginCommandBuffer(frameCtx.m_commandBuffer, &cmdBeginInfo));
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
-		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE) {
-		if (!frameCtx.hasTimestampResultsPending) {
+	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue()) && frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
+	{
+		if (!frameCtx.m_bHasTimestampResultsPending)
+		{
 			vkCmdResetQueryPool(
-				frameCtx.cmdBuffer,
-				frameCtx.graphicsTimestampPool,
+				frameCtx.m_commandBuffer,
+				frameCtx.m_graphicsTimestampPool,
 				0u,
 				TIMESTAMP_QUERY_COUNT
 			);
 
-			frameCtx.timestampPassUsed.fill(false);
+			frameCtx.m_timestampPassUsed.fill(false);
 		}
 	}
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue())) {
+	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue())) {
 		vkCmdWriteTimestamp2(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			frameCtx.graphicsTimestampPool,
+			frameCtx.m_graphicsTimestampPool,
 			FRAME_BEGIN_QUERY
 		);
 	}
 
 	// Note: Currently only do cpu culling, once its in a compute this would need to be done way before main recording
-	if (frameCtx.transformsBufferUploadNeeded) {
-		if (isTemporalValid) {
-			BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.prevTransforms_GPU);
-		}
+	if (frameCtx.m_bTransformsBufferUploadNeeded)
+	{
+		if (isTemporalValid)
+			BarrierUtils::BufferTransferWriteToGraphicsRead(frameCtx.m_commandBuffer, frameCtx.m_prevTransforms_GPU);
 
-		BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.transforms_GPU);
-		frameCtx.transformsBufferUploadNeeded = false; // Should only set back to false in here
+		BarrierUtils::BufferTransferWriteToGraphicsRead(frameCtx.m_commandBuffer, frameCtx.m_transforms_GPU);
+		frameCtx.m_bTransformsBufferUploadNeeded = false; // Should only m_frameSet back to false in here
 	}
 
-	if (frameCtx.lightsBufferUploadNeeded) {
+	if (frameCtx.m_bLightsBufferUploadNeeded)
+	{
 		// Compute always reads this first
-		BarrierUtils::bufferComputeWriteToComputeRead(frameCtx.cmdBuffer, frameCtx.lights_GPU);
-		frameCtx.lightsBufferUploadNeeded = false; // Should only set back to false in here
+		BarrierUtils::BufferComputeWriteToComputeRead(frameCtx.m_commandBuffer, frameCtx.m_lights_GPU);
+		frameCtx.m_bLightsBufferUploadNeeded = false; // Should only m_frameSet back to false in here
 	}
 
-	if (hasVisibles) {
-		BarrierUtils::bufferTransferWriteToGraphicsRead(frameCtx.cmdBuffer, frameCtx.visibleInstances_GPU);
-		BarrierUtils::bufferTransferWriteToIndirectRead(frameCtx.cmdBuffer, frameCtx.indirectDraws_GPU);
+	if (hasVisibles)
+	{
+		BarrierUtils::BufferTransferWriteToGraphicsRead(frameCtx.m_commandBuffer, frameCtx.m_visibleInstances_GPU);
+		BarrierUtils::BufferTransferWriteToIndirectRead(frameCtx.m_commandBuffer, frameCtx.m_indirectDraws_GPU);
 	}
 
-	vkCmdBindDescriptorSets(frameCtx.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
+	vkCmdBindDescriptorSets(frameCtx.m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		Pipelines::m_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
-	vkCmdBindDescriptorSets(frameCtx.cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
-		Pipelines::_globalLayout.layout, 0, 2, sets, 0, nullptr);
+	vkCmdBindDescriptorSets(frameCtx.m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+		Pipelines::m_globalLayout.layout, 0, 2, sets, 0, nullptr);
 
 	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
+		frameCtx.m_commandBuffer,
 		opaque,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 	// Used in opaque shading to determine if on
 	if (hasVisibles) {
 		// Always bind global index buffer at start of visibles frame
-		const auto indexBuffer = gpuResources.getGPUAddrsBuffer(AddressBufferType::Index).buffer;
-		vkCmdBindIndexBuffer(frameCtx.cmdBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		const auto indexBuffer = gpuResources.GetGPUAddrsBuffer(BufferSlot::Index).m_buffer;
+		vkCmdBindIndexBuffer(frameCtx.m_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 		// ===============
 		// === PREPASS ===
@@ -482,7 +449,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		{
 			RenderPasses::ComputeScope hiZScope;
 			hiZScope.passID = PassID::HiZGeneration;
-			RenderPasses::hiZGenerationPass(frameCtx, hiZScope, profiler);
+			RenderPasses::HiZGenerationPass(frameCtx, hiZScope, profiler);
 		}
 
 		// ==================================
@@ -496,7 +463,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			};
 			clusterScope.workgroupSize = { 8u, 8u, 1u }; // Initial tile size
 
-			RenderPasses::clusteredPass(frameCtx, clusterScope, profiler);
+			RenderPasses::ClusterLightCullingPass(frameCtx, clusterScope, profiler);
 		}
 
 		glm::vec2 fullPixelSize = glm::vec2(scene.pixelSizes.x, scene.pixelSizes.y);
@@ -523,14 +490,14 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 			ssaoPush.ndcToViewMul_x_PixelSize = ssaoPush.ndcToViewMul * fullPixelSize;
 
-			ssaoPush.noiseIndex = frameCtx.frameIndex % 64u;
+			ssaoPush.noiseIndex = scene.temporal.x % 64u;
 			ssaoPush.isFinalPass = 0u; // Reset each frame
 
 			ssaoPush.blurDirection = { 1.0f, 0.0f }; // Horizontal first
 
 			RenderPasses::ComputeScope ssaoScope;
 			ssaoScope.passID = PassID::SSAO;
-			ssaoScope.setPush(ssaoPush);
+			ssaoScope.SetPush(ssaoPush);
 			ssaoScope.extent = { aoRaw.extent.width, aoRaw.extent.height };
 			ssaoScope.workgroupSize = workgroupSize;
 
@@ -539,13 +506,13 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		else {
 			// AO OFF
 			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
+				frameCtx.m_commandBuffer,
 				aoRaw,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 			);
 
 			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
+				frameCtx.m_commandBuffer,
 				bentNormals,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 			);
@@ -556,15 +523,15 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			// === CSM PASS ===
 			RenderPasses::GraphicsScope csmScope;
 			csmScope.passID = PassID::DirectionalCSM;
-			RenderPasses::shadowCSMPass(frameCtx, csmScope, profiler);
+			RenderPasses::DirectionalCSMPass(frameCtx, csmScope, profiler);
 
 
 			// ==========================
 			// === FLASH LIGHT SHADOW ===
-			if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
+			if (LightingSystem::_mainFlashLight.IsFlashLightOn()) {
 				RenderPasses::GraphicsScope flScope;
 				flScope.passID = PassID::FlashlightShadow;
-				RenderPasses::shadowFlashLightPass(
+				RenderPasses::ShadowFlashlightPass(
 					frameCtx,
 					flScope,
 					profiler);
@@ -576,15 +543,15 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			if (debug.enableSSS) {
 				RenderPasses::ComputeScope sssScope;
 				sssScope.passID = PassID::ScreenSpaceContactShadows;
-				sssScope.skipGroups = true;
-				sssScope.setPush(profiler.contactShadowsSettings);
-				RenderPasses::screenSpaceContactShadowsPass(frameCtx, sssScope, profiler);
+				sssScope.bSkipGroups = true;
+				sssScope.SetPush(profiler.contactShadowsSettings);
+				RenderPasses::SSContactShadowsPass(frameCtx, sssScope, profiler);
 			}
 		}
 
 		if (!debug.enableShadows || !debug.enableSSS) {
 			ImageUtils::transitionImage(
-				frameCtx.cmdBuffer,
+				frameCtx.m_commandBuffer,
 				shadowMask,
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 			);
@@ -613,7 +580,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		!hasVisibles)
 	{
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			depth,
 			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
@@ -629,8 +596,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	_forwardPush.activeLightCount = LightingSystem::getActiveLightCount();
 	_forwardPush.flashlightVP = LightingSystem::_mainFlashLight.viewProj;
 
-	RenderPasses::beginRendering(
-		frameCtx.cmdBuffer,
+	RenderPasses::BeginRendering(
+		frameCtx.m_commandBuffer,
 		{
 			opaqueAttach,
 			depthAttach
@@ -644,28 +611,28 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	RenderPasses::GraphicsScope skyboxScope;
 	skyboxScope = opaqueScope;
 	skyboxScope.passID = PassID::Skybox;
-	RenderPasses::skyboxPass(frameCtx, skyboxScope, profiler, hasVisibles);
+	RenderPasses::SkyboxPass(frameCtx, skyboxScope, profiler, hasVisibles);
 
 	if (hasVisibles) {
-		frameCtx.descriptorWriter.writePushImage(
+		frameCtx.m_descriptorWriter.WritePushImage(
 			PUSH_BINDING_READ_1,
 			aoRaw,
 			nearestClampSampler
 		);
 
-		frameCtx.descriptorWriter.writePushImage(
+		frameCtx.m_descriptorWriter.WritePushImage(
 			PUSH_BINDING_READ_2,
 			shadowMask,
 			nearestClampSampler
 		);
 
-		frameCtx.descriptorWriter.writePushImage(
+		frameCtx.m_descriptorWriter.WritePushImage(
 			PUSH_BINDING_READ_3,
 			bentNormals,
 			linearClampSampler
 		);
 
-		RenderPasses::opaqueMeshPass(frameCtx, opaqueScope, profiler);
+		RenderPasses::OpaqueForwardPass(frameCtx, opaqueScope, profiler);
 
 		// ======================
 		// === OBB DEBUG PASS ===
@@ -673,29 +640,29 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			RenderPasses::GraphicsScope obbScope;
 			obbScope = opaqueScope;
 			obbScope.passID = PassID::OBBLineView;
-			RenderPasses::obbLinePass(frameCtx, obbScope, profiler);
+			RenderPasses::ObbLineDebugPass(frameCtx, obbScope, profiler);
 		}
 	}
 
-	RenderPasses::endRendering(frameCtx.cmdBuffer);
+	RenderPasses::EndRendering(frameCtx.m_commandBuffer);
 
 	ImageUtils::transitionImage(
-		frameCtx.cmdBuffer,
+		frameCtx.m_commandBuffer,
 		opaque,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	// ========================
 	// === TRANSPARENT PASS ===
 	bool transparentVisible = false;
-	if (frameCtx.transparentRange.visibleCount > 0) {
+	if (frameCtx.m_transparentDrawRange.visibleCount > 0) {
 		transparentVisible = true;
 
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			transparentAccum,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			transparentReveal,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
@@ -713,8 +680,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		RenderPasses::GraphicsScope transparentScope;
 		transparentScope.passID = PassID::TransparentForward;
 
-		RenderPasses::beginRendering(
-			frameCtx.cmdBuffer,
+		RenderPasses::BeginRendering(
+			frameCtx.m_commandBuffer,
 			{
 				tAccumAttach,
 				tRevealAttach,
@@ -723,16 +690,16 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			{ fullExtent },
 			transparentScope);
 
-		RenderPasses::transparentMeshPass(frameCtx, transparentScope, profiler);
+		RenderPasses::TransparentForwardPass(frameCtx, transparentScope, profiler);
 
-		RenderPasses::endRendering(frameCtx.cmdBuffer);
+		RenderPasses::EndRendering(frameCtx.m_commandBuffer);
 
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			transparentAccum,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			transparentReveal,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -740,7 +707,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		tcScope.passID = PassID::TransparentResolve;
 		tcScope.extent = fullExtent;
 		tcScope.workgroupSize = workgroupSize;
-		RenderPasses::transparentResolvePass(frameCtx, tcScope, profiler);
+		RenderPasses::TransparentResolvePass(frameCtx, tcScope, profiler);
 	}
 
 	// ================================
@@ -752,11 +719,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		RenderPasses::ComputeScope volLightScope;
 		volLightScope.passID = PassID::VolumetricLighting;
-		volLightScope.setPush(volLightPush);
+		volLightScope.SetPush(volLightPush);
 		volLightScope.extent = { halfRes.x, halfRes.y };
 		volLightScope.workgroupSize = workgroupSize;
 
-		RenderPasses::volumetricLightingPass(frameCtx, volLightScope, profiler);
+		RenderPasses::VolumetricLightingPass(frameCtx, volLightScope, profiler);
 	}
 
 	// ================
@@ -766,7 +733,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		taaScope.passID = PassID::TAA;
 		taaScope.workgroupSize = workgroupSize;
 		taaScope.extent = fullExtent;
-		taaScope.setPush(profiler.taaSettings);
+		taaScope.SetPush(profiler.taaSettings);
 
 		RenderPasses::TAAPass(frameCtx, taaScope, profiler);
 	}
@@ -777,8 +744,8 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	exposureScope.passID = PassID::Exposure;
 	exposureScope.extent = fullExtent;
 	exposureScope.workgroupSize = workgroupSize;
-	const auto& luminanceBuf = gpuResources.getGPUAddrsBuffer(AddressBufferType::Luminance);
-	RenderPasses::exposurePass(
+	const auto& luminanceBuf = gpuResources.GetGPUAddrsBuffer(BufferSlot::Luminance);
+	RenderPasses::ExposurePass(
 		frameCtx,
 		exposureScope,
 		profiler,
@@ -791,7 +758,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// === LENS FLARE PASS ===
 	if (debug.enableLensFlare && hasVisibles) {
 		auto& lensFlarePush = profiler.lensFlareSettings;
-		const auto& brightFlare = ResourceManager::getFlareBright_Target();
+		const auto& brightFlare = ResourceManager::GetFlareBright_Target();
 		VkExtent2D quarterRes = {
 			brightFlare.extent.width,
 			brightFlare.extent.height
@@ -823,11 +790,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 		RenderPasses::ComputeScope lensFlareScope;
 		lensFlareScope.passID = PassID::LensFlare;
-		lensFlareScope.setPush(lensFlarePush);
+		lensFlareScope.SetPush(lensFlarePush);
 		lensFlareScope.extent = quarterRes;
 		lensFlareScope.workgroupSize = workgroupSize;
 
-		RenderPasses::lensFlarePass(frameCtx,
+		RenderPasses::LensFlarePass(frameCtx,
 			lensFlareScope,
 			profiler,
 			transparentVisible,
@@ -840,7 +807,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	// ============================
 	// === FINAL COMPOSITE PASS ===
 	exposureScope.passID = PassID::FinalComposite;
-	RenderPasses::finalCompositePass(frameCtx,
+	RenderPasses::FinalCompositePass(frameCtx,
 		exposureScope,
 		profiler,
 		transparentVisible,
@@ -857,7 +824,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 			{
 				RenderPasses::ComputeScope cmaa2Scope;
 				cmaa2Scope.passID = PassID::CMAA2;
-				cmaa2Scope.setPush(frameCtx.cmaa2Push);
+				cmaa2Scope.SetPush(frameCtx.m_cmaa2Push);
 
 				const uint32_t quadCountX = (fullExtent.width + 1u) >> 1u;
 				const uint32_t quadCountY = (fullExtent.height + 1u) >> 1u;
@@ -865,7 +832,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 				const uint32_t groupsY = (quadCountY + 13u) / 14u;
 				cmaa2Scope.groupCountX = groupsX;
 				cmaa2Scope.groupCountY = groupsY;
-				cmaa2Scope.skipGroups = true;
+				cmaa2Scope.bSkipGroups = true;
 				cmaa2Scope.extent = { groupsX * 16u, groupsY * 16u };
 				RenderPasses::CMAA2Pass(frameCtx, cmaa2Scope, profiler);
 				copyPostAAImage = true;
@@ -881,7 +848,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 				smaaScope.workgroupSize = workgroupSize;
 				smaaScope.extent = fullExtent;
 
-				smaaScope.setPush(gpuResources.smaaTextures);
+				smaaScope.SetPush(gpuResources.smaaTextures);
 
 				RenderPasses::SMAAPass(frameCtx, smaaScope, profiler);
 				copyPostAAImage = true;
@@ -905,11 +872,11 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 	}
 
 	if (!debug.enableChromaticAberration) {
-		auto& aaColor = ResourceManager::getAAColor_Target();
+		auto& aaColor = ResourceManager::GetAAColor_Target();
 		ImageUtils::imageCopy(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			(copyPostAAImage) ? aaColor : toneMap,
-			swp.images[frameCtx.swapchainImageIndex],
+			swp.images[frameCtx.m_swapchainImageIndex],
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			false);
@@ -921,7 +888,7 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		caScope.passID = PassID::ChromaticAberration;
 		caScope.extent = fullExtent;
 		caScope.workgroupSize = workgroupSize;
-		RenderPasses::chromaticAberrationPass(
+		RenderPasses::ChromaticAberrationPass(
 			frameCtx,
 			caScope,
 			profiler,
@@ -929,9 +896,9 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 		);
 
 		ImageUtils::imageCopy(
-			frameCtx.cmdBuffer,
-			ResourceManager::getPostNonAAComposite_Target(),
-			swp.images[frameCtx.swapchainImageIndex],
+			frameCtx.m_commandBuffer,
+			ResourceManager::GetPostNonAAComposite_Target(),
+			swp.images[frameCtx.m_swapchainImageIndex],
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			false);
@@ -939,45 +906,46 @@ void Renderer::recordRenderCommand(FrameContext& frameCtx, Profiler& profiler) {
 
 	if (debug.enableSettings || debug.enableProfilerView) {
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
+			frameCtx.m_commandBuffer,
+			swp.images[frameCtx.m_swapchainImageIndex],
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		EditorImgui::drawImgui(
-			frameCtx.cmdBuffer,
-			swp.images[frameCtx.swapchainImageIndex].imageView,
+			frameCtx.m_commandBuffer,
+			swp.images[frameCtx.m_swapchainImageIndex].imageView,
 			swp.extent,
 			false);
 
 		ImageUtils::transitionImage(
-			frameCtx.cmdBuffer,
-			swp.images[frameCtx.swapchainImageIndex],
+			frameCtx.m_commandBuffer,
+			swp.images[frameCtx.m_swapchainImageIndex],
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 	}
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue())) {
+	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue())) {
 		vkCmdWriteTimestamp2(
-			frameCtx.cmdBuffer,
+			frameCtx.m_commandBuffer,
 			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-			frameCtx.graphicsTimestampPool,
+			frameCtx.m_graphicsTimestampPool,
 			FRAME_END_QUERY
 		);
 	}
 
-	profiler.collectTracyGPU(frameCtx.cmdBuffer);
+	profiler.collectTracyGPU(frameCtx.m_commandBuffer);
 
-	if (Backend::queueSupportsTimestamps(Backend::getGraphicsQueue()) &&
-		frameCtx.graphicsTimestampPool != VK_NULL_HANDLE)
+	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue()) &&
+		frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
 	{
-		frameCtx.hasTimestampResultsPending = true;
+		frameCtx.m_bHasTimestampResultsPending = true;
 	}
 
-	VK_CHECK(vkEndCommandBuffer(frameCtx.cmdBuffer));
+	VK_CHECK(vkEndCommandBuffer(frameCtx.m_commandBuffer));
 }
 
 
-void Renderer::cleanupRenderer(const VkDevice device, const VmaAllocator alloc) {
-	cleanupFrameContexts(_frameContexts, device, alloc);
+void Renderer::Cleanup()
+{
+	CleanupFrameContexts(m_frameContexts, device, alloc);
 
 	if (_transferSync.semaphore != VK_NULL_HANDLE)
 		vkDestroySemaphore(device, _transferSync.semaphore, nullptr);

@@ -30,7 +30,7 @@ namespace Visibility {
 	// Built when copies change (multi-static slider), not per-frame.
 
 	struct VisibilityState {
-		std::vector<GPUInstance> instances; // per mesh X copy
+		std::vector<Instance> instances; // per mesh X copy
 		std::vector<AABB> worldAABBs;       // parallel to coreStatic
 		std::vector<uint32_t> transformIDs; // parallel to coreStatic
 		std::unordered_map<SceneID, CoreSlab> slabs;
@@ -39,7 +39,7 @@ namespace Visibility {
 		std::vector<uint32_t> leafIndex; // permutation used by BVH build
 		std::vector<BVHNode> bvh;
 
-		inline void cleanup() {
+		inline void Cleanup() {
 			instances.clear();
 			worldAABBs.clear();
 			transformIDs.clear();
@@ -53,9 +53,9 @@ namespace Visibility {
 
 	VisibilitySyncResult syncFromGlobalInstances(
 		VisibilityState& vs,
-		const std::vector<GlobalInstance>& gis, // authoritative per scene
+		const std::vector<VirtualInstance>& gis, // authoritative per scene
 		const std::unordered_map<SceneID, std::shared_ptr<ModelAsset>>& loaded,
-		const std::vector<GPUMeshData>& meshData,
+		const std::vector<Mesh>& meshData,
 		const std::vector<glm::mat4>& transforms);
 
 	void buildBVH(VisibilityState& vs);
@@ -66,7 +66,7 @@ namespace Visibility {
 	//void recomputeWorldRanges(
 	//	VisibilityState& vs,
 	//	const std::vector<DirtyRange>& ranges,
-	//	const std::vector<GPUMeshData>& meshData,
+	//	const std::vector<Mesh>& meshData,
 	//	const std::vector<glm::mat4>& transforms);
 
 	void applySyncResult(VisibilityState& vs, const VisibilitySyncResult& sync);
@@ -74,7 +74,7 @@ namespace Visibility {
 	void cullBVHCollect(
 		const VisibilityState& vs,
 		const Frustum& fr,
-		std::vector<GPUInstance>& visibleInstances,
+		std::vector<Instance>& visibleInstances,
 		std::vector<AABB>& visibleWorldAABBs,
 		bool disableCulling = false);
 
@@ -85,13 +85,13 @@ namespace Visibility {
 		const glm::mat4& lightView,
 		const glm::vec3& receiverLSMin,
 		const glm::vec3& receiverLSMax,
-		std::vector<GPUInstance>& out,
+		std::vector<Instance>& out,
 		const std::vector<uint32_t>& flags);
 
 	void cullBVHCollectShadowCasters(
 		const VisibilityState& vs,
 		const Frustum& frus,
-		std::vector<GPUInstance>& visibleInstances,
+		std::vector<Instance>& visibleInstances,
 		const std::vector<uint32_t>& flagsByMaterialID,
 		bool allowAlphaMasked);
 

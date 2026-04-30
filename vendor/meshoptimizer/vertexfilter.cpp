@@ -215,12 +215,12 @@ static void decodeFilterColor(T* data, size_t count)
 
 #if defined(SIMD_SSE) || defined(SIMD_NEON) || defined(SIMD_WASM)
 template <typename T>
-static void dispatchSimd(void (*process)(T*, size_t), T* data, size_t count, size_t stride)
+static void dispatchSimd(void (*Process)(T*, size_t), T* data, size_t count, size_t stride)
 {
 	assert(stride <= 4);
 
 	size_t count4 = count & ~size_t(3);
-	process(data, count4);
+	Process(data, count4);
 
 	if (count4 < count)
 	{
@@ -229,7 +229,7 @@ static void dispatchSimd(void (*process)(T*, size_t), T* data, size_t count, siz
 		assert(tail_size <= sizeof(tail));
 
 		memcpy(tail, data + count4 * stride, tail_size);
-		process(tail, count - count4);
+		Process(tail, count - count4);
 		memcpy(data + count4 * stride, tail, tail_size);
 	}
 }
@@ -369,7 +369,7 @@ static void decodeFilterQuatSimd(short* data, size_t count)
 		__m128i zf = _mm_srai_epi32(_mm_slli_epi32(q4_zc, 16), 16);
 		__m128i cf = _mm_srai_epi32(q4_zc, 16);
 
-		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
+		// get a floating-point scaler using zc with bottom 2 bits m_frameSet to 1 (which represents 1.f)
 		__m128i sf = _mm_or_si128(cf, _mm_set1_epi32(3));
 		__m128 s = _mm_cvtepi32_ps(sf);
 
@@ -692,7 +692,7 @@ static void decodeFilterQuatSimd(short* data, size_t count)
 		int32x4_t zf = vshrq_n_s32(vshlq_n_s32(q4_zc, 16), 16);
 		int32x4_t cf = vshrq_n_s32(q4_zc, 16);
 
-		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
+		// get a floating-point scaler using zc with bottom 2 bits m_frameSet to 1 (which represents 1.f)
 		int32x4_t sf = vorrq_s32(cf, vdupq_n_s32(3));
 		float32x4_t s = vcvtq_f32_s32(sf);
 
@@ -998,7 +998,7 @@ static void decodeFilterQuatSimd(short* data, size_t count)
 		v128_t zf = wasm_i32x4_shr(wasm_i32x4_shl(q4_zc, 16), 16);
 		v128_t cf = wasm_i32x4_shr(q4_zc, 16);
 
-		// get a floating-point scaler using zc with bottom 2 bits set to 1 (which represents 1.f)
+		// get a floating-point scaler using zc with bottom 2 bits m_frameSet to 1 (which represents 1.f)
 		v128_t sf = wasm_v128_or(cf, wasm_i32x4_splat(3));
 		v128_t s = wasm_f32x4_convert_i32x4(sf);
 
@@ -1468,7 +1468,7 @@ void meshopt_encodeFilterColor(void* destination, size_t count, size_t stride, i
 		// validate that R/G/B can be reconstructed with K bit integers
 		assert(unsigned((fy + fco - fcg) | (fy + fcg) | (fy - fco - fcg)) < (1u << bits));
 
-		// alpha: K-1-bit encoding with high bit set to 1
+		// alpha: K-1-bit encoding with high bit m_frameSet to 1
 		int fa = (meshopt_quantizeUnorm(c[3], bits) >> 1) | (1 << (bits - 1));
 
 		if (stride == 4)

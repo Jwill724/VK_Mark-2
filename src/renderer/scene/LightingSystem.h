@@ -1,14 +1,21 @@
 #pragma once
 
-#include "core/ResourceManager.h"
-#include "renderer/gpu/Descriptor.h"
+#include "ResourceTypes.h"
+#include "Bounds.h"
 
-enum class LightType : uint32_t {
-	Point = 0,
-	Spot = 1
+namespace RD = RendererDefinitions;
+
+//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = RD::MAX_LIGHTS * sizeof(uint32_t);
+
+enum class LightType
+{
+	Directional,
+	Point,
+	Spot
 };
 
-struct LocalLight {
+struct LocalLight
+{
 	LightType type = LightType::Point;
 
 	glm::vec3 position = glm::vec3(0.0f);
@@ -22,42 +29,44 @@ struct LocalLight {
 
 	float outerCos = 0.8f;
 	uint32_t flags = 0;
-	uint32_t shadowMapID = UINT32_MAX;
-	uint32_t cookieTexID = UINT32_MAX;
 };
 
-struct FlashLight {
+struct FlashLight final : public LocalLight
+{
 public:
 	Frustum frustum;
-	LocalLight spotLight;
 	glm::mat4 viewProj;
-	bool isFlashLightActive() const { return flashLightEnabled || flashLightFlagsChanged; }
-	bool isFlashLightOn() const { return flashLightEnabled; }
-	bool areFlagsToggled() const { return flashLightFlagsChanged; }
-	inline constexpr void toggleFlashLight() {
+	bool IsFlashLightActive() const { return flashLightEnabled || flashLightFlagsChanged; }
+	bool IsFlashLightOn() const { return flashLightEnabled; }
+	bool AreFlagsToggled() const { return flashLightFlagsChanged; }
+	inline constexpr void ToggleFlashLight() {
 		flashLightEnabled = !flashLightEnabled;
 
 		flashLightFlagsChanged = true;
 		if (flashLightEnabled) {
-			spotLight.flags |= LIGHT_FLAG_FLASHLIGHT;
-			spotLight.flags &= ~LIGHT_FLAG_FLASHLIGHT_OFF;
-			spotLight.flags |= LIGHT_FLAG_CASTS_SPOT_SHADOW;
+			flags |= RD::LIGHT_FLAG_FLASHLIGHT;
+			flags &= ~RD::LIGHT_FLAG_FLASHLIGHT_OFF;
+			flags |= RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 		}
 		else {
-			spotLight.flags &= ~LIGHT_FLAG_FLASHLIGHT;
-			spotLight.flags |= LIGHT_FLAG_FLASHLIGHT_OFF;
-			spotLight.flags &= ~LIGHT_FLAG_CASTS_SPOT_SHADOW;
+			flags &= ~RD::LIGHT_FLAG_FLASHLIGHT;
+			flags |= RD::LIGHT_FLAG_FLASHLIGHT_OFF;
+			flags &= ~RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 		}
 	}
 
-	inline constexpr void initFlags() {
-		spotLight.flags &= ~LIGHT_FLAG_FLASHLIGHT;
-		spotLight.flags |= LIGHT_FLAG_FLASHLIGHT_OFF;
-		spotLight.flags &= ~LIGHT_FLAG_CASTS_SPOT_SHADOW;
+	inline constexpr void InitFlags() {
+		flags &= ~RD::LIGHT_FLAG_FLASHLIGHT;
+		flags |= RD::LIGHT_FLAG_FLASHLIGHT_OFF;
+		flags &= ~RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
+	}
+
+	inline void Init() {
+
 	}
 
 	// position and direction based off camera
-	bool updateFlashLight(
+	bool UpdateFlashLight(
 		std::vector<LocalLight>& globalLightList,
 		const uint32_t shadowMapID,
 		const uint32_t cookieTexID,
@@ -81,19 +90,17 @@ private:
 	bool flashLightEnabled = false;
 };
 
-//struct LightHandle {
+//struct LightHandle
+// {
 //	uint32_t index = 0u;
 //	uint32_t generation = 0u;
 //};
 
-constexpr size_t MAX_GPU_LIGHTS_SIZE_BYTES = MAX_LIGHTS * sizeof(LocalLight);
-constexpr size_t MAX_GPU_VISIBLE_LIGHT_ID_SIZE_BYTES = MAX_LIGHTS * sizeof(uint32_t);
-//constexpr uint32_t MAX_LIGHTS_PER_CLUSTER = 256u;
-//constexpr uint32_t MAX_LIGHTS_PER_CLUSTER = 128u;
 constexpr uint32_t MAX_LIGHTS_PER_CLUSTER = 512u;
-constexpr uint32_t MAX_VISIBLE_LIGHTS = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
+constexpr uint32_t MAX_VISIBLE_LIGHTS = RD::MAX_LIGHTS - RD::LIGHT_LIST_STATIC_COUNT;
 
-struct ClusterBufferSizes {
+struct ClusterBufferSizes
+{
 	// Derived counts
 	uint32_t tileCountX = 0;
 	uint32_t tileCountY = 0;
@@ -155,7 +162,7 @@ namespace LightingSystem {
 
 		std::vector<uint32_t> highlightedIDs;
 
-		void clear() {
+		void Clear() {
 			activeLightIDs.clear();
 			newCopiedIDs.clear();
 			cleanupIDs.clear();
@@ -195,5 +202,5 @@ namespace LightingSystem {
 	extern FlashLight _mainFlashLight;
 
 	void init(GPUResources& resources);
-	void cleanup();
+	void Cleanup();
 }

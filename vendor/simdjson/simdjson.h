@@ -316,7 +316,7 @@ using std::size_t;
 #endif
 
 #if defined(NDEBUG) || defined(__OPTIMIZE__) || (defined(_MSC_VER) && !defined(_DEBUG))
-// If NDEBUG is set, or __OPTIMIZE__ is set, or we are under MSVC in release mode,
+// If NDEBUG is m_frameSet, or __OPTIMIZE__ is m_frameSet, or we are under MSVC in release mode,
 // then do away with asserts and use __assume.
 #if SIMDJSON_VISUAL_STUDIO
 #define SIMDJSON_UNREACHABLE() __assume(0)
@@ -545,8 +545,8 @@ double from_chars(const char *first, const char* end) noexcept;
     /**
      * Windows users need to do some extra work when building
      * or using a dynamic library (DLL). When building, we need
-     * to set SIMDJSON_DLLIMPORTEXPORT to __declspec(dllexport).
-     * When *using* the DLL, the user needs to set
+     * to m_frameSet SIMDJSON_DLLIMPORTEXPORT to __declspec(dllexport).
+     * When *using* the DLL, the user needs to m_frameSet
      * SIMDJSON_DLLIMPORTEXPORT __declspec(dllimport).
      *
      * Static libraries not need require such work.
@@ -558,12 +558,12 @@ double from_chars(const char *first, const char* end) noexcept;
      * Non-Windows systems do not have this complexity.
      */
     #if SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY
-    // We set SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY when we build a DLL under Windows.
+    // We m_frameSet SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY when we build a DLL under Windows.
     // It should never happen that both SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY and
-    // SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY are set.
+    // SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY are m_frameSet.
     #define SIMDJSON_DLLIMPORTEXPORT __declspec(dllexport)
     #elif SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY
-    // Windows user who call a dynamic library should set SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY to 1.
+    // Windows user who call a dynamic library should m_frameSet SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY to 1.
     #define SIMDJSON_DLLIMPORTEXPORT __declspec(dllimport)
     #else
     // We assume by default static linkage
@@ -2349,24 +2349,24 @@ namespace std {
 /// If EXPR is an error, returns it.
 #define SIMDJSON_TRY(EXPR) { auto _err = (EXPR); if (_err) { return _err; } }
 
-// Unless the programmer has already set SIMDJSON_DEVELOPMENT_CHECKS,
-// we want to set it under debug builds. We detect a debug build
-// under Visual Studio when the _DEBUG macro is set. Under the other
+// Unless the programmer has already m_frameSet SIMDJSON_DEVELOPMENT_CHECKS,
+// we want to m_frameSet it under debug builds. We detect a debug build
+// under Visual Studio when the _DEBUG macro is m_frameSet. Under the other
 // compilers, we use the fact that they define __OPTIMIZE__ whenever
 // they allow optimizations.
 // It is possible that this could miss some cases where SIMDJSON_DEVELOPMENT_CHECKS
-// is helpful, but the programmer can set the macro SIMDJSON_DEVELOPMENT_CHECKS.
-// It could also wrongly set SIMDJSON_DEVELOPMENT_CHECKS (e.g., if the programmer
+// is helpful, but the programmer can m_frameSet the macro SIMDJSON_DEVELOPMENT_CHECKS.
+// It could also wrongly m_frameSet SIMDJSON_DEVELOPMENT_CHECKS (e.g., if the programmer
 // sets _DEBUG in a release build under Visual Studio, or if some compiler fails to
-// set the __OPTIMIZE__ macro).
+// m_frameSet the __OPTIMIZE__ macro).
 #ifndef SIMDJSON_DEVELOPMENT_CHECKS
 #ifdef _MSC_VER
-// Visual Studio seems to set _DEBUG for debug builds.
+// Visual Studio seems to m_frameSet _DEBUG for debug builds.
 #ifdef _DEBUG
 #define SIMDJSON_DEVELOPMENT_CHECKS 1
 #endif // _DEBUG
 #else // _MSC_VER
-// All other compilers appear to set __OPTIMIZE__ to a positive integer
+// All other compilers appear to m_frameSet __OPTIMIZE__ to a positive integer
 // when the compiler is optimizing.
 #ifndef __OPTIMIZE__
 #define SIMDJSON_DEVELOPMENT_CHECKS 1
@@ -2624,7 +2624,7 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -2632,7 +2632,7 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -2715,7 +2715,7 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -2723,7 +2723,7 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_warn_unused simdjson_inline error_code get(T &value) && noexcept;
 
@@ -3822,7 +3822,7 @@ struct padded_string final {
    * ## Windows and Unicode
    *
    * Windows users who need to read files with non-ANSI characters in the
-   * name should set their code page to UTF-8 (65001) before calling this
+   * name should m_frameSet their code page to UTF-8 (65001) before calling this
    * function. This should be the default with Windows 11 and better.
    * Further, they may use the AreFileApisANSI function to determine whether
    * the filename is interpreted using the ANSI or the system default OEM
@@ -3956,7 +3956,7 @@ public:
    * @param s The string.
    * @param len The length of the string (not including padding).
    * @param capacity The allocated length of the string, including padding. If the capacity is less
-   *       than the length, the capacity will be set to the length.
+   *       than the length, the capacity will be m_frameSet to the length.
    */
   explicit inline padded_string_view(const char* s, size_t len, size_t capacity) noexcept;
   /** overload explicit inline padded_string_view(const char* s, size_t len) noexcept */
@@ -3978,7 +3978,7 @@ public:
    *
    * @param s The string.
    * @param capacity The allocated length of the string, including padding. If the capacity is less
-   *      than the length, the capacity will be set to the length.
+   *      than the length, the capacity will be m_frameSet to the length.
    */
   explicit inline padded_string_view(std::string_view s, size_t capacity) noexcept;
 
@@ -4308,8 +4308,8 @@ namespace dom {
 /** The default batch size for parser.parse_many() and parser.load_many() */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -4790,7 +4790,7 @@ public:
    * ## Windows and Unicode
    *
    * Windows users who need to read files with non-ANSI characters in the
-   * name should set their code page to UTF-8 (65001) before calling this
+   * name should m_frameSet their code page to UTF-8 (65001) before calling this
    * function. This should be the default with Windows 11 and better.
    * Further, they may use the AreFileApisANSI function to determine whether
    * the filename is interpreted using the ANSI or the system default OEM
@@ -4889,7 +4889,7 @@ public:
    *   simdjson::dom::parser parser;
    *   simdjson::dom::element element = parser.parse(json, json_len);
    *
-   * If you set realloc_if_needed to false (e.g., parser.parse(json, json_len, false)),
+   * If you m_frameSet realloc_if_needed to false (e.g., parser.parse(json, json_len, false)),
    * you must provide a buffer with at least SIMDJSON_PADDING extra bytes at the end.
    * The benefit of setting realloc_if_needed to false is that you avoid a temporary
    * memory allocation and a copy.
@@ -5081,7 +5081,7 @@ public:
    *                   parse as many documents as possible in one tight loop.
    *                   Defaults to 1MB (as simdjson::dom::DEFAULT_BATCH_SIZE), which has been a reasonable sweet
    *                   spot in our tests.
-   *                   If you set the batch_size to a value smaller than simdjson::dom::MINIMAL_BATCH_SIZE
+   *                   If you m_frameSet the batch_size to a value smaller than simdjson::dom::MINIMAL_BATCH_SIZE
    *                   (currently 32B), it will be replaced by simdjson::dom::MINIMAL_BATCH_SIZE.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - IO_ERROR if there was an error opening or reading the file.
@@ -5256,8 +5256,8 @@ public:
    * to it.
    *
    * Note: To avoid limiting the memory to an absurd value, such as zero or two bytes,
-   * iff you try to set max_capacity to a value lower than MINIMAL_DOCUMENT_CAPACITY,
-   * then the maximal capacity is set to MINIMAL_DOCUMENT_CAPACITY.
+   * iff you try to m_frameSet max_capacity to a value lower than MINIMAL_DOCUMENT_CAPACITY,
+   * then the maximal capacity is m_frameSet to MINIMAL_DOCUMENT_CAPACITY.
    *
    * This call will not allocate or deallocate, even if capacity is currently above max_capacity.
    *
@@ -5618,7 +5618,7 @@ private:
 
   /**
    * Pass the next batch through stage 1 and return when finished.
-   * When threads are enabled, this may wait for the stage 1 thread to finish.
+   * When threads are enabled, this may Wait for the stage 1 thread to finish.
    */
   inline void load_batch() noexcept;
 
@@ -5927,7 +5927,7 @@ public:
    *
    * @tparam T bool, double, uint64_t, int64_t, std::string_view, const char *, dom::array, dom::object
    *
-   * @param value The variable to set to the value. May not be set if there is an error.
+   * @param value The variable to m_frameSet to the value. May not be m_frameSet if there is an error.
    *
    * @returns The error that occurred, or SUCCESS if there was no error.
    */
@@ -5946,8 +5946,8 @@ public:
    *
    * @tparam T bool, double, uint64_t, int64_t, std::string_view, const char *, dom::array, dom::object
    *
-   * @param value The variable to set to the given type. value is undefined if there is an error.
-   * @param error The variable to store the error. error is set to error_code::SUCCEED if there is an error.
+   * @param value The variable to m_frameSet to the given type. value is undefined if there is an error.
+   * @param error The variable to store the error. error is m_frameSet to error_code::SUCCEED if there is an error.
    */
   template<typename T>
   inline void tie(T &value, error_code &error) && noexcept;
@@ -8283,9 +8283,9 @@ namespace dom {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -8306,7 +8306,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -10253,7 +10253,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -10277,7 +10277,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -10315,7 +10315,7 @@ simdjson_inline uint64_t reverse_bits(uint64_t input_num) {
 
 /**
  * Flips bit at index 63 - lz. Thus if you have 'leading_zeroes' leading zeroes,
- * then this will set to zero the leading bit. It is possible for leading_zeroes to be
+ * then this will m_frameSet to zero the leading bit. It is possible for leading_zeroes to be
  * greating or equal to 63 in which case we trigger undefined behavior, but the output
  * of such undefined behavior is never used.
  **/
@@ -11099,7 +11099,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -11413,7 +11413,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -11421,7 +11421,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -11539,7 +11539,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -11661,7 +11661,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -12976,7 +12976,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #ifdef _MSC_VER
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -13207,7 +13207,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -13521,7 +13521,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -13529,7 +13529,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -13647,7 +13647,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -13769,7 +13769,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -15078,10 +15078,10 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -15807,7 +15807,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -16121,7 +16121,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -16129,7 +16129,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -16247,7 +16247,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -16369,7 +16369,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -17674,10 +17674,10 @@ class implementation;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -18404,7 +18404,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -18718,7 +18718,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -18726,7 +18726,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -18844,7 +18844,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -18966,7 +18966,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -20307,7 +20307,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else  // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -20325,7 +20325,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -21118,7 +21118,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -21432,7 +21432,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -21440,7 +21440,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -21558,7 +21558,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -21680,7 +21680,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -22992,7 +22992,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -23035,7 +23035,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -23053,7 +23053,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -23183,7 +23183,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -23622,7 +23622,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -23640,7 +23640,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -24149,7 +24149,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -24463,7 +24463,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -24471,7 +24471,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -24589,7 +24589,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -24711,7 +24711,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -26657,7 +26657,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -26971,7 +26971,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -26979,7 +26979,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -27097,7 +27097,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -27219,7 +27219,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -29178,7 +29178,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -29492,7 +29492,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -29500,7 +29500,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -29618,7 +29618,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -29740,7 +29740,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -31106,7 +31106,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -31130,7 +31130,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -31168,7 +31168,7 @@ simdjson_inline uint64_t reverse_bits(uint64_t input_num) {
 
 /**
  * Flips bit at index 63 - lz. Thus if you have 'leading_zeroes' leading zeroes,
- * then this will set to zero the leading bit. It is possible for leading_zeroes to be
+ * then this will m_frameSet to zero the leading bit. It is possible for leading_zeroes to be
  * greating or equal to 63 in which case we trigger undefined behavior, but the output
  * of such undefined behavior is never used.
  **/
@@ -32610,9 +32610,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -33051,7 +33051,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -33397,7 +33397,7 @@ namespace simdjson {
 namespace arm64 {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -34243,7 +34243,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -34342,8 +34342,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -34563,7 +34563,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -34590,7 +34590,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -34600,7 +34600,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -35189,7 +35189,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -35262,9 +35262,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -35462,7 +35462,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -35496,7 +35496,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -35844,9 +35844,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -36597,7 +36597,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -36637,7 +36637,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -36847,7 +36847,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -38166,7 +38166,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -39075,9 +39075,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -39098,7 +39098,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -39357,7 +39357,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -42768,7 +42768,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #ifdef _MSC_VER
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -43657,9 +43657,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -44098,7 +44098,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -44444,7 +44444,7 @@ namespace simdjson {
 namespace fallback {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -45290,7 +45290,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -45389,8 +45389,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -45610,7 +45610,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -45637,7 +45637,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -45647,7 +45647,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -46236,7 +46236,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -46309,9 +46309,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -46509,7 +46509,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -46543,7 +46543,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -46891,9 +46891,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -47644,7 +47644,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -47684,7 +47684,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -47894,7 +47894,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -49213,7 +49213,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -50122,9 +50122,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -50145,7 +50145,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -50404,7 +50404,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -53809,10 +53809,10 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -55196,9 +55196,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -55637,7 +55637,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -55983,7 +55983,7 @@ namespace simdjson {
 namespace haswell {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -56829,7 +56829,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -56928,8 +56928,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -57149,7 +57149,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -57176,7 +57176,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -57186,7 +57186,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -57775,7 +57775,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -57848,9 +57848,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -58048,7 +58048,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -58082,7 +58082,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -58430,9 +58430,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -59183,7 +59183,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -59223,7 +59223,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -59433,7 +59433,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -60752,7 +60752,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -61661,9 +61661,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -61684,7 +61684,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -61943,7 +61943,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -65344,10 +65344,10 @@ class implementation;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -66732,9 +66732,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -67173,7 +67173,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -67519,7 +67519,7 @@ namespace simdjson {
 namespace icelake {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -68365,7 +68365,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -68464,8 +68464,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -68685,7 +68685,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -68712,7 +68712,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -68722,7 +68722,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -69311,7 +69311,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -69384,9 +69384,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -69584,7 +69584,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -69618,7 +69618,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -69966,9 +69966,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -70719,7 +70719,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -70759,7 +70759,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -70969,7 +70969,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -72288,7 +72288,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -73197,9 +73197,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -73220,7 +73220,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -73479,7 +73479,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -76916,7 +76916,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else  // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -76934,7 +76934,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -78385,9 +78385,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -78826,7 +78826,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -79172,7 +79172,7 @@ namespace simdjson {
 namespace ppc64 {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -80018,7 +80018,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -80117,8 +80117,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -80338,7 +80338,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -80365,7 +80365,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -80375,7 +80375,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -80964,7 +80964,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -81037,9 +81037,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -81237,7 +81237,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -81271,7 +81271,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -81619,9 +81619,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -82372,7 +82372,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -82412,7 +82412,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -82622,7 +82622,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -83941,7 +83941,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -84850,9 +84850,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -84873,7 +84873,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -85132,7 +85132,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -88540,7 +88540,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -88583,7 +88583,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -88601,7 +88601,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -88731,7 +88731,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -89170,7 +89170,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -89188,7 +89188,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -90355,9 +90355,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -90796,7 +90796,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -91142,7 +91142,7 @@ namespace simdjson {
 namespace westmere {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -91988,7 +91988,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -92087,8 +92087,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -92308,7 +92308,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -92335,7 +92335,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -92345,7 +92345,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -92934,7 +92934,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -93007,9 +93007,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -93207,7 +93207,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -93241,7 +93241,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -93589,9 +93589,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -94342,7 +94342,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -94382,7 +94382,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -94592,7 +94592,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -95911,7 +95911,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -96820,9 +96820,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -96843,7 +96843,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -97102,7 +97102,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -101802,9 +101802,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -102243,7 +102243,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -102589,7 +102589,7 @@ namespace simdjson {
 namespace lsx {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -103435,7 +103435,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -103534,8 +103534,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -103755,7 +103755,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -103782,7 +103782,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -103792,7 +103792,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -104381,7 +104381,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -104454,9 +104454,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -104654,7 +104654,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -104688,7 +104688,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -105036,9 +105036,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -105789,7 +105789,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -105829,7 +105829,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -106039,7 +106039,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -107358,7 +107358,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -108267,9 +108267,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -108290,7 +108290,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -108549,7 +108549,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }
@@ -113262,9 +113262,9 @@ public:
    *
    * Supported types: object, array, raw_json_string, string_view, uint64_t, int64_t, double, bool
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template <typename T>
   simdjson_inline error_code get(T &out)
@@ -113703,7 +113703,7 @@ public:
    * get_number_type() is number_type::signed_integer if we have an
    * integer that is less than 9223372036854775808.
    * get_number_type() is number_type::big_integer for integers that do not fit in 64 bits,
-   * in which case the digit_count is set to the length of the big integer string.
+   * in which case the digit_count is m_frameSet to the length of the big integer string.
    * Otherwise, get_number_type() has value number_type::floating_point_number.
    *
    * This function requires processing the number string, but it is expected
@@ -114049,7 +114049,7 @@ namespace simdjson {
 namespace lasx {
 namespace ondemand {
 
-// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is set. Importantly, it is critical
+// Logging should be free unless SIMDJSON_VERBOSE_LOGGING is m_frameSet. Importantly, it is critical
 // that the call to the log functions be side-effect free. Thus, for example, you should not
 // create temporary std::string instances.
 namespace logger {
@@ -114895,7 +114895,7 @@ private:
 
 
   /**
-   * This will set the inner pointer to zero, effectively making
+   * This will m_frameSet the inner pointer to zero, effectively making
    * this instance unusable.
    */
   simdjson_inline void consume() noexcept { buf = nullptr; }
@@ -114994,8 +114994,8 @@ namespace ondemand {
  */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -115215,7 +115215,7 @@ public:
    *                   separated by commas instead of whitespace. It comes with a performance
    *                   penalty because the entire document is indexed at once (and the document must be
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
-   *                   is effectively ignored, as it is set to at least the document size.
+   *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
@@ -115242,7 +115242,7 @@ public:
   simdjson_inline void set_max_capacity(size_t max_capacity) noexcept;
   /**
    * The maximum depth of this parser (the most deeply nested objects and arrays it can process).
-   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * This parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    */
@@ -115252,7 +115252,7 @@ public:
    * Ensure this parser has enough memory to process JSON documents up to `capacity` bytes in length
    * and `max_depth` depth.
    *
-   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is set to true.
+   * The max_depth parameter is only relevant when the macro SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to true.
    * The document's instance current_depth() method should be used to monitor the parsing
    * depth and limit it if desired.
    *
@@ -115841,7 +115841,7 @@ public:
    * Cast this JSON value to a value when the document is an object or an array.
    *
    * You must not have begun iterating through the object or array. When
-   * SIMDJSON_DEVELOPMENT_CHECKS is set to 1 (which is the case when building in Debug mode
+   * SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet to 1 (which is the case when building in Debug mode
    * by default), and you have already begun iterating,
    * you will get an OUT_OF_ORDER_ITERATION error. If you have begun iterating, you can use
    * rewind() to reset the document to its initial state before calling this method.
@@ -115914,9 +115914,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -116114,7 +116114,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to
@@ -116148,7 +116148,7 @@ public:
    * invalidates previous field values: it makes them unsafe. E.g., the array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -116496,9 +116496,9 @@ public:
    *
    * Be mindful that the document instance must remain in scope while you are accessing object, array and value instances.
    *
-   * @param out This is set to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
+   * @param out This is m_frameSet to a value of the given type, parsed from the JSON. If there is an error, this may not be initialized.
    * @returns INCORRECT_TYPE If the JSON value is not an object.
-   * @returns SUCCESS If the parse succeeded and the out parameter was set to the value.
+   * @returns SUCCESS If the parse succeeded and the out parameter was m_frameSet to the value.
    */
   template<typename T>
   simdjson_inline error_code get(T &out) &
@@ -117249,7 +117249,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a
@@ -117289,7 +117289,7 @@ public:
    * from  `content["bids"]` becomes invalid when you call `content["asks"]`. The array
    * given by content["bids"].get_array() should not be accessed after you have called
    * content["asks"].get_array(). You can detect such mistakes by first compiling and running
-   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` set to 1): an
+   * the code in Debug mode (or with the macro `SIMDJSON_DEVELOPMENT_CHECKS` m_frameSet to 1): an
    * OUT_OF_ORDER_ITERATION error is generated.
    *
    * You are expected to access keys only once. You should access the value corresponding to a key
@@ -117499,7 +117499,7 @@ private:
   /**
    * The underlying JSON iterator.
    *
-   * PERF NOTE: expected to be elided in favor of the parent document: this is set when the object
+   * PERF NOTE: expected to be elided in favor of the parent document: this is m_frameSet when the object
    * is first used, and never changes afterwards.
    */
   value_iterator iter{};
@@ -118818,7 +118818,7 @@ simdjson_inline simdjson_result<value> document::get_value() noexcept {
   if (!iter.at_root()) { return OUT_OF_ORDER_ITERATION; }
 #endif
   // assert_at_root() serves two purposes: in Debug mode, whether or not
-  // SIMDJSON_DEVELOPMENT_CHECKS is set or not, it checks that we are at the root of
+  // SIMDJSON_DEVELOPMENT_CHECKS is m_frameSet or not, it checks that we are at the root of
   // the document (this will typically be redundant). In release mode, it generates
   // SIMDJSON_ASSUME statements to allow the compiler to make assumptions.
   iter.assert_at_root();
@@ -119727,9 +119727,9 @@ namespace ondemand {
 #ifdef SIMDJSON_THREADS_ENABLED
 
 inline void stage1_worker::finish() {
-  // After calling "run" someone would call finish() to wait
+  // After calling "run" someone would call finish() to Wait
   // for the end of the processing.
-  // This function will wait until either the thread has done
+  // This function will Wait until either the thread has done
   // the processing or, else, the destructor has been called.
   std::unique_lock<std::mutex> lock(locking_mutex);
   cond_var.wait(lock, [this]{return has_work == false;});
@@ -119750,7 +119750,7 @@ inline void stage1_worker::start_thread() {
   thread = std::thread([this]{
       while(true) {
         std::unique_lock<std::mutex> thread_lock(locking_mutex);
-        // We wait for either "run" or "stop_thread" to be called.
+        // We Wait for either "run" or "stop_thread" to be called.
         cond_var.wait(thread_lock, [this]{return has_work || !can_work;});
         // If, for some reason, the stop_thread() method was called (i.e., the
         // destructor of stage1_worker is called, then we want to immediately destroy
@@ -120009,7 +120009,7 @@ inline void document_stream::next_document() noexcept {
   // Go to next place where depth=0 (document depth)
   error = doc.iter.skip_child(0);
   if (error) { return; }
-  // Always set depth=1 at the start of document
+  // Always m_frameSet depth=1 at the start of document
   doc.iter._depth = 1;
   // consume comma if comma separated is allowed
   if (allow_comma_separated) { doc.iter.consume_character(','); }

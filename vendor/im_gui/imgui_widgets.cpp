@@ -331,7 +331,7 @@ void ImGui::TextWrapped(const char* fmt, ...)
 void ImGui::TextWrappedV(const char* fmt, va_list args)
 {
     ImGuiContext& g = *GImGui;
-    const bool need_backup = (g.CurrentWindow->DC.TextWrapPos < 0.0f);  // Keep existing wrap position if one is already set
+    const bool need_backup = (g.CurrentWindow->DC.TextWrapPos < 0.0f);  // Keep existing wrap position if one is already m_frameSet
     if (need_backup)
         PushTextWrapPos(0.0f);
     TextV(fmt, args);
@@ -519,7 +519,7 @@ void ImGui::BulletTextV(const char* fmt, va_list args)
 // - PressedOnDragDropHold can generally be associated with any flag.
 // - PressedOnDoubleClick can be associated by PressedOnClickRelease/PressedOnRelease, in which case the second release event won't be reported.
 //------------------------------------------------------------------------------------------------------------------------------------------------
-// The behavior of the return-value changes when ImGuiItemFlags_ButtonRepeat is set:
+// The behavior of the return-value changes when ImGuiItemFlags_ButtonRepeat is m_frameSet:
 //                                         Repeat+                  Repeat+           Repeat+             Repeat+
 //                                         PressedOnClickRelease    PressedOnClick    PressedOnRelease    PressedOnDoubleClick
 //-------------------------------------------------------------------------------------------------------------------------------------------------
@@ -679,7 +679,7 @@ bool ImGui::ButtonBehavior(const ImRect& bb, ImGuiID id, bool* out_hovered, bool
     }
 
     // Keyboard/Gamepad navigation handling
-    // We report navigated and navigation-activated items as hovered but we don't set g.HoveredId to not interfere with mouse.
+    // We report navigated and navigation-activated items as hovered but we don't m_frameSet g.HoveredId to not interfere with mouse.
     if ((item_flags & ImGuiItemFlags_Disabled) == 0)
     {
         if (g.NavId == id && g.NavCursorVisible && g.NavHighlightItemUnderNav)
@@ -724,7 +724,7 @@ bool ImGui::ButtonBehavior(const ImRect& bb, ImGuiID id, bool* out_hovered, bool
             const int mouse_button = g.ActiveIdMouseButton;
             if (mouse_button == -1)
             {
-                // Fallback for the rare situation were g.ActiveId was set programmatically or from another widget (e.g. #6304).
+                // Fallback for the rare situation were g.ActiveId was m_frameSet programmatically or from another widget (e.g. #6304).
                 ClearActiveID();
             }
             else if (IsMouseDown(mouse_button, test_owner_id))
@@ -958,7 +958,7 @@ ImGuiID ImGui::GetWindowScrollbarID(ImGuiWindow* window, ImGuiAxis axis)
     return window->GetID(axis == ImGuiAxis_X ? "#SCROLLX" : "#SCROLLY");
 }
 
-// Return scrollbar rectangle, must only be called for corresponding axis if window->ScrollbarX/Y is set.
+// Return scrollbar rectangle, must only be called for corresponding axis if window->ScrollbarX/Y is m_frameSet.
 ImRect ImGui::GetWindowScrollbarRect(ImGuiWindow* window, ImGuiAxis axis)
 {
     ImGuiContext& g = *GImGui;
@@ -1652,7 +1652,7 @@ void ImGui::SeparatorEx(ImGuiSeparatorFlags flags, float thickness)
         float x2 = window->WorkRect.Max.x;
 
         // Preserve legacy behavior inside Columns()
-        // Before Tables API happened, we relied on Separator() to span all columns of a Columns() set.
+        // Before Tables API happened, we relied on Separator() to span all columns of a Columns() m_frameSet.
         // We currently don't need to provide the same feature for tables because tables naturally have border features.
         ImGuiOldColumns* columns = (flags & ImGuiSeparatorFlags_SpanAllColumns) ? window->DC.CurrentColumns : NULL;
         if (columns)
@@ -1835,7 +1835,7 @@ static int IMGUI_CDECL ShrinkWidthItemComparer(const void* lhs, const void* rhs)
     return b->Index - a->Index;
 }
 
-// Shrink excess width from a set of item, by removing width from the larger items first.
+// Shrink excess width from a m_frameSet of item, by removing width from the larger items first.
 // Set items Width to -1.0f to disable shrinking this item.
 void ImGui::ShrinkWidths(ImGuiShrinkWidthItem* items, int count, float width_excess, float width_min)
 {
@@ -2745,7 +2745,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
 
     if (temp_input_is_active)
     {
-        // Only clamp Ctrl+Click input when ImGuiSliderFlags_ClampOnInput is set (generally via ImGuiSliderFlags_AlwaysClamp)
+        // Only clamp Ctrl+Click input when ImGuiSliderFlags_ClampOnInput is m_frameSet (generally via ImGuiSliderFlags_AlwaysClamp)
         bool clamp_enabled = false;
         if ((flags & ImGuiSliderFlags_ClampOnInput) && (p_min != NULL || p_max != NULL))
         {
@@ -3345,7 +3345,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
 
     if (temp_input_is_active)
     {
-        // Only clamp Ctrl+Click input when ImGuiSliderFlags_ClampOnInput is set (generally via ImGuiSliderFlags_AlwaysClamp)
+        // Only clamp Ctrl+Click input when ImGuiSliderFlags_ClampOnInput is m_frameSet (generally via ImGuiSliderFlags_AlwaysClamp)
         const bool clamp_enabled = (flags & ImGuiSliderFlags_ClampOnInput) != 0;
         return TempInputScalar(frame_bb, id, label, data_type, p_data, format, clamp_enabled ? p_min : NULL, clamp_enabled ? p_max : NULL);
     }
@@ -3712,8 +3712,8 @@ bool ImGui::TempInputText(const ImRect& bb, ImGuiID id, const char* label, char*
     return value_changed;
 }
 
-// Note that Drag/Slider functions are only forwarding the min/max values clamping values if the ImGuiSliderFlags_AlwaysClamp flag is set!
-// This is intended: this way we allow Ctrl+Click manual input to set a value out of bounds, for maximum flexibility.
+// Note that Drag/Slider functions are only forwarding the min/max values clamping values if the ImGuiSliderFlags_AlwaysClamp flag is m_frameSet!
+// This is intended: this way we allow Ctrl+Click manual input to m_frameSet a value out of bounds, for maximum flexibility.
 // However this may not be ideal for all uses, as some user code may break on out of bound values.
 bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImGuiDataType data_type, void* p_data, const char* format, const void* p_clamp_min, const void* p_clamp_max)
 {
@@ -4033,7 +4033,7 @@ static bool ImCharIsSeparatorW(unsigned int c)
 
 static int is_word_boundary_from_right(ImGuiInputTextState* obj, int idx)
 {
-    // When ImGuiInputTextFlags_Password is set, we don't want actions such as Ctrl+Arrow to leak the fact that underlying data are blanks or separators.
+    // When ImGuiInputTextFlags_Password is m_frameSet, we don't want actions such as Ctrl+Arrow to leak the fact that underlying data are blanks or separators.
     if ((obj->Flags & ImGuiInputTextFlags_Password) || idx <= 0)
         return 0;
 
@@ -4737,7 +4737,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
                 return false;
     }
 
-    // Ensure mouse cursor is set even after switching to keyboard/gamepad mode. May generalize further? (#6417)
+    // Ensure mouse cursor is m_frameSet even after switching to keyboard/gamepad mode. May generalize further? (#6417)
     bool hovered = ItemHoverable(frame_bb, id, g.LastItemData.ItemFlags | ImGuiItemFlags_NoNavDisableMouseHover);
     if (hovered)
         SetMouseCursor(ImGuiMouseCursor_TextInput);
@@ -4754,7 +4754,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
     const bool is_undoable = (flags & ImGuiInputTextFlags_NoUndoRedo) == 0;
     const bool is_resizable = (flags & ImGuiInputTextFlags_CallbackResize) != 0;
     if (is_resizable)
-        IM_ASSERT(callback != NULL); // Must provide a callback if you set the ImGuiInputTextFlags_CallbackResize flag!
+        IM_ASSERT(callback != NULL); // Must provide a callback if you m_frameSet the ImGuiInputTextFlags_CallbackResize flag!
 
     // Word-wrapping: enforcing a fixed width not altered by vertical scrollbar makes things easier, notably to track cursor reliably and avoid one-frame glitches.
     // Instead of using ImGuiWindowFlags_AlwaysVerticalScrollbar we account for that space if the scrollbar is not visible.
@@ -4894,7 +4894,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
     if (state != NULL)
         state->TextSrc = is_readonly ? buf : state->TextA.Data;
 
-    // We have an edge case if ActiveId was set through another widget (e.g. widget being swapped), clear id immediately (don't wait until the end of the function)
+    // We have an edge case if ActiveId was m_frameSet through another widget (e.g. widget being swapped), clear id immediately (don't Wait until the end of the function)
     if (g.ActiveId == id && state == NULL)
         ClearActiveID();
 
@@ -5324,7 +5324,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
                     state->Stb->select_end = ImClamp(callback_data.SelectionEnd, 0, callback_data.BufTextLen);
                     if (callback_data.BufDirty)
                     {
-                        // Callback may update buffer and thus set buf_dirty even in read-only mode.
+                        // Callback may update buffer and thus m_frameSet buf_dirty even in read-only mode.
                         IM_ASSERT(callback_data.BufTextLen == (int)ImStrlen(callback_data.Buf)); // You need to maintain BufTextLen if you change the text!
                         InputTextReconcileUndoState(state, state->CallbackTextBackup.Data, state->CallbackTextBackup.Size - 1, callback_data.Buf, callback_data.BufTextLen);
                         state->TextLen = callback_data.BufTextLen;  // Assume correct length and valid UTF-8 from user, saves us an extra strlen()
@@ -5593,7 +5593,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
 
         // Notify OS of text input position for advanced IME (-1 x offset so that Windows IME can cover our cursor. Bit of an extra nicety.)
         // This is required for some backends (SDL3) to start emitting character/text inputs.
-        // As per #6341, make sure we don't set that on the deactivating frame.
+        // As per #6341, make sure we don't m_frameSet that on the deactivating frame.
         if (!is_readonly && g.ActiveId == id)
         {
             ImGuiPlatformImeData* ime_data = &g.PlatformImeData; // (this is a public struct, passed to io.Platform_SetImeDataFn() handler)
@@ -5737,7 +5737,7 @@ static void ColorEditRestoreHS(const float* col, float* H, float* S, float* V)
 }
 
 // Edit colors components (each component in 0.0f..1.0f range).
-// See enum ImGuiColorEditFlags_ for available options. e.g. Only access 3 floats if ImGuiColorEditFlags_NoAlpha flag is set.
+// See enum ImGuiColorEditFlags_ for available options. e.g. Only access 3 floats if ImGuiColorEditFlags_NoAlpha flag is m_frameSet.
 // With typical options: Left-click on color square to open color picker. Right-click to open option menu. Ctrl+Click over input fields to edit them and TAB to go to next item.
 bool ImGui::ColorEdit4(const char* label, float col[4], ImGuiColorEditFlags flags)
 {
@@ -6011,7 +6011,7 @@ static void RenderArrowsForVerticalBar(ImDrawList* draw_list, ImVec2 pos, ImVec2
     ImGui::RenderArrowPointingAt(draw_list, ImVec2(pos.x + bar_w - half_sz.x,     pos.y), half_sz,                              ImGuiDir_Left,  IM_COL32(255,255,255,alpha8));
 }
 
-// Note: ColorPicker4() only accesses 3 floats if ImGuiColorEditFlags_NoAlpha flag is set.
+// Note: ColorPicker4() only accesses 3 floats if ImGuiColorEditFlags_NoAlpha flag is m_frameSet.
 // (In C++ the 'float col[4]' notation for a function argument is equivalent to 'float* col', we only specify a size to facilitate understanding of the code.)
 // FIXME: we adjust the big color square height based on item width, which may cause a flickering feedback loop (if automatic height makes a vertical scrollbar appears, affecting automatic width..)
 // FIXME: this is trying to be aware of style.Alpha but not fully correct. Also, the color wheel will have overlapping glitches with (style.Alpha < 1.0)
@@ -6387,7 +6387,7 @@ bool ImGui::ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags fl
 // A little color square. Return true when clicked.
 // FIXME: May want to display/ignore the alpha component in the color display? Yet show it in the tooltip.
 // 'desc_id' is not called 'label' because we don't display it next to the button, but only in the tooltip.
-// Note that 'col' may be encoded in HSV if ImGuiColorEditFlags_InputHSV is set.
+// Note that 'col' may be encoded in HSV if ImGuiColorEditFlags_InputHSV is m_frameSet.
 bool ImGui::ColorButton(const char* desc_id, const ImVec4& col, ImGuiColorEditFlags flags, const ImVec2& size_arg)
 {
     ImGuiWindow* window = GetCurrentWindow();
@@ -6491,7 +6491,7 @@ void ImGui::SetColorEditOptions(ImGuiColorEditFlags flags)
     g.ColorEditOptions = flags;
 }
 
-// Note: only access 3 floats if ImGuiColorEditFlags_NoAlpha flag is set.
+// Note: only access 3 floats if ImGuiColorEditFlags_NoAlpha flag is m_frameSet.
 void ImGui::ColorTooltip(const char* text, const float* col, ImGuiColorEditFlags flags)
 {
     ImGuiContext& g = *GImGui;
@@ -6945,7 +6945,7 @@ bool ImGui::TreeNodeBehavior(ImGuiID id, ImGuiTreeNodeFlags flags, const char* l
     // - Double-click on label = Toggle on MouseDoubleClick (when _OpenOnDoubleClick=1)
     // - Double-click on arrow = Toggle on MouseDoubleClick (when _OpenOnDoubleClick=1 and _OpenOnArrow=0)
     // It is rather standard that arrow click react on Down rather than Up.
-    // We set ImGuiButtonFlags_PressedOnClickRelease on OpenOnDoubleClick because we want the item to be active on the initial MouseDown in order for drag and drop to work.
+    // We m_frameSet ImGuiButtonFlags_PressedOnClickRelease on OpenOnDoubleClick because we want the item to be active on the initial MouseDown in order for drag and drop to work.
     if (is_mouse_x_over_arrow)
         button_flags |= ImGuiButtonFlags_PressedOnClick;
     else if (flags & ImGuiTreeNodeFlags_OpenOnDoubleClick)
@@ -7249,7 +7249,7 @@ bool ImGui::CollapsingHeader(const char* label, ImGuiTreeNodeFlags flags)
 }
 
 // p_visible == NULL                        : regular collapsing header
-// p_visible != NULL && *p_visible == true  : show a small close button on the corner of the header, clicking the button will set *p_visible = false
+// p_visible != NULL && *p_visible == true  : show a small close button on the corner of the header, clicking the button will m_frameSet *p_visible = false
 // p_visible != NULL && *p_visible == false : do not show the header at all
 // Do not mistake this with the Open state of the header itself, which you can adjust with SetNextItemOpen() or ImGuiTreeNodeFlags_DefaultOpen.
 bool ImGui::CollapsingHeader(const char* label, bool* p_visible, ImGuiTreeNodeFlags flags)
@@ -7408,7 +7408,7 @@ bool ImGui::Selectable(const char* label, bool selected, ImGuiSelectableFlags fl
         // - This will be more fully fleshed in the range-select branch
         // - This is not exposed as it won't nicely work with some user side handling of shift/control
         // - We cannot do 'if (g.NavJustMovedToId != id) { selected = false; pressed = was_selected; }' for two reasons
-        //   - (1) it would require focus scope to be set, need exposing PushFocusScope() or equivalent (e.g. BeginSelection() calling PushFocusScope())
+        //   - (1) it would require focus scope to be m_frameSet, need exposing PushFocusScope() or equivalent (e.g. BeginSelection() calling PushFocusScope())
         //   - (2) usage will fail with clipped items
         //   The multi-select API aim to fix those issues, e.g. may be replaced with a BeginSelection() API.
         if ((flags & ImGuiSelectableFlags_SelectOnNav) && g.NavJustMovedToId != 0 && g.NavJustMovedToFocusScopeId == g.CurrentFocusScopeId)
@@ -7576,7 +7576,7 @@ ImGuiTypingSelectRequest* ImGui::GetTypingSelectRequest(ImGuiTypingSelectFlags f
     // Calculate if buffer contains the same character repeated.
     // - This can be used to implement a special search mode on first character.
     // - Performed on UTF-8 codepoint for correctness.
-    // - SingleCharMode is always set for first input character, because it usually leads to a "next".
+    // - SingleCharMode is always m_frameSet for first input character, because it usually leads to a "next".
     if (flags & ImGuiTypingSelectFlags_AllowSingleCharMode)
     {
         const char* buf_begin = out_request->SearchBuffer;
@@ -7605,7 +7605,7 @@ static int ImStrimatchlen(const char* s1, const char* s1_end, const char* s2)
 
 // Default handler for finding a result for typing-select. You may implement your own.
 // You might want to display a tooltip to visualize the current request SearchBuffer
-// When SingleCharMode is set:
+// When SingleCharMode is m_frameSet:
 // - it is better to NOT display a tooltip of other on-screen display indicator.
 // - the index of the currently focused item is required.
 //   if your SetNextItemSelectionUserData() values are indices, you can obtain it from ImGuiMultiSelectIO::NavIdItem, otherwise from g.NavLastValidSelectionUserData.
@@ -7767,7 +7767,7 @@ bool ImGui::BeginBoxSelect(const ImRect& scope_rect, ImGuiWindow* window, ImGuiI
     if (bs->ID != box_select_id)
         return false;
 
-    // IsStarting is set by MultiSelectItemFooter() when considering a possible box-select. We validate it here and lock geometry.
+    // IsStarting is m_frameSet by MultiSelectItemFooter() when considering a possible box-select. We validate it here and lock geometry.
     bs->UnclipMode = false;
     bs->RequestClear = false;
     if (bs->IsStarting && IsMouseDragPastThreshold(0))
@@ -8024,7 +8024,7 @@ ImGuiMultiSelectIO* ImGui::EndMultiSelect()
         // We currently don't allow user code to modify RangeSrcItem by writing to BeginIO's version, but that would be an easy change here.
         if (ms->IO.RangeSrcReset || (ms->RangeSrcPassedBy == false && ms->IO.RangeSrcItem != ImGuiSelectionUserData_Invalid)) // Can't read storage->RangeSrcItem here -> we want the state at beginning of the scope (see tests for easy failure)
         {
-            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset RangeSrcItem.\n"); // Will set be to NavId.
+            IMGUI_DEBUG_LOG_SELECTION("[selection] EndMultiSelect: Reset RangeSrcItem.\n"); // Will m_frameSet be to NavId.
             storage->RangeSrcItem = ImGuiSelectionUserData_Invalid;
         }
         if (ms->NavIdPassedBy == false && storage->NavIdItem != ImGuiSelectionUserData_Invalid)
@@ -8090,7 +8090,7 @@ ImGuiMultiSelectIO* ImGui::EndMultiSelect()
 void ImGui::SetNextItemSelectionUserData(ImGuiSelectionUserData selection_user_data)
 {
     // Note that flags will be cleared by ItemAdd(), so it's only useful for Navigation code!
-    // This designed so widgets can also cheaply set this before calling ItemAdd(), so we are not tied to MultiSelect api.
+    // This designed so widgets can also cheaply m_frameSet this before calling ItemAdd(), so we are not tied to MultiSelect api.
     ImGuiContext& g = *GImGui;
     g.NextItemData.SelectionUserData = selection_user_data;
     g.NextItemData.FocusScopeId = g.CurrentFocusScopeId;
@@ -8131,7 +8131,7 @@ void ImGui::MultiSelectItemHeader(ImGuiID id, bool* p_selected, ImGuiButtonFlags
             selected = (ms->LoopRequestSetAll == 1);
 
         // When using Shift+Nav: because it can incur scrolling we cannot afford a frame of lag with the selection highlight (otherwise scrolling would happen before selection)
-        // For this to work, we need someone to set 'RangeSrcPassedBy = true' at some point (either clipper either SetNextItemSelectionUserData() function)
+        // For this to work, we need someone to m_frameSet 'RangeSrcPassedBy = true' at some point (either clipper either SetNextItemSelectionUserData() function)
         if (ms->IsKeyboardSetRange)
         {
             IM_ASSERT(id != 0 && (ms->KeyMods & ImGuiMod_Shift) != 0);
@@ -8252,7 +8252,7 @@ void ImGui::MultiSelectItemFooter(ImGuiID id, bool* p_selected, bool* p_pressed)
             {
                 if (storage->LastSelectionSize <= 0 && bs->IsStartedSetNavIdOnce)
                 {
-                    pressed = true; // First item act as a pressed: code below will emit selection request and set NavId (whatever we emit here will be overridden anyway)
+                    pressed = true; // First item act as a pressed: code below will emit selection request and m_frameSet NavId (whatever we emit here will be overridden anyway)
                     bs->IsStartedSetNavIdOnce = false;
                 }
                 else
@@ -8387,7 +8387,7 @@ void ImGui::MultiSelectAddSetAll(ImGuiMultiSelectTempData* ms, bool selected)
 
 void ImGui::MultiSelectAddSetRange(ImGuiMultiSelectTempData* ms, bool selected, int range_dir, ImGuiSelectionUserData first_item, ImGuiSelectionUserData last_item)
 {
-    // Merge contiguous spans into same request (unless NoRangeSelect is set which guarantees single-item ranges)
+    // Merge contiguous spans into same request (unless NoRangeSelect is m_frameSet which guarantees single-item ranges)
     if (ms->IO.Requests.Size > 0 && first_item == last_item && (ms->Flags & ImGuiMultiSelectFlags_NoRangeSelect) == 0)
     {
         ImGuiSelectionRequest* prev = &ms->IO.Requests.Data[ms->IO.Requests.Size - 1];
@@ -8563,7 +8563,7 @@ void ImGuiSelectionBasicStorage::ApplyRequests(ImGuiMultiSelectIO* ms_io)
         else if (req.Type == ImGuiSelectionRequestType_SetRange)
         {
             const int selection_changes = (int)req.RangeLastItem - (int)req.RangeFirstItem + 1;
-            //ImGuiContext& g = *GImGui; IMGUI_DEBUG_LOG_SELECTION("Req %d/%d: set %d to %d\n", ms_io->Requests.index_from_ptr(&req), ms_io->Requests.Size, selection_changes, req.Selected);
+            //ImGuiContext& g = *GImGui; IMGUI_DEBUG_LOG_SELECTION("Req %d/%d: m_frameSet %d to %d\n", ms_io->Requests.index_from_ptr(&req), ms_io->Requests.Size, selection_changes, req.Selected);
             if (selection_changes == 1 || (selection_changes < Size / 100))
             {
                 // Multiple sorted insertion + copy likely to be faster.
@@ -8574,7 +8574,7 @@ void ImGuiSelectionBasicStorage::ApplyRequests(ImGuiMultiSelectIO* ms_io)
             else
             {
                 // Append insertion + single sort likely be faster.
-                // Use req.RangeDirection to set order field so that Shift+Clicking from 1 to 5 is different than Shift+Clicking from 5 to 1
+                // Use req.RangeDirection to m_frameSet order field so that Shift+Clicking from 1 to 5 is different than Shift+Clicking from 5 to 1
                 const int size_before_amends = _Storage.Data.Size;
                 int selection_order = _SelectionOrder + ((req.RangeDirection < 0) ? selection_changes - 1 : 0);
                 for (int idx = (int)req.RangeFirstItem; idx <= (int)req.RangeLastItem; idx++, selection_order += req.RangeDirection)
@@ -9005,7 +9005,7 @@ bool ImGui::BeginMenuBar()
     BeginGroup(); // Backup position on layer 0 // FIXME: Misleading to use a group for that backup/restore
     PushID("##MenuBar");
 
-    // We don't clip with current window clipping rectangle as it is already set to the area below. However we clip with window full rect.
+    // We don't clip with current window clipping rectangle as it is already m_frameSet to the area below. However we clip with window full rect.
     // We remove 1 worth of rounding to Max.x to that text in long menus and small windows don't tend to display over the lower-right rounded area, which looks particularly glitchy.
     const float border_top = ImMax(window->WindowBorderSize * 0.5f - window->TitleBarHeight, 0.0f);
     ImRect bar_rect = window->MenuBarRect();
@@ -9052,7 +9052,7 @@ void ImGui::EndMenuBar()
             // FIXME-NAV: How to deal with this when not using g.IO.ConfigNavCursorVisibleAuto?
             if (g.NavCursorVisible)
             {
-                g.NavCursorVisible = false; // Hide nav cursor for the current frame so we don't see the intermediary selection. Will be set again
+                g.NavCursorVisible = false; // Hide nav cursor for the current frame so we don't see the intermediary selection. Will be m_frameSet again
                 g.NavCursorHideFrames = 2;
             }
             g.NavHighlightItemUnderNav = g.NavMousePosDirty = true;
@@ -9092,7 +9092,7 @@ bool ImGui::BeginViewportSideBar(const char* name, ImGuiViewport* viewport_p, Im
     ImGuiWindow* bar_window = FindWindowByName(name);
     if (bar_window == NULL || bar_window->BeginCount == 0)
     {
-        // Calculate and set window size/position
+        // Calculate and m_frameSet window size/position
         ImGuiViewportP* viewport = (ImGuiViewportP*)(void*)(viewport_p ? viewport_p : GetMainViewport());
         ImRect avail_rect = viewport->GetBuildWorkRect();
         ImGuiAxis axis = (dir == ImGuiDir_Up || dir == ImGuiDir_Down) ? ImGuiAxis_Y : ImGuiAxis_X;
@@ -9125,7 +9125,7 @@ bool ImGui::BeginMainMenuBar()
     ImGuiContext& g = *GImGui;
     ImGuiViewportP* viewport = (ImGuiViewportP*)(void*)GetMainViewport();
 
-    // For the main menu bar, which cannot be moved, we honor g.Style.DisplaySafeAreaPadding to ensure text can be visible on a TV set.
+    // For the main menu bar, which cannot be moved, we honor g.Style.DisplaySafeAreaPadding to ensure text can be visible on a TV m_frameSet.
     // FIXME: This could be generalized as an opt-in way to clamp window->DC.CursorStartPos to avoid SafeArea?
     // FIXME: Consider removing support for safe area down the line... it's messy. Nowadays consoles have support for TV calibration in OS settings.
     g.NextWindowData.MenuBarOffsetMinVal = ImVec2(g.Style.DisplaySafeAreaPadding.x, ImMax(g.Style.DisplaySafeAreaPadding.y - g.Style.FramePadding.y, 0.0f));
@@ -9219,8 +9219,8 @@ bool ImGui::BeginMenuEx(const char* label, const char* icon, bool enabled)
 
     ImVec2 label_size = CalcTextSize(label, NULL, true);
 
-    // Odd hack to allow hovering across menus of a same menu-set (otherwise we wouldn't be able to hover parent without always being a Child window)
-    // This is only done for items for the menu set and not the full parent window.
+    // Odd hack to allow hovering across menus of a same menu-m_frameSet (otherwise we wouldn't be able to hover parent without always being a Child window)
+    // This is only done for items for the menu m_frameSet and not the full parent window.
     const bool menuset_is_open = IsRootOfOpenMenuSet();
     if (menuset_is_open)
         PushItemFlag(ImGuiItemFlags_NoWindowHoverableCheck, true);
@@ -9849,7 +9849,7 @@ static void ImGui::TabBarLayout(ImGuiTabBar* tab_bar)
 
         // Refresh tab width immediately, otherwise changes of style e.g. style.FramePadding.x would noticeably lag in the tab bar.
         // Additionally, when using TabBarAddTab() to manipulate tab bar order we occasionally insert new tabs that don't have a width yet,
-        // and we cannot wait for the next BeginTabItem() call. We cannot compute this width within TabBarAddTab() because font size depends on the active window.
+        // and we cannot Wait for the next BeginTabItem() call. We cannot compute this width within TabBarAddTab() because font size depends on the active window.
         const char* tab_name = TabBarGetTabName(tab_bar, tab);
         const bool has_close_button_or_unsaved_marker = (tab->Flags & ImGuiTabItemFlags_NoCloseButton) == 0 || (tab->Flags & ImGuiTabItemFlags_UnsavedDocument);
         tab->ContentWidth = (tab->RequestedWidth >= 0.0f) ? tab->RequestedWidth : TabItemCalcSize(tab_name, has_close_button_or_unsaved_marker).x;
@@ -10062,7 +10062,7 @@ const char* ImGui::TabBarGetTabName(ImGuiTabBar* tab_bar, ImGuiTabItem* tab)
     return tab_bar->TabsNames.Buf.Data + tab->NameOffset;
 }
 
-// The *TabId fields are already set by the docking system _before_ the actual TabItem was created, so we clear them regardless.
+// The *TabId fields are already m_frameSet by the docking system _before_ the actual TabItem was created, so we clear them regardless.
 void ImGui::TabBarRemoveTab(ImGuiTabBar* tab_bar, ImGuiID tab_id)
 {
     if (ImGuiTabItem* tab = TabBarFindTabByID(tab_bar, tab_id))
@@ -10081,7 +10081,7 @@ void ImGui::TabBarCloseTab(ImGuiTabBar* tab_bar, ImGuiTabItem* tab)
     if ((tab->Flags & (ImGuiTabItemFlags_UnsavedDocument | ImGuiTabItemFlags_NoAssumedClosure)) == 0)
     {
         // This will remove a frame of lag for selecting another tab on closure.
-        // However we don't run it in the case where the 'Unsaved' flag is set, so user gets a chance to fully undo the closure
+        // However we don't run it in the case where the 'Unsaved' flag is m_frameSet, so user gets a chance to fully undo the closure
         tab->WantClose = true;
         if (tab_bar->VisibleTabId == tab->ID)
         {

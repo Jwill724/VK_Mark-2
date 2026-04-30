@@ -6,16 +6,18 @@
 #include "utils/BufferUtils.h"
 #include "engine/Engine.h"
 
+static uint32_t jitter_frame_index = 0u;
+
 namespace RenderScene {
-	GPUSceneData _sceneData;
-	GPUSceneData& getCurrentSceneData() { return _sceneData; }
+	SceneInfo _sceneData;
+	SceneInfo& getCurrentSceneData() { return _sceneData; }
 
 	ShadowControl _shadowControl;
 
-	GPUShadowCSM _shadowCSM;
-	GPUShadowCSM& getShadowCSM() { return _shadowCSM; }
+	DirectionalCSMInfo _shadowCSM;
+	DirectionalCSMInfo& getShadowCSM() { return _shadowCSM; }
 
-	std::vector<GlobalInstance> _globalInstances;
+	std::vector<VirtualInstance> _globalInstances;
 	std::vector<glm::mat4> _globalTransforms;
 	uint32_t _recentTransformCount = 0;
 
@@ -69,7 +71,7 @@ namespace RenderScene {
 	void updateDrawDataCPUPath(
 		FrameContext& frameCtx,
 		GPUResources& gpuResources,
-		const DebugToggles& debug);
+		const RenderToggles& debug);
 	void updateDrawDataGPUPath(FrameContext& frameCtx, GPUResources& gpuResources);
 
 	enum RenderPath : uint32_t {
@@ -100,10 +102,10 @@ static float haltonSequence(uint32_t index, uint32_t base)
 	return r;
 }
 
-static glm::vec2 buildTemporalJitterPixels(uint32_t frameIndex)
+static glm::vec2 buildTemporalJitterPixels(uint32_t m_frameIndex)
 {
 	const uint32_t sequenceLength = 16u;
-	uint32_t index = (frameIndex % sequenceLength) + 1u;
+	uint32_t index = (m_frameIndex % sequenceLength) + 1u;
 
 	glm::vec2 jitter;
 	jitter.x = haltonSequence(index, 2u);
@@ -162,13 +164,13 @@ void RenderScene::setScene(bool assetsLoaded) {
 }
 
 void RenderScene::updateCamera() {
-	const auto extent = Renderer::getDrawExtent();
+	const auto extent = Renderer::GetDrawExtent();
 	float width  = static_cast<float>(extent.width);
 	float height = static_cast<float>(extent.height);
 	float aspect = width / height;
 
-	auto& profiler = Engine::getProfiler();
-	_mainCamera.processInput(Engine::getWindow(), profiler, _isTemporalInvalid);
+	auto& profiler = Engine::GetProfiler();
+	_mainCamera.processInput(Engine::GetWindow(), profiler, _isTemporalInvalid);
 
 	_curCamView = _mainCamera.getViewMatrix();
 
@@ -203,7 +205,7 @@ void RenderScene::updateCamera() {
 		_sceneData.invProj = glm::inverse(_curCamProjJittered);
 		_sceneData.viewProj = currentViewProjJittered;
 
-		_sceneData.prevViewProj = _lastViewProjJittered;
+		//_sceneData.prevViewProj = _lastViewProjJittered;
 
 		_sceneData.temporalJitter = glm::vec4(
 			_currentJitterNDC.x,
@@ -216,16 +218,17 @@ void RenderScene::updateCamera() {
 		_sceneData.invProj = glm::inverse(_curCamProjUnjittered);
 		_sceneData.viewProj = currentViewProjUnjittered;
 
-		_sceneData.prevViewProj = _lastViewProjUnjittered;
+		//_sceneData.prevViewProj = _lastViewProjUnjittered;
 
 		_sceneData.temporalJitter = glm::vec4(0.0f);
 	}
+	_sceneData.prevViewProj = _lastViewProjUnjittered;
 
 	_sceneData.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
 
 	_sceneData.cameraPos = glm::vec4(_mainCamera.getPosition(), 0.0f);
 
-	_currentFrustum = extractFrustum(currentViewProjUnjittered);
+	_currentFrustum = ExtractNew(currentViewProjUnjittered);
 	_lastViewProjUnjittered = currentViewProjUnjittered;
 	_lastViewProjJittered = currentViewProjJittered;
 
@@ -292,7 +295,7 @@ static inline glm::vec4 buildAtlasUV(
 
 void RenderScene::initCSMAtlasUVs()
 {
-	const auto& atlas = ResourceManager::getDirectionalCSMAtlas_Target();
+	const auto& atlas = ResourceManager::GetDirectionalCSMAtlas_Target();
 
 	const VkExtent2D atlasExtent = {
 		atlas.extent.width,
@@ -327,7 +330,7 @@ void RenderScene::initCSMAtlasUVs()
 // Pipeline depth compare LESS
 // CULL MODE: FRONT BIT
 void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
-	const auto& shadowAtlas = ResourceManager::getDirectionalCSMAtlas_Target();
+	const auto& shadowAtlas = ResourceManager::GetDirectionalCSMAtlas_Target();
 	const float tileRes = static_cast<float>(shadowAtlas.extent.width / 2u);
 	// Define all csm parameters once
 	if (_shadowCSM.params.y == 0.0f) {
@@ -421,7 +424,7 @@ void RenderScene::updateShadowCSM(const glm::vec3& lightDir) {
 
 		lastSplitDist = curSplit;
 
-		_cascadeFrustums[i] = extractFrustum(_shadowCSM.cascadeVP[i]);
+		_cascadeFrustums[i] = ExtractNew(_shadowCSM.cascadeVP[i]);
 	}
 }
 
@@ -572,25 +575,25 @@ DispatchList RenderScene::buildDispatchList(
 }
 
 void RenderScene::createSceneBuffer(FrameContext& frameCtx, const VmaAllocator alloc) {
-	frameCtx.sceneData_UBO = BufferUtils::createUniformBuffer(_sceneData, alloc);
+	frameCtx.m_sceneInfo_UBO = BufferUtils::CreateUniformBuffer(_sceneData, alloc);
 
-	frameCtx.cpuDeletion.push_function([&, alloc]() mutable {
-		BufferUtils::destroyAllocatedBuffer(frameCtx.sceneData_UBO, alloc);
+	frameCtx.m_cpuDeletionQueue.PushFunction([&, alloc]() mutable {
+		BufferUtils::DestroyAllocatedBuffer(frameCtx.m_sceneInfo_UBO, alloc);
 	});
 }
 
 void RenderScene::updateScene(
 	FrameContext& frameCtx,
 	GPUResources& gpuResources,
-	const DebugToggles& debug)
+	const RenderToggles& debug)
 {
 	_isTemporalInvalid = false; // Assume clean start each frame
 
-	_sceneData.temporal.x = frameCtx.frameIndex;
+	_sceneData.temporal.x = jitter_frame_index++;
 
 	updateCamera();
 
-	const auto allocator = gpuResources.getAllocator();
+	const auto allocator = gpuResources.GetAllocator();
 
 	// No scene loaded in
 	if (!_assetsLoaded) {
@@ -599,9 +602,9 @@ void RenderScene::updateScene(
 		return;
 	}
 
-	frameCtx.clearRenderData();
+	frameCtx.ClearDrawData();
 
-	const auto deltaTime = Engine::getProfiler().getStats().deltaSecondsRaw;
+	const auto deltaTime = Engine::GetProfiler().getStats().deltaSecondsRaw;
 
 	// Light Updates, handle dynamics first
 	bool mainList = false;
@@ -609,15 +612,15 @@ void RenderScene::updateScene(
 	bool flashLightChanged = false;
 
 	if (UserInput::keyboard.isPressed(GLFW_KEY_F)) {
-		LightingSystem::_mainFlashLight.toggleFlashLight();
+		LightingSystem::_mainFlashLight.ToggleFlashLight();
 	}
 
-	const bool flashLightActive = LightingSystem::_mainFlashLight.isFlashLightActive();
+	const bool flashLightActive = LightingSystem::_mainFlashLight.IsFlashLightActive();
 
-	flashLightChanged = LightingSystem::_mainFlashLight.updateFlashLight(
+	flashLightChanged = LightingSystem::_mainFlashLight.UpdateFlashLight(
 		LightingSystem::_globalLightList,
-		ResourceManager::getFlashLightShadowMap_Target().lutEntry.combinedImageIndex,
-		ResourceManager::getCookieGobo_Texture().lutEntry.combinedImageIndex,
+		ResourceManager::GetFlashlightShadowMap_Target().lutEntry.combinedImageIndex,
+		ResourceManager::GetCookieGobo_Texture().lutEntry.combinedImageIndex,
 		_mainCamera.getPosition(),
 		_mainCamera.getView(),
 		deltaTime,
@@ -635,49 +638,49 @@ void RenderScene::updateScene(
 		++_lightStateVersion;
 	}
 
-	if (frameCtx.uploadedFlashLightVersion != _lightStateVersion) {
-		frameCtx.lightsBufferUploadNeeded = true;
-		frameCtx.uploadedFlashLightVersion = _lightStateVersion;
+	if (frameCtx.m_uploadedFlashlightVersion != _lightStateVersion) {
+		frameCtx.m_bLightsBufferUploadNeeded = true;
+		frameCtx.m_uploadedFlashlightVersion = _lightStateVersion;
 	}
 
 	mainList = LightingSystem::updateLightList();
 	if (LightingSystem::_dynamicLightsEnabled) {
 		dynamicList = LightingSystem::updateDynamicLightsOrbit(deltaTime);
-		frameCtx.recentDynamicLightsTransform = true;
+		frameCtx.m_bRecentDynamicLightsTransform = true;
 	}
 	else {
 		// Requires update when count hasn't changed but dynamic and static states
-		if (frameCtx.recentDynamicLightsTransform && !frameCtx.lightsBufferUploadNeeded) {
-			frameCtx.lightsBufferUploadNeeded = true;
-			frameCtx.recentDynamicLightsTransform = false;
+		if (frameCtx.m_bRecentDynamicLightsTransform && !frameCtx.m_bLightsBufferUploadNeeded) {
+			frameCtx.m_bLightsBufferUploadNeeded = true;
+			frameCtx.m_bRecentDynamicLightsTransform = false;
 		}
 	}
 
 	// Static update changes
-	if (frameCtx.recentLightListCount != LightingSystem::_globalLightList.size()) {
-		frameCtx.recentLightListCount = static_cast<uint32_t>(LightingSystem::_globalLightList.size());
-		frameCtx.lightsBufferUploadNeeded = true;
+	if (frameCtx.m_recentLightListCount != LightingSystem::_globalLightList.size()) {
+		frameCtx.m_recentLightListCount = static_cast<uint32_t>(LightingSystem::_globalLightList.size());
+		frameCtx.m_bLightsBufferUploadNeeded = true;
 	}
 
 	// First time init for lights buffer
-	if (!frameCtx.lightsInitialized && (mainList || dynamicList || flashLightChanged)) {
-		frameCtx.lightsInitialized = true;
+	if (!frameCtx.m_bLightsInitialized && (mainList || dynamicList || flashLightChanged)) {
+		frameCtx.m_bLightsInitialized = true;
 	}
 
 	if (mainList || dynamicList || flashLightChanged) {
-		frameCtx.lightsBufferUploadNeeded = true;
+		frameCtx.m_bLightsBufferUploadNeeded = true;
 	}
 
-	frameCtx.transformsBufferUploadNeeded = DrawPreparation::syncGlobalInstancesAndTransforms(
+	frameCtx.m_bTransformsBufferUploadNeeded = DrawPreparation::syncGlobalInstancesAndTransforms(
 		_sceneProfiles,
 		_globalInstances,
 		_globalTransforms,
 		deltaTime);
 
 	// First time upload for transforms
-	if (!frameCtx.transformsInitialized) {
-		frameCtx.transformsInitialized = true;
-		frameCtx.transformsBufferUploadNeeded = true;
+	if (!frameCtx.m_bTransformsInitialized) {
+		frameCtx.m_bTransformsInitialized = true;
+		frameCtx.m_bTransformsBufferUploadNeeded = true;
 	}
 
 	// First time intialization copy
@@ -715,19 +718,19 @@ void RenderScene::updateScene(
 	createSceneBuffer(frameCtx, allocator);
 
 	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.
-	frameCtx.shadowCSM_UBO = BufferUtils::createUniformBuffer(_shadowCSM, allocator);
-	frameCtx.cpuDeletion.push_function([&, allocator]() mutable {
-		BufferUtils::destroyAllocatedBuffer(frameCtx.shadowCSM_UBO, allocator);
+	frameCtx.m_directionalCSM_UBO = BufferUtils::CreateUniformBuffer(_shadowCSM, allocator);
+	frameCtx.m_cpuDeletionQueue.PushFunction([&, allocator]() mutable {
+		BufferUtils::DestroyAllocatedBuffer(frameCtx.m_directionalCSM_UBO, allocator);
 	});
 
-	auto& meshes = gpuResources.getResgisteredMeshes();
-	const bool& gpuAccelPath = Engine::getProfiler().isGPUAccelOn();
+	auto& meshes = gpuResources.GetResgisteredMeshes();
+	const bool& gpuAccelPath = Engine::GetProfiler().isGPUAccelOn();
 	// When a update from gpu to cpu path occurs the bvh structures need to be updated.
 	// For simplicity I'm just gonna clear the structures and rebuild it.
 	if (_currentPath == RenderPath::GPU && !gpuAccelPath) {
-		_visState.cleanup();
+		_visState.Cleanup();
 
-		frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
+		frameCtx.m_visibilitySyncResult = Visibility::syncFromGlobalInstances(
 			_visState,
 			_globalInstances,
 			_loadedScenes,
@@ -735,7 +738,7 @@ void RenderScene::updateScene(
 			_globalTransforms);
 	}
 	else {
-		frameCtx.visSyncResult = Visibility::syncFromGlobalInstances(
+		frameCtx.m_visibilitySyncResult = Visibility::syncFromGlobalInstances(
 			_visState,
 			_globalInstances,
 			_loadedScenes,
@@ -754,23 +757,23 @@ void RenderScene::updateScene(
 void RenderScene::updateDrawDataCPUPath(
 	FrameContext& frameCtx,
 	GPUResources& gpuResources,
-	const DebugToggles& debug)
+	const RenderToggles& debug)
 {
 	_currentPath = RenderPath::CPU;
 
 	Visibility::applySyncResult(
 		_visState,
-		frameCtx.visSyncResult);
+		frameCtx.m_visibilitySyncResult);
 
 	// CPU CULLING
 	Visibility::cullBVHCollect(
 		_visState,
 		_currentFrustum,
-		frameCtx.visibleInstances,
+		frameCtx.m_visibleInstances,
 		_visibleWorldAABBs);
 
-	if (!frameCtx.visibleInstances.empty()) {
-		frameCtx.visibleCount = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+	if (!frameCtx.m_visibleInstances.empty()) {
+		frameCtx.m_visibleCount = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 
 		//// Assign all unique instanceIDs to visible instances, enables map back to all worldaabbs.
 		//uint32_t mainVisibleSetID = 0;
@@ -779,15 +782,15 @@ void RenderScene::updateDrawDataCPUPath(
 		//}
 
 		if (debug.enableShadows) {
-			frameCtx.shadowCasterInstances.reserve(std::max(1024u, frameCtx.visibleCount * 2u));
+			frameCtx.m_visibleShadowCasters.reserve(std::max(1024u, frameCtx.m_visibleCount * 2u));
 
-			AABB visibleReceiverWS = computeVisibleReceiverAABB(_visibleWorldAABBs);
+			AABB visibleReceiverWS = ComputeVisibleReceiverAABB(_visibleWorldAABBs);
 			const glm::vec3 centerWS = 0.5f * (visibleReceiverWS.vmin + visibleReceiverWS.vmax);
 			const glm::vec3 extentWS = 0.5f * (visibleReceiverWS.vmax - visibleReceiverWS.vmin);
 
 			for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
-				PassRange& cascadeRange = frameCtx.shadowCastersRanges[cascadeIndex];
-				cascadeRange.firstInstance = static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
+				IndirectDrawRange& cascadeRange = frameCtx.m_shadowCasterDrawRanges[cascadeIndex];
+				cascadeRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size());
 
 				// Transform to light space
 				glm::vec3 centerLS = glm::vec3(_cascadeLightViews[cascadeIndex] * glm::vec4(centerWS, 1.0f));
@@ -817,45 +820,45 @@ void RenderScene::updateDrawDataCPUPath(
 					_cascadeLightViews[cascadeIndex],
 					receiverLSMin,
 					receiverLSMax,
-					frameCtx.shadowCasterInstances,
-					gpuResources.getMaterialFlagsByID()
+					frameCtx.m_visibleShadowCasters,
+					gpuResources.GetMaterialFlagsByID()
 				);
 
 				cascadeRange.visibleCount =
-					static_cast<uint32_t>(frameCtx.shadowCasterInstances.size()) - cascadeRange.firstInstance;
+					static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size()) - cascadeRange.firstInstance;
 
-				ASSERT(cascadeRange.firstInstance + cascadeRange.visibleCount <= frameCtx.shadowCasterInstances.size());
+				ASSERT(cascadeRange.firstInstance + cascadeRange.visibleCount <= frameCtx.m_visibleShadowCasters.size());
 			}
 		}
 
-		if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
-			frameCtx.shadowCasterInstances.reserve(frameCtx.shadowCasterInstances.size() + frameCtx.visibleCount);
+		if (LightingSystem::_mainFlashLight.IsFlashLightOn()) {
+			frameCtx.m_visibleShadowCasters.reserve(frameCtx.m_visibleShadowCasters.size() + frameCtx.m_visibleCount);
 
-			frameCtx.flashLightShadowRange.firstInstance =
-				static_cast<uint32_t>(frameCtx.shadowCasterInstances.size());
+			frameCtx.m_flashlightShadowCasterRange.firstInstance =
+				static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size());
 
 			Visibility::cullBVHCollectShadowCasters(
 				_visState,
 				LightingSystem::_mainFlashLight.frustum,
-				frameCtx.shadowCasterInstances,
-				gpuResources.getMaterialFlagsByID(),
+				frameCtx.m_visibleShadowCasters,
+				gpuResources.GetMaterialFlagsByID(),
 				false
 			);
 
-			frameCtx.flashLightShadowRange.visibleCount =
-				static_cast<uint32_t>(frameCtx.shadowCasterInstances.size()) - frameCtx.flashLightShadowRange.firstInstance;
+			frameCtx.m_flashlightShadowCasterRange.visibleCount =
+				static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size()) - frameCtx.m_flashlightShadowCasterRange.firstInstance;
 
-			ASSERT(frameCtx.flashLightShadowRange.firstInstance +
-				frameCtx.flashLightShadowRange.visibleCount <= frameCtx.shadowCasterInstances.size());
+			ASSERT(frameCtx.m_flashlightShadowCasterRange.firstInstance +
+				frameCtx.m_flashlightShadowCasterRange.visibleCount <= frameCtx.m_visibleShadowCasters.size());
 		}
 
-		//// Same pattern as main set
+		//// Same pattern as main m_frameSet
 		//uint32_t shadowCastersID = 0;
-		//for (auto& inst : frameCtx.shadowCasterInstances) {
+		//for (auto& inst : frameCtx.m_visibleShadowCasters) {
 		//	inst.instanceID = shadowCastersID++;
 		//}
 
-		auto& meshes = gpuResources.getResgisteredMeshes();
+		auto& meshes = gpuResources.GetResgisteredMeshes();
 		DrawPreparation::buildAndSortIndirectDraws(
 			frameCtx,
 			meshes.meshData,
@@ -871,9 +874,9 @@ void RenderScene::updateDrawDataCPUPath(
 		gpuResources,
 		_globalTransforms,
 		LightingSystem::_globalLightList,
-		Backend::getTransferQueue(),
+		Backend::GetTransferQueue(),
 		bool(_sceneData.temporal.y),
-		Engine::getProfiler().isGPUAccelOn());
+		Engine::GetProfiler().isGPUAccelOn());
 }
 
 // The actual culling and build pass occurs inside the Renderer.cpp, this just handles the transfer queue updates
@@ -886,14 +889,14 @@ void RenderScene::updateDrawDataGPUPath(FrameContext& frameCtx, GPUResources& gp
 		gpuResources,
 		_globalTransforms,
 		LightingSystem::_globalLightList,
-		Backend::getTransferQueue(),
+		Backend::GetTransferQueue(),
 		bool(_sceneData.temporal.y),
-		Engine::getProfiler().isGPUAccelOn());
+		Engine::GetProfiler().isGPUAccelOn());
 }
 
 void RenderScene::cleanScene() {
 	_loadedScenes.clear();
-	_visState.cleanup();
+	_visState.Cleanup();
 	_globalTransforms.clear();
 	_initializeTransformCopy = true;
 }

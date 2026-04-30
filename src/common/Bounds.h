@@ -5,60 +5,42 @@
 #include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
 
-struct Frustum {
+struct Frustum
+{
 	glm::vec4 planes[6]; // Plane equation: ax + by + cz + d = 0
-	//glm::vec4 corners[8];
+
+	void ExtractNew(const glm::mat4& viewproj)
+	{
+		const glm::mat4 vpt = glm::transpose(viewproj);
+
+		planes[0] = vpt[3] + vpt[0]; // left
+		planes[1] = vpt[3] - vpt[0]; // right
+		planes[2] = vpt[3] + vpt[1]; // bot
+		planes[3] = vpt[3] - vpt[1]; // top
+		planes[4] = vpt[3] + vpt[2]; // near
+		planes[5] = vpt[3] - vpt[2]; // far
+
+		for (int i = 0; i < 6; ++i)
+		{
+			planes[i] /= glm::length(glm::vec3(planes[i]));
+		}
+	}
 };
 
-struct AABB {
+struct AABB
+{
 	glm::vec3 vmin; // origin: 0.5f * (vmin + vmax)
 	glm::vec3 vmax; // extent: 0.5f * (vmax - vmin)
 };
 
-inline Frustum extractFrustum(const glm::mat4& viewproj) {
-	const glm::mat4 vpt = glm::transpose(viewproj);
-
-	Frustum frustum{};
-	frustum.planes[0] = vpt[3] + vpt[0]; // left
-	frustum.planes[1] = vpt[3] - vpt[0]; // right
-	frustum.planes[2] = vpt[3] + vpt[1]; // bot
-	frustum.planes[3] = vpt[3] - vpt[1]; // top
-	frustum.planes[4] = vpt[3] + vpt[2]; // near
-	frustum.planes[5] = vpt[3] - vpt[2]; // far
-
-	for (int i = 0; i < 6; ++i) {
-		frustum.planes[i] /= glm::length(glm::vec3(frustum.planes[i]));
-	}
-
-	//if (useCorners) {
-	//    glm::mat4 invVp = glm::inverse(viewproj);
-	   // int i = 0;
-	   // for (int x = -1; x <= 1; x += 2) {
-		  //  for (int y = -1; y <= 1; y += 2) {
-			 //   for (int z = 0; z <= 1; z++) { // Vulkan NDC z [0,1]
-				//    glm::vec4 cornerNDC = glm::vec4(
-				//	    static_cast<float>(x),
-				//	    static_cast<float>(y),
-				//	    static_cast<float>(z),
-				//	    1.0f
-				//    );
-				//    glm::vec4 cornerWorld = invVp * cornerNDC;
-				//    frustum.corners[i++] = cornerWorld / cornerWorld.w;
-			 //   }
-		  //  }
-	   // }
-	//}
-
-	return frustum;
-}
-
 // AABB transform methods https://ktstephano.github.io/rendering/stratusgfx/aabbs
-inline AABB AABBtoWorldSpace(const AABB& localBox, const glm::mat4& transform) {
+inline AABB AABBtoWorldSpace(const AABB& localBox, const glm::mat4& transform)
+{
 	// Convert to min/max corners first
 	const glm::vec3 vmin = localBox.vmin;
 	const glm::vec3 vmax = localBox.vmax;
 
-	const glm::vec3 corners[8] = {
+	const glm::vec3 corners[8] {
 		glm::vec3(transform * glm::vec4(vmin.x, vmin.y, vmin.z, 1.0f)),
 		glm::vec3(transform * glm::vec4(vmin.x, vmax.y, vmin.z, 1.0f)),
 		glm::vec3(transform * glm::vec4(vmin.x, vmin.y, vmax.z, 1.0f)),
@@ -74,7 +56,8 @@ inline AABB AABBtoWorldSpace(const AABB& localBox, const glm::mat4& transform) {
 	glm::vec3 newVmax = newVmin;
 
 	// Start looping from corner 1 onwards
-	for (size_t i = 1; i < 8; ++i) {
+	for (size_t i = 1; i < 8; ++i)
+	{
 		const auto& current = corners[i];
 		newVmin = glm::min(newVmin, current);
 		newVmax = glm::max(newVmax, current);
@@ -87,7 +70,8 @@ inline AABB AABBtoWorldSpace(const AABB& localBox, const glm::mat4& transform) {
 	return worldBox;
 }
 
-inline std::vector<glm::vec3> GetAABBVertices(const AABB& box) {
+inline std::vector<glm::vec3> GetAABBVertices(const AABB& box)
+{
 	const glm::vec3 vmin = box.vmin;
 	const glm::vec3 vmax = box.vmax;
 
@@ -145,7 +129,8 @@ inline std::vector<glm::vec3> GetOBBVertices(
 	};
 
 	glm::vec3 worldCorners[8]{};
-	for (uint32_t i = 0; i < 8; ++i) {
+	for (uint32_t i = 0; i < 8; ++i)
+	{
 		glm::vec4 world = modelMatrix * glm::vec4(localCorners[i], 1.0f);
 		worldCorners[i] = glm::vec3(world);
 	}
@@ -173,7 +158,7 @@ inline std::vector<glm::vec3> GetOBBVertices(
 	return vertices;
 }
 
-inline AABB mergeAABB(const AABB& a, const AABB& b)
+inline AABB MergeAABB(const AABB& a, const AABB& b) noexcept
 {
 	AABB result{};
 	result.vmin = glm::min(a.vmin, b.vmin);
@@ -182,13 +167,14 @@ inline AABB mergeAABB(const AABB& a, const AABB& b)
 	return result;
 }
 
-inline AABB computeVisibleReceiverAABB(const std::vector<AABB>& visibleWorldAABBs)
+inline AABB ComputeVisibleReceiverAABB(const std::vector<AABB>& visibleWorldAABBs) noexcept
 {
 	AABB receiver{};
 	receiver.vmin = glm::vec3(1e30f);
 	receiver.vmax = glm::vec3(-1e30f);
 
-	for (const AABB& aabb : visibleWorldAABBs) {
+	for (const AABB& aabb : visibleWorldAABBs)
+	{
 		receiver.vmin = glm::min(receiver.vmin, aabb.vmin);
 		receiver.vmax = glm::max(receiver.vmax, aabb.vmax);
 	}

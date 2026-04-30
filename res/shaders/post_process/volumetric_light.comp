@@ -87,7 +87,7 @@ float sampleShadowVolumetric(ViewReconstructResult result, mat4 cascadeVP, vec4 
 
 float sampleJitter(ivec2 pixelCoord)
 {
-	float noiseValue = interleavedGradientNoise(vec2(pixelCoord));
+	float noiseValue = temporalInterleavedGradientNoise(vec2(pixelCoord) , int(scene.temporal.x), float(scene.temporal.y));
 	return noiseValue - 0.5;
 }
 
@@ -112,15 +112,16 @@ void main()
 	vec2 halfPixelSize = vec2(scene.pixelSizes.z, scene.pixelSizes.w);
 
 	// Shadow map rotation hash
-	mat2 poissonRotation = createHash(vec2(pixelCoord));
+	mat2 poissonRotation = mat2(1.0);
 
 	// Half-res UV
 	vec2 uv = (vec2(pixelCoord) + 0.5) * halfPixelSize;
 
 	if (debug.aaMode == AA_TAA) {
-		// Remove jitter from UV before depth sample to get stable world position reconstruction
-		uv -= scene.temporalJitter.xy * 0.5; // NDC to UV space
-		uv  = clamp(uv, vec2(0.0), vec2(1.0));
+		poissonRotation = createHashTemporal(vec2(pixelCoord), scene.temporal.x);
+	}
+	else {
+		poissonRotation = createHash(vec2(pixelCoord));
 	}
 
 	vec4  depths     = textureGather(inDepth, uv, 0);

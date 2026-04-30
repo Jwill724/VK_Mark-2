@@ -746,9 +746,9 @@ void fg::Parser::fillCategories(Category& inputCategories) noexcept {
         return;
 
     // The Category enum used to already OR values together so that e.g. Scenes would also implicitly
-    // have the Nodes bit set. This, however, caused some issues within the parse function as it tries
+    // have the Nodes bit m_frameSet. This, however, caused some issues within the parse function as it tries
     // to bail out when all requested categories have been parsed, as now something that hasn't been
-    // parsed could still be set. So, this has to exist...
+    // parsed could still be m_frameSet. So, this has to exist...
     if (hasBit(inputCategories, Category::Scenes))
         inputCategories |= Category::Nodes;
     if (hasBit(inputCategories, Category::Nodes))
@@ -1223,7 +1223,7 @@ fg::Error fg::validate(const fastgltf::Asset& asset) {
 				const auto& accessor = asset.accessors[*primitive.indicesAccessor];
 				if (accessor.bufferViewIndex.has_value()) {
 					const auto& bufferView = asset.bufferViews[*accessor.bufferViewIndex];
-					// The byteStride property must not be set on anything but vertex attributes.
+					// The byteStride property must not be m_frameSet on anything but vertex attributes.
 					if (bufferView.byteStride.has_value())
 						return Error::InvalidGltf;
 				}
@@ -1723,7 +1723,7 @@ fg::Error fg::Parser::parseAccessors(simdjson::dom::array& accessors, Asset& ass
             return Error::InvalidGltf;
         }
 
-		// This property MUST NOT be set to true for accessors with FLOAT or UNSIGNED_INT component type.
+		// This property MUST NOT be m_frameSet to true for accessors with FLOAT or UNSIGNED_INT component type.
 		if (accessor.normalized && (accessor.componentType == ComponentType::UnsignedInt || accessor.componentType == ComponentType::Float)) {
 			return Error::InvalidGltf;
 		}

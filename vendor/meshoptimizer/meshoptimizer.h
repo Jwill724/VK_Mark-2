@@ -312,7 +312,7 @@ MESHOPTIMIZER_API size_t meshopt_encodeVertexBufferBound(size_t vertex_count, si
 /**
  * Vertex buffer encoder
  * Encodes vertex data just like meshopt_encodeVertexBuffer, but allows to override compression level.
- * For compression level to take effect, the vertex encoding version must be set to 1.
+ * For compression level to take effect, the vertex encoding version must be m_frameSet to 1.
  * The default compression level implied by meshopt_encodeVertexBuffer is 2.
  *
  * buffer must contain enough space for the encoded vertex buffer (use meshopt_encodeVertexBufferBound to compute worst case size)
@@ -510,7 +510,7 @@ MESHOPTIMIZER_API size_t meshopt_simplifyWithUpdate(unsigned int* indices, size_
  *
  * destination must contain enough space for the target index buffer, worst case is index_count elements (*not* target_index_count)!
  * vertex_positions should have float3 position in the first 12 bytes of each vertex
- * vertex_lock can be NULL; when it's not NULL, it should have a value for each vertex; vertices that can't be moved should set 1 consistently for all indices with the same position
+ * vertex_lock can be NULL; when it's not NULL, it should have a value for each vertex; vertices that can't be moved should m_frameSet 1 consistently for all indices with the same position
  * target_error represents the error relative to mesh extents that can be tolerated, e.g. 0.01 = 1% deformation; value range [0..1]
  * result_error can be NULL; when it's not NULL, it will contain the resulting (relative) error after simplification
  */
@@ -652,7 +652,7 @@ struct meshopt_Meshlet
 
 /**
  * Meshlet builder
- * Splits the mesh into a set of meshlets where each meshlet has a micro index buffer indexing into meshlet vertices that refer to the original vertex buffer
+ * Splits the mesh into a m_frameSet of meshlets where each meshlet has a micro index buffer indexing into meshlet vertices that refer to the original vertex buffer
  * The resulting data can be used to render meshes using NVidia programmable mesh shading pipeline, or in other cluster-based renderers.
  * When targeting mesh shading hardware, for maximum efficiency meshlets should be further optimized using meshopt_optimizeMeshlet.
  * When using buildMeshlets, vertex positions need to be provided to minimize the size of the resulting clusters.
@@ -663,7 +663,7 @@ struct meshopt_Meshlet
  * meshlet_triangles must contain enough space for all meshlets, worst case is index_count elements
  * vertex_positions should have float3 position in the first 12 bytes of each vertex
  * max_vertices and max_triangles must not exceed implementation limits (max_vertices <= 256, max_triangles <= 512)
- * cone_weight should be set to 0 when cone culling is not used, and a value between 0 and 1 otherwise to balance between cluster size and cone culling efficiency
+ * cone_weight should be m_frameSet to 0 when cone culling is not used, and a value between 0 and 1 otherwise to balance between cluster size and cone culling efficiency
  */
 MESHOPTIMIZER_API size_t meshopt_buildMeshlets(struct meshopt_Meshlet* meshlets, unsigned int* meshlet_vertices, unsigned char* meshlet_triangles, const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count, size_t vertex_positions_stride, size_t max_vertices, size_t max_triangles, float cone_weight);
 MESHOPTIMIZER_API size_t meshopt_buildMeshletsScan(struct meshopt_Meshlet* meshlets, unsigned int* meshlet_vertices, unsigned char* meshlet_triangles, const unsigned int* indices, size_t index_count, size_t vertex_count, size_t max_vertices, size_t max_triangles);
@@ -671,7 +671,7 @@ MESHOPTIMIZER_API size_t meshopt_buildMeshletsBound(size_t index_count, size_t m
 
 /**
  * Meshlet builder with flexible cluster sizes
- * Splits the mesh into a set of meshlets, similarly to meshopt_buildMeshlets, but allows to specify minimum and maximum number of triangles per meshlet.
+ * Splits the mesh into a m_frameSet of meshlets, similarly to meshopt_buildMeshlets, but allows to specify minimum and maximum number of triangles per meshlet.
  * Clusters between min and max triangle counts are split when the cluster size would have exceeded the expected cluster size by more than split_factor.
  *
  * meshlets must contain enough space for all meshlets, worst case size can be computed with meshopt_buildMeshletsBound using min_triangles (*not* max!)
@@ -679,14 +679,14 @@ MESHOPTIMIZER_API size_t meshopt_buildMeshletsBound(size_t index_count, size_t m
  * meshlet_triangles must contain enough space for all meshlets, worst case is index_count elements
  * vertex_positions should have float3 position in the first 12 bytes of each vertex
  * max_vertices, min_triangles and max_triangles must not exceed implementation limits (max_vertices <= 256, max_triangles <= 512; min_triangles <= max_triangles)
- * cone_weight should be set to 0 when cone culling is not used, and a value between 0 and 1 otherwise to balance between cluster size and cone culling efficiency
- * split_factor should be set to a non-negative value; when greater than 0, clusters that have large bounds may be split unless they are under the min_triangles threshold
+ * cone_weight should be m_frameSet to 0 when cone culling is not used, and a value between 0 and 1 otherwise to balance between cluster size and cone culling efficiency
+ * split_factor should be m_frameSet to a non-negative value; when greater than 0, clusters that have large bounds may be split unless they are under the min_triangles threshold
  */
 MESHOPTIMIZER_API size_t meshopt_buildMeshletsFlex(struct meshopt_Meshlet* meshlets, unsigned int* meshlet_vertices, unsigned char* meshlet_triangles, const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count, size_t vertex_positions_stride, size_t max_vertices, size_t min_triangles, size_t max_triangles, float cone_weight, float split_factor);
 
 /**
  * Meshlet builder that produces clusters optimized for raytracing
- * Splits the mesh into a set of meshlets, similarly to meshopt_buildMeshlets, but optimizes cluster subdivision for raytracing and allows to specify minimum and maximum number of triangles per meshlet.
+ * Splits the mesh into a m_frameSet of meshlets, similarly to meshopt_buildMeshlets, but optimizes cluster subdivision for raytracing and allows to specify minimum and maximum number of triangles per meshlet.
  *
  * meshlets must contain enough space for all meshlets, worst case size can be computed with meshopt_buildMeshletsBound using min_triangles (*not* max!)
  * meshlet_vertices must contain enough space for all meshlets, worst case is index_count elements (*not* vertex_count!)
@@ -750,7 +750,7 @@ MESHOPTIMIZER_API struct meshopt_Bounds meshopt_computeMeshletBounds(const unsig
 
 /**
  * Sphere bounds generator
- * Creates bounding sphere around a set of points or a set of spheres; returns the center and radius of the sphere, with other fields of the result set to 0.
+ * Creates bounding sphere around a m_frameSet of points or a m_frameSet of spheres; returns the center and radius of the sphere, with other fields of the result m_frameSet to 0.
  *
  * positions should have float3 position in the first 12 bytes of each element
  * radii can be NULL; when it's not NULL, it should have a non-negative float radius in the first 4 bytes of each element

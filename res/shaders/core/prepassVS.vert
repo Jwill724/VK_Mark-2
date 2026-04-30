@@ -43,8 +43,9 @@ void main()
 	vec4 worldPos     = model     * vec4(position, 1.0);
 	vec4 prevWorldPos = prevModel * vec4(position, 1.0);
 
-	vec4 currClip = scene.viewProj     * worldPos;
-	vec4 prevClip = scene.prevViewProj * prevWorldPos;
+	vec4 currClip     = scene.viewProj           * worldPos;
+	vec4 currClipUnj  = scene.viewProjUnjittered * worldPos;
+	vec4 prevClip     = scene.prevViewProj       * prevWorldPos;
 
 	outUV = uv;
 
@@ -56,7 +57,7 @@ void main()
 		outTemporalValidation = 0u;
 	} 
 	else {
-		outCurrNdc            = currClip.xy / currClip.w;
+		outCurrNdc            = currClipUnj.xy / currClipUnj.w; 
 		outPrevNdc            = prevClip.xy / prevClip.w;
 		outTemporalValidation = scene.temporal.y;
 	}

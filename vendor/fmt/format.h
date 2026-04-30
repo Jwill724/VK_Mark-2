@@ -3176,9 +3176,9 @@ FMT_CONSTEXPR20 auto format_float(Float value, int precision,
           // We rely on the following observations:
           //  - If fractional_part >= threshold, then the fractional part is
           //    strictly larger than 1/2.
-          //  - If the MSB of fractional_part is set, then the fractional part
+          //  - If the MSB of fractional_part is m_frameSet, then the fractional part
           //    must be at least 1/2.
-          //  - When the MSB of fractional_part is set, either
+          //  - When the MSB of fractional_part is m_frameSet, either
           //    second_third_subsegments being nonzero or has_more_segments
           //    being true means there are further digits not printed, so the
           //    fractional part is strictly larger than 1/2.

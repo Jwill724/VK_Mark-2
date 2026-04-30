@@ -131,7 +131,7 @@ namespace
     }
 
     #if ( defined _WIN32 && ( defined _M_IX86  || defined _M_X64 ) ) || ( defined __i386__ || defined __x86_64__ )
-    // Note: see https://software.intel.com/en-us/articles/a-common-construct-to-avoid-the-contention-of-threads-architecture-agnostic-spin-wait-loops
+    // Note: see https://software.intel.com/en-us/articles/a-common-construct-to-avoid-the-contention-of-threads-architecture-agnostic-spin-Wait-loops
     static void SpinWait( uint32_t spinCount_ )
     {
         uint64_t end = __rdtsc() + spinCount_;
@@ -263,7 +263,7 @@ void TaskScheduler::TaskingThreadFunction( const ThreadArgs& args_ )
     {
         if( !pTS->TryRunTask( threadNum, hintPipeToCheck_io ) )
         {
-            // no tasks, will spin then wait
+            // no tasks, will spin then Wait
             ++spinCount;
             if( spinCount > gc_SpinCount )
             {
@@ -325,7 +325,7 @@ void TaskScheduler::StartThreads()
     {
         m_pThreadDataStore[thread].threadState   = ENKI_THREAD_STATE_NOT_LAUNCHED;
     }
-    // only launch threads once all thread states are set
+    // only launch threads once all thread states are m_frameSet
     for( uint32_t thread = m_Config.numExternalTaskThreads + GetNumFirstExternalTaskThread(); thread < m_NumThreads; ++thread )
     {
         m_pThreads[thread]                       = std::thread( TaskingThreadFunction, ThreadArgs{ thread, this } );
@@ -369,7 +369,7 @@ void TaskScheduler::StopThreads( bool bWait_ )
 {
     if( m_bHaveThreads )
     {
-        // wait for them threads quit before deleting data
+        // Wait for them threads quit before deleting data
         m_bRunning.store( false, std::memory_order_release );
         m_bWaitforAllCalled.store( false, std::memory_order_release );
 
@@ -381,7 +381,7 @@ void TaskScheduler::StopThreads( bool bWait_ )
 
            for( uint32_t threadId = 0; threadId < m_NumThreads; ++threadId )
            {
-               // send wait for new pinned tasks signal to ensure any waiting are awoken
+               // send Wait for new pinned tasks signal to ensure any waiting are awoken
                SemaphoreSignal( *m_pThreadDataStore[ threadId ].pWaitNewPinnedTaskSemaphore, 1 );
            }
         }
@@ -494,7 +494,7 @@ bool TaskScheduler::TryRunTask( uint32_t threadNum_, uint32_t priority_, uint32_
 
 void TaskScheduler::TaskComplete( ICompletable* pTask_, bool bWakeThreads_, uint32_t threadNum_ )
 {
-    // It must be impossible for a thread to enter the sleeping wait prior to the load of m_WaitingForTaskCount
+    // It must be impossible for a thread to enter the sleeping Wait prior to the load of m_WaitingForTaskCount
     // in this function, so we introduce an gc_TaskAlmostCompleteCount to prevent this.
     ENKI_ASSERT( gc_TaskAlmostCompleteCount == pTask_->m_RunningCount.load( std::memory_order_acquire ) );
     bool bCallWakeThreads = bWakeThreads_ && pTask_->m_WaitingForTaskCount.load( std::memory_order_acquire );
@@ -598,7 +598,7 @@ void TaskScheduler::WaitForTaskCompletion( const ICompletable* pCompletable_, ui
     ThreadState prevThreadState = m_pThreadDataStore[threadNum_].threadState.load( std::memory_order_relaxed );
     m_pThreadDataStore[threadNum_].threadState.store( ENKI_THREAD_STATE_WAIT_TASK_COMPLETION, std::memory_order_seq_cst );
 
-    // do not wait on semaphore if task in gc_TaskAlmostCompleteCount state.
+    // do not Wait on semaphore if task in gc_TaskAlmostCompleteCount state.
     if( gc_TaskAlmostCompleteCount >= pCompletable_->m_RunningCount.load( std::memory_order_acquire ) || HaveTasks( threadNum_ ) )
     {
         m_NumThreadsWaitingForTaskCompletion.fetch_sub( 1, std::memory_order_release );
@@ -785,7 +785,7 @@ void TaskScheduler::AddPinnedTask( IPinnedTask* pTask_ )
 
 void TaskScheduler::InitDependencies( ICompletable* pCompletable_ )
 {
-    // go through any dependencies and set thier running count so they show as not complete
+    // go through any dependencies and m_frameSet thier running count so they show as not complete
     // and increment depedency count
     if( pCompletable_->m_RunningCount.load( std::memory_order_relaxed ) )
     {
@@ -916,7 +916,7 @@ void TaskScheduler::WaitforAll()
         }
         if( spinCount > gc_SpinCount )
         {
-            // find a running thread and add a dummy wait task
+            // find a running thread and add a dummy Wait task
             int32_t countThreadsToCheck = m_NumThreads - 1;
             bool bHaveThreadToWaitOn = false;
             do
@@ -924,8 +924,8 @@ void TaskScheduler::WaitforAll()
                 --countThreadsToCheck;
                 dummyWaitTask.threadNum = ( dummyWaitTask.threadNum + 1 ) % m_NumThreads;
 
-                // We can only add a pinned task to wait on if we find an enki Task Thread which isn't this thread.
-                // Otherwise we have to busy wait.
+                // We can only add a pinned task to Wait on if we find an enki Task Thread which isn't this thread.
+                // Otherwise we have to busy Wait.
                 if( dummyWaitTask.threadNum != ourThreadNum && dummyWaitTask.threadNum > m_Config.numExternalTaskThreads )
                 {
                     ThreadState state = m_pThreadDataStore[ dummyWaitTask.threadNum ].threadState.load( std::memory_order_acquire );

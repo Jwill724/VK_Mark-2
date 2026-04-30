@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------------
 // DEAR IMGUI COMPILE-TIME OPTIONS
-// Runtime options (clipboard callbacks, enabling various features, etc.) can generally be set via the ImGuiIO structure.
+// Runtime options (clipboard callbacks, enabling various features, etc.) can generally be m_frameSet via the ImGuiIO structure.
 // You can use ImGui::SetAllocatorFunctions() before calling ImGui::CreateContext() to rewire memory allocation functions.
 //-----------------------------------------------------------------------------
 // A) You may edit imconfig.h (and not overwrite it when updating Dear ImGui, or maintain a patch/rebased branch with your modifications to it)
@@ -26,7 +26,7 @@
 //   for each static/DLL boundary you are calling from. Read "Context and Memory Allocators" section of imgui.cpp for more details.
 //#define IMGUI_API __declspec(dllexport)                   // MSVC Windows: DLL export
 //#define IMGUI_API __declspec(dllimport)                   // MSVC Windows: DLL import
-//#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when set is hidden
+//#define IMGUI_API __attribute__((visibility("default")))  // GCC/Clang: override visibility when m_frameSet is hidden
 
 //---- Don't define obsolete functions/enums/behaviors. Consider enabling from time to time after updating to clean your code of obsolete function/names.
 //#define IMGUI_DISABLE_OBSOLETE_FUNCTIONS
@@ -53,7 +53,7 @@
 //#define IMGUI_DISABLE_SSE                                 // Disable use of SSE intrinsics even if available
 
 //---- Enable Test Engine / Automation features.
-//#define IMGUI_ENABLE_TEST_ENGINE                          // Enable imgui_test_engine hooks. Generally set automatically by include "imgui_te_config.h", see Test Engine for details.
+//#define IMGUI_ENABLE_TEST_ENGINE                          // Enable imgui_test_engine hooks. Generally m_frameSet automatically by include "imgui_te_config.h", see Test Engine for details.
 
 //---- Include imgui_user.h at the end of imgui.h as a convenience
 // May be convenient for some users to only explicitly include vanilla imgui.h and have extra stuff included.
@@ -131,7 +131,7 @@
 //#define IM_DEBUG_BREAK  IM_ASSERT(0)
 //#define IM_DEBUG_BREAK  __debugbreak()
 
-//---- Debug Tools: Enable highlight ID conflicts _before_ hovering items. When io.ConfigDebugHighlightIdConflicts is set.
+//---- Debug Tools: Enable highlight ID conflicts _before_ hovering items. When io.ConfigDebugHighlightIdConflicts is m_frameSet.
 // (THIS WILL SLOW DOWN DEAR IMGUI. Only use occasionally and disable after use)
 //#define IMGUI_DEBUG_HIGHLIGHT_ALL_ID_CONFLICTS
 

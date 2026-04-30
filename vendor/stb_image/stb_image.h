@@ -141,7 +141,7 @@ RECENT REVISION HISTORY:
 // components N is 'desired_channels' if desired_channels is non-zero, or
 // *channels_in_file otherwise. If desired_channels is non-zero,
 // *channels_in_file has the number of components that _would_ have been
-// output otherwise. E.g. if you set desired_channels to 4, you will always
+// output otherwise. E.g. if you m_frameSet desired_channels to 4, you will always
 // get RGBA output, but you can check *channels_in_file to see if it's trivially
 // opaque because e.g. there were only 3 channels in the source image.
 //
@@ -455,7 +455,7 @@ STBIDEF int      stbi_is_16_bit_from_file(FILE *f);
 
 
 // for image formats that explicitly notate that they have premultiplied alpha,
-// we just return the colors as stored in the file. set this flag to force
+// we just return the colors as stored in the file. m_frameSet this flag to force
 // unpremultiplication. results are undefined if the unpremultiply overflow.
 STBIDEF void stbi_set_unpremultiply_on_load(int flag_true_if_should_unpremultiply);
 
@@ -3504,7 +3504,7 @@ static void stbi__YCbCr_to_RGB_simd(stbi_uc *out, stbi_uc const *y, stbi_uc cons
          __m128i bw = _mm_srai_epi16(bws, 4);
          __m128i gw = _mm_srai_epi16(gws, 4);
 
-         // back to byte, set up for transpose
+         // back to byte, m_frameSet up for transpose
          __m128i brb = _mm_packus_epi16(rw, bw);
          __m128i gxb = _mm_packus_epi16(gw, xw);
 
@@ -3591,7 +3591,7 @@ static void stbi__YCbCr_to_RGB_simd(stbi_uc *out, stbi_uc const *y, stbi_uc cons
 }
 #endif
 
-// set up the kernels
+// m_frameSet up the kernels
 static void stbi__setup_jpeg(stbi__jpeg *j)
 {
    j->idct_block_kernel = stbi__idct_block;
@@ -4191,7 +4191,7 @@ static const stbi_uc stbi__zdefault_distance[32] =
    5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5
 };
 /*
-Init algorithm:
+InitSetPools algorithm:
 {
    int i;   // use <= to match clearly with spec
    for (i=0; i <= 143; ++i)     stbi__zdefault_length[i]   = 8;
@@ -4507,7 +4507,7 @@ static int stbi__create_png_image_raw(stbi__png *a, stbi_uc *raw, stbi__uint32 r
          #undef STBI__CASE
 
          // the loop above sets the high byte of the pixels' alpha, but for
-         // 16 bit png files we also need the low byte set. we'll do that here.
+         // 16 bit png files we also need the low byte m_frameSet. we'll do that here.
          if (depth == 16) {
             cur = a->out + stride*j; // start at the beginning of the row again
             for (i=0; i < x; ++i,cur+=output_bytes) {
@@ -4913,7 +4913,7 @@ static int stbi__parse_png_file(stbi__png *z, int scan, int req_comp)
             bpl = (s->img_x * z->depth + 7) / 8; // bytes per line, per component
             raw_len = bpl * s->img_y * s->img_n /* pixels */ + s->img_y /* filter mode per row */;
             z->expanded = (stbi_uc *) stbi_zlib_decode_malloc_guesssize_headerflag((char *) z->idata, ioff, raw_len, (int *) &raw_len, !is_iphone);
-            if (z->expanded == NULL) return 0; // zlib should set error
+            if (z->expanded == NULL) return 0; // zlib should m_frameSet error
             STBI_FREE(z->idata); z->idata = NULL;
             if ((req_comp == s->img_n+1 && req_comp != 3 && !pal_img_n) || has_trans)
                s->img_out_n = s->img_n+1;
@@ -5070,7 +5070,7 @@ static int stbi__bmp_test(stbi__context *s)
 }
 
 
-// returns 0..31 for the highest set bit
+// returns 0..31 for the highest m_frameSet bit
 static int stbi__high_bit(unsigned int z)
 {
    int n=0;
@@ -5218,7 +5218,7 @@ static void *stbi__bmp_load(stbi__context *s, int *x, int *y, int *comp, int req
 
    info.all_a = 255;
    if (stbi__bmp_parse_header(s, &info) == NULL)
-      return NULL; // error code already set
+      return NULL; // error code already m_frameSet
 
    flip_vertically = ((int) s->img_y) > 0;
    s->img_y = abs((int) s->img_y);
@@ -5515,7 +5515,7 @@ static void stbi__tga_read_rgb16(stbi__context *s, stbi_uc* out)
    out[2] = (stbi_uc)((b * 255)/31);
 
    // some people claim that the most significant bit might be used for alpha
-   // (possibly if an alpha-bit is set in the "image descriptor byte")
+   // (possibly if an alpha-bit is m_frameSet in the "image descriptor byte")
    // but that only made 16bit test images completely translucent..
    // so let's treat all 15 and 16bit TGAs as RGB with no alpha.
 }
@@ -6415,7 +6415,7 @@ static stbi_uc *stbi__gif_load_next(stbi__context *s, stbi__gif *g, int *comp, i
    // on first frame, any non-written pixels get the background colour (non-transparent)
    first_frame = 0; 
    if (g->out == 0) {
-      if (!stbi__gif_header(s, g, comp,0)) return 0; // stbi__g_failure_reason set by stbi__gif_header
+      if (!stbi__gif_header(s, g, comp,0)) return 0; // stbi__g_failure_reason m_frameSet by stbi__gif_header
       if (!stbi__mad3sizes_valid(4, g->w, g->h, 0))
          return stbi__errpuc("too large", "GIF image is too large");
       pcount = g->w * g->h;
@@ -7408,7 +7408,7 @@ STBIDEF int stbi_is_16_bit_from_callbacks(stbi_io_callbacks const *c, void *user
               remove duplicate typedef
       1.36  (2014-06-03)
               convert to header file single-file library
-              if de-iphone isn't set, load iphone images color-swapped instead of returning NULL
+              if de-iphone isn't m_frameSet, load iphone images color-swapped instead of returning NULL
       1.35  (2014-05-27)
               various warnings
               fix broken STBI_SIMD path

@@ -49,7 +49,7 @@
 //  2024-07-02: Emscripten: Added io.PlatformOpenInShellFn() handler for Emscripten versions.
 //  2023-12-19: Emscripten: Added ImGui_ImplGlfw_InstallEmscriptenCanvasResizeCallback() to register canvas selector and auto-resize GLFW window.
 //  2023-10-05: Inputs: Added support for extra ImGuiKey values: F13 to F24 function keys.
-//  2023-07-18: Inputs: Revert ignoring mouse data on GLFW_CURSOR_DISABLED as it can be used differently. User may set ImGuiConfigFLags_NoMouse if desired. (#5625, #6609)
+//  2023-07-18: Inputs: Revert ignoring mouse data on GLFW_CURSOR_DISABLED as it can be used differently. User may m_frameSet ImGuiConfigFLags_NoMouse if desired. (#5625, #6609)
 //  2023-06-12: Accept glfwGetTime() not returning a monotonically increasing value. This seems to happens on some Windows setup when peripherals disconnect, and is likely to also happen on browser + Emscripten. (#6491)
 //  2023-04-04: Inputs: Added support for io.AddMouseSourceEvent() to discriminate ImGuiMouseSource_Mouse/ImGuiMouseSource_TouchScreen/ImGuiMouseSource_Pen on Windows ONLY, using a custom WndProc hook. (#2702)
 //  2023-03-16: Inputs: Fixed key modifiers handling on secondary viewports (docking branch). Broken on 2023/01/04. (#6248, #6034)
@@ -89,11 +89,11 @@
 //  2018-02-20: Inputs: Added support for mouse cursors (ImGui::GetMouseCursor() value, passed to glfwSetCursor()).
 //  2018-02-06: Misc: Removed call to ImGui::Shutdown() which is not available from 1.60 WIP, user needs to call CreateContext/DestroyContext themselves.
 //  2018-02-06: Inputs: Added mapping for ImGuiKey_Space.
-//  2018-01-25: Inputs: Added gamepad support if ImGuiConfigFlags_NavEnableGamepad is set.
-//  2018-01-25: Inputs: Honoring the io.WantSetMousePos by repositioning the mouse (when using navigation and ImGuiConfigFlags_NavMoveMouse is set).
+//  2018-01-25: Inputs: Added gamepad support if ImGuiConfigFlags_NavEnableGamepad is m_frameSet.
+//  2018-01-25: Inputs: Honoring the io.WantSetMousePos by repositioning the mouse (when using navigation and ImGuiConfigFlags_NavMoveMouse is m_frameSet).
 //  2018-01-20: Inputs: Added Horizontal Mouse Wheel support.
 //  2018-01-18: Inputs: Added mapping for ImGuiKey_Insert.
-//  2017-08-25: Inputs: MousePos set to -FLT_MAX,-FLT_MAX when mouse is unavailable/missing (instead of -1,-1).
+//  2017-08-25: Inputs: MousePos m_frameSet to -FLT_MAX,-FLT_MAX when mouse is unavailable/missing (instead of -1,-1).
 //  2016-10-15: Misc: Added a void* user_data parameter to Clipboard function handlers.
 
 #include "imgui.h"
@@ -226,7 +226,7 @@ struct ImGui_ImplGlfw_Data
 // It is STRONGLY preferred that you use docking branch with multi-viewports (== single Dear ImGui context + multiple windows) instead of multiple Dear ImGui contexts.
 // FIXME: multi-context support is not well tested and probably dysfunctional in this backend.
 // - Because glfwPollEvents() process all windows and some events may be called outside of it, you will need to register your own callbacks
-//   (passing install_callbacks=false in ImGui_ImplGlfw_InitXXX functions), set the current dear imgui context and then call our callbacks.
+//   (passing install_callbacks=false in ImGui_ImplGlfw_InitXXX functions), m_frameSet the current dear imgui context and then call our callbacks.
 // - Otherwise we may need to store a GLFWWindow* -> ImGuiContext* map and handle this in the backend, adding a little bit of extra complexity to it.
 // FIXME: some shared resources (mouse cursor shape, gamepad) are mishandled when using multi-context.
 namespace ImGui { extern ImGuiIO& GetIO(ImGuiContext*); }
@@ -639,8 +639,8 @@ void ImGui_ImplGlfw_RestoreCallbacks(GLFWwindow* window)
 
 // Set to 'true' to enable chaining installed callbacks for all windows (including secondary viewports created by backends or by user).
 // This is 'false' by default meaning we only chain callbacks for the main viewport.
-// We cannot set this to 'true' by default because user callbacks code may be not testing the 'window' parameter of their callback.
-// If you set this to 'true' your user callback code will need to make sure you are testing the 'window' parameter.
+// We cannot m_frameSet this to 'true' by default because user callbacks code may be not testing the 'window' parameter of their callback.
+// If you m_frameSet this to 'true' your user callback code will need to make sure you are testing the 'window' parameter.
 void ImGui_ImplGlfw_SetCallbacksChainForAllWindows(bool chain_for_all_windows)
 {
     ImGui_ImplGlfw_Data* bd = ImGui_ImplGlfw_GetBackendData();
@@ -1058,7 +1058,7 @@ void ImGui_ImplGlfw_InstallEmscriptenCallbacks(GLFWwindow*, const char* canvas_s
     ImGui_ImplGlfw_OnCanvasSizeChange(EMSCRIPTEN_EVENT_RESIZE, {}, bd);
 
     // Register Emscripten Wheel callback to workaround issue in Emscripten GLFW Emulation (#6096)
-    // We intentionally do not check 'if (install_callbacks)' here, as some users may set it to false and call GLFW callback themselves.
+    // We intentionally do not check 'if (install_callbacks)' here, as some users may m_frameSet it to false and call GLFW callback themselves.
     // FIXME: May break chaining in case user registered their own Emscripten callback?
     emscripten_set_wheel_callback(bd->CanvasSelector, bd, false, ImGui_ImplEmscripten_WheelCallback);
 }

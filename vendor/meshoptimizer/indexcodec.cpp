@@ -195,7 +195,7 @@ size_t meshopt_encodeIndexBuffer(unsigned char* buffer, size_t buffer_size, cons
 	int fecmax = version >= 1 ? 13 : 15;
 
 	// use static encoding table; it's possible to pack the result and then build an optimal table and repack
-	// for now we keep it simple and use the table that has been generated based on symbol frequency on a training mesh set
+	// for now we keep it simple and use the table that has been generated based on symbol frequency on a training mesh m_frameSet
 	const unsigned char* codeaux_table = kCodeAuxEncodingTable;
 
 	for (size_t i = 0; i < index_count; i += 3)

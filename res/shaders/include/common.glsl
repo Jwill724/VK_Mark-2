@@ -178,16 +178,15 @@ struct AABB {
 	vec3 vmax; // extent: 0.5f * (vmax - vmin)
 };
 
-struct Material {
+struct Material
+{
 	vec4 colorFactor;
 	vec2 metalRoughFactors;
-
-	float ambientOcclusion;
-	float normalScale;
 
 	vec3 emissiveColor;
 	float emissiveStrength;
 
+	float normalScale;
 	float alphaCutoff;
 	uint passType;
 	uint flags;
@@ -195,11 +194,11 @@ struct Material {
 	uint albedoID;
 	uint metalRoughnessID;
 	uint normalID;
-	uint aoID;
 	uint emissiveID;
 };
 
-struct Mesh {
+struct Mesh
+{
 	AABB localAABB;
 	uint firstIndex;
 	uint indexCount;
@@ -209,17 +208,37 @@ struct Mesh {
 	uint shadowIndexCount;
 };
 
-struct Vertex {
-	vec3     position;
-	int16_t  normalX;
-	int16_t  normalY;
-	int16_t  tangentX;
-	int16_t  tangentY;
-	int8_t   tangentW;
-	uint16_t uvX;
-	uint16_t uvY;
-	uint     colorRGBA8;
+struct Vertex
+{
+	// half float 6 bytes
+	uint16_t  positionX;
+	uint16_t  positionY;
+	uint16_t  positionZ;
+
+	// oct-encoded 2 bytes
+	int8_t    normalX;
+	int8_t    normalY;
+
+	// 2 bytes
+	int8_t    tangentX; // oct-encoded
+	int8_t    tangentY; // sign in MSB (tangentW packed as sign bit)
+
+	// unorm16 4 bytes
+	uint16_t  uvX;
+	uint16_t  uvY;
+
+	// 4 bytes
+	uint32_t  colorRGBA8;
 };
+// Total: 18 bytes
+
+vec3 unpackPosition(uint xy, uint z_nx)
+{
+	vec2 xy16 = unpackHalf2x16(xy);
+	vec2 zn   = unpackHalf2x16(z_nx); // zn.x = posZ, zn.y = normalX raw (unused here)
+	return vec3(xy16.x, xy16.y, zn.x);
+}
+
 
 vec2 octEncode(vec3 n) {
 	n /= abs(n.x) + abs(n.y) + abs(n.z);
@@ -241,13 +260,15 @@ vec3 octDecode(vec2 e) {
 	return normalize(v);
 }
 
+float snorm8ToFloat(int v) { return clamp(float(v) / 127.0, -1.0, 1.0); }
+
 float snorm16ToFloat(int16_t v) {
 	// maps [-32767..32767] to [-1..1]
 	return clamp(float(v) / 32767.0, -1.0, 1.0);
 }
 
 vec2 unpackUV(uint16_t uvX, uint16_t uvY) {
-	uint packed = (uint(uvY) << 16) | uint(uvX);
+	uint packed = (uint(uvY) << 16u) | uint(uvX);
 	return unpackHalf2x16(packed);
 }
 
@@ -285,7 +306,7 @@ float interleavedGradientNoise(vec2 pixel) {
 }
 
 // https://github.com/PanosK92/SpartanEngine/blob/4a0fe6d6d6ae54be08d5e9541a75adfb9d32d35f/data/shaders/common.hlsl#L434
-float temporalNoiseInterleavedGradient(vec2 screen_pos, int frame_count, float taaOn) {
+float temporalInterleavedGradientNoise(vec2 screen_pos, int frame_count, float taaOn) {
 	const float RPC_16 = 0.0625;
 
 	// temporal factor
@@ -345,8 +366,6 @@ struct LocalLight {
 
 	float outerCos;
 	uint flags;
-	uint shadowMapID;
-	uint cookieTexID;
 };
 
 struct ClusteredData {
@@ -370,49 +389,38 @@ struct EnvMapIndexArray {
 };
 
 // inline uniform block
-struct DebugToggles {
-	// Higher level toggles
+struct RenderToggles
+{
 	uint enableOBBs;
-	uint enableenableProfilerView;
-	uint enableSettings;
-	uint aaMode;
-
-	uint aoMode;
-	uint enableShadows;
-	uint enableVolumetrics;
-	uint activeEnvMap; // Indexes environment indices
-
-	// draw stats
-	uint meshCount;
-	uint materialCount;
-	uint transformCount;
-	uint vertexCount;
-
-	uint indexCount;
 	uint enableLensFlare;
 	uint enableChromaticAberration;
 	uint enableSSS;
 
-	// fragment shader outputs
+	uint aaMode;
+	uint aoMode;
+	uint shadowFilter;
+	uint enableShadows;
+
+	uint enableVolumetrics;
+	uint tonemapper;
+	uint activeEnvMap;
 	uint showAlbedo;
+
 	uint showNormals;
 	uint showRoughness;
 	uint showMetallic;
-
 	uint showAmbientOcclusion;
+
 	uint showSpecular;
 	uint showDiffuse;
-	uint tonemapper;
-
 	uint showEmissive;
 	uint showBentNormals;
+
 	uint showCascadeSplits;
 	uint showSSS;
 
-	uint shadowFilter;
-	uint pad0;
-	uint pad1;
-	uint pad2;
+	uint enableProfilerView;
+	uint enableSettings;
 };
 
 
@@ -767,22 +775,18 @@ void unpackVertex(
 {
 	Vertex vtx = getVertexBuffer().vertices[id];
 
-	position = vtx.position;
+	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
+	uint zw = uint(vtx.positionZ);
+	position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
 
-	uv = unpackUV(vtx.uvX, vtx.uvY);
-	color = unpackRGBA8(vtx.colorRGBA8);
+	uv    = unpackUV(vtx.uvX, vtx.uvY);
+	color = unpackUnorm4x8(vtx.colorRGBA8);
 
-	vec2 octEnc;
-	octEnc.x = snorm16ToFloat(vtx.normalX);
-	octEnc.y = snorm16ToFloat(vtx.normalY);
-	normal = octDecode(octEnc);
+	normal = octDecode(vec2(snorm8ToFloat(int(vtx.normalX)), snorm8ToFloat(int(vtx.normalY))));
 
-	vec2 octTan;
-	octTan.x = snorm16ToFloat(vtx.tangentX);
-	octTan.y = snorm16ToFloat(vtx.tangentY);
-	tangent = octDecode(octTan);
-
-	tangentHandedness = float(vtx.tangentW);
+	int ty = int(vtx.tangentY);
+	tangentHandedness = (ty >= 0) ? 1.0 : -1.0;
+	tangent = octDecode(vec2(snorm8ToFloat(int(vtx.tangentX)), snorm8ToFloat(abs(ty))));
 }
 
 void unpackVertexPrepass(
@@ -793,14 +797,12 @@ void unpackVertexPrepass(
 {
 	Vertex vtx = getVertexBuffer().vertices[id];
 
-	position = vtx.position;
+	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
+	uint zw = uint(vtx.positionZ);
+	position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
 
-	uv = unpackUV(vtx.uvX, vtx.uvY);
-
-	vec2 octEnc;
-	octEnc.x = snorm16ToFloat(vtx.normalX);
-	octEnc.y = snorm16ToFloat(vtx.normalY);
-	normal = octDecode(octEnc);
+	uv     = unpackUV(vtx.uvX, vtx.uvY);
+	normal = octDecode(vec2(snorm8ToFloat(int(vtx.normalX)), snorm8ToFloat(int(vtx.normalY))));
 }
 
 #endif

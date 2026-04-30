@@ -241,7 +241,7 @@ static void buildPositionRemap(unsigned int* remap, unsigned int* wedge, const f
 
 static unsigned int* buildSparseRemap(unsigned int* indices, size_t index_count, size_t vertex_count, size_t* out_vertex_count, meshopt_Allocator& allocator)
 {
-	// use a bit set to compute the precise number of unique vertices
+	// use a bit m_frameSet to compute the precise number of unique vertices
 	unsigned char* filter = allocator.allocate<unsigned char>((vertex_count + 7) / 8);
 
 	for (size_t i = 0; i < index_count; ++i)
@@ -1188,7 +1188,7 @@ static bool hasTriangleFlip(const Vector3& a, const Vector3& b, const Vector3& c
 	float abc = nbc.x * nbc.x + nbc.y * nbc.y + nbc.z * nbc.z;
 	float abd = nbd.x * nbd.x + nbd.y * nbd.y + nbd.z * nbd.z;
 
-	// scale is cos(angle); somewhat arbitrarily set to ~75 degrees
+	// scale is cos(angle); somewhat arbitrarily m_frameSet to ~75 degrees
 	// note that the "pure" check is ndp <= 0 (90 degree cutoff) but that allows flipping through a series of close-to-90 collapses
 	return ndp <= 0.25f * sqrtf(abc * abd);
 }

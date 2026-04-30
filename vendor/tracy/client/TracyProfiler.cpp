@@ -148,7 +148,7 @@ namespace tracy
 746b63b000-746b6dc000 --xp 00042000 07:48 35                             /apex/com.android.runtime/lib64/bionic/libc.so
 */
 // See https://github.com/wolfpld/tracy/issues/125 .
-// To work around this, we parse /proc/self/maps and we use mprotect to set read permissions
+// To work around this, we parse /proc/self/maps and we use mprotect to m_frameSet read permissions
 // on any mappings that contain symbols addresses hit by HandleSymbolCodeQuery.
 
 namespace {
@@ -274,7 +274,7 @@ static bool EnsureReadable( MappingInfo& mapping )
     return true;
 }
 
-// Attempts to set the read permission on the entire mapping containing the
+// Attempts to m_frameSet the read permission on the entire mapping containing the
 // specified address. Returns true if and only if the mapping is now readable.
 static bool EnsureReadable( uintptr_t address )
 {

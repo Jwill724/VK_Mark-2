@@ -44,8 +44,9 @@ struct ModelAsset {
 	// The ORIGINAL DATA of a model is kept here untouched as a singular entity,
 	// no transformID or draw type is known in here as thats handled at runtime.
 	// Nodes = the transform count in an asset.
-	struct GPUData {
-		std::vector<GPUInstance> bakedInstances;
+	struct GPUData
+	{
+		std::vector<Instance> bakedInstances;
 		size_t vertexOffset = 0;
 		size_t indexOffset = 0;
 		size_t vertexCount = 0;
@@ -54,7 +55,7 @@ struct ModelAsset {
 		size_t materialBaseOffset = 0;
 		std::vector<RuntimeImage> images;
 		std::vector<VkSampler> samplers;
-		std::vector<GPUMaterial> materials;
+		std::vector<Material> materials;
 		std::vector<bool> normalMapFlags;
 
 		std::vector<uint32_t> bakedNodeIDs;    // nodes to search each inner transform tree
@@ -154,11 +155,11 @@ namespace AssetManager {
 		MeshRegistry& meshes,
 		std::vector<Vertex>& vertices,
 		std::vector<uint32_t>& indices,
-		ModelDataCounts& modelDataCounts);
+		TotalAssetDataCounts& modelDataCounts);
 
 	void buildSceneGraph(
 		ThreadContext& threadCtx,
-		std::vector<GlobalInstance>& globalInstances,
+		std::vector<VirtualInstance>& globalInstances,
 		std::vector<glm::mat4>& globalTransforms,
-		ModelDataCounts& modelDataCounts);
+		TotalAssetDataCounts& modelDataCounts);
 }

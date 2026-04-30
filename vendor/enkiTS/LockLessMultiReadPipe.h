@@ -270,7 +270,7 @@ namespace enki
                     {
                         // pCompare receives the revised pHead on failure.
                         // pTailPlus1 is no longer the head, so pTailPlus1->pNext should be non NULL
-                        while( (T*)NULL == pTailPlus1->pNext ) {;} // wait for pNext to be updated as head may have just changed.
+                        while( (T*)NULL == pTailPlus1->pNext ) {;} // Wait for pNext to be updated as head may have just changed.
                         tail.pNext = pTailPlus1->pNext.load();
                         pTailPlus1->pNext = NULL;
                     }

@@ -17,79 +17,79 @@ void MeshLoader::uploadMeshes(
 {
 	const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
 	const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-	const size_t meshesSize = meshes.meshData.size() * sizeof(GPUMeshData);
+	const size_t meshesSize = meshes.meshData.size() * sizeof(Mesh);
 	const size_t totalStagingSize = vertexBufferSize + indexBufferSize + meshesSize;
 
 	if (ENABLE_DEBUG_LOGS) {
-		JobSystem::log(
+		JobSystem::Log(
 			threadCtx.threadID,
 			fmt::format(
 				"[MeshUpload] vertexBufferSize   = {} bytes ({} vertices)\n",
 				vertexBufferSize, vertices.size())
 		);
-		JobSystem::log(
+		JobSystem::Log(
 			threadCtx.threadID,
 			fmt::format(
 				"[MeshUpload] indexBufferSize    = {} bytes ({} indices)\n",
 				indexBufferSize, indices.size())
 		);
-		JobSystem::log(
+		JobSystem::Log(
 			threadCtx.threadID,
 			fmt::format(
 				"[MeshUpload] meshesSize         = {} bytes ({} meshes)\n",
 				meshesSize, meshes.meshData.size())
 		);
-		JobSystem::log(
+		JobSystem::Log(
 			threadCtx.threadID,
 			fmt::format("[MeshUpload] totalStagingSize   = {} bytes\n", totalStagingSize)
 		);
 	}
 
-	auto& resources = Engine::getState().getGPUResources();
-	auto& globalAddrTable = resources.getAddressTable();
+	auto& resources = Engine::GetState().getGPUResources();
+	auto& globalAddrTable = resources.GetAddressTable();
 
 	// Create large GPU buffers for vertex and index
-	AllocatedBuffer vtxBuffer = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Vertex,
+	AllocatedBuffer vtxBuffer = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Vertex,
 		globalAddrTable,
 		vertexBufferSize,
 		alloc
 	);
-	resources.addGPUBufferToGlobalAddress(AddressBufferType::Vertex, vtxBuffer);
+	resources.AddGPUBufferToGlobalAddress(BufferSlot::Vertex, vtxBuffer);
 
-	AllocatedBuffer idxBuffer = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Index,
+	AllocatedBuffer idxBuffer = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Index,
 		globalAddrTable,
 		indexBufferSize,
 		alloc
 	);
-	resources.addGPUBufferToGlobalAddress(AddressBufferType::Index, idxBuffer);
+	resources.AddGPUBufferToGlobalAddress(BufferSlot::Index, idxBuffer);
 
 	// Mesh buffer creation
-	AllocatedBuffer meshBuffer = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Mesh,
+	AllocatedBuffer meshBuffer = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Mesh,
 		globalAddrTable,
 		meshesSize,
 		alloc
 	);
-	resources.addGPUBufferToGlobalAddress(AddressBufferType::Mesh, meshBuffer);
+	resources.AddGPUBufferToGlobalAddress(BufferSlot::Mesh, meshBuffer);
 
 	// Setup single staging buffer for transfer
-	AllocatedBuffer stagingBuffer = BufferUtils::createBuffer(
+	AllocatedBuffer stagingBuffer = BufferUtils::CreateBuffer(
 		totalStagingSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 		alloc
 	);
-	ASSERT(stagingBuffer.info.size >= totalStagingSize);
+	ASSERT(stagingBuffer.m_allocInfo.size >= totalStagingSize);
 
-	auto stgBuf = stagingBuffer.buffer;
-	auto stgAlloc = stagingBuffer.allocation;
-	resources.getTempDQueue().push_function([stgBuf, stgAlloc, alloc]() mutable {
-		BufferUtils::destroyBuffer(stgBuf, stgAlloc, alloc);
+	auto stgBuf = stagingBuffer.m_buffer;
+	auto stgAlloc = stagingBuffer.m_allocation;
+	resources.GetTempDQueue().PushFunction([stgBuf, stgAlloc, alloc]() mutable {
+		BufferUtils::DestroyBuffer(stgBuf, stgAlloc, alloc);
 	});
 
-	threadCtx.stagingMapped = stagingBuffer.info.pMappedData;
+	threadCtx.stagingMapped = stagingBuffer.m_allocInfo.pMappedData;
 	ASSERT(threadCtx.stagingMapped != nullptr);
 	uint8_t* const mappedStagingPtr = reinterpret_cast<uint8_t*>(threadCtx.stagingMapped);
 
@@ -103,32 +103,32 @@ void MeshLoader::uploadMeshes(
 	memcpy(mappedStagingPtr + indexWriteOffset, indices.data(), indexBufferSize);
 	memcpy(mappedStagingPtr + meshesWriteOffset, meshes.meshData.data(), meshesSize);
 
-	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
+	CommandBuffer::RecordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy vtxCopy{
 			.srcOffset = vertexWriteOffset,
 			.dstOffset = 0,
 			.size = vertexBufferSize
 		};
-		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, vtxBuffer.buffer, 1, &vtxCopy);
+		vkCmdCopyBuffer(cmd, stagingBuffer.m_buffer, vtxBuffer.m_buffer, 1, &vtxCopy);
 
 		VkBufferCopy idxCopy{
 			.srcOffset = indexWriteOffset,
 			.dstOffset = 0,
 			.size = indexBufferSize
 		};
-		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, idxBuffer.buffer, 1, &idxCopy);
+		vkCmdCopyBuffer(cmd, stagingBuffer.m_buffer, idxBuffer.m_buffer, 1, &idxCopy);
 
 		VkBufferCopy meshCopy{
 			.srcOffset = meshesWriteOffset,
 			.dstOffset = 0,
 			.size = meshesSize
 		};
-		vkCmdCopyBuffer(cmd, stagingBuffer.buffer, meshBuffer.buffer, 1, &meshCopy);
+		vkCmdCopyBuffer(cmd, stagingBuffer.m_buffer, meshBuffer.m_buffer, 1, &meshCopy);
 
 	}, threadCtx.cmdPool, QueueType::Transfer, device);
 
-	auto& tQueue = Backend::getTransferQueue();
-	threadCtx.lastSubmittedFence = Engine::getState().submitCommandBuffers(tQueue);
+	auto& tQueue = Backend::GetTransferQueue();
+	threadCtx.lastSubmittedFence = Engine::GetState().submitCommandBuffers(tQueue);
 	waitAndRecycleLastFence(threadCtx.lastSubmittedFence, tQueue, device);
 	vkResetCommandPool(device, threadCtx.cmdPool, 0);
 	threadCtx.cmdPool = VK_NULL_HANDLE;

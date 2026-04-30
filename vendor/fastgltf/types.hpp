@@ -1893,7 +1893,7 @@ namespace fastgltf {
 
     FASTGLTF_EXPORT struct Material {
         /**
-         * A set of parameter values that are used to define the metallic-roughness material model
+         * A m_frameSet of parameter values that are used to define the metallic-roughness material model
          * from Physically Based Rendering (PBR) methodology.
          */
         PBRData pbrData;

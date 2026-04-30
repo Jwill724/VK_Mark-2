@@ -832,7 +832,7 @@ void ImDrawList::AddPolyline(const ImVec2* points, const int points_count, ImU32
         // - If AA_SIZE is not 1.0f we cannot use the texture path.
         const bool use_texture = (Flags & ImDrawListFlags_AntiAliasedLinesUseTex) && (integer_thickness < IM_DRAWLIST_TEX_LINES_WIDTH_MAX) && (fractional_thickness <= 0.00001f) && (AA_SIZE == 1.0f);
 
-        // We should never hit this, because NewFrame() doesn't set ImDrawListFlags_AntiAliasedLinesUseTex unless ImFontAtlasFlags_NoBakedLines is off
+        // We should never hit this, because NewFrame() doesn't m_frameSet ImDrawListFlags_AntiAliasedLinesUseTex unless ImFontAtlasFlags_NoBakedLines is off
         IM_ASSERT_PARANOID(!use_texture || !(_Data->Font->OwnerAtlas->Flags & ImFontAtlasFlags_NoBakedLines));
 
         const int idx_count = use_texture ? (count * 6) : (thick_line ? count * 18 : count * 12);
@@ -2288,7 +2288,7 @@ void ImGui::AddDrawListToDrawDataEx(ImDrawData* draw_data, ImVector<ImDrawList*>
     // - First, make sure you are coarse clipping yourself and not trying to draw many things outside visible bounds.
     //   Be mindful that the lower-level ImDrawList API doesn't filter vertices. Use the Metrics/Debugger window to inspect draw list contents.
     // - If you want large meshes with more than 64K vertices, you can either:
-    //   (A) Handle the ImDrawCmd::VtxOffset value in your renderer backend, and set 'io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset'.
+    //   (A) Handle the ImDrawCmd::VtxOffset value in your renderer backend, and m_frameSet 'io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset'.
     //       Most example backends already support this from 1.71. Pre-1.71 backends won't.
     //       Some graphics API such as GL ES 1/2 don't have a way to offset the starting vertex so it is not supported for them.
     //   (B) Or handle 32-bit indices in your renderer backend, and uncomment '#define ImDrawIdx unsigned int' line in imconfig.h.
@@ -2818,7 +2818,7 @@ void ImFontAtlasUpdateNewFrame(ImFontAtlas* atlas, int frame_count, bool rendere
         }
 
         // If a texture has never reached the backend, they don't need to know about it.
-        // (note: backends between 1.92.0 and 1.92.4 could set an already destroyed texture to ImTextureStatus_WantDestroy
+        // (note: backends between 1.92.0 and 1.92.4 could m_frameSet an already destroyed texture to ImTextureStatus_WantDestroy
         //  when invalidating graphics objects twice, which would previously remove it from the list and crash.)
         if (tex->Status == ImTextureStatus_WantDestroy && tex->TexID == ImTextureID_Invalid && tex->BackendUserData == NULL)
             tex->Status = ImTextureStatus_Destroyed;
@@ -3348,7 +3348,7 @@ ImFontAtlasRectId ImFontAtlas::AddCustomRectFontGlyph(ImFont* font, ImWchar code
     float font_size = font->LegacySize;
     return AddCustomRectFontGlyphForSize(font, font_size, codepoint, width, height, advance_x, offset);
 }
-// FIXME: we automatically set glyph.Colored=true by default.
+// FIXME: we automatically m_frameSet glyph.Colored=true by default.
 // If you need to alter this, you can write 'font->Glyphs.back()->Colored' after calling AddCustomRectFontGlyph().
 ImFontAtlasRectId ImFontAtlas::AddCustomRectFontGlyphForSize(ImFont* font, float font_size, ImWchar codepoint, int width, int height, float advance_x, const ImVec2& offset)
 {
@@ -4017,7 +4017,7 @@ static void ImFontAtlasBuildSetTexture(ImFontAtlas* atlas, ImTextureData* tex)
     atlas->TexData = tex;
     atlas->TexUvScale = ImVec2(1.0f / tex->Width, 1.0f / tex->Height);
     atlas->TexRef._TexData = tex;
-    //atlas->TexRef._TexID = tex->TexID; // <-- We intentionally don't do that. It would be misleading and betray promise that both fields aren't set.
+    //atlas->TexRef._TexID = tex->TexID; // <-- We intentionally don't do that. It would be misleading and betray promise that both fields aren't m_frameSet.
     ImFontAtlasUpdateDrawListsTextures(atlas, old_tex_ref, atlas->TexRef);
 }
 
@@ -4471,7 +4471,7 @@ ImTextureRect* ImFontAtlasPackGetRectSafe(ImFontAtlas* atlas, ImFontAtlasRectId 
 }
 
 // Important! This assume by ImFontConfig::GlyphExcludeRanges[] is a SMALL ARRAY (e.g. <10 entries)
-// Use "Input Glyphs Overlap Detection Tool" to display a list of glyphs provided by multiple sources in order to set this array up.
+// Use "Input Glyphs Overlap Detection Tool" to display a list of glyphs provided by multiple sources in order to m_frameSet this array up.
 static bool ImFontAtlasBuildAcceptCodepointForSource(ImFontConfig* src, ImWchar codepoint)
 {
     if (const ImWchar* exclude_list = src->GlyphExcludeRanges)
@@ -4624,7 +4624,7 @@ void ImFontAtlasDebugLogTextureRequests(ImFontAtlas* atlas)
 //-------------------------------------------------------------------------
 // [SECTION] ImFontAtlas: backend for stb_truetype
 //-------------------------------------------------------------------------
-// (imstb_truetype.h in included near the top of this file, when IMGUI_ENABLE_STB_TRUETYPE is set)
+// (imstb_truetype.h in included near the top of this file, when IMGUI_ENABLE_STB_TRUETYPE is m_frameSet)
 //-------------------------------------------------------------------------
 
 #ifdef IMGUI_ENABLE_STB_TRUETYPE
@@ -4753,7 +4753,7 @@ static bool ImGui_ImplStbTrueType_FontBakedLoadGlyph(ImFontAtlas* atlas, ImFontC
         ImFontAtlasRectId pack_id = ImFontAtlasPackAddRect(atlas, w, h);
         if (pack_id == ImFontAtlasRectId_Invalid)
         {
-            // Pathological out of memory case (TexMaxWidth/TexMaxHeight set too small?)
+            // Pathological out of memory case (TexMaxWidth/TexMaxHeight m_frameSet too small?)
             IM_ASSERT(pack_id != ImFontAtlasRectId_Invalid && "Out of texture memory.");
             return false;
         }

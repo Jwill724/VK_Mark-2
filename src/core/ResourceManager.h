@@ -9,64 +9,64 @@ inline float CURRENT_AF_LVL = ANISOTROPY_LEVEL_8;
 
 struct GPUResources {
 public:
-	VmaAllocator& getAllocator() { return allocator; }
-	DeletionQueue& getMainDQueue() { return mainDeletionQueue; }
-	DeletionQueue& getTempDQueue() { return tempDeletionQueue; }
-	DeletionQueue& getRenderTargetDQueue() { return renderTargetQueue; }
-	DeletionQueue& getDynamicPipelineQueue() { return dynamicPipelineQueue; }
-	DeletionQueue& getDynamicPipelineShaderStagesQueue() { return dynamicPipelineShaderStagesQueue; }
-	VkCommandPool& getGraphicsPool() { return graphicsPool; }
-	VkCommandPool& getTransferPool() { return transferPool; }
-	VkCommandPool& getComputePool() { return computePool; }
-	VkFence& getLastSubmittedFence() { return lastSubmittedFence; }
+	VmaAllocator& GetAllocator() { return allocator; }
+	DeletionQueue& GetMainDQueue() { return mainDeletionQueue; }
+	DeletionQueue& GetTempDQueue() { return tempDeletionQueue; }
+	DeletionQueue& GetRenderTargetDQueue() { return renderTargetQueue; }
+	DeletionQueue& GetDynamicPipelineQueue() { return dynamicPipelineQueue; }
+	DeletionQueue& GetDynamicPipelineShaderStagesQueue() { return dynamicPipelineShaderStagesQueue; }
+	VkCommandPool& GetGraphicsPool() { return graphicsPool; }
+	VkCommandPool& GetTransferPool() { return transferPool; }
+	VkCommandPool& GetComputePool() { return computePool; }
+	VkFence& GetLastSubmittedFence() { return lastSubmittedFence; }
 
-	std::vector<uint32_t>& getMaterialFlagsByID() { return materialFlagsIDs; }
+	std::vector<uint32_t>& GetMaterialFlagsByID() { return materialFlagsIDs; }
 
-	void init(const VkDevice device);
+	void Init(const VkDevice device);
 
-	GPUAddressTable& getAddressTable() { return gpuAddresses; }
-	AllocatedBuffer& getAddressTableBuffer() { return addressTableBuffer; }
+	BindlessBufferTable& GetAddressTable() { return gpuAddresses; }
+	AllocatedBuffer& GetAddressTableBuffer() { return addressTableBuffer; }
 
-	AllocatedBuffer& getGPUAddrsBuffer(AddressBufferType type) { return gpuBuffers.at(type); }
-	bool containsGPUBuffer(AddressBufferType type) const {
+	AllocatedBuffer& GetGPUAddrsBuffer(BufferSlot type) { return gpuBuffers.at(type); }
+	bool ContainsGPUBuffer(BufferSlot type) const {
 		auto it = gpuBuffers.find(type);
-		return it != gpuBuffers.end() && it->second.buffer != VK_NULL_HANDLE;
+		return it != gpuBuffers.end() && it->second.m_buffer != VK_NULL_HANDLE;
 	}
-	void addGPUBufferToGlobalAddress(AddressBufferType addressBufferType, AllocatedBuffer gpuBuffer);
-	void clearAddressBuffer(AddressBufferType type) { gpuBuffers.erase(type); }
+	void AddGPUBufferToGlobalAddress(BufferSlot addressBufferType, AllocatedBuffer gpuBuffer);
+	void ClearAddressBuffer(BufferSlot type) { gpuBuffers.erase(type); }
 
 	// Marked dirty whenever new addresses are added and clean when this function finishes its upload.
 	// This is designed for the global address table only.
-	void updateAddressTableMapped();
+	void UpdateAddressTableMapped();
 
 	// All submesh access
 	// Maps meshes to their vertex/index buffer regions for indirect drawing
-	MeshRegistry& getResgisteredMeshes() { return registeredMeshes; }
+	MeshRegistry& GetResgisteredMeshes() { return registeredMeshes; }
 
-	ImageLUTManager& getLUTManager() { return lutManager; }
+	ImageLUTManager& GetLUTManager() { return lutManager; }
 
-	void addImageLUTEntry(const ImageLUTEntry& entry) {
-		getLUTManager().addEntry(entry);
+	void AddImageLUTEntry(const ImageLUTEntry& entry) {
+		GetLUTManager().AddEntry(entry);
 	}
 
-	void clearLUTEntries() {
-		getLUTManager().clear();
+	void ClearLUTEntries() {
+		GetLUTManager().Clear();
 	}
 
-	AllocatedBuffer& getLightListStagingBuffer() {
+	AllocatedBuffer& GetLightListStagingBuffer() {
 		return lightListStagingBuffer;
 	}
 
-	AllocatedBuffer& getInstanceTransformsStagingBuffer() {
+	AllocatedBuffer& GetInstanceTransformsStagingBuffer() {
 		return instanceTransformsStagingBuffer;
 	}
 
-	ModelDataCounts modelDataCounts;
+	TotalAssetDataCounts modelDataCounts;
 
 	// Uniform buffers
 	AllocatedBuffer envMapIndexBuffer;
 
-	void cleanup(VkDevice device);
+	void Cleanup(VkDevice device);
 
 	bool assetsLoaded = false;
 
@@ -74,7 +74,7 @@ public:
 	BindlessAccessPush smaaTextures;
 
 private:
-	GPUAddressTable gpuAddresses{};
+	BindlessBufferTable gpuAddresses{};
 	AllocatedBuffer addressTableBuffer; // descriptor written buffer, mapped from gpuaddresses
 	AllocatedBuffer addressTableStagingBuffer;
 	mutable std::mutex addressTableMutex;
@@ -89,7 +89,7 @@ private:
 
 	std::vector<uint32_t> materialFlagsIDs;
 
-	std::unordered_map<AddressBufferType, AllocatedBuffer> gpuBuffers{};
+	std::unordered_map<BufferSlot, AllocatedBuffer> gpuBuffers{};
 
 	VmaAllocator allocator = nullptr;
 	DeletionQueue mainDeletionQueue;                // Runtime static
@@ -109,115 +109,114 @@ private:
 namespace ResourceManager {
 	extern ImageTableManager _globalImageManager;
 	extern EnvironmentSet _environmentSets[MAX_ENV_SETS];
-	extern GPUEnvMapIndexArray _envMapIdxArray;
+	extern EnvironmentIndexArray _envMapIdxArray;
 
 	extern glm::vec4 _luminanceSums[MAX_LUMINANCE_GROUPS];
 
-	AllocatedImage& getOpaque_Target();
-	AllocatedImage& getTransparentResolved_Target();
+	AllocatedImage& GetOpaque_Target();
+	AllocatedImage& GetTransparentResolved_Target();
 	// For OIT
-	AllocatedImage& getTransparentAccumulation_Target();
-	AllocatedImage& getTransparentRevealage_Target();
+	AllocatedImage& GetTransparentAccumulation_Target();
+	AllocatedImage& GetTransparentRevealage_Target();
 
-	AllocatedImage& getToneMap_Target();
+	AllocatedImage& GetToneMap_Target();
 
 	// Pre pass depth
-	AllocatedImage& getDepthResolved_Target();
-	AllocatedImage& getPrevDepthResolved_Target();
-	AllocatedImage& getHiZ_Target(); // r32uint packed min/max
-	AllocatedImage& getLinearizedMinHiZ_Target(); // r32f linearized min
+	AllocatedImage& GetDepthResolved_Target();
+	AllocatedImage& GetPrevDepthResolved_Target();
+	AllocatedImage& GetHiZ_Target(); // r32uint packed min/max
+	AllocatedImage& GetLinearizedMinHiZ_Target(); // r32f linearized min
 
 	// An empty base depth
-	AllocatedImage& getDepthRaw_Target();
+	AllocatedImage& GetDepthRaw_Target();
 
-	AllocatedImage& getAORaw_Target();
-	AllocatedImage& getAOTemp_Target();
+	AllocatedImage& GetAORaw_Target();
+	AllocatedImage& GetAOTemp_Target();
 
-	AllocatedImage& getColorHistoryRead_Target();
-	AllocatedImage& getColorHistoryWrite_Target();
-	void flipColorHistory();
-	void resetColorHistoryIndex();
+	AllocatedImage& GetColorHistoryRead_Target();
+	AllocatedImage& GetColorHistoryWrite_Target();
+	void FlipColorHistory();
+	void ResetColorHistoryIndex();
 
-	AllocatedImage& getFlareBright_Target();
-	AllocatedImage& getLensFlareColor_Target();
-	AllocatedImage& getVelocity_Target();
-	AllocatedImage& getPrevVelocity_Target();
-	AllocatedImage& getViewSpaceNormals_Target();
-	AllocatedImage& getVolumetricLight_Target();
-	AllocatedImage& getVolumetricBlur_Target();
-	AllocatedImage& getDirectionalCSMAtlas_Target();
-	AllocatedImage& getScreenSpaceShadowMask_Target();
-	AllocatedImage& getBentNormals_Target();
-	AllocatedImage& getAOEdgeInfo_Target();
-	AllocatedImage& getAAColor_Target();
-	AllocatedImage& getPostNonAAComposite_Target();
-	AllocatedImage& getCMAA2WorkingEdges_Target();
-	AllocatedImage& getSMAAEdges_Target();
-	AllocatedImage& getSMAAWeights_Target();
-	AllocatedImage& getFlashLightShadowMap_Target();
+	AllocatedImage& GetFlareBright_Target();
+	AllocatedImage& GetLensFlareColor_Target();
+	AllocatedImage& GetVelocity_Target();
+	AllocatedImage& GetPrevVelocity_Target();
+	AllocatedImage& GetViewSpaceNormals_Target();
+	AllocatedImage& GetVolumetricLight_Target();
+	AllocatedImage& GetVolumetricBlur_Target();
+	AllocatedImage& GetDirectionalCSMAtlas_Target();
+	AllocatedImage& GetScreenSpaceShadowMask_Target();
+	AllocatedImage& GetBentNormals_Target();
+	AllocatedImage& GetAOEdgeInfo_Target();
+	AllocatedImage& GetAAColor_Target();
+	AllocatedImage& GetPostNonAAComposite_Target();
+	AllocatedImage& GetCMAA2WorkingEdges_Target();
+	AllocatedImage& GetSMAAEdges_Target();
+	AllocatedImage& GetSMAAWeights_Target();
+	AllocatedImage& GetFlashlightShadowMap_Target();
 
-	AllocatedImage& getRainbowLUT_Texture();
-	AllocatedImage& getCookieGobo_Texture();
-	AllocatedImage& getAreaSMAA_Texture();
-	AllocatedImage& getSearchSMAA_Texture();
+	AllocatedImage& GetRainbowLUT_Texture();
+	AllocatedImage& GetCookieGobo_Texture();
+	AllocatedImage& GetAreaSMAA_Texture();
+	AllocatedImage& GetSearchSMAA_Texture();
 
-	const VkSampler getNearestClamp_Sampler();
-	const VkSampler getLinearClamp_Sampler();
-	const VkSampler getHiZ_Sampler();
-	const VkSampler getLinearLODClamp_Sampler();
-	const VkSampler getPointBorder_Sampler();
-	const VkSampler getTaaHistory_Sampler();
-	const VkSampler getNoise_Sampler();
-	const VkSampler getShadowMap_Sampler();
+	const VkSampler GetNearestClamp_Sampler();
+	const VkSampler GetLinearClamp_Sampler();
+	const VkSampler GetHiZ_Sampler();
+	const VkSampler GetLinearLODClamp_Sampler();
+	const VkSampler GetPointBorder_Sampler();
+	const VkSampler GetTaaHistory_Sampler();
+	const VkSampler GetNoise_Sampler();
+	const VkSampler GetShadowMap_Sampler();
 
 	// Empty black image
-	AllocatedImage& getDummy_Texture();
+	AllocatedImage& GetDummy_Texture();
 
-	void initRenderSamplers(
+	void InitRenderSamplers(
 		const VkDevice device,
 		DeletionQueue& queue);
 
-	void initShadowMapImages(
+	void InitShadowMapImages(
 		const VkDevice device,
 		DeletionQueue& queue,
 		const VmaAllocator allocator);
 
-	void initUniformRenderTargets(
+	void InitUniformRenderTargets(
 		const VkDevice device,
 		DeletionQueue& targetQueue,
 		const VmaAllocator allocator,
 		const VkExtent3D drawExtent);
 
-	AllocatedImage& getMetalRough_Texture();
-	AllocatedImage& getWhiteMat_Texture();
-	AllocatedImage& getEmissive_Texture();
-	AllocatedImage& getAO_Texture();
-	AllocatedImage& getNormal_Texture();
-	AllocatedImage& getCheckboard_Texture();
-	AllocatedImage& getHilbertCurveLUT_Texture();
-	AllocatedImage& getDummyUint8_Texture();
-	const VkSampler getDefaultLinear_Sampler();
-	const VkSampler getDefaultNearest_Sampler();
-	void initTextures(
+	AllocatedImage& GetMetalRough_Texture();
+	AllocatedImage& GetWhiteMat_Texture();
+	AllocatedImage& GetEmissive_Texture();
+	AllocatedImage& GetNormal_Texture();
+	AllocatedImage& GetCheckboard_Texture();
+	AllocatedImage& GetHilbertCurveLUT_Texture();
+	AllocatedImage& GetDummyUint8_Texture();
+	const VkSampler GetDefaultLinear_Sampler();
+	const VkSampler GetDefaultNearest_Sampler();
+	void InitTextures(
 		const VkDevice device,
 		VkCommandPool cmdPool,
 		DeletionQueue& imageQueue,
 		DeletionQueue& bufferQueue,
 		const VmaAllocator allocator);
 
-	AllocatedImage& getBRDF_Texture();
-	const VkSampler getBRDF_Sampler();
-	const VkSampler getSpecularPrefilter_Sampler();
-	const VkSampler getIrradiance_Sampler();
-	const VkSampler getSkyBox_Sampler();
+	AllocatedImage& GetBRDF_Texture();
+	const VkSampler GetBRDF_Sampler();
+	const VkSampler GetSpecularPrefilter_Sampler();
+	const VkSampler GetIrradiance_Sampler();
+	const VkSampler GetSkyBox_Sampler();
 
-	EnvironmentSet initEnvironmentSetImages(
+	EnvironmentSet InitEnvironmentSetImages(
 		const VkDevice device,
 		DeletionQueue& queue,
 		const VmaAllocator allocator);
 
 	// Defines samplers and the brdf
-	void initStaticEnvironmentImages(
+	void InitStaticEnvironmentImages(
 		const VkDevice device,
 		DeletionQueue& queue,
 		const VmaAllocator allocator);

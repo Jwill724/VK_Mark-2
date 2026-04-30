@@ -1,0 +1,82 @@
+#include "pch.h"
+
+#include "Window.h"
+#include "Core.h"
+
+static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
+{
+	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+}
+
+bool Window::IsOpen() const
+{
+	return !(glfwWindowShouldClose(m_windowHandle));
+}
+
+bool Window::ThrottleIfWindowUnfocused(double sleepMs) const
+{
+	if (!glfwGetWindowAttrib(m_windowHandle, GLFW_VISIBLE) || !glfwGetWindowAttrib(m_windowHandle, GLFW_FOCUSED))
+	{
+		glfwWaitEventsTimeout(sleepMs);
+		return true;
+	}
+	return false;
+}
+
+void Window::UpdateDynamicWindowSize() const
+{
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(m_windowHandle, &width, &height);
+	while (width == 0 || height == 0)
+	{
+		glfwGetFramebufferSize(m_windowHandle, &width, &height);
+		glfwWaitEvents();
+	}
+
+	SetExtent(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
+}
+
+void Window::InitWindow()
+{
+	int glfwResult = glfwInit();
+	if (!glfwResult) { ASSERT(glfwResult && "Failed to initialize GLFW!"); }
+
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+	m_windowHandle = glfwCreateWindow(m_extentWidth, m_extentHeight, m_windowName, nullptr, nullptr);
+	if (!m_windowHandle) { ASSERT(m_windowHandle && "Failed to initialize GLFW window!"); }
+
+	GLFWmonitor* mon = glfwGetPrimaryMonitor();
+	const GLFWvidmode* vm = glfwGetVideoMode(mon);
+	int mx = 0, my = 0;
+	glfwGetMonitorPos(mon, &mx, &my);
+	int x = mx + (vm->width - static_cast<int>(m_extentWidth)) / 2;
+	int y = my + (vm->height - static_cast<int>(m_extentHeight)) / 2;
+	glfwSetWindowPos(m_windowHandle, x, y);
+
+	glfwSetWindowUserPointer(m_windowHandle, this);
+	glfwSetFramebufferSizeCallback(m_windowHandle, framebufferResizeCallback);
+}
+
+std::array<uint32_t, 2> Window::GetExtent() const
+{
+	int width, height;
+	glfwGetWindowSize(m_windowHandle, &width, &height);
+
+	m_extentWidth = static_cast<uint32_t>(width);
+	m_extentHeight = static_cast<uint32_t>(height);
+
+	return { m_extentWidth, m_extentHeight };
+}
+
+void Window::PollEvents() const
+{
+	glfwPollEvents();
+}
+
+void Window::Cleanup() const
+{
+	glfwDestroyWindow(m_windowHandle);
+	glfwTerminate();
+}

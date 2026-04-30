@@ -296,7 +296,7 @@ using std::size_t;
 #endif
 
 #if defined(NDEBUG) || defined(__OPTIMIZE__) || (defined(_MSC_VER) && !defined(_DEBUG))
-// If NDEBUG is set, or __OPTIMIZE__ is set, or we are under MSVC in release mode,
+// If NDEBUG is m_frameSet, or __OPTIMIZE__ is m_frameSet, or we are under MSVC in release mode,
 // then do away with asserts and use __assume.
 #if SIMDJSON_VISUAL_STUDIO
 #define SIMDJSON_UNREACHABLE() __assume(0)
@@ -525,8 +525,8 @@ double from_chars(const char *first, const char* end) noexcept;
     /**
      * Windows users need to do some extra work when building
      * or using a dynamic library (DLL). When building, we need
-     * to set SIMDJSON_DLLIMPORTEXPORT to __declspec(dllexport).
-     * When *using* the DLL, the user needs to set
+     * to m_frameSet SIMDJSON_DLLIMPORTEXPORT to __declspec(dllexport).
+     * When *using* the DLL, the user needs to m_frameSet
      * SIMDJSON_DLLIMPORTEXPORT __declspec(dllimport).
      *
      * Static libraries not need require such work.
@@ -538,12 +538,12 @@ double from_chars(const char *first, const char* end) noexcept;
      * Non-Windows systems do not have this complexity.
      */
     #if SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY
-    // We set SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY when we build a DLL under Windows.
+    // We m_frameSet SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY when we build a DLL under Windows.
     // It should never happen that both SIMDJSON_BUILDING_WINDOWS_DYNAMIC_LIBRARY and
-    // SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY are set.
+    // SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY are m_frameSet.
     #define SIMDJSON_DLLIMPORTEXPORT __declspec(dllexport)
     #elif SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY
-    // Windows user who call a dynamic library should set SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY to 1.
+    // Windows user who call a dynamic library should m_frameSet SIMDJSON_USING_WINDOWS_DYNAMIC_LIBRARY to 1.
     #define SIMDJSON_DLLIMPORTEXPORT __declspec(dllimport)
     #else
     // We assume by default static linkage
@@ -2329,24 +2329,24 @@ namespace std {
 /// If EXPR is an error, returns it.
 #define SIMDJSON_TRY(EXPR) { auto _err = (EXPR); if (_err) { return _err; } }
 
-// Unless the programmer has already set SIMDJSON_DEVELOPMENT_CHECKS,
-// we want to set it under debug builds. We detect a debug build
-// under Visual Studio when the _DEBUG macro is set. Under the other
+// Unless the programmer has already m_frameSet SIMDJSON_DEVELOPMENT_CHECKS,
+// we want to m_frameSet it under debug builds. We detect a debug build
+// under Visual Studio when the _DEBUG macro is m_frameSet. Under the other
 // compilers, we use the fact that they define __OPTIMIZE__ whenever
 // they allow optimizations.
 // It is possible that this could miss some cases where SIMDJSON_DEVELOPMENT_CHECKS
-// is helpful, but the programmer can set the macro SIMDJSON_DEVELOPMENT_CHECKS.
-// It could also wrongly set SIMDJSON_DEVELOPMENT_CHECKS (e.g., if the programmer
+// is helpful, but the programmer can m_frameSet the macro SIMDJSON_DEVELOPMENT_CHECKS.
+// It could also wrongly m_frameSet SIMDJSON_DEVELOPMENT_CHECKS (e.g., if the programmer
 // sets _DEBUG in a release build under Visual Studio, or if some compiler fails to
-// set the __OPTIMIZE__ macro).
+// m_frameSet the __OPTIMIZE__ macro).
 #ifndef SIMDJSON_DEVELOPMENT_CHECKS
 #ifdef _MSC_VER
-// Visual Studio seems to set _DEBUG for debug builds.
+// Visual Studio seems to m_frameSet _DEBUG for debug builds.
 #ifdef _DEBUG
 #define SIMDJSON_DEVELOPMENT_CHECKS 1
 #endif // _DEBUG
 #else // _MSC_VER
-// All other compilers appear to set __OPTIMIZE__ to a positive integer
+// All other compilers appear to m_frameSet __OPTIMIZE__ to a positive integer
 // when the compiler is optimizing.
 #ifndef __OPTIMIZE__
 #define SIMDJSON_DEVELOPMENT_CHECKS 1
@@ -2561,7 +2561,7 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -2569,7 +2569,7 @@ struct simdjson_result_base : protected std::pair<T, error_code> {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -2652,7 +2652,7 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -2660,7 +2660,7 @@ struct simdjson_result : public internal::simdjson_result_base<T> {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_warn_unused simdjson_inline error_code get(T &value) && noexcept;
 
@@ -6710,8 +6710,8 @@ namespace dom {
 /** The default batch size for parser.parse_many() and parser.load_many() */
 static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
 /**
- * Some adversary might try to set the batch size to 0 or 1, which might cause problems.
- * We set a minimum of 32B since anything else is highly likely to be an error. In practice,
+ * Some adversary might try to m_frameSet the batch size to 0 or 1, which might cause problems.
+ * We m_frameSet a minimum of 32B since anything else is highly likely to be an error. In practice,
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
@@ -7839,7 +7839,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -7863,7 +7863,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -7901,7 +7901,7 @@ simdjson_inline uint64_t reverse_bits(uint64_t input_num) {
 
 /**
  * Flips bit at index 63 - lz. Thus if you have 'leading_zeroes' leading zeroes,
- * then this will set to zero the leading bit. It is possible for leading_zeroes to be
+ * then this will m_frameSet to zero the leading bit. It is possible for leading_zeroes to be
  * greating or equal to 63 in which case we trigger undefined behavior, but the output
  * of such undefined behavior is never used.
  **/
@@ -8685,7 +8685,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -8999,7 +8999,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -9007,7 +9007,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -9125,7 +9125,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -9247,7 +9247,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -10606,7 +10606,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -10630,7 +10630,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -10668,7 +10668,7 @@ simdjson_inline uint64_t reverse_bits(uint64_t input_num) {
 
 /**
  * Flips bit at index 63 - lz. Thus if you have 'leading_zeroes' leading zeroes,
- * then this will set to zero the leading bit. It is possible for leading_zeroes to be
+ * then this will m_frameSet to zero the leading bit. It is possible for leading_zeroes to be
  * greating or equal to 63 in which case we trigger undefined behavior, but the output
  * of such undefined behavior is never used.
  **/
@@ -11724,7 +11724,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -12821,7 +12821,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace arm64
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -13066,7 +13066,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -14316,10 +14316,10 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -15045,7 +15045,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -15359,7 +15359,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -15367,7 +15367,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -15485,7 +15485,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -15607,7 +15607,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -16954,10 +16954,10 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -17955,7 +17955,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -19052,7 +19052,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace haswell
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -19297,7 +19297,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -20539,10 +20539,10 @@ class implementation;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -21269,7 +21269,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -21583,7 +21583,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -21591,7 +21591,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -21709,7 +21709,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -21831,7 +21831,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -23173,10 +23173,10 @@ class implementation;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
- * e.g., if __AVX2__ is set... in turn,  we normally set these
+ * e.g., if __AVX2__ is m_frameSet... in turn,  we normally m_frameSet these
  * macros by compiling against the corresponding architecture
  * (e.g., arch:AVX2, -mavx2, etc.) which compiles the whole
  * software with these advanced instructions. In simdjson, we
@@ -24175,7 +24175,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -25272,7 +25272,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace icelake
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -25517,7 +25517,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -26838,7 +26838,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else  // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -26856,7 +26856,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -27649,7 +27649,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -27963,7 +27963,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -27971,7 +27971,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -28089,7 +28089,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -28211,7 +28211,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -29587,7 +29587,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else  // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -29605,7 +29605,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -30670,7 +30670,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -31767,7 +31767,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace ppc64
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -32012,7 +32012,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -33234,7 +33234,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -33277,7 +33277,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -33295,7 +33295,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -33425,7 +33425,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -33864,7 +33864,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -33882,7 +33882,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -34391,7 +34391,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -34705,7 +34705,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -34713,7 +34713,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -34831,7 +34831,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -34953,7 +34953,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -36298,7 +36298,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -36341,7 +36341,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -36359,7 +36359,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -36489,7 +36489,7 @@ template <typename T> struct simd8x64;
  * You are not supposed, normally, to include these
  * headers directly. Instead you should either include intrin.h
  * or x86intrin.h. However, when compiling with clang
- * under Windows (i.e., when _MSC_VER is set), these headers
+ * under Windows (i.e., when _MSC_VER is m_frameSet), these headers
  * only get included *if* the corresponding features are detected
  * from macros:
  */
@@ -36928,7 +36928,7 @@ simdjson_inline int trailing_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long ret;
   // Search the mask data from least significant bit (LSB)
-  // to the most significant bit (MSB) for a set bit (1).
+  // to the most significant bit (MSB) for a m_frameSet bit (1).
   _BitScanForward64(&ret, input_num);
   return (int)ret;
 #else // SIMDJSON_REGULAR_VISUAL_STUDIO
@@ -36946,7 +36946,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #if SIMDJSON_REGULAR_VISUAL_STUDIO
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -37727,7 +37727,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -38824,7 +38824,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace westmere
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -39069,7 +39069,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -40957,7 +40957,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -41271,7 +41271,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -41279,7 +41279,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -41397,7 +41397,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -41519,7 +41519,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -43763,7 +43763,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -44860,7 +44860,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace lsx
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -45105,7 +45105,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -46968,7 +46968,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -47282,7 +47282,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -47290,7 +47290,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -47408,7 +47408,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -47530,7 +47530,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -49790,7 +49790,7 @@ private:
     // 2. XOR all odd bits, which masks out the odd bits in even-aligned runs, and brings IN the
     //    odd bits in odd-aligned runs.
     // 3. & with backslash to clean up any stray bits.
-    // runs are set to 0, and then XORing with "odd":
+    // runs are m_frameSet to 0, and then XORing with "odd":
     //
     // |                                | Mask (shows characters instead of 1's) | Instructions        |
     // |--------------------------------|----------------------------------------|---------------------|
@@ -50887,7 +50887,7 @@ simdjson_inline error_code json_structural_indexer::finish(dom_parser_implementa
 } // namespace lasx
 } // namespace simdjson
 
-// Clear CUSTOM_BIT_INDEXER so other implementations can set it if they need to.
+// Clear CUSTOM_BIT_INDEXER so other implementations can m_frameSet it if they need to.
 #undef SIMDJSON_GENERIC_JSON_STRUCTURAL_INDEXER_CUSTOM_BIT_INDEXER
 
 #endif // SIMDJSON_SRC_GENERIC_STAGE1_JSON_STRUCTURAL_INDEXER_H
@@ -51132,7 +51132,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;
@@ -52347,7 +52347,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #ifdef _MSC_VER
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -52578,7 +52578,7 @@ simdjson_inline uint32_t is_structural_or_whitespace(uint8_t c) {
   return internal::structural_or_whitespace[c];
 }
 
-// returns a value with the high 16 bits set if not valid
+// returns a value with the high 16 bits m_frameSet if not valid
 // otherwise returns the conversion of the 4 hex digits at src into the bottom
 // 16 bits of the 32-bit return register
 //
@@ -52892,7 +52892,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value and the error to the provided variables.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    * @param error The variable to assign the error to. Set to SUCCESS if there is no error.
    */
   simdjson_inline void tie(T &value, error_code &error) && noexcept;
@@ -52900,7 +52900,7 @@ struct implementation_simdjson_result_base {
   /**
    * Move the value to the provided variable.
    *
-   * @param value The variable to assign the value to. May not be set if there is an error.
+   * @param value The variable to assign the value to. May not be m_frameSet if there is an error.
    */
   simdjson_inline error_code get(T &value) && noexcept;
 
@@ -53018,7 +53018,7 @@ simdjson_inline double to_double(uint64_t mantissa, uint64_t real_exponent, bool
 // Attempts to compute i * 10^(power) exactly; and if "negative" is
 // true, negate the result.
 // This function will only work in some cases, when it does not work, success is
-// set to false. This should work *most of the time* (like 99% of the time).
+// m_frameSet to false. This should work *most of the time* (like 99% of the time).
 // We assume that power is in the [smallest_power,
 // largest_power] interval: the caller is responsible for this check.
 simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, double &d) {
@@ -53140,7 +53140,7 @@ simdjson_inline bool compute_float_64(int64_t power, uint64_t i, bool negative, 
   // 64-bit least significant bits of the product and with a "high component" corresponding
   // to the 64-bit most significant bits of the product.
   simdjson::internal::value128 firstproduct = full_multiplication(i, simdjson::internal::power_of_five_128[index]);
-  // Both i and power_of_five_128[index] have their most significant bit set to 1 which
+  // Both i and power_of_five_128[index] have their most significant bit m_frameSet to 1 which
   // implies that the either the most or the second most significant bit of the product
   // is 1. We pack values in this manner for efficiency reasons: it maximizes the use
   // we make of the product. It also makes it easy to reason about the product: there
@@ -54486,7 +54486,7 @@ simdjson_inline int leading_zeroes(uint64_t input_num) {
 #ifdef _MSC_VER
   unsigned long leading_zero = 0;
   // Search the mask data from most significant bit (MSB)
-  // to least significant bit (LSB) for a set bit (1).
+  // to least significant bit (LSB) for a m_frameSet bit (1).
   if (_BitScanReverse64(&leading_zero, input_num))
     return (int)(63 - leading_zero);
   else
@@ -55028,7 +55028,7 @@ namespace logger {
     }
   }
 
-  // Print the header and set up log_start
+  // Print the header and m_frameSet up log_start
   static simdjson_inline void log_start() {
     if (LOG_ENABLED) {
       log_depth = 0;

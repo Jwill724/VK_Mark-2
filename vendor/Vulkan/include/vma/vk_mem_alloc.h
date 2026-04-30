@@ -364,7 +364,7 @@ typedef enum VmaAllocatorCreateFlagBits
     flag) when it is recommended by the driver. It may improve performance on some
     GPUs.
 
-    You may set this flag only if you found out that following device extensions are
+    You may m_frameSet this flag only if you found out that following device extensions are
     supported, you enabled them while creating Vulkan device passed as
     VmaAllocatorCreateInfo::device, and you want them to be used internally by this
     library:
@@ -372,7 +372,7 @@ typedef enum VmaAllocatorCreateFlagBits
     - VK_KHR_get_memory_requirements2 (device extension)
     - VK_KHR_dedicated_allocation (device extension)
 
-    When this flag is set, you can experience following warnings reported by Vulkan
+    When this flag is m_frameSet, you can experience following warnings reported by Vulkan
     validation layer. You can ignore them.
 
     > vkBindBufferMemory(): Binding memory to buffer 0x2d but vkGetBufferMemoryRequirements() has not been called on that buffer.
@@ -384,7 +384,7 @@ typedef enum VmaAllocatorCreateFlagBits
     The flag works only if VmaAllocatorCreateInfo::vulkanApiVersion `== VK_API_VERSION_1_0`.
     When it is `VK_API_VERSION_1_1`, the flag is ignored because the extension has been promoted to Vulkan 1.1.
 
-    You may set this flag only if you found out that this device extension is supported,
+    You may m_frameSet this flag only if you found out that this device extension is supported,
     you enabled it while creating Vulkan device passed as VmaAllocatorCreateInfo::device,
     and you want it to be used internally by this library.
 
@@ -396,7 +396,7 @@ typedef enum VmaAllocatorCreateFlagBits
     /**
     Enables usage of VK_EXT_memory_budget extension.
 
-    You may set this flag only if you found out that this device extension is supported,
+    You may m_frameSet this flag only if you found out that this device extension is supported,
     you enabled it while creating Vulkan device passed as VmaAllocatorCreateInfo::device,
     and you want it to be used internally by this library, along with another instance extension
     VK_KHR_get_physical_device_properties2, which is required by it (or Vulkan 1.1, where this extension is promoted).
@@ -408,10 +408,10 @@ typedef enum VmaAllocatorCreateFlagBits
     /**
     Enables usage of VK_AMD_device_coherent_memory extension.
 
-    You may set this flag only if you:
+    You may m_frameSet this flag only if you:
 
     - found out that this device extension is supported and enabled it while creating Vulkan device passed as VmaAllocatorCreateInfo::device,
-    - checked that `VkPhysicalDeviceCoherentMemoryFeaturesAMD::deviceCoherentMemory` is true and set it while creating the Vulkan device,
+    - checked that `VkPhysicalDeviceCoherentMemoryFeaturesAMD::deviceCoherentMemory` is true and m_frameSet it while creating the Vulkan device,
     - want it to be used internally by this library.
 
     The extension and accompanying device feature provide access to memory types with
@@ -427,14 +427,14 @@ typedef enum VmaAllocatorCreateFlagBits
     Enables usage of "buffer device address" feature, which allows you to use function
     `vkGetBufferDeviceAddress*` to get raw GPU pointer to a buffer and pass it for usage inside a shader.
 
-    You may set this flag only if you:
+    You may m_frameSet this flag only if you:
 
     1. (For Vulkan version < 1.2) Found as available and enabled device extension
     VK_KHR_buffer_device_address.
     This extension is promoted to core Vulkan 1.2.
     2. Found as available and enabled device feature `VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress`.
 
-    When this flag is set, you can create buffers with `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` using VMA.
+    When this flag is m_frameSet, you can create buffers with `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` using VMA.
     The library automatically adds `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` to
     allocated memory blocks wherever it might be needed.
 
@@ -444,12 +444,12 @@ typedef enum VmaAllocatorCreateFlagBits
     /**
     Enables usage of VK_EXT_memory_priority extension in the library.
 
-    You may set this flag only if you found available and enabled this device extension,
+    You may m_frameSet this flag only if you found available and enabled this device extension,
     along with `VkPhysicalDeviceMemoryPriorityFeaturesEXT::memoryPriority == VK_TRUE`,
     while creating Vulkan device passed as VmaAllocatorCreateInfo::device.
 
     When this flag is used, VmaAllocationCreateInfo::priority and VmaPoolCreateInfo::priority
-    are used to set priorities of allocated Vulkan memory. Without it, these variables are ignored.
+    are used to m_frameSet priorities of allocated Vulkan memory. Without it, these variables are ignored.
 
     A priority must be a floating-point value between 0 and 1, indicating the priority of the allocation relative to other memory allocations.
     Larger values are higher priority. The granularity of the priorities is implementation-dependent.
@@ -461,14 +461,14 @@ typedef enum VmaAllocatorCreateFlagBits
     /**
     Enables usage of VK_KHR_maintenance4 extension in the library.
 
-    You may set this flag only if you found available and enabled this device extension,
+    You may m_frameSet this flag only if you found available and enabled this device extension,
     while creating Vulkan device passed as VmaAllocatorCreateInfo::device.
     */
     VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE4_BIT = 0x00000080,
     /**
     Enables usage of VK_KHR_maintenance5 extension in the library.
 
-    You should set this flag if you found available and enabled this device extension,
+    You should m_frameSet this flag if you found available and enabled this device extension,
     while creating Vulkan device passed as VmaAllocatorCreateInfo::device.
     */
     VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE5_BIT = 0x00000100,
@@ -476,7 +476,7 @@ typedef enum VmaAllocatorCreateFlagBits
     /**
     Enables usage of VK_KHR_external_memory_win32 extension in the library.
 
-    You should set this flag if you found available and enabled this device extension,
+    You should m_frameSet this flag if you found available and enabled this device extension,
     while creating Vulkan device passed as VmaAllocatorCreateInfo::device.
     For more information, see \ref vk_khr_external_memory_win32.
     */
@@ -701,7 +701,7 @@ typedef enum VmaAllocationCreateFlagBits
     /** Alias to #VMA_ALLOCATION_CREATE_STRATEGY_MIN_TIME_BIT.
     */
     VMA_ALLOCATION_CREATE_STRATEGY_FIRST_FIT_BIT = VMA_ALLOCATION_CREATE_STRATEGY_MIN_TIME_BIT,
-    /** A bit mask to extract only `STRATEGY` bits from entire set of flags.
+    /** A bit mask to extract only `STRATEGY` bits from entire m_frameSet of flags.
     */
     VMA_ALLOCATION_CREATE_STRATEGY_MASK =
         VMA_ALLOCATION_CREATE_STRATEGY_MIN_MEMORY_BIT |
@@ -748,7 +748,7 @@ typedef enum VmaPoolCreateFlagBits
     */
     VMA_POOL_CREATE_LINEAR_ALGORITHM_BIT = 0x00000004,
 
-    /** Bit mask to extract only `ALGORITHM` bits from entire set of flags.
+    /** Bit mask to extract only `ALGORITHM` bits from entire m_frameSet of flags.
     */
     VMA_POOL_CREATE_ALGORITHM_MASK =
         VMA_POOL_CREATE_LINEAR_ALGORITHM_BIT,
@@ -780,7 +780,7 @@ typedef enum VmaDefragmentationFlagBits
     */
     VMA_DEFRAGMENTATION_FLAG_ALGORITHM_EXTENSIVE_BIT = 0x8,
 
-    /// A bit mask to extract only `ALGORITHM` bits from entire set of flags.
+    /// A bit mask to extract only `ALGORITHM` bits from entire m_frameSet of flags.
     VMA_DEFRAGMENTATION_FLAG_ALGORITHM_MASK =
         VMA_DEFRAGMENTATION_FLAG_ALGORITHM_FAST_BIT |
         VMA_DEFRAGMENTATION_FLAG_ALGORITHM_BALANCED_BIT |
@@ -795,7 +795,7 @@ typedef VkFlags VmaDefragmentationFlags;
 /// Operation performed on single defragmentation move. See structure #VmaDefragmentationMove.
 typedef enum VmaDefragmentationMoveOperation
 {
-    /// Buffer/image has been recreated at `dstTmpAllocation`, data has been copied, old buffer/image has been destroyed. `srcAllocation` should be changed to point to the new place. This is the default value set by vmaBeginDefragmentationPass().
+    /// Buffer/image has been recreated at `dstTmpAllocation`, data has been copied, old buffer/image has been destroyed. `srcAllocation` should be changed to point to the new place. This is the default value m_frameSet by vmaBeginDefragmentationPass().
     VMA_DEFRAGMENTATION_MOVE_OPERATION_COPY = 0,
     /// Set this value if you cannot move the allocation. New place reserved at `dstTmpAllocation` will be freed. `srcAllocation` will remain unchanged.
     VMA_DEFRAGMENTATION_MOVE_OPERATION_IGNORE = 1,
@@ -826,7 +826,7 @@ typedef enum VmaVirtualBlockCreateFlagBits
     */
     VMA_VIRTUAL_BLOCK_CREATE_LINEAR_ALGORITHM_BIT = 0x00000001,
 
-    /** \brief Bit mask to extract only `ALGORITHM` bits from entire set of flags.
+    /** \brief Bit mask to extract only `ALGORITHM` bits from entire m_frameSet of flags.
     */
     VMA_VIRTUAL_BLOCK_CREATE_ALGORITHM_MASK =
         VMA_VIRTUAL_BLOCK_CREATE_LINEAR_ALGORITHM_BIT,
@@ -854,7 +854,7 @@ typedef enum VmaVirtualAllocationCreateFlagBits
     This is not the most efficient strategy but achieves highly packed data.
     */
     VMA_VIRTUAL_ALLOCATION_CREATE_STRATEGY_MIN_OFFSET_BIT = VMA_ALLOCATION_CREATE_STRATEGY_MIN_OFFSET_BIT,
-    /** \brief A bit mask to extract only `STRATEGY` bits from entire set of flags.
+    /** \brief A bit mask to extract only `STRATEGY` bits from entire m_frameSet of flags.
 
     These strategy flags are binary compatible with equivalent flags in #VmaAllocationCreateFlagBits.
     */
@@ -1116,7 +1116,7 @@ typedef struct VmaAllocatorCreateInfo
     const VmaVulkanFunctions* VMA_NULLABLE pVulkanFunctions;
     /** \brief Handle to Vulkan instance object.
 
-    Starting from version 3.0.0 this member is no longer optional, it must be set!
+    Starting from version 3.0.0 this member is no longer optional, it must be m_frameSet!
     */
     VkInstance VMA_NOT_NULL instance;
     /** \brief Optional. Vulkan version that the application uses.
@@ -1297,17 +1297,17 @@ typedef struct VmaAllocationCreateInfo
     If `pool` is not null, this member is ignored.
     */
     VmaMemoryUsage usage;
-    /** \brief Flags that must be set in a Memory Type chosen for an allocation.
+    /** \brief Flags that must be m_frameSet in a Memory Type chosen for an allocation.
 
     Leave 0 if you specify memory requirements in other way. \n
     If `pool` is not null, this member is ignored.*/
     VkMemoryPropertyFlags requiredFlags;
-    /** \brief Flags that preferably should be set in a memory type chosen for an allocation.
+    /** \brief Flags that preferably should be m_frameSet in a memory type chosen for an allocation.
 
     Set to 0 if no additional flags are preferred. \n
     If `pool` is not null, this member is ignored. */
     VkMemoryPropertyFlags preferredFlags;
-    /** \brief Bitmask containing one bit set for every memory type acceptable for this allocation.
+    /** \brief Bitmask containing one bit m_frameSet for every memory type acceptable for this allocation.
 
     Value 0 is equivalent to `UINT32_MAX` - it means any memory type is accepted if
     it meets other requirements specified by this structure, with no further
@@ -1348,7 +1348,7 @@ typedef struct VmaPoolCreateInfo
     VmaPoolCreateFlags flags;
     /** \brief Size of a single `VkDeviceMemory` block to be allocated as part of this pool, in bytes. Optional.
 
-    Specify nonzero to set explicit, constant size of memory blocks used by this
+    Specify nonzero to m_frameSet explicit, constant size of memory blocks used by this
     pool.
 
     Leave 0 to use default and let the library manage block sizes automatically.
@@ -1450,17 +1450,17 @@ typedef struct VmaAllocationInfo
     It can also change after the allocation is moved during \ref defragmentation.
     */
     void* VMA_NULLABLE pMappedData;
-    /** \brief Custom general-purpose pointer that was passed as VmaAllocationCreateInfo::pUserData or set using vmaSetAllocationUserData().
+    /** \brief Custom general-purpose pointer that was passed as VmaAllocationCreateInfo::pUserData or m_frameSet using vmaSetAllocationUserData().
 
     It can change after call to vmaSetAllocationUserData() for this allocation.
     */
     void* VMA_NULLABLE pUserData;
-    /** \brief Custom allocation name that was set with vmaSetAllocationName().
+    /** \brief Custom allocation name that was m_frameSet with vmaSetAllocationName().
 
     It can change after call to vmaSetAllocationName() for this allocation.
 
-    Another way to set custom name is to pass it in VmaAllocationCreateInfo::pUserData with
-    additional flag #VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT set [DEPRECATED].
+    Another way to m_frameSet custom name is to pass it in VmaAllocationCreateInfo::pUserData with
+    additional flag #VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT m_frameSet [DEPRECATED].
     */
     const char* VMA_NULLABLE pName;
 } VmaAllocationInfo;
@@ -1562,7 +1562,7 @@ typedef struct VmaDefragmentationPassMoveInfo
     Only then you can finish defragmentation pass by calling vmaEndDefragmentationPass().
     After this call, the allocation will point to the new place in memory.
 
-    Alternatively, if you cannot move specific allocation, you can set VmaDefragmentationMove::operation to #VMA_DEFRAGMENTATION_MOVE_OPERATION_IGNORE.
+    Alternatively, if you cannot move specific allocation, you can m_frameSet VmaDefragmentationMove::operation to #VMA_DEFRAGMENTATION_MOVE_OPERATION_IGNORE.
 
     Alternatively, if you decide you want to completely remove the allocation:
 
@@ -1686,7 +1686,7 @@ To use this function properly:
 -# Fill in structure #VmaAllocatorCreateInfo, especially members:
    - VmaAllocatorCreateInfo::device
    - VmaAllocatorCreateInfo::vulkanApiVersion
-   - VmaAllocatorCreateInfo::flags - set appropriate flags for the Vulkan extensions you enabled
+   - VmaAllocatorCreateInfo::flags - m_frameSet appropriate flags for the Vulkan extensions you enabled
 -# Create an instance of the #VmaVulkanFunctions structure.
 -# Call vmaImportVulkanFunctionsFromVolk().
    Parameter `pAllocatorCreateInfo` is read to find out which functions should be fetched for
@@ -1774,7 +1774,7 @@ VMA_CALL_PRE void VMA_CALL_POST vmaGetMemoryTypeProperties(
 */
 VMA_CALL_PRE void VMA_CALL_POST vmaSetCurrentFrameIndex(
     VmaAllocator VMA_NOT_NULL allocator,
-    uint32_t frameIndex);
+    uint32_t m_frameIndex);
 
 /** @} */
 
@@ -1942,7 +1942,7 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaCheckPoolCorruption(
 /** \brief Retrieves name of a custom pool.
 
 After the call `ppName` is either null or points to an internally-owned null-terminated string
-containing name of the pool that was previously set. The pointer becomes invalid when the pool is
+containing name of the pool that was previously m_frameSet. The pointer becomes invalid when the pool is
 destroyed or its name is changed using vmaSetPoolName().
 */
 VMA_CALL_PRE void VMA_CALL_POST vmaGetPoolName(
@@ -2162,7 +2162,7 @@ If the allocation is sub-allocated from a larger block, you may need to consider
 (VmaAllocationInfo::offset).
 
 If the function fails with `VK_ERROR_FEATURE_NOT_PRESENT` error code, please double-check
-that VmaVulkanFunctions::vkGetMemoryWin32HandleKHR function pointer is set, e.g. either by using `VMA_DYNAMIC_VULKAN_FUNCTIONS`
+that VmaVulkanFunctions::vkGetMemoryWin32HandleKHR function pointer is m_frameSet, e.g. either by using `VMA_DYNAMIC_VULKAN_FUNCTIONS`
 or by manually passing it through VmaAllocatorCreateInfo::pVulkanFunctions.
 
 For more information, see chapter \ref vk_khr_external_memory_win32.
@@ -2279,7 +2279,7 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaInvalidateAllocation(
     VkDeviceSize offset,
     VkDeviceSize size);
 
-/** \brief Flushes memory of given set of allocations.
+/** \brief Flushes memory of given m_frameSet of allocations.
 
 Calls `vkFlushMappedMemoryRanges()` for memory associated with given ranges of given allocations.
 For more information, see documentation of vmaFlushAllocation().
@@ -2300,7 +2300,7 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaFlushAllocations(
     const VkDeviceSize* VMA_NULLABLE VMA_LEN_IF_NOT_NULL(allocationCount) offsets,
     const VkDeviceSize* VMA_NULLABLE VMA_LEN_IF_NOT_NULL(allocationCount) sizes);
 
-/** \brief Invalidates memory of given set of allocations.
+/** \brief Invalidates memory of given m_frameSet of allocations.
 
 Calls `vkInvalidateMappedMemoryRanges()` for memory associated with given ranges of given allocations.
 For more information, see documentation of vmaInvalidateAllocation().
@@ -2379,7 +2379,7 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaCopyAllocationToMemory(
 /** \brief Checks magic number in margins around all allocations in given memory types (in both default and custom pools) in search for corruptions.
 
 \param allocator
-\param memoryTypeBits Bit mask, where each bit set means that a memory type with that index should be checked.
+\param memoryTypeBits Bit mask, where each bit m_frameSet means that a memory type with that index should be checked.
 
 Corruption detection is enabled only when `VMA_DEBUG_DETECT_CORRUPTION` macro is defined to nonzero,
 `VMA_DEBUG_MARGIN` is defined to nonzero and only for memory types that are
@@ -2751,7 +2751,7 @@ VMA_CALL_PRE void VMA_CALL_POST vmaGetVirtualAllocationInfo(
 
 If the allocation fails due to not enough free space available, `VK_ERROR_OUT_OF_DEVICE_MEMORY` is returned
 (despite the function doesn't ever allocate actual GPU memory).
-`pAllocation` is then set to `VK_NULL_HANDLE` and `pOffset`, if not null, it set to `UINT64_MAX`.
+`pAllocation` is then m_frameSet to `VK_NULL_HANDLE` and `pOffset`, if not null, it m_frameSet to `UINT64_MAX`.
 
 \param virtualBlock Virtual block
 \param pCreateInfo Parameters for the allocation
@@ -3110,7 +3110,7 @@ static void vma_aligned_free(void* VMA_NULLABLE ptr)
 #endif
 
 #ifndef VMA_COUNT_BITS_SET
-    // Returns number of bits set to 1 in (v)
+    // Returns number of bits m_frameSet to 1 in (v)
     #define VMA_COUNT_BITS_SET(v) VmaCountBitsSet(v)
 #endif
 
@@ -3519,7 +3519,7 @@ class VmaAllocationObjectAllocator;
 #ifndef _VMA_FUNCTIONS
 
 /*
-Returns number of bits set to 1 in (v).
+Returns number of bits m_frameSet to 1 in (v).
 
 On specific platforms and compilers you can use intrinsics like:
 
@@ -10289,8 +10289,8 @@ struct VmaAllocator_T
 public:
     const bool m_UseMutex;
     const uint32_t m_VulkanApiVersion;
-    bool m_UseKhrDedicatedAllocation; // Can be set only if m_VulkanApiVersion < VK_MAKE_VERSION(1, 1, 0).
-    bool m_UseKhrBindMemory2; // Can be set only if m_VulkanApiVersion < VK_MAKE_VERSION(1, 1, 0).
+    bool m_UseKhrDedicatedAllocation; // Can be m_frameSet only if m_VulkanApiVersion < VK_MAKE_VERSION(1, 1, 0).
+    bool m_UseKhrBindMemory2; // Can be m_frameSet only if m_VulkanApiVersion < VK_MAKE_VERSION(1, 1, 0).
     bool m_UseExtMemoryBudget;
     bool m_UseAmdDeviceCoherentMemory;
     bool m_UseKhrBufferDeviceAddress;
@@ -10305,7 +10305,7 @@ public:
     VmaDeviceMemoryCallbacks m_DeviceMemoryCallbacks;
     VmaAllocationObjectAllocator m_AllocationObjectAllocator;
 
-    // Each bit (1 << i) is set if HeapSizeLimit is enabled for that heap, so cannot allocate more than the heap size.
+    // Each bit (1 << i) is m_frameSet if HeapSizeLimit is enabled for that heap, so cannot allocate more than the heap size.
     uint32_t m_HeapSizeLimitMask;
 
     VkPhysicalDeviceProperties m_PhysicalDeviceProperties;
@@ -10420,7 +10420,7 @@ public:
     static void GetPoolStatistics(VmaPool pool, VmaStatistics* pPoolStats);
     static void CalculatePoolStatistics(VmaPool pool, VmaDetailedStatistics* pPoolStats);
 
-    void SetCurrentFrameIndex(uint32_t frameIndex);
+    void SetCurrentFrameIndex(uint32_t m_frameIndex);
     uint32_t GetCurrentFrameIndex() const { return m_CurrentFrameIndex.load(); }
 
     static VkResult CheckPoolCorruption(VmaPool hPool);
@@ -14400,9 +14400,9 @@ void VmaAllocator_T::CalculatePoolStatistics(VmaPool pool, VmaDetailedStatistics
     pool->m_DedicatedAllocations.AddDetailedStatistics(*pPoolStats);
 }
 
-void VmaAllocator_T::SetCurrentFrameIndex(uint32_t frameIndex)
+void VmaAllocator_T::SetCurrentFrameIndex(uint32_t m_frameIndex)
 {
-    m_CurrentFrameIndex.store(frameIndex);
+    m_CurrentFrameIndex.store(m_frameIndex);
 
 #if VMA_MEMORY_BUDGET
     if(m_UseExtMemoryBudget)
@@ -15282,13 +15282,13 @@ VMA_CALL_PRE void VMA_CALL_POST vmaGetMemoryTypeProperties(
 
 VMA_CALL_PRE void VMA_CALL_POST vmaSetCurrentFrameIndex(
     VmaAllocator allocator,
-    uint32_t frameIndex)
+    uint32_t m_frameIndex)
 {
     VMA_ASSERT(allocator);
 
     VMA_DEBUG_GLOBAL_MUTEX_LOCK
 
-    allocator->SetCurrentFrameIndex(frameIndex);
+    allocator->SetCurrentFrameIndex(m_frameIndex);
 }
 
 VMA_CALL_PRE void VMA_CALL_POST vmaCalculateStatistics(
@@ -16712,9 +16712,9 @@ VMA_CALL_PRE VkResult VMA_CALL_POST vmaCreateVirtualBlock(
     return VK_SUCCESS;
 
     /*
-    Code for the future if we ever need a separate Init() method that could fail:
+    Code for the future if we ever need a separate InitSetPools() method that could fail:
 
-    VkResult res = (*pVirtualBlock)->Init();
+    VkResult res = (*pVirtualBlock)->InitSetPools();
     if(res < 0)
     {
         vma_delete(pCreateInfo->pAllocationCallbacks, *pVirtualBlock);
@@ -16882,7 +16882,7 @@ Developing your own memory allocator may also be a good learning exercise.
 
 -# VMA helps in choosing the optimal memory type for your resource (buffer or image).
    In Vulkan, we have a two-level hierarchy of memory heaps and types with different flags,
-   and each device can expose a different set of those.
+   and each device can expose a different m_frameSet of those.
    Implementing logic that would select the best memory type on each platform is a non-trivial task.
    VMA does that, expecting only a high-level description of the intended usage of your resource.
    For more information, see \subpage choosing_memory_type.
@@ -17188,7 +17188,7 @@ For example, to compile against Vulkan 1.2:
 <b>Step 2: Runtime.</b> Even when compiled with higher Vulkan version available,
 VMA can use only features of a lower version, which is configurable during creation of the #VmaAllocator object.
 By default, only Vulkan 1.0 is used.
-To initialize the allocator with support for higher Vulkan version, you need to set member
+To initialize the allocator with support for higher Vulkan version, you need to m_frameSet member
 VmaAllocatorCreateInfo::vulkanApiVersion to an appropriate value, e.g. using constants like `VK_API_VERSION_1_2`.
 See code sample below.
 
@@ -17301,7 +17301,7 @@ Don't forget to destroy your buffer and allocation objects when no longer needed
 vmaDestroyBuffer(allocator, buffer, allocation);
 \endcode
 
-If you need to map the buffer, you must set flag
+If you need to map the buffer, you must m_frameSet flag
 #VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT or #VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
 in VmaAllocationCreateInfo::flags.
 There are many additional parameters that can control the choice of memory type to be used for the allocation
@@ -17436,16 +17436,16 @@ vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer, &allocation, nullpt
 \endcode
 
 A memory type is chosen that has all the required flags and as many preferred
-flags set as possible.
+flags m_frameSet as possible.
 
-Value passed in VmaAllocationCreateInfo::usage is internally converted to a set of required and preferred flags,
+Value passed in VmaAllocationCreateInfo::usage is internally converted to a m_frameSet of required and preferred flags,
 plus some extra "magic" (heuristics).
 
 \section choosing_memory_type_explicit_memory_types Explicit memory types
 
 If you inspected memory types available on the physical device and <b>you have
 a preference for memory types that you want to use</b>, you can fill member
-VmaAllocationCreateInfo::memoryTypeBits. It is a bit mask, where each bit set
+VmaAllocationCreateInfo::memoryTypeBits. It is a bit mask, where each bit m_frameSet
 means that a memory type with that index is allowed to be used for the
 allocation. Special value 0, just like `UINT32_MAX`, means there are no
 restrictions to memory type index.
@@ -17607,7 +17607,7 @@ object that you wanted to map.
 Keeping your memory persistently mapped is generally OK in Vulkan.
 You don't need to unmap it before using its data on the GPU.
 The library provides a special feature designed for that:
-Allocations made with #VMA_ALLOCATION_CREATE_MAPPED_BIT flag set in
+Allocations made with #VMA_ALLOCATION_CREATE_MAPPED_BIT flag m_frameSet in
 VmaAllocationCreateInfo::flags stay mapped all the time,
 so you can just access CPU pointer to it any time
 without a need to call any "map" or "unmap" function.
@@ -17642,7 +17642,7 @@ For an example of how to make use of this fact, see section \ref usage_patterns_
 \section memory_mapping_cache_control Cache flush and invalidate
 
 Memory in Vulkan doesn't need to be unmapped before using it on GPU,
-but unless a memory types has `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` flag set,
+but unless a memory types has `VK_MEMORY_PROPERTY_HOST_COHERENT_BIT` flag m_frameSet,
 you need to manually **invalidate** cache before reading of mapped pointer
 and **flush** cache after writing to mapped pointer.
 Map/unmap operations don't do that automatically.
@@ -17736,7 +17736,7 @@ This also ensures that the function call is very fast because it never goes to V
 to obtain a new block.
 
 \note Creating \ref custom_memory_pools with VmaPoolCreateInfo::minBlockCount
-set to more than 0 will currently try to allocate memory blocks without checking whether they
+m_frameSet to more than 0 will currently try to allocate memory blocks without checking whether they
 fit within budget.
 
 
@@ -17844,7 +17844,7 @@ Additional considerations:
 See chapter 11.8. "Memory Aliasing" of Vulkan specification or `VK_IMAGE_CREATE_ALIAS_BIT` flag.
 - You can create more complex layout where different images and buffers are bound
 at different offsets inside one large allocation. For example, one can imagine
-a big texture used in some render passes, aliasing with a set of many small buffers
+a big texture used in some render passes, aliasing with a m_frameSet of many small buffers
 used between in some further passes. To bind a resource at non-zero offset in an allocation,
 use vmaBindBufferMemory2() / vmaBindImageMemory2().
 - Before allocating memory for the resources you want to alias, check `memoryTypeBits`
@@ -17869,7 +17869,7 @@ It can be useful if you want to:
 - Enforce particular, fixed size of Vulkan memory blocks.
 - Limit maximum amount of Vulkan memory allocated for that pool.
 - Reserve minimum or fixed amount of Vulkan memory always preallocated for that pool.
-- Use extra parameters for a set of your allocations that are available in #VmaPoolCreateInfo but not in
+- Use extra parameters for a m_frameSet of your allocations that are available in #VmaPoolCreateInfo but not in
   #VmaAllocationCreateInfo - e.g., custom minimum alignment, custom `pNext` chain.
 - Perform defragmentation on a specific subset of your allocations.
 
@@ -17877,7 +17877,7 @@ To use custom memory pools:
 
 -# Fill VmaPoolCreateInfo structure.
 -# Call vmaCreatePool() to obtain #VmaPool handle.
--# When making an allocation, set VmaAllocationCreateInfo::pool to this handle.
+-# When making an allocation, m_frameSet VmaAllocationCreateInfo::pool to this handle.
    You don't need to specify any other parameters of this structure, like `usage`.
 
 Example:
@@ -17929,7 +17929,7 @@ vmaDestroyPool(allocator, pool);
 
 New versions of this library support creating dedicated allocations in custom pools.
 It is supported only when VmaPoolCreateInfo::blockSize = 0.
-To use this feature, set VmaAllocationCreateInfo::pool to the pointer to your custom pool and
+To use this feature, m_frameSet VmaAllocationCreateInfo::pool to the pointer to your custom pool and
 VmaAllocationCreateInfo::flags to #VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT.
 
 
@@ -17982,12 +17982,12 @@ Using custom pools has disadvantages:
 - Each pool has its own collection of `VkDeviceMemory` blocks.
   Some of them may be partially or even completely empty.
   Spreading allocations across multiple pools increases the amount of wasted (allocated but unbound) memory.
-- You must manually choose specific memory type to be used by a custom pool (set as VmaPoolCreateInfo::memoryTypeIndex).
+- You must manually choose specific memory type to be used by a custom pool (m_frameSet as VmaPoolCreateInfo::memoryTypeIndex).
   When using default pools, best memory type for each of your allocations can be selected automatically
   using a carefully design algorithm that works across all kinds of GPUs.
 - If an allocation from a custom pool at specific memory type fails, entire allocation operation returns failure.
   When using default pools, VMA tries another compatible memory type.
-- If you set VmaPoolCreateInfo::blockSize != 0, each memory block has the same size,
+- If you m_frameSet VmaPoolCreateInfo::blockSize != 0, each memory block has the same size,
   while default pools start from small blocks and only allocate next blocks larger and larger
   up to the preferred block size.
 
@@ -18003,10 +18003,10 @@ Many of the common concerns can be addressed in a different way than using custo
   VMA respects `nonCoherentAtomSize` limit automatically.
   It also maps only those `VkDeviceMemory` blocks that need to map any allocation.
   It even tries to keep mappable and non-mappable allocations in separate blocks to minimize the amount of mapped memory.
-- If you want to choose a custom size for the default memory block, you can set it globally instead
+- If you want to choose a custom size for the default memory block, you can m_frameSet it globally instead
   using VmaAllocatorCreateInfo::preferredLargeHeapBlockSize.
 - If you want to select specific memory type for your allocation,
-  you can set VmaAllocationCreateInfo::memoryTypeBits to `(1U << myMemoryTypeIndex)` instead.
+  you can m_frameSet VmaAllocationCreateInfo::memoryTypeBits to `(1U << myMemoryTypeIndex)` instead.
 - If you need to create a buffer with certain minimum alignment, you can still do it
   using default pools with dedicated function vmaCreateBufferWithAlignment().
 
@@ -18210,12 +18210,12 @@ Inside a pass, for each allocation that should be moved:
   without copying its data.
 - If the resource is in `HOST_VISIBLE` and `HOST_CACHED` memory, you can copy its data on the CPU
   using `memcpy()`.
-- If you cannot move the allocation, you can set `pass.pMoves[i].operation` to #VMA_DEFRAGMENTATION_MOVE_OPERATION_IGNORE.
+- If you cannot move the allocation, you can m_frameSet `pass.pMoves[i].operation` to #VMA_DEFRAGMENTATION_MOVE_OPERATION_IGNORE.
   This will cancel the move.
   - vmaEndDefragmentationPass() will then free the destination memory
     not the source memory of the allocation, leaving it unchanged.
 - If you decide the allocation is unimportant and can be destroyed instead of moved (e.g. it wasn't used for long time),
-  you can set `pass.pMoves[i].operation` to #VMA_DEFRAGMENTATION_MOVE_OPERATION_DESTROY.
+  you can m_frameSet `pass.pMoves[i].operation` to #VMA_DEFRAGMENTATION_MOVE_OPERATION_DESTROY.
   - vmaEndDefragmentationPass() will then free both source and destination memory, and will destroy the source #VmaAllocation object.
 
 You can defragment a specific custom pool by setting VmaDefragmentationInfo::pool
@@ -18347,7 +18347,7 @@ vmaBuildStatsString() in hexadecimal form.
 \section allocation_names Allocation names
 
 An allocation can also carry a null-terminated string, giving a name to the allocation.
-To set it, call vmaSetAllocationName().
+To m_frameSet it, call vmaSetAllocationName().
 The library creates internal copy of the string, so the pointer you pass doesn't need
 to be valid for whole lifetime of the allocation. You can free it after the call.
 
@@ -18360,7 +18360,7 @@ vmaSetAllocationName(allocator, allocation, imageName.c_str());
 The string can be later retrieved by inspecting VmaAllocationInfo::pName.
 It is also printed in JSON report created by vmaBuildStatsString().
 
-\note Setting string name to VMA allocation doesn't automatically set it to the Vulkan buffer or image created with it.
+\note Setting string name to VMA allocation doesn't automatically m_frameSet it to the Vulkan buffer or image created with it.
 You must do it manually using an extension like VK_EXT_debug_utils, which is independent of this library.
 
 
@@ -19001,7 +19001,7 @@ like this:
 m_VulkanFunctions.vkAllocateMemory = (PFN_vkAllocateMemory)vkAllocateMemory;
 \endcode
 
-If you want to disable this feature, set configuration macro: `#define VMA_STATIC_VULKAN_FUNCTIONS 0`.
+If you want to disable this feature, m_frameSet configuration macro: `#define VMA_STATIC_VULKAN_FUNCTIONS 0`.
 
 Second, you can provide the pointers yourself by setting member VmaAllocatorCreateInfo::pVulkanFunctions.
 You can fetch them e.g. using functions `vkGetInstanceProcAddr` and `vkGetDeviceProcAddr` or
@@ -19011,7 +19011,7 @@ Third, VMA tries to fetch remaining pointers that are still null by calling
 `vkGetInstanceProcAddr` and `vkGetDeviceProcAddr` on its own.
 You need to only fill in VmaVulkanFunctions::vkGetInstanceProcAddr and VmaVulkanFunctions::vkGetDeviceProcAddr.
 Other pointers will be fetched automatically.
-If you want to disable this feature, set configuration macro: `#define VMA_DYNAMIC_VULKAN_FUNCTIONS 0`.
+If you want to disable this feature, m_frameSet configuration macro: `#define VMA_DYNAMIC_VULKAN_FUNCTIONS 0`.
 
 Finally, all the function pointers required by the library (considering selected
 Vulkan version and enabled extensions) are checked with `VMA_ASSERT` if they are not null.
@@ -19061,7 +19061,7 @@ It will be used automatically when enabled.
 
 It has been promoted to core Vulkan 1.1, so if you use eligible Vulkan version
 and inform VMA about it by setting VmaAllocatorCreateInfo::vulkanApiVersion,
-you are all set.
+you are all m_frameSet.
 
 Otherwise, if you want to use it as an extension:
 
@@ -19129,10 +19129,10 @@ Check if the device feature is really supported - check if `VkPhysicalDeviceMemo
 3) While creating device with `vkCreateDevice`, enable this extension - add "VK_EXT_memory_priority"
 to the list passed as `VkDeviceCreateInfo::ppEnabledExtensionNames`.
 
-4) While creating the device, also don't set `VkDeviceCreateInfo::pEnabledFeatures`.
+4) While creating the device, also don't m_frameSet `VkDeviceCreateInfo::pEnabledFeatures`.
 Fill in `VkPhysicalDeviceFeatures2` structure instead and pass it as `VkDeviceCreateInfo::pNext`.
 Enable this device feature - attach additional structure `VkPhysicalDeviceMemoryPriorityFeaturesEXT` to
-`VkPhysicalDeviceFeatures2::pNext` chain and set its member `memoryPriority` to `VK_TRUE`.
+`VkPhysicalDeviceFeatures2::pNext` chain and m_frameSet its member `memoryPriority` to `VK_TRUE`.
 
 5) While creating #VmaAllocator with vmaCreateAllocator() inform VMA that you
 have enabled this extension and feature - add #VMA_ALLOCATOR_CREATE_EXT_MEMORY_PRIORITY_BIT
@@ -19150,7 +19150,7 @@ Memory allocated with higher value can be treated by the Vulkan implementation a
 and so it can have lower chances of being pushed out to system memory, experiencing degraded performance.
 
 It might be a good idea to create performance-critical resources like color-attachment or depth-stencil images
-as dedicated and set high priority to them. For example:
+as dedicated and m_frameSet high priority to them. For example:
 
 \code
 VkImageCreateInfo imgCreateInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
@@ -19211,10 +19211,10 @@ Check if the device feature is really supported - check if `VkPhysicalDeviceCohe
 3) While creating device with `vkCreateDevice`, enable this extension - add "VK_AMD_device_coherent_memory"
 to the list passed as `VkDeviceCreateInfo::ppEnabledExtensionNames`.
 
-4) While creating the device, also don't set `VkDeviceCreateInfo::pEnabledFeatures`.
+4) While creating the device, also don't m_frameSet `VkDeviceCreateInfo::pEnabledFeatures`.
 Fill in `VkPhysicalDeviceFeatures2` structure instead and pass it as `VkDeviceCreateInfo::pNext`.
 Enable this device feature - attach additional structure `VkPhysicalDeviceCoherentMemoryFeaturesAMD` to
-`VkPhysicalDeviceFeatures2::pNext` and set its member `deviceCoherentMemory` to `VK_TRUE`.
+`VkPhysicalDeviceFeatures2::pNext` and m_frameSet its member `deviceCoherentMemory` to `VK_TRUE`.
 
 5) While creating #VmaAllocator with vmaCreateAllocator() inform VMA that you
 have enabled this extension and feature - add #VMA_ALLOCATOR_CREATE_AMD_DEVICE_COHERENT_MEMORY_BIT
@@ -19337,7 +19337,7 @@ bufCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFE
 bufCreateInfo.pNext = &externalMemBufCreateInfo;
 
 VmaAllocationCreateInfo allocCreateInfo = {};
-allocCreateInfo.pool = pool;  // It is enough to set this one member.
+allocCreateInfo.pool = pool;  // It is enough to m_frameSet this one member.
 
 VkBuffer buf;
 VmaAllocation alloc;
@@ -19401,10 +19401,10 @@ Check if the device feature is really supported - check if `VkPhysicalDeviceBuff
 3) (For Vulkan version < 1.2) While creating device with `vkCreateDevice`, enable this extension - add
 "VK_KHR_buffer_device_address" to the list passed as `VkDeviceCreateInfo::ppEnabledExtensionNames`.
 
-4) While creating the device, also don't set `VkDeviceCreateInfo::pEnabledFeatures`.
+4) While creating the device, also don't m_frameSet `VkDeviceCreateInfo::pEnabledFeatures`.
 Fill in `VkPhysicalDeviceFeatures2` structure instead and pass it as `VkDeviceCreateInfo::pNext`.
 Enable this device feature - attach additional structure `VkPhysicalDeviceBufferDeviceAddressFeatures*` to
-`VkPhysicalDeviceFeatures2::pNext` and set its member `bufferDeviceAddress` to `VK_TRUE`.
+`VkPhysicalDeviceFeatures2::pNext` and m_frameSet its member `bufferDeviceAddress` to `VK_TRUE`.
 
 5) While creating #VmaAllocator with vmaCreateAllocator() inform VMA that you
 have enabled this feature - add #VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT

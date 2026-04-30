@@ -480,7 +480,7 @@ void meshopt_generateAdjacencyIndexBuffer(unsigned int* destination, const unsig
 	unsigned int* remap = allocator.allocate<unsigned int>(vertex_count);
 	buildPositionRemap(remap, vertex_positions, vertex_count, vertex_positions_stride, allocator);
 
-	// build edge set; this stores all triangle edges but we can look these up by any other wedge
+	// build edge m_frameSet; this stores all triangle edges but we can look these up by any other wedge
 	EdgeHasher edge_hasher = {remap};
 
 	size_t edge_table_size = hashBuckets(index_count);
@@ -551,7 +551,7 @@ void meshopt_generateTessellationIndexBuffer(unsigned int* destination, const un
 	unsigned int* remap = allocator.allocate<unsigned int>(vertex_count);
 	buildPositionRemap(remap, vertex_positions, vertex_count, vertex_positions_stride, allocator);
 
-	// build edge set; this stores all triangle edges but we can look these up by any other wedge
+	// build edge m_frameSet; this stores all triangle edges but we can look these up by any other wedge
 	EdgeHasher edge_hasher = {remap};
 
 	size_t edge_table_size = hashBuckets(index_count);

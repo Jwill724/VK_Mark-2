@@ -4,13 +4,49 @@
 #include "engine/Engine.h"
 #include "utils/BufferUtils.h"
 
-struct CombinedUploadPlan {
+struct BatchKey
+{
+	uint32_t meshID;
+	uint32_t materialID;
+
+	bool operator==(const BatchKey& other) const {
+		return meshID == other.meshID && materialID == other.materialID;
+	}
+};
+
+struct BatchKeyHash
+{
+	std::size_t operator()(const BatchKey& k) const {
+		std::size_t h1 = std::hash<uint32_t>{}(k.meshID);
+		std::size_t h2 = std::hash<uint32_t>{}(k.materialID);
+		return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
+	}
+};
+
+struct ShadowBatchKey
+{
+	uint32_t meshID;
+
+	bool operator==(const ShadowBatchKey& other) const {
+		return meshID == other.meshID;
+	}
+};
+
+struct ShadowBatchKeyHash
+{
+	std::size_t operator()(const ShadowBatchKey& k) const {
+		return std::hash<uint32_t>{}(k.meshID);
+	}
+};
+
+struct CombinedUploadPlan
+{
 	// frame-local
 	size_t visOff = 0, visSize = 0; // visible instances
 	size_t indOff = 0, indSize = 0; // indirect draws
 
 	// Only required when visibles and draw buffers are created or destroyed.
-	// per-frame address table (frameCtx.addressTable_GPU)
+	// per-frame address table (frameCtx.m_addressTable_GPU)
 	size_t fAddrOff = 0, fAddrSize = 0;
 	uint32_t addrVersion = UINT32_MAX;
 };
@@ -20,66 +56,37 @@ struct TransparentEntry {
 	float distSq;
 };
 
-// Maintain high quality meshes within acceptable distances to maintain stability
-static uint32_t getShadowMeshIDForCascade(
-	const MeshLODs& lods,
-	uint32_t cascadeIndex)
-{
-	if ((lods.flags & MESH_LOD_FLAG_FORCE_SHADOW_LOD0) != 0u) return lods.shadowLod0;
 
-	if (cascadeIndex == 0 || cascadeIndex == 1) return lods.shadowLod0;
-	if (cascadeIndex == 2) return lods.shadowLod1;
-	return lods.shadowLod2;
-}
-
-static uint32_t shadowSlotToMeshID(const MeshLODs& lods, uint32_t slot)
-{
-	if (slot == 0u) return lods.shadowLod0;
-	if (slot == 1u) return lods.shadowLod1;
-	return lods.shadowLod2;
-}
-
-static uint32_t applyFoliageBias(uint32_t baseSlot, uint32_t cascadeIndex) {
-	if (cascadeIndex == 0u) return 0u; // force best
-
-	if (cascadeIndex == 1u) {
-		// 1 step more detailed than the base rule
-		if (baseSlot > 0u) return baseSlot - 1u;
-		return 0u;
-	}
-
-	return baseSlot;
-}
 
 // All render data for FrameContext is reset prior to this function.
 // When inputs are entered, visibleInstances and worldAABBS are be 1:1 in access before batched/sorted.
 //
 // Goal is to create a mega indirect draw buffer with takes many paths.
-// Many instance paths are stored in their own containers but the main visible set
+// Many instance paths are stored in their own containers but the main visible m_frameSet
 // visibleInstances is filled with opaque and transparent and here all other paths are built
 // to append to the visible instances buffer.
 void DrawPreparation::buildAndSortIndirectDraws(
 	FrameContext& frameCtx,
-	const std::vector<GPUMeshData>& meshes,
+	const std::vector<Mesh>& meshes,
 	const std::vector<MeshLODs>& meshLods,
 	const std::vector<AABB>& worldAABBs,
 	const glm::vec4& cameraPos,
 	const glm::mat4& cameraProj,
-	const DebugToggles& dbg)
+	const RenderToggles& dbg)
 {
-	std::vector<GPUInstance> visibleInstances;
+	std::vector<Instance> visibleInstances;
 
-	visibleInstances.reserve(frameCtx.visibleInstances.size());
+	visibleInstances.reserve(frameCtx.m_visibleInstances.size());
 
-	ASSERT(frameCtx.visibleInstances.size() == worldAABBs.size() && "Visible Instances should be 1:1 with world AABBs.");
+	ASSERT(frameCtx.m_visibleInstances.size() == worldAABBs.size() && "Visible Instances should be 1:1 with world AABBs.");
 
 	const glm::vec3 camPos = glm::vec3(cameraPos);
 
 	// === BATCH INSTANCES ===
 	std::unordered_map<BatchKey, std::vector<uint32_t>, BatchKeyHash> batches;
 
-	for (uint32_t i = 0; i < frameCtx.visibleInstances.size(); ++i) {
-		GPUInstance inst = frameCtx.visibleInstances[i];
+	for (uint32_t i = 0; i < frameCtx.m_visibleInstances.size(); ++i) {
+		Instance inst = frameCtx.m_visibleInstances[i];
 
 		if (inst.meshID < meshLods.size()) {
 			const MeshLODs& lods = meshLods[inst.meshID];
@@ -118,11 +125,11 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		batches[key].push_back(index);
 	}
 
-	frameCtx.indirectDraws.reserve(batches.size());
+	frameCtx.m_indirectDraws.reserve(batches.size());
 
 	// Rebuild instances
-	frameCtx.visibleInstances.clear();
-	frameCtx.visibleInstances.reserve(visibleInstances.size() + frameCtx.shadowCasterInstances.size());
+	frameCtx.m_visibleInstances.clear();
+	frameCtx.m_visibleInstances.reserve(visibleInstances.size() + frameCtx.m_visibleShadowCasters.size());
 
 	// === SPLIT BATCH KEYS INTO OPAQUE / TRANSPARENT ===
 	std::vector<BatchKey> opaqueKeys;
@@ -134,8 +141,8 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	for (const auto& [key, indices] : batches) {
 		if (indices.empty()) continue;
 
-		const GPUInstance& inst = visibleInstances[indices[0]];
-		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::Opaque) {
+		const Instance& inst = visibleInstances[indices[0]];
+		if (static_cast<MaterialPass>(inst.passType) == MaterialPass::OPAQUE) {
 			opaqueKeys.push_back(key);
 		}
 		else {
@@ -144,21 +151,21 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	}
 
 	// === OPAQUE BATCHES ===
-	frameCtx.opaqueRange.firstCommand = 0;
-	frameCtx.opaqueRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
-	frameCtx.opaqueRange.commandCount = 0;
-	frameCtx.opaqueRange.visibleCount = 0;
+	frameCtx.m_opaqueDrawRange.firstCommand = 0;
+	frameCtx.m_opaqueDrawRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
+	frameCtx.m_opaqueDrawRange.commandCount = 0;
+	frameCtx.m_opaqueDrawRange.visibleCount = 0;
 
 	for (const BatchKey& batchKey : opaqueKeys) {
 		const std::vector<uint32_t>& instanceIndices = batches[batchKey];
-		const GPUMeshData& mesh = meshes[batchKey.meshID];
+		const Mesh& mesh = meshes[batchKey.meshID];
 
 		ASSERT(mesh.firstIndex + mesh.indexCount <= dbg.indexCount &&
 			"[DrawPrep] Opaque draws would read past end of index buffer.");
 		ASSERT(mesh.vertexOffset + mesh.vertexCount <= dbg.vertexCount &&
 			"[DrawPrep] Opaque draws would read past end of vertex buffer.");
 
-		const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+		const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 
 		VkDrawIndexedIndirectCommand cmd{};
 		cmd.indexCount = mesh.indexCount;
@@ -167,32 +174,32 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
 		cmd.firstInstance = firstInstance;
 
-		frameCtx.indirectDraws.push_back(cmd);
+		frameCtx.m_indirectDraws.push_back(cmd);
 
 		for (uint32_t idx : instanceIndices) {
-			frameCtx.visibleInstances.push_back(visibleInstances[idx]);
+			frameCtx.m_visibleInstances.push_back(visibleInstances[idx]);
 		}
 
-		frameCtx.opaqueRange.commandCount++;
-		frameCtx.opaqueRange.visibleCount += cmd.instanceCount;
+		frameCtx.m_opaqueDrawRange.commandCount++;
+		frameCtx.m_opaqueDrawRange.visibleCount += cmd.instanceCount;
 	}
 
 	// === TRANSPARENT BATCHES ===
-	frameCtx.transparentRange.firstCommand = frameCtx.opaqueRange.commandCount;
-	frameCtx.transparentRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
-	frameCtx.transparentRange.commandCount = 0;
-	frameCtx.transparentRange.visibleCount = 0;
+	frameCtx.m_transparentDrawRange.firstCommand = frameCtx.m_opaqueDrawRange.commandCount;
+	frameCtx.m_transparentDrawRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
+	frameCtx.m_transparentDrawRange.commandCount = 0;
+	frameCtx.m_transparentDrawRange.visibleCount = 0;
 
 	for (const BatchKey& batchKey : transparentKeys) {
 		const std::vector<uint32_t>& instanceIndices = batches[batchKey];
-		const GPUMeshData& mesh = meshes[batchKey.meshID];
+		const Mesh& mesh = meshes[batchKey.meshID];
 
 		ASSERT(mesh.firstIndex + mesh.indexCount <= dbg.indexCount &&
 			"[DrawPrep] Transparent draws would read past end of index buffer.");
 		ASSERT(mesh.vertexOffset + mesh.vertexCount <= dbg.vertexCount &&
 			"[DrawPrep] Transparent draws would read past end of vertex buffer.");
 
-		const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+		const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 
 		VkDrawIndexedIndirectCommand cmd{};
 		cmd.indexCount = mesh.indexCount;
@@ -201,24 +208,24 @@ void DrawPreparation::buildAndSortIndirectDraws(
 		cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
 		cmd.firstInstance = firstInstance;
 
-		frameCtx.indirectDraws.push_back(cmd);
+		frameCtx.m_indirectDraws.push_back(cmd);
 
 		for (uint32_t idx : instanceIndices) {
-			frameCtx.visibleInstances.push_back(visibleInstances[idx]);
+			frameCtx.m_visibleInstances.push_back(visibleInstances[idx]);
 		}
 
-		frameCtx.transparentRange.commandCount++;
-		frameCtx.transparentRange.visibleCount += cmd.instanceCount;
+		frameCtx.m_transparentDrawRange.commandCount++;
+		frameCtx.m_transparentDrawRange.visibleCount += cmd.instanceCount;
 	}
 
 	// === SHADOW CASTERS (per cascade) ===
 	if (dbg.enableShadows) {
-		frameCtx.indirectDraws.reserve(frameCtx.indirectDraws.size() + frameCtx.shadowCasterInstances.size());
+		frameCtx.m_indirectDraws.reserve(frameCtx.m_indirectDraws.size() + frameCtx.m_visibleShadowCasters.size());
 
-		auto& materialFlags = Engine::getState().getGPUResources().getMaterialFlagsByID();
+		auto& materialFlags = Engine::GetState().getGPUResources().GetMaterialFlagsByID();
 
 		for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
-			const PassRange& inputRange = frameCtx.shadowCastersRanges[cascadeIndex];
+			const IndirectDrawRange& inputRange = frameCtx.m_shadowCasterDrawRanges[cascadeIndex];
 			if (inputRange.visibleCount == 0u) continue;
 
 			const uint32_t inputStart = inputRange.firstInstance;
@@ -228,7 +235,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			meshToInputIndices.reserve(inputRange.visibleCount);
 
 			for (uint32_t inputIndex = inputStart; inputIndex < inputEnd; ++inputIndex) {
-				const GPUInstance& caster = frameCtx.shadowCasterInstances[inputIndex];
+				const Instance& caster = frameCtx.m_visibleShadowCasters[inputIndex];
 
 				uint32_t shadowMeshID = caster.meshID;
 				if (shadowMeshID < meshLods.size()) {
@@ -257,17 +264,17 @@ void DrawPreparation::buildAndSortIndirectDraws(
 					return a < b;
 				});
 
-			PassRange& outRange = frameCtx.shadowDrawRanges[cascadeIndex];
-			outRange.firstCommand = static_cast<uint32_t>(frameCtx.indirectDraws.size());
-			outRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+			IndirectDrawRange& outRange = frameCtx.m_shadowDrawRanges[cascadeIndex];
+			outRange.firstCommand = static_cast<uint32_t>(frameCtx.m_indirectDraws.size());
+			outRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 			outRange.commandCount = 0u;
 			outRange.visibleCount = 0u;
 
 			for (uint32_t shadowMeshID : shadowMeshKeys) {
 				const std::vector<uint32_t>& inputIndices = meshToInputIndices[shadowMeshID];
-				const GPUMeshData& mesh = meshes[shadowMeshID];
+				const Mesh& mesh = meshes[shadowMeshID];
 
-				const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+				const uint32_t firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 
 				VkDrawIndexedIndirectCommand cmd{};
 				cmd.indexCount = mesh.shadowIndexCount;
@@ -276,13 +283,13 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
 				cmd.firstInstance = firstInstance;
 
-				frameCtx.indirectDraws.push_back(cmd);
+				frameCtx.m_indirectDraws.push_back(cmd);
 				outRange.commandCount++;
 
 				for (uint32_t inputIndex : inputIndices) {
-					GPUInstance inst = frameCtx.shadowCasterInstances[inputIndex];
+					Instance inst = frameCtx.m_visibleShadowCasters[inputIndex];
 					inst.meshID = shadowMeshID;
-					frameCtx.visibleInstances.push_back(inst);
+					frameCtx.m_visibleInstances.push_back(inst);
 				}
 
 				outRange.visibleCount += cmd.instanceCount;
@@ -291,8 +298,8 @@ void DrawPreparation::buildAndSortIndirectDraws(
 	}
 
 	// === FLASHLIGHT SHADOW CASTERS ===
-	if (LightingSystem::_mainFlashLight.isFlashLightOn()) {
-		const PassRange& inputRange = frameCtx.flashLightShadowRange;
+	if (LightingSystem::_mainFlashLight.IsFlashLightOn()) {
+		const IndirectDrawRange& inputRange = frameCtx.m_flashlightShadowCasterRange;
 		if (inputRange.visibleCount > 0u) {
 
 			const uint32_t inputStart = inputRange.firstInstance;
@@ -302,7 +309,7 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			meshToInputIndices.reserve(inputRange.visibleCount);
 
 			for (uint32_t inputIndex = inputStart; inputIndex < inputEnd; ++inputIndex) {
-				const GPUInstance& caster = frameCtx.shadowCasterInstances[inputIndex];
+				const Instance& caster = frameCtx.m_visibleShadowCasters[inputIndex];
 
 				uint32_t shadowMeshID = caster.meshID;
 
@@ -326,18 +333,18 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				}
 			);
 
-			PassRange& outRange = frameCtx.flashLightShadowRange;
-			outRange.firstCommand = static_cast<uint32_t>(frameCtx.indirectDraws.size());
-			outRange.firstInstance = static_cast<uint32_t>(frameCtx.visibleInstances.size());
+			IndirectDrawRange& outRange = frameCtx.m_flashlightShadowCasterRange;
+			outRange.firstCommand = static_cast<uint32_t>(frameCtx.m_indirectDraws.size());
+			outRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 			outRange.commandCount = 0u;
 			outRange.visibleCount = 0u;
 
 			for (uint32_t shadowMeshID : shadowMeshKeys) {
 				const std::vector<uint32_t>& inputIndices = meshToInputIndices[shadowMeshID];
-				const GPUMeshData& mesh = meshes[shadowMeshID];
+				const Mesh& mesh = meshes[shadowMeshID];
 
 				const uint32_t firstInstance =
-					static_cast<uint32_t>(frameCtx.visibleInstances.size());
+					static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
 
 				VkDrawIndexedIndirectCommand cmd{};
 				cmd.indexCount = mesh.shadowIndexCount;
@@ -346,13 +353,13 @@ void DrawPreparation::buildAndSortIndirectDraws(
 				cmd.vertexOffset = static_cast<int32_t>(mesh.vertexOffset);
 				cmd.firstInstance = firstInstance;
 
-				frameCtx.indirectDraws.push_back(cmd);
+				frameCtx.m_indirectDraws.push_back(cmd);
 				outRange.commandCount++;
 
 				for (uint32_t inputIndex : inputIndices) {
-					GPUInstance inst = frameCtx.shadowCasterInstances[inputIndex];
+					Instance inst = frameCtx.m_visibleShadowCasters[inputIndex];
 					inst.meshID = shadowMeshID;
-					frameCtx.visibleInstances.push_back(inst);
+					frameCtx.m_visibleInstances.push_back(inst);
 				}
 
 				outRange.visibleCount += cmd.instanceCount;
@@ -361,8 +368,8 @@ void DrawPreparation::buildAndSortIndirectDraws(
 			ASSERT(outRange.commandCount > 0u);
 			ASSERT(outRange.visibleCount > 0u);
 
-			ASSERT(outRange.firstCommand + outRange.commandCount <= frameCtx.indirectDraws.size());
-			ASSERT(outRange.firstInstance + outRange.visibleCount <= frameCtx.visibleInstances.size());
+			ASSERT(outRange.firstCommand + outRange.commandCount <= frameCtx.m_indirectDraws.size());
+			ASSERT(outRange.firstInstance + outRange.visibleCount <= frameCtx.m_visibleInstances.size());
 		}
 	}
 }
@@ -373,31 +380,31 @@ inline static CombinedUploadPlan stageCombinedUploads(FrameContext& frame,
 	bool isGPUAccelOn)
 {
 	CombinedUploadPlan plan{};
-	auto* mapped = static_cast<uint8_t*>(frame.combinedGPUStaging.info.pMappedData);
-	const size_t cap = frame.combinedGPUStaging.info.size;
+	auto* mapped = static_cast<uint8_t*>(frame.m_gpuCopyStaging.m_allocInfo.pMappedData);
+	const size_t cap = frame.m_gpuCopyStaging.m_allocInfo.size;
 
-	if (!isGPUAccelOn && !frame.visibleInstances.empty()) {
+	if (!isGPUAccelOn && !frame.m_visibleInstances.empty()) {
 		// visible instances
-		plan.visSize = frame.visibleInstances.size() * sizeof(GPUInstance);
-		plan.visOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.visSize);
-		memcpy(mapped + plan.visOff, frame.visibleInstances.data(), plan.visSize);
-		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.visOff, plan.visSize, alloc);
+		plan.visSize = frame.m_visibleInstances.size() * sizeof(Instance);
+		plan.visOff = BufferUtils::ReserveStaging(frame.m_gpuCopyStagingHead, cap, plan.visSize);
+		memcpy(mapped + plan.visOff, frame.m_visibleInstances.data(), plan.visSize);
+		BufferUtils::FlushStagingRange(frame.m_gpuCopyStaging.m_allocation, plan.visOff, plan.visSize, alloc);
 
 		// indirect
-		plan.indSize = frame.indirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
-		plan.indOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.indSize);
-		memcpy(mapped + plan.indOff, frame.indirectDraws.data(), plan.indSize);
-		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.indOff, plan.indSize, alloc);
+		plan.indSize = frame.m_indirectDraws.size() * sizeof(VkDrawIndexedIndirectCommand);
+		plan.indOff = BufferUtils::ReserveStaging(frame.m_gpuCopyStagingHead, cap, plan.indSize);
+		memcpy(mapped + plan.indOff, frame.m_indirectDraws.data(), plan.indSize);
+		BufferUtils::FlushStagingRange(frame.m_gpuCopyStaging.m_allocation, plan.indOff, plan.indSize, alloc);
 	}
 
 	// frame address table
-	if (frame.addressTable.versionMismatch()) {
-		plan.fAddrSize = sizeof(GPUAddressTable);
-		plan.fAddrOff = BufferUtils::reserveStaging(frame.stagingHead, cap, plan.fAddrSize);
-		memcpy(mapped + plan.fAddrOff, &frame.addressTable, plan.fAddrSize);
-		BufferUtils::flushStagingRange(frame.combinedGPUStaging.allocation, plan.fAddrOff, plan.fAddrSize, alloc);
+	if (frame.m_gpuAddressTable.IsVersionMismatched()) {
+		plan.fAddrSize = sizeof(BindlessBufferTable);
+		plan.fAddrOff = BufferUtils::ReserveStaging(frame.m_gpuCopyStagingHead, cap, plan.fAddrSize);
+		memcpy(mapped + plan.fAddrOff, &frame.m_gpuAddressTable, plan.fAddrSize);
+		BufferUtils::FlushStagingRange(frame.m_gpuCopyStaging.m_allocation, plan.fAddrOff, plan.fAddrSize, alloc);
 
-		plan.addrVersion = frame.addressTable.getCpuVersion();
+		plan.addrVersion = frame.m_gpuAddressTable.GetCpuVersion();
 	}
 
 	return plan;
@@ -412,24 +419,24 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 	bool isTemporalValid,
 	bool isGPUAccelOn)
 {
-	ASSERT(frameCtx.combinedGPUStaging.buffer != VK_NULL_HANDLE &&
+	ASSERT(frameCtx.m_gpuCopyStaging.m_buffer != VK_NULL_HANDLE &&
 		"[DrawPreparation::uploadGPUBuffersForFrame] combinedGPUstaging buffer is invalid.");
 
-	const auto alloc = gpuResources.getAllocator();
+	const auto alloc = gpuResources.GetAllocator();
 
 	CombinedUploadPlan plan = stageCombinedUploads(frameCtx, alloc, isGPUAccelOn);
 
 	// Global light staging prep
-	const auto& lightStaging = gpuResources.getLightListStagingBuffer();
+	const auto& lightStaging = gpuResources.GetLightListStagingBuffer();
 	size_t loadedLightsSize = 0;
-	if (!lights.empty() && frameCtx.lightsBufferUploadNeeded) {
-		ASSERT(lightStaging.buffer != VK_NULL_HANDLE);
+	if (!lights.empty() && frameCtx.m_bLightsBufferUploadNeeded) {
+		ASSERT(lightStaging.m_buffer != VK_NULL_HANDLE);
 
-		auto* mapped = static_cast<uint8_t*>(lightStaging.info.pMappedData);
+		auto* mapped = static_cast<uint8_t*>(lightStaging.m_allocInfo.pMappedData);
 		loadedLightsSize = lights.size() * sizeof(LocalLight);
 		memcpy(mapped, lights.data(), loadedLightsSize);
-		BufferUtils::flushStagingRange(
-			lightStaging.allocation,
+		BufferUtils::FlushStagingRange(
+			lightStaging.m_allocation,
 			0,
 			loadedLightsSize,
 			alloc
@@ -439,16 +446,16 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 
 
 	// Global transforms staging prep
-	auto& transformStaging = gpuResources.getInstanceTransformsStagingBuffer();
+	auto& transformStaging = gpuResources.GetInstanceTransformsStagingBuffer();
 	size_t activeTransformsSize = 0;
-	if (frameCtx.transformsBufferUploadNeeded) {
-		ASSERT(transformStaging.buffer != VK_NULL_HANDLE);
+	if (frameCtx.m_bTransformsBufferUploadNeeded) {
+		ASSERT(transformStaging.m_buffer != VK_NULL_HANDLE);
 
-		auto* mapped = static_cast<uint8_t*>(transformStaging.info.pMappedData);
+		auto* mapped = static_cast<uint8_t*>(transformStaging.m_allocInfo.pMappedData);
 		activeTransformsSize = transforms.size() * sizeof(glm::mat4);
 		memcpy(mapped, transforms.data(), activeTransformsSize);
-		BufferUtils::flushStagingRange(
-			transformStaging.allocation,
+		BufferUtils::FlushStagingRange(
+			transformStaging.m_allocation,
 			0,
 			activeTransformsSize,
 			alloc
@@ -457,7 +464,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 	const size_t totalTransformsBufferBytes = activeTransformsSize;
 
 	// Record big transfer copies for dynamic frame data
-	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
+	CommandBuffer::RecordCommandBuffer([&](VkCommandBuffer cmd) {
 		if (plan.fAddrSize > 0) {
 			// frame GPU address table copy
 			VkBufferCopy frameAddressTableCpy{};
@@ -465,30 +472,30 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			frameAddressTableCpy.dstOffset = 0;
 			frameAddressTableCpy.size = plan.fAddrSize;
 			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.addressTable_GPU.buffer,
+				frameCtx.m_gpuCopyStaging.m_buffer,
+				frameCtx.m_addressTable_GPU.m_buffer,
 				1,
 				&frameAddressTableCpy);
 
-			frameCtx.pendingAddressTableVersion = plan.addrVersion;
+			frameCtx.m_pendingAddressTableVersion = plan.addrVersion;
 
 			if (isGPUAccelOn) {
-				BarrierUtils::bufferTransferReleaseOnCompute(cmd, frameCtx.addressTable_GPU);
+				BarrierUtils::BufferTransferReleaseOnCompute(cmd, frameCtx.m_addressTable_GPU);
 			}
 			else {
-				BarrierUtils::bufferTransferReleaseOnGraphics(cmd, frameCtx.addressTable_GPU);
+				BarrierUtils::BufferTransferReleaseOnGraphics(cmd, frameCtx.m_addressTable_GPU);
 			}
 		}
 
-		if (!isGPUAccelOn && !frameCtx.visibleInstances.empty()) {
+		if (!isGPUAccelOn && !frameCtx.m_visibleInstances.empty()) {
 			// visible instance data
 			VkBufferCopy visInstCpy{};
 			visInstCpy.srcOffset = plan.visOff;
 			visInstCpy.dstOffset = 0;
 			visInstCpy.size = plan.visSize;
 			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.visibleInstances_GPU.buffer,
+				frameCtx.m_gpuCopyStaging.m_buffer,
+				frameCtx.m_visibleInstances_GPU.m_buffer,
 				1,
 				&visInstCpy);
 
@@ -498,18 +505,18 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			indirectDrawsCpy.dstOffset = 0;
 			indirectDrawsCpy.size = plan.indSize;
 			vkCmdCopyBuffer(cmd,
-				frameCtx.combinedGPUStaging.buffer,
-				frameCtx.indirectDraws_GPU.buffer,
+				frameCtx.m_gpuCopyStaging.m_buffer,
+				frameCtx.m_indirectDraws_GPU.m_buffer,
 				1,
 				&indirectDrawsCpy);
 
-			BarrierUtils::bufferTransferReleaseOnGraphics(cmd, frameCtx.visibleInstances_GPU);
-			BarrierUtils::bufferTransferReleaseOnIndirect(cmd, frameCtx.indirectDraws_GPU);
+			BarrierUtils::BufferTransferReleaseOnGraphics(cmd, frameCtx.m_visibleInstances_GPU);
+			BarrierUtils::BufferTransferReleaseOnIndirect(cmd, frameCtx.m_indirectDraws_GPU);
 		}
 
-		if (!transforms.empty() && frameCtx.transformsBufferUploadNeeded) {
+		if (!transforms.empty() && frameCtx.m_bTransformsBufferUploadNeeded) {
 			if (isTemporalValid) {
-				const auto& lastFrame = Renderer::getLastFrame();
+				const auto& lastFrame = Renderer::GetLastFrame();
 				// Copy GPU current (last frames data) transforms into previous
 				VkBufferCopy copyTransformsCpy{};
 				copyTransformsCpy.srcOffset = 0;
@@ -517,7 +524,7 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 				copyTransformsCpy.size = totalTransformsBufferBytes;
 				vkCmdCopyBuffer(cmd,
 					lastFrame.transforms_GPU.buffer,
-					frameCtx.prevTransforms_GPU.buffer,
+					frameCtx.m_prevTransforms_GPU.m_buffer,
 					1,
 					&copyTransformsCpy);
 			}
@@ -528,48 +535,48 @@ void DrawPreparation::uploadGPUBuffersForFrame(
 			uploadNewTransformsCpy.dstOffset = 0;
 			uploadNewTransformsCpy.size = totalTransformsBufferBytes;
 			vkCmdCopyBuffer(cmd,
-				transformStaging.buffer,
-				frameCtx.transforms_GPU.buffer,
+				transformStaging.m_buffer,
+				frameCtx.m_transforms_GPU.m_buffer,
 				1,
 				&uploadNewTransformsCpy);
 
-			BarrierUtils::bufferTransferReleaseOnGraphics(cmd, frameCtx.transforms_GPU);
+			BarrierUtils::BufferTransferReleaseOnGraphics(cmd, frameCtx.m_transforms_GPU);
 
 			if (isTemporalValid) {
-				BarrierUtils::bufferTransferReleaseOnGraphics(cmd, frameCtx.prevTransforms_GPU);
+				BarrierUtils::BufferTransferReleaseOnGraphics(cmd, frameCtx.m_prevTransforms_GPU);
 			}
 		}
 
-		if (!lights.empty() && frameCtx.lightsBufferUploadNeeded) {
+		if (!lights.empty() && frameCtx.m_bLightsBufferUploadNeeded) {
 			VkBufferCopy lightCpy{};
 			lightCpy.srcOffset = 0;
 			lightCpy.dstOffset = 0;
 			lightCpy.size = totalLightBufferBytes;
 			vkCmdCopyBuffer(cmd,
-				lightStaging.buffer,
-				frameCtx.lights_GPU.buffer,
+				lightStaging.m_buffer,
+				frameCtx.m_lights_GPU.m_buffer,
 				1,
 				&lightCpy);
 
-			BarrierUtils::bufferTransferReleaseOnGraphics(cmd, frameCtx.lights_GPU);
+			BarrierUtils::BufferTransferReleaseOnGraphics(cmd, frameCtx.m_lights_GPU);
 		}
 
-	}, frameCtx.transferPool, QueueType::Transfer, Backend::getDevice());
+	}, frameCtx.m_transferPool, QueueType::Transfer, Backend::GetDevice());
 
-	frameCtx.collectAndAppendCmds(std::move(DeferredCmdSubmitQueue::collectTransfer()), QueueType::Transfer);
+	frameCtx.CollectAndAppendCmds(std::move(DeferredCmdSubmitQueue::collectTransfer()), QueueType::Transfer);
 
 	auto& transferSync = Renderer::_transferSync;
-	const uint64_t signalValue = transferQueue.submitWithTimelineSync(
-		frameCtx.transferCmds,
+	const uint64_t signalValue = transferQueue.SubmitWithTimelineSync(
+		frameCtx.transferCommands,
 		transferSync.semaphore,
 		++transferSync.signalValue
 	);
 
-	frameCtx.stashSubmitted(QueueType::Transfer);
+	frameCtx.StashSubmitted(QueueType::Transfer);
 	frameCtx.transferWaitValue = signalValue;
 
 	// Assigns the cpu version to gpu version for verification of upload
-	frameCtx.addressTable.setGpuVersion(frameCtx.pendingAddressTableVersion);
+	frameCtx.m_gpuAddressTable.SetGpuVersion(frameCtx.m_pendingAddressTableVersion);
 }
 
 static glm::mat4 makeGridTransform3D(uint32_t index, uint32_t count, float spacing)
@@ -599,7 +606,7 @@ static bool braindeadhack = false;
 
 bool DrawPreparation::syncGlobalInstancesAndTransforms(
 	std::unordered_map<SceneID, SceneProfileEntry>& sceneProfiles,
-	std::vector<GlobalInstance>& globalInstances,
+	std::vector<VirtualInstance>& globalInstances,
 	std::vector<glm::mat4>& globalTransforms,
 	const double deltaTime)
 {
@@ -610,7 +617,7 @@ bool DrawPreparation::syncGlobalInstancesAndTransforms(
 		SceneProfileEntry& profile = sceneProfiles.at(sid);
 
 		if (profile.instanceCount == 1) {
-			if (profile.drawType == DrawType::DrawStatic) {
+			if (profile.drawType == InstancingMethod::DrawStatic) {
 				// TODO: Create a way to modify transforms at runtime
 				if (!braindeadhack && profile.name == "DamagedHelmet") {
 					glm::mat4& M = globalTransforms[inst.firstTransform];
@@ -624,7 +631,7 @@ bool DrawPreparation::syncGlobalInstancesAndTransforms(
 				inst.drawType = profile.drawType;
 				continue; // transforms already baked into static
 			}
-			if (profile.drawType == DrawType::DrawDynamic) {
+			if (profile.drawType == InstancingMethod::DrawDynamic) {
 				inst.drawType = profile.drawType;
 
 				constexpr float spinSpeedRadiansPerSecond = glm::radians(30.0f);
@@ -648,7 +655,7 @@ bool DrawPreparation::syncGlobalInstancesAndTransforms(
 				transformsUpdated = true;
 				continue;
 			}
-		//	if (profile.drawType == DrawType::DrawDynamic) {
+		//	if (profile.drawType == InstancingMethod::DrawDynamic) {
 		//		inst.drawType = profile.drawType;
 
 		//		const float deltaSecondsFloat = static_cast<float>(deltaTime);
@@ -680,7 +687,7 @@ bool DrawPreparation::syncGlobalInstancesAndTransforms(
 
 		// Defined from copy values append list or decrease list
 		// on first run this will always be an append
-		if (profile.drawType == DrawType::DrawMultiStatic || profile.instanceCount > 1) {
+		if (profile.drawType == InstancingMethod::DrawMultiStatic || profile.instanceCount > 1) {
 			inst.drawType = profile.drawType;
 
 			const uint32_t desiredUsedCopies = std::max(1u, profile.instanceCount);

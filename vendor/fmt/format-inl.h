@@ -230,7 +230,7 @@ auto check_divisibility_and_divide_by_pow10(uint32_t& n) noexcept -> bool {
   //
   // Item 1 is a common technique of replacing division by a constant with
   // multiplication, see e.g. "Division by Invariant Integers Using
-  // Multiplication" by Granlund and Montgomery (1994). magic_number (m) is set
+  // Multiplication" by Granlund and Montgomery (1994). magic_number (m) is m_frameSet
   // to ceil(2^k/d) for large enough k.
   // The idea for item 2 originates from Schubfach.
   constexpr auto info = div_small_pow10_infos[N - 1];

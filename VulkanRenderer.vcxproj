@@ -39,7 +39,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -51,7 +51,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -72,52 +72,57 @@
     <ClCompile Include="src\Main.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
-    <!-- engine -->
-    <ClCompile Include="src\engine\Engine.cpp">
+    <!-- core -->
+    <ClCompile Include="src\core\Engine.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\EngineState.cpp">
+    <ClCompile Include="src\core\EngineState.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\JobSystem.cpp">
+    <ClCompile Include="src\core\JobSystem.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- engine / platform -->
-    <ClCompile Include="src\engine\platform\window\Window.cpp">
+    <ClCompile Include="src\core\loader\TextureLoader.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\platform\input\Camera.cpp">
+    <ClCompile Include="src\core\loader\MeshLoader.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\platform\input\UserInput.cpp">
+    <ClCompile Include="src\core\Environment.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\platform\profiler\Profiler.cpp">
+    <ClCompile Include="src\core\AssetManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\engine\platform\profiler\EditorImgui.cpp">
+    <ClCompile Include="src\core\ResourceManager.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\core\Window.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- profiler -->
+    <ClCompile Include="src\profiler\Profiler.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\profiler\EditorImgui.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- input -->
+    <ClCompile Include="src\input\Camera.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\input\UserInput.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer (root) -->
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- renderer / gpu -->
-    <ClCompile Include="src\renderer\gpu\CommandBuffer.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\gpu\Descriptor.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\gpu\PipelineManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\gpu\PipelineBuilder.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer / graph -->
     <!-- renderer / passes -->
     <ClCompile Include="src\renderer\passes\RenderPasses.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\passes\ScopeFunctions.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / frame -->
@@ -138,42 +143,48 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / backend -->
-    <ClCompile Include="src\renderer\backend\Backend.cpp">
+    <ClCompile Include="src\renderer\backend\Device.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\BackendTools.cpp">
+    <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- utils -->
-    <ClCompile Include="src\utils\VulkanUtils.cpp">
+    <ClCompile Include="src\renderer\backend\Queue.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\utils\BufferUtils.cpp">
+    <ClCompile Include="src\renderer\backend\Shader.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\utils\ImageUtils.cpp">
+    <ClCompile Include="src\renderer\backend\Swapchain.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\utils\BarrierUtils.cpp">
+    <ClCompile Include="src\renderer\backend\Sync.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\utils\SyncUtils.cpp">
+    <ClCompile Include="src\renderer\backend\Descriptor.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- core (assets/resources) -->
-    <ClCompile Include="src\core\loader\TextureLoader.cpp">
+    <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\loader\MeshLoader.cpp">
+    <ClCompile Include="src\renderer\backend\PipelineManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\Environment.cpp">
+    <!-- renderer / backend / memory -->
+    <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\AssetManager.cpp">
+    <ClCompile Include="src\renderer\backend\memory\Allocator.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\ResourceManager.cpp">
+    <!-- renderer / backend / utils -->
+    <ClCompile Include="src\renderer\backend\utils\BufferUtils.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\backend\utils\ImageUtils.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\backend\utils\BarrierUtils.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- third-party (no PCH) -->
@@ -276,56 +287,72 @@
   <ItemGroup>
     <!-- common -->
     <ClInclude Include="src\common\Bounds.h" />
+    <ClInclude Include="src\common\Core.h" />
+    <ClInclude Include="src\common\Material.h" />
+    <ClInclude Include="src\common\Mesh.h" />
     <ClInclude Include="src\common\pch.h" />
     <ClInclude Include="src\common\glm_common.hpp" />
-    <ClInclude Include="src\common\ErrorChecking.h" />
-    <ClInclude Include="src\common\Vk_Types.h" />
+    <ClInclude Include="src\common\Vertex.h" />
     <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\common\EngineTypes.h" />
     <ClInclude Include="src\common\EngineConstants.h" />
-    <!-- engine -->
-    <ClInclude Include="src\engine\Engine.h" />
-    <ClInclude Include="src\engine\EngineState.h" />
-    <ClInclude Include="src\engine\JobSystem.h" />
-    <ClInclude Include="src\engine\platform\profiler\ProfilerTypes.h" />
-    <!-- engine / platform -->
-    <ClInclude Include="src\engine\platform\window\Window.h" />
-    <ClInclude Include="src\engine\platform\input\UserInput.h" />
-    <ClInclude Include="src\engine\platform\input\Camera.h" />
-    <ClInclude Include="src\engine\platform\profiler\Profiler.h" />
-    <ClInclude Include="src\engine\platform\profiler\EditorImgui.h" />
     <!-- core -->
+    <ClInclude Include="src\core\Logging.h" />
+    <ClInclude Include="src\core\Engine.h" />
+    <ClInclude Include="src\core\EngineState.h" />
+    <ClInclude Include="src\core\JobSystem.h" />
     <ClInclude Include="src\core\AssetManager.h" />
     <ClInclude Include="src\core\ResourceManager.h" />
     <ClInclude Include="src\core\Environment.h" />
     <ClInclude Include="src\core\loader\TextureLoader.h" />
     <ClInclude Include="src\core\loader\MeshLoader.h" />
+    <ClInclude Include="src\core\Window.h" />
+    <!-- input -->
+    <ClInclude Include="src\input\UserInput.h" />
+    <ClInclude Include="src\input\Camera.h" />
+    <!-- profiler -->
+    <ClInclude Include="src\profiler\ProfilerTypes.h" />
+    <ClInclude Include="src\profiler\Profiler.h" />
+    <ClInclude Include="src\profiler\EditorImgui.h" />
     <!-- renderer -->
+    <ClInclude Include="src\renderer\backend\Device.h" />
+    <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h" />
+    <ClInclude Include="src\renderer\backend\Queue.h" />
+    <ClInclude Include="src\renderer\backend\Shader.h" />
+    <ClInclude Include="src\renderer\backend\Swapchain.h" />
+    <ClInclude Include="src\renderer\backend\Sync.h" />
+    <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
-    <!-- renderer / gpu -->
-    <ClInclude Include="src\renderer\gpu\CommandBuffer.h" />
-    <ClInclude Include="src\renderer\gpu\Descriptor.h" />
-    <ClInclude Include="src\renderer\gpu\PipelineManager.h" />
-    <ClInclude Include="src\renderer\gpu\PipelineBuilder.h" />
-    <!-- renderer / backend -->
-    <ClInclude Include="src\renderer\backend\Backend.h" />
-    <ClInclude Include="src\renderer\backend\BackendTools.h" />
     <!-- renderer / frame -->
     <ClInclude Include="src\renderer\frame\FrameContext.h" />
     <!-- renderer / passes -->
     <ClInclude Include="src\renderer\passes\RenderPasses.h" />
-    <ClInclude Include="src\renderer\scene\LightingSystem.h" />
+    <ClInclude Include="src\renderer\passes\ScopeFunctions.h" />
     <!-- renderer / scene -->
+    <ClInclude Include="src\renderer\scene\LightingSystem.h" />
     <ClInclude Include="src\renderer\scene\RenderScene.h" />
     <ClInclude Include="src\renderer\scene\Visibility.h" />
     <ClInclude Include="src\renderer\scene\DrawPreparation.h" />
-    <!-- renderer / graph -->
-    <!-- utils -->
-    <ClInclude Include="src\utils\VulkanUtils.h" />
-    <ClInclude Include="src\utils\BufferUtils.h" />
-    <ClInclude Include="src\utils\ImageUtils.h" />
-    <ClInclude Include="src\utils\BarrierUtils.h" />
-    <ClInclude Include="src\utils\SyncUtils.h" />
+    <!-- renderer / backend -->
+    <ClInclude Include="src\renderer\backend\Debugging.h" />
+    <ClInclude Include="src\renderer\backend\Descriptor.h" />
+    <ClInclude Include="src\renderer\backend\DescriptorWriter.h" />
+    <ClInclude Include="src\renderer\backend\PipelineManager.h" />
+    <ClInclude Include="src\renderer\backend\PipelineBuilder.h" />
+    <ClInclude Include="src\renderer\backend\VulkanForward.h" />
+    <ClInclude Include="src\renderer\backend\VulkanTypes.h" />
+    <!-- renderer / backend / utils -->
+    <ClInclude Include="src\renderer\backend\utils\BufferUtils.h" />
+    <ClInclude Include="src\renderer\backend\utils\ImageUtils.h" />
+    <ClInclude Include="src\renderer\backend\utils\BarrierUtils.h" />
+    <!-- renderer / backend / memory -->
+    <ClInclude Include="src\renderer\backend\memory\Budgets.h" />
+    <ClInclude Include="src\renderer\backend\memory\Staging.h" />
+    <ClInclude Include="src\renderer\backend\memory\Allocator.h" />
+    <ClInclude Include="src\renderer\backend\memory\VmaForward.h" />
+    <ClInclude Include="src\renderer\backend\memory\AllocatedBuffer.h" />
+    <ClInclude Include="src\renderer\backend\memory\AllocatedImage.h" />
+    <!-- assets -->
     <ClInclude Include="res\assets\AreaTex.h" />
     <ClInclude Include="res\assets\SearchTex.h" />
   </ItemGroup>
@@ -387,7 +414,7 @@
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->
-    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;$(IncludePath)</IncludePath>
     <!-- Library Directories for project-wide usage -->
     <LibraryPath>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>

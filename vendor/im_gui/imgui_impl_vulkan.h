@@ -92,7 +92,7 @@ struct ImGui_ImplVulkan_PipelineInfo
 //     and must contain a pool size large enough to hold a small number of VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER descriptors.
 //   - As an convenience, by setting DescriptorPoolSize > 0 the backend will create one for you.
 // - About dynamic rendering:
-//   - When using dynamic rendering, set UseDynamicRendering=true + fill PipelineInfoMain.PipelineRenderingCreateInfo structure.
+//   - When using dynamic rendering, m_frameSet UseDynamicRendering=true + fill PipelineInfoMain.PipelineRenderingCreateInfo structure.
 struct ImGui_ImplVulkan_InitInfo
 {
     uint32_t                        ApiVersion;                 // Fill with API version of Instance, e.g. VK_API_VERSION_1_3 or your value of VkApplicationInfo::apiVersion. May be lower than header version (VK_HEADER_VERSION_COMPLETE)
@@ -102,17 +102,17 @@ struct ImGui_ImplVulkan_InitInfo
     uint32_t                        QueueFamily;
     VkQueue                         Queue;
     VkDescriptorPool                DescriptorPool;             // See requirements in note above; ignored if using DescriptorPoolSize > 0
-    uint32_t                        DescriptorPoolSize;         // Optional: set to create internal descriptor pool automatically instead of using DescriptorPool.
+    uint32_t                        DescriptorPoolSize;         // Optional: m_frameSet to create internal descriptor pool automatically instead of using DescriptorPool.
     uint32_t                        MinImageCount;              // >= 2
     uint32_t                        ImageCount;                 // >= MinImageCount
     VkPipelineCache                 PipelineCache;              // Optional
 
     // Pipeline
     ImGui_ImplVulkan_PipelineInfo   PipelineInfoMain;           // Infos for Main Viewport (created by app/user)
-    //VkRenderPass                  RenderPass;                 // --> Since 2025/09/26: set 'PipelineInfoMain.RenderPass' instead
-    //uint32_t                      Subpass;                    // --> Since 2025/09/26: set 'PipelineInfoMain.Subpass' instead
-    //VkSampleCountFlagBits         MSAASamples;                // --> Since 2025/09/26: set 'PipelineInfoMain.MSAASamples' instead
-    //VkPipelineRenderingCreateInfoKHR PipelineRenderingCreateInfo; // Since 2025/09/26: set 'PipelineInfoMain.PipelineRenderingCreateInfo' instead
+    //VkRenderPass                  RenderPass;                 // --> Since 2025/09/26: m_frameSet 'PipelineInfoMain.RenderPass' instead
+    //uint32_t                      Subpass;                    // --> Since 2025/09/26: m_frameSet 'PipelineInfoMain.Subpass' instead
+    //VkSampleCountFlagBits         MSAASamples;                // --> Since 2025/09/26: m_frameSet 'PipelineInfoMain.MSAASamples' instead
+    //VkPipelineRenderingCreateInfoKHR PipelineRenderingCreateInfo; // Since 2025/09/26: m_frameSet 'PipelineInfoMain.PipelineRenderingCreateInfo' instead
 
     // (Optional) Dynamic Rendering
     // Need to explicitly enable VK_KHR_dynamic_rendering extension to use this, even for Vulkan 1.3 + setup PipelineInfoMain.PipelineRenderingCreateInfo.
@@ -238,7 +238,7 @@ struct ImGui_ImplVulkanH_Window
     uint32_t                FrameIndex;         // Current frame being rendered to (0 <= FrameIndex < FrameInFlightCount)
     uint32_t                ImageCount;         // Number of simultaneous in-flight frames (returned by vkGetSwapchainImagesKHR, usually derived from min_image_count)
     uint32_t                SemaphoreCount;     // Number of simultaneous in-flight frames + 1, to be able to use it in vkAcquireNextImageKHR
-    uint32_t                SemaphoreIndex;     // Current set of swapchain wait semaphores we're using (needs to be distinct from per frame data)
+    uint32_t                SemaphoreIndex;     // Current m_frameSet of swapchain Wait semaphores we're using (needs to be distinct from per frame data)
     ImVector<ImGui_ImplVulkanH_Frame>           Frames;
     ImVector<ImGui_ImplVulkanH_FrameSemaphores> FrameSemaphores;
 
@@ -247,7 +247,7 @@ struct ImGui_ImplVulkanH_Window
         memset((void*)this, 0, sizeof(*this));
 
         // Parameters to create SwapChain
-        PresentMode = (VkPresentModeKHR)~0;             // Ensure we get an error if user doesn't set this.
+        PresentMode = (VkPresentModeKHR)~0;             // Ensure we get an error if user doesn't m_frameSet this.
 
         // Parameters to create RenderPass
         AttachmentDesc.format = VK_FORMAT_UNDEFINED;    // Will automatically use wd->SurfaceFormat.format.

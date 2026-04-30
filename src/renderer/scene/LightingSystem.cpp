@@ -89,8 +89,6 @@ namespace LightingSystem {
 		defaultLight.position = glm::vec3(0.0f);
 		defaultLight.radius = 1.5f;
 		defaultLight.intensity = 2.5f;
-		defaultLight.shadowMapID = UINT32_MAX;
-		defaultLight.cookieTexID = UINT32_MAX;
 
 		activateLight(std::move(defaultLight), newID);
 	}
@@ -123,9 +121,6 @@ namespace LightingSystem {
 		const float minColor = 0.1f;
 		const float maxColor = 1.0f;
 		randomLight.color = glm::clamp(colorA, glm::vec3(minColor), glm::vec3(maxColor));
-
-		randomLight.shadowMapID = UINT32_MAX;
-		randomLight.cookieTexID = UINT32_MAX;
 
 		activateLight(std::move(randomLight), newID);
 	}
@@ -183,10 +178,10 @@ namespace LightingSystem {
 }
 
 void LightingSystem::createClusteredUBO(AllocatedBuffer& clusteredUBO, const VmaAllocator alloc) {
-	if (clusteredUBO.buffer != VK_NULL_HANDLE) {
-		BufferUtils::destroyAllocatedBuffer(clusteredUBO, alloc);
+	if (clusteredUBO.m_buffer != VK_NULL_HANDLE) {
+		BufferUtils::DestroyAllocatedBuffer(clusteredUBO, alloc);
 	}
-	clusteredUBO = BufferUtils::createUniformBuffer(_clusteredData, alloc);
+	clusteredUBO = BufferUtils::CreateUniformBuffer(_clusteredData, alloc);
 }
 
 
@@ -233,38 +228,38 @@ ClusterBufferSizes LightingSystem::computeClusterBufferSizes(
 
 	//sizes.clusterDebugStatsBytes = 256u;
 
-	sizes.clusterCountsBytes = BufferUtils::alignUp(sizes.clusterCountsBytes, 256u);
-	sizes.clusterOffsetsBytes = BufferUtils::alignUp(sizes.clusterOffsetsBytes, 256u);
-	sizes.clusterCursorsBytes = BufferUtils::alignUp(sizes.clusterCursorsBytes, 256u);
-	sizes.clusterLightIDsBytes = BufferUtils::alignUp(sizes.clusterLightIDsBytes, 256u);
+	sizes.clusterCountsBytes = BufferUtils::AlignUp(sizes.clusterCountsBytes, 256u);
+	sizes.clusterOffsetsBytes = BufferUtils::AlignUp(sizes.clusterOffsetsBytes, 256u);
+	sizes.clusterCursorsBytes = BufferUtils::AlignUp(sizes.clusterCursorsBytes, 256u);
+	sizes.clusterLightIDsBytes = BufferUtils::AlignUp(sizes.clusterLightIDsBytes, 256u);
 
-	sizes.clusterTileSliceRangesBytes = BufferUtils::alignUp(sizes.clusterTileSliceRangesBytes, 256u);
-	sizes.clusterScanScratchBytes = BufferUtils::alignUp(sizes.clusterScanScratchBytes, 256u);
+	sizes.clusterTileSliceRangesBytes = BufferUtils::AlignUp(sizes.clusterTileSliceRangesBytes, 256u);
+	sizes.clusterScanScratchBytes = BufferUtils::AlignUp(sizes.clusterScanScratchBytes, 256u);
 
 	return sizes;
 }
 
 
 void LightingSystem::init(GPUResources& resources) {
-	const auto alloc = resources.getAllocator();
-	auto& lightListStaging = resources.getLightListStagingBuffer();
+	const auto alloc = resources.GetAllocator();
+	auto& lightListStaging = resources.GetLightListStagingBuffer();
 
-	if (lightListStaging.buffer == VK_NULL_HANDLE) {
-		lightListStaging = BufferUtils::createBuffer(
+	if (lightListStaging.m_buffer == VK_NULL_HANDLE) {
+		lightListStaging = BufferUtils::CreateBuffer(
 			MAX_GPU_LIGHTS_SIZE_BYTES,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 			alloc
 		);
-		ASSERT(lightListStaging.info.pMappedData);
+		ASSERT(lightListStaging.m_allocInfo.pMappedData);
 	}
 
 	_globalLightList.clear();
 	_globalLightList.reserve(MAX_LIGHTS);
 	_globalLightList.resize(LIGHT_LIST_STATIC_COUNT);
 
-	_mainFlashLight.initFlags();
-	_globalLightList[LIGHT_LIST_SLOT_FLASHLIGHT] = _mainFlashLight.spotLight;
+	_mainFlashLight.InitFlags();
+	_globalLightList[LIGHT_LIST_SLOT_FLASHLIGHT] = _mainFlashLight;
 
 	_lightIDTable.activeLightIDs.clear();
 	_lightIDTable.freeIDs.clear();
@@ -312,7 +307,7 @@ void LightingSystem::setTargetActiveLightCount(uint32_t targetCount) {
 	}
 }
 
-bool FlashLight::updateFlashLight(
+bool FlashLight::UpdateFlashLight(
 	std::vector<LocalLight>& globalLightList,
 	const uint32_t shadowMapID,
 	const uint32_t cookieTexID,
@@ -410,7 +405,7 @@ bool FlashLight::updateFlashLight(
 		);
 
 		viewProj = proj * view;
-		frustum = extractFrustum(viewProj);
+		frustum = ExtractNew(viewProj);
 	}
  
 	// Push to global list
@@ -484,7 +479,7 @@ bool LightingSystem::updateLightList() {
 
 	_activeLightCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
 
-	if (_mainFlashLight.isFlashLightOn()) {
+	if (_mainFlashLight.IsFlashLightOn()) {
 		_activeLightCount++;
 	}
 
@@ -494,7 +489,7 @@ bool LightingSystem::updateLightList() {
 }
 
 static void rotateLightAroundOriginXZ(
-	LocalLight& light,
+	glm::vec3& position,
 	float angularSpeedRad,
 	float deltaTime)
 {
@@ -503,14 +498,14 @@ static void rotateLightAroundOriginXZ(
 	const float cosA = std::cos(angle);
 	const float sinA = std::sin(angle);
 
-	glm::vec3 p = light.position;
+	glm::vec3 p = position;
 
 	glm::vec3 rotated;
 	rotated.x = p.x * cosA - p.z * sinA;
 	rotated.z = p.x * sinA + p.z * cosA;
 	rotated.y = p.y;
 
-	light.position = rotated;
+	position = rotated;
 }
 
 bool LightingSystem::updateDynamicLightsOrbit(float deltaTime) {
@@ -529,7 +524,7 @@ bool LightingSystem::updateDynamicLightsOrbit(float deltaTime) {
 		float speed = baseSpeed * (0.5f + 0.05f * index);
 
 		rotateLightAroundOriginXZ(
-			*light,
+			light->position,
 			speed,
 			deltaTime
 		);
@@ -540,7 +535,7 @@ bool LightingSystem::updateDynamicLightsOrbit(float deltaTime) {
 	return true;
 }
 
-void LightingSystem::cleanup() {
+void LightingSystem::Cleanup() {
 	_lightIDTable.clear();
 	_activeLightCount = 0u;
 	_globalLightList.clear();

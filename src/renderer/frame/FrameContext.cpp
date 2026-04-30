@@ -1,154 +1,98 @@
 #include "pch.h"
 
 #include "FrameContext.h"
-#include "renderer/backend/Backend.h"
-#include "utils/SyncUtils.h"
-#include "utils/BufferUtils.h"
-#include "renderer/gpu/CommandBuffer.h"
-#include "renderer/scene/LightingSystem.h"
+#include "renderer/backend/memory/Allocator.h"
+#include "renderer/backend/memory/Budgets.h"
+#include "renderer/backend/Device.h"
+#include "renderer/backend/Descriptor.h"
 
-std::vector<std::unique_ptr<FrameContext>> initFrameContexts(
-	const VkDevice device,
-	const VkDescriptorSetLayout frameLayout,
-	const VmaAllocator alloc,
-	uint32_t& framesInFlight)
+void FrameContext::Init(
+	uint32_t frameIndex,
+	Device& device,
+	DescriptorManager& descriptorsManager,
+	Allocator& allocator)
 {
-	auto& swapDef = Backend::getSwapchainDef();
-	framesInFlight = swapDef.imageCount;
+	const auto& deviceCtx = device.GetContext();
+	auto logicalDevice = deviceCtx.device;
+	auto qIndices = deviceCtx.queueIndices;
+	auto alloc  = allocator.GetVma();
+	m_frameIndex = frameIndex;
 
-	std::vector<std::unique_ptr<FrameContext>> frameContexts;
+	m_graphicsPool = device.CreateCommandPool(QueueType::Graphics);
+	m_commandBuffer = device.CreateCommandBuffer(m_graphicsPool);
+	m_frameSet = descriptorsManager.AllocateFrameDescriptorSet(logicalDevice);
 
-	frameContexts.resize(framesInFlight);
+	// GPU address table
+	BufferDesc addressTableDesc {
+		.size = GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
+		.usage = static_cast<VkBufferUsageFlags>(BufferUsage::ADDRESS_TABLE),
+		.debugName = "FrameAddressTable"
+	};
+	m_gpuAddressTable.emplace(allocator.AllocateBuffer(addressTableDesc));
 
-	uint32_t graphicsIndex = Backend::getGraphicsQueue().familyIndex;
-	uint32_t transferIndex = Backend::getTransferQueue().familyIndex;
-	uint32_t computeIndex = Backend::getComputeQueue().familyIndex;
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::VisibleInstances,
+		m_gpuAddressTable.value(),
+		MAX_INSTANCE_SIZE_GPU_BYTES);
 
-	size_t totalGPUStagingSize =
-		MAX_GPU_INSTANCE_SIZE_BYTES +
-		MAX_GPU_INDIRECT_SIZE_BYTES +
-		sizeof(GPUAddressTable);
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::IndirectDraws,
+		m_gpuAddressTable.value(),
+		MAX_INDIRECT_SIZE_GPU_BYTES);
 
-	fmt::print("Frames in flight:[{}]\n", framesInFlight);
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::VisibleLightCount,
+		m_gpuAddressTable.value(),
+		256u);
 
-	for (uint32_t i = 0; i < framesInFlight; ++i) {
-		auto frame = std::make_unique<FrameContext>();
-		frame->frameIndex = i;
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::VisibleLightIDs,
+		m_gpuAddressTable.value(),
+		MAX_LIGHT_IDS_SIZE_GPU_BYTES);
 
-		frame->graphicsPool = CommandBuffer::createCommandPool(device, graphicsIndex);
-		frame->cmdBuffer = CommandBuffer::createCommandBuffer(device, frame->graphicsPool);
-		frame->set = DescriptorSetOverwatch::mainDescriptorManager.allocateDescriptor(device, frameLayout);
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::DispatchIndirectArgs,
+		m_gpuAddressTable.value(),
+		256u);
 
-		frame->transferPool = CommandBuffer::createCommandPool(device, transferIndex);
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Transforms,
+		m_gpuAddressTable.value(),
+		MAX_TRANSFORMS_SIZE_GPU_BYTES);
 
-		if (Backend::isComputeAvailable()) {
-			frame->computePool = CommandBuffer::createCommandPool(device, computeIndex);
-		}
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::PrevTransforms,
+		m_gpuAddressTable.value(),
+		MAX_TRANSFORMS_SIZE_GPU_BYTES);
 
-		frame->addressTable_GPU = BufferUtils::createBuffer(
-			sizeof(GPUAddressTable),
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-			VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-			VMA_MEMORY_USAGE_GPU_ONLY,
-			alloc);
-
-		frame->combinedGPUStaging = BufferUtils::createBuffer(
-			totalGPUStagingSize,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-			alloc);
-		ASSERT(frame->combinedGPUStaging.info.pMappedData);
-
-		frame->visibleInstances_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::VisibleInstances,
-			frame->addressTable,
-			MAX_GPU_INSTANCE_SIZE_BYTES,
-			alloc);
-		frame->persistentGPUBuffers.push_back(frame->visibleInstances_GPU);
-
-		frame->indirectDraws_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::IndirectDraws,
-			frame->addressTable,
-			MAX_GPU_INDIRECT_SIZE_BYTES,
-			alloc);
-		frame->persistentGPUBuffers.push_back(frame->indirectDraws_GPU);
-
-		frame->visibleLightCount_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::VisibleLightCount,
-			frame->addressTable,
-			256u,
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->visibleLightCount_GPU);
-
-		frame->visibleLightIDs_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::VisibleLightIDs,
-			frame->addressTable,
-			static_cast<size_t>(MAX_VISIBLE_LIGHTS) * sizeof(uint32_t),
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->visibleLightIDs_GPU);
-
-		frame->dispatchIndirectArgs_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::DispatchIndirectArgs,
-			frame->addressTable,
-			256u,
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->dispatchIndirectArgs_GPU);
-
-		frame->transforms_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::Transforms,
-			frame->addressTable,
-			TRANSFORMS_SIZE_BYTES,
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->transforms_GPU);
-
-		frame->prevTransforms_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::PrevTransforms,
-			frame->addressTable,
-			TRANSFORMS_SIZE_BYTES,
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->prevTransforms_GPU);
-
-		frame->lights_GPU = BufferUtils::createGPUAddressBuffer(
-			AddressBufferType::Lights,
-			frame->addressTable,
-			MAX_GPU_LIGHTS_SIZE_BYTES,
-			alloc
-		);
-		frame->persistentGPUBuffers.push_back(frame->lights_GPU);
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Lights,
+		m_gpuAddressTable.value(),
+		MAX_LIGHTS_SIZE_GPU_BYTES);
 
 
-		VkQueryPoolCreateInfo queryPoolInfo{};
-		queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-		queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
-		queryPoolInfo.queryCount = TIMESTAMP_QUERY_COUNT;
+	VkQueryPoolCreateInfo queryPoolInfo{};
+	queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	queryPoolInfo.queryCount = TIMESTAMP_QUERY_COUNT;
 
-		VK_CHECK(vkCreateQueryPool(
-			device,
-			&queryPoolInfo,
-			nullptr,
-			&frame->graphicsTimestampPool
-		));
+	VK_CHECK(vkCreateQueryPool(
+		logicalDevice,
+		&queryPoolInfo,
+		nullptr,
+		&m_graphicsTimestampPool
+	));
 
-		for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex) {
-			frame->passTimestampRanges[passIndex].beginQuery = passIndex * 2;
-			frame->passTimestampRanges[passIndex].endQuery = passIndex * 2 + 1;
-		}
-
-		frame->timestampResults.fill(0);
-
-		frameContexts[i] = std::move(frame);
+	for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
+	{
+		m_passTimestampRanges[passIndex].beginQuery = passIndex * 2;
+		m_passTimestampRanges[passIndex].endQuery = passIndex * 2 + 1;
 	}
 
-	return frameContexts;
+	m_timestampResults.fill(0);
 }
 
-void FrameContext::createClusterBuffers(
+void FrameContext::CreateClusterBuffers(
 	const uint32_t extentWidth,
 	const uint32_t extentHeight,
 	const VmaAllocator alloc)
@@ -157,76 +101,75 @@ void FrameContext::createClusterBuffers(
 	newClusterSizes = LightingSystem::computeClusterBufferSizes(
 		extentWidth,
 		extentHeight,
-		clustered_UBO,
+		m_clustered_UBO,
 		alloc);
-	clusterWriteNeeded = true;
+	m_bClusterWriteNeeded = true;
 
-	for (auto& buf : clusterGPUBuffers) {
-		if (buf.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(buf, alloc);
+	for (auto& buf : m_clusterGPUBuffers) {
+		if (buf.m_buffer != VK_NULL_HANDLE)
+			BufferUtils::DestroyAllocatedBuffer(buf, alloc);
 	}
-	clusterReset();
+	ClusterReset();
 
-	clusterCounts_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterCounts,
-		addressTable,
+	m_clusterCounts_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterCounts,
+		m_gpuAddressTable,
 		newClusterSizes.clusterCountsBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterCounts_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterCounts_GPU);
 
-	clusterOffsets_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterOffsets,
-		addressTable,
+	m_clusterOffsets_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterOffsets,
+		m_gpuAddressTable,
 		newClusterSizes.clusterOffsetsBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterOffsets_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterOffsets_GPU);
 
-	clusterCursors_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterCursors,
-		addressTable,
+	m_clusterCursors_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterCursors,
+		m_gpuAddressTable,
 		newClusterSizes.clusterCursorsBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterCursors_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterCursors_GPU);
 
-	clusterLightIDs_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterLightIDs,
-		addressTable,
+	m_clusterLightIDs_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterLightIDs,
+		m_gpuAddressTable,
 		newClusterSizes.clusterLightIDsBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterLightIDs_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterLightIDs_GPU);
 
-	clusterTileSliceRanges_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterTileSliceRanges,
-		addressTable,
+	m_clusterTileSliceRanges_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterTileSliceRanges,
+		m_gpuAddressTable,
 		newClusterSizes.clusterTileSliceRangesBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterTileSliceRanges_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterTileSliceRanges_GPU);
 
-	clusterScanScratch_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::ClusterScanScratch,
-		addressTable,
+	m_clusterScanScratch_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::ClusterScanScratch,
+		m_gpuAddressTable,
 		newClusterSizes.clusterScanScratchBytes,
 		alloc
 	);
-	clusterGPUBuffers.push_back(clusterScanScratch_GPU);
+	m_clusterGPUBuffers.push_back(m_clusterScanScratch_GPU);
 }
 
-void FrameContext::createCMAA2Buffers(
+void FrameContext::CreateCMAA2Buffers(
 	const uint32_t extentWidth,
 	const uint32_t extentHeight,
 	const VmaAllocator alloc)
 {
-	for (auto& buffer : cmaa2GPUBuffers) {
-		if (buffer.buffer != VK_NULL_HANDLE) {
-			BufferUtils::destroyAllocatedBuffer(buffer, alloc);
-		}
+	for (auto& buffer : m_cmaa2GPUBuffers)
+	{
+		BufferUtils::DestroyAllocatedBuffer(buffer, alloc);
 	}
-	cmaa2Reset();
+	Cmaa2Reset();
 
 	const uint32_t pixelCount = extentWidth * extentHeight;
 
@@ -244,218 +187,215 @@ void FrameContext::createCMAA2Buffers(
 	size_t cmaa2DeferredItemsBytes =
 		static_cast<size_t>(deferredItemsCapacity) * sizeof(uint32_t) * 4u;
 
-	cmaa2ControlBytes = BufferUtils::alignUp(cmaa2ControlBytes, 256u);
-	cmaa2ShapeCandidatesBytes = BufferUtils::alignUp(cmaa2ShapeCandidatesBytes, 256u);
-	cmaa2DeferredLocationsBytes = BufferUtils::alignUp(cmaa2DeferredLocationsBytes, 256u);
-	cmaa2DeferredItemsBytes = BufferUtils::alignUp(cmaa2DeferredItemsBytes, 256u);
-	cmaa2DeferredHeadsBytes = BufferUtils::alignUp(cmaa2DeferredHeadsBytes, 256u);
+	cmaa2ControlBytes = BufferUtils::AlignUp(cmaa2ControlBytes, 256u);
+	cmaa2ShapeCandidatesBytes = BufferUtils::AlignUp(cmaa2ShapeCandidatesBytes, 256u);
+	cmaa2DeferredLocationsBytes = BufferUtils::AlignUp(cmaa2DeferredLocationsBytes, 256u);
+	cmaa2DeferredItemsBytes = BufferUtils::AlignUp(cmaa2DeferredItemsBytes, 256u);
+	cmaa2DeferredHeadsBytes = BufferUtils::AlignUp(cmaa2DeferredHeadsBytes, 256u);
 
-	cmaa2Push.halfWidth = quadCountX;
-	cmaa2Push.maxShapeCandidates = pixelCount;
-	cmaa2Push.maxDeferredItems = deferredItemsCapacity;
-	cmaa2Push.maxDeferredLocations = quadCount;
+	m_cmaa2Push.halfWidth = quadCountX;
+	m_cmaa2Push.maxShapeCandidates = pixelCount;
+	m_cmaa2Push.maxDeferredItems = deferredItemsCapacity;
+	m_cmaa2Push.maxDeferredLocations = quadCount;
 
-	cmaa2Control_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Cmaa2Control,
-		addressTable,
+	m_cmaa2Control_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Cmaa2Control,
+		m_gpuAddressTable,
 		cmaa2ControlBytes,
 		alloc
 	);
-	cmaa2GPUBuffers.push_back(cmaa2Control_GPU);
+	m_cmaa2GPUBuffers.push_back(m_cmaa2Control_GPU);
 
-	cmaa2ShapeCandidates_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Cmaa2ShapeCandidates,
-		addressTable,
+	m_cmaa2ShapeCandidates_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Cmaa2ShapeCandidates,
+		m_gpuAddressTable,
 		cmaa2ShapeCandidatesBytes,
 		alloc
 	);
-	cmaa2GPUBuffers.push_back(cmaa2ShapeCandidates_GPU);
+	m_cmaa2GPUBuffers.push_back(m_cmaa2ShapeCandidates_GPU);
 
-	cmaa2DeferredLocations_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Cmaa2DeferredLocations,
-		addressTable,
+	m_cmaa2DeferredLocations_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Cmaa2DeferredLocations,
+		m_gpuAddressTable,
 		cmaa2DeferredLocationsBytes,
 		alloc
 	);
-	cmaa2GPUBuffers.push_back(cmaa2DeferredLocations_GPU);
+	m_cmaa2GPUBuffers.push_back(m_cmaa2DeferredLocations_GPU);
 
-	cmaa2DeferredItems_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Cmaa2DeferredItems,
-		addressTable,
+	m_cmaa2DeferredItems_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Cmaa2DeferredItems,
+		m_gpuAddressTable,
 		cmaa2DeferredItemsBytes,
 		alloc
 	);
-	cmaa2GPUBuffers.push_back(cmaa2DeferredItems_GPU);
+	m_cmaa2GPUBuffers.push_back(m_cmaa2DeferredItems_GPU);
 
-	cmaa2DeferredHeads_GPU = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Cmaa2DeferredHeads,
-		addressTable,
+	m_cmaa2DeferredHeads_GPU = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Cmaa2DeferredHeads,
+		m_gpuAddressTable,
 		cmaa2DeferredHeadsBytes,
 		alloc
 	);
-	cmaa2GPUBuffers.push_back(cmaa2DeferredHeads_GPU);
+	m_cmaa2GPUBuffers.push_back(m_cmaa2DeferredHeads_GPU);
 }
 
-void FrameContext::collectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue) {
+void FrameContext::CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue)
+{
 	if (cmds.empty()) return;
-	std::scoped_lock lock(submitMutex);
 
-	auto& dstCmds = (queue == QueueType::Transfer) ? transferCmds
-		: (queue == QueueType::Compute) ? computeCmds
-		: secondaryCmds;
+	auto& dstCmds = (queue == QueueType::Transfer) ? m_transferCommands
+		: (queue == QueueType::Compute) ? m_computeCommands
+		: m_secondaryCommands;
 	dstCmds.insert(dstCmds.end(),
 		std::make_move_iterator(cmds.begin()),
 		std::make_move_iterator(cmds.end()));
 }
 
-void FrameContext::stashSubmitted(QueueType queue) {
-	std::scoped_lock lock(submitMutex);
-
-	auto& srcCmds = (queue == QueueType::Transfer) ? transferCmds
-		: (queue == QueueType::Compute) ? computeCmds
-		: secondaryCmds;
-	auto& dstCmds = (queue == QueueType::Transfer) ? transferCmdsToFree
-		: (queue == QueueType::Compute) ? computeCmdsToFree
-		: secondaryCmdsToFree;
+void FrameContext::StashSubmitted(QueueType queue)
+{
+	auto& srcCmds = (queue == QueueType::Transfer) ? m_transferCommands
+		: (queue == QueueType::Compute) ? m_computeCommands
+		: m_secondaryCommands;
+	auto& dstCmds = (queue == QueueType::Transfer) ? m_transferCommandsToFree
+		: (queue == QueueType::Compute) ? m_computeCommandsToFree
+		: m_secondaryCommandsToFree;
 	dstCmds.insert(dstCmds.end(), srcCmds.begin(), srcCmds.end());
 	srcCmds.clear();
 }
 
-void FrameContext::freeStashedCmds(const VkDevice device) {
-	if (!transferCmdsToFree.empty()) {
-		vkFreeCommandBuffers(device, transferPool,
-			static_cast<uint32_t>(transferCmdsToFree.size()),
-			transferCmdsToFree.data());
-		transferCmdsToFree.clear();
+void FrameContext::FreeStashedCmds()
+{
+	const VkDevice device = Backend::GetDevice();
+
+	if (!m_transferCommandsToFree.empty()) {
+		vkFreeCommandBuffers(
+			device,
+			m_transferPool,
+			static_cast<uint32_t>(m_transferCommandsToFree.size()),
+			m_transferCommandsToFree.data());
+		m_transferCommandsToFree.clear();
 	}
-	if (!computeCmdsToFree.empty()) {
-		vkFreeCommandBuffers(device, computePool,
-			static_cast<uint32_t>(computeCmdsToFree.size()),
-			computeCmdsToFree.data());
-		computeCmdsToFree.clear();
+	if (!m_computeCommandsToFree.empty()) {
+		vkFreeCommandBuffers(
+			device,
+			m_computePool,
+			static_cast<uint32_t>(m_computeCommandsToFree.size()),
+			m_computeCommandsToFree.data());
+		m_computeCommandsToFree.clear();
 	}
-	if (!secondaryCmdsToFree.empty()) {
-		vkFreeCommandBuffers(device, graphicsPool,
-			static_cast<uint32_t>(secondaryCmdsToFree.size()),
-			secondaryCmdsToFree.data());
-		secondaryCmdsToFree.clear();
+	if (!m_secondaryCommandsToFree.empty()) {
+		vkFreeCommandBuffers(
+			device,
+			m_graphicsPool,
+			static_cast<uint32_t>(m_secondaryCommandsToFree.size()),
+			m_secondaryCommandsToFree.data());
+		m_secondaryCommandsToFree.clear();
 	}
 }
 
-void FrameContext::updateAddressTableIfDirty(const VkDevice device) {
-	if (addressTable.isTableDirty()) {
-		descriptorWriter.writeBuffer(
+void FrameContext::UpdateAddressTableIfDirty() {
+	if (m_gpuAddressTable.IsTableDirty()) {
+		m_descriptorWriter.WriteBuffer(
 			ADDRESS_TABLE_BINDING,
-			addressTable_GPU.buffer,
-			sizeof(GPUAddressTable),
+			m_addressTable_GPU.m_buffer,
+			sizeof(BindlessBufferTable),
 			0,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-			set);
+			m_frameSet);
 
-		addressTable.clearTableDirty();
+		m_gpuAddressTable.ClearTableDirty();
 	}
 }
 
-void FrameContext::writeFrameUniforms(const VkDevice device) {
+void FrameContext::WriteFrameUniforms() {
 	constexpr size_t offset = 0;
 
-	if (visibleCount > 0) {
-		descriptorWriter.writeBuffer(
+	if (m_visibleCount > 0) {
+		m_descriptorWriter.WriteBuffer(
 			FRAME_BINDING_CSM,
-			shadowCSM_UBO.buffer,
-			sizeof(GPUShadowCSM),
+			m_directionalCSM_UBO.m_buffer,
+			sizeof(DirectionalCSMInfo),
 			offset,
 			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			set
+			m_frameSet
 		);
 	}
 
-	descriptorWriter.writeBuffer(
+	m_descriptorWriter.WriteBuffer(
 		FRAME_BINDING_SCENE,
-		sceneData_UBO.buffer,
-		sizeof(GPUSceneData),
+		m_sceneInfo_UBO.m_buffer,
+		sizeof(SceneInfo),
 		offset,
 		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		set
+		m_frameSet
 	);
 
-	if (clusterWriteNeeded) {
-		descriptorWriter.writeBuffer(
+	if (m_bClusterWriteNeeded) {
+		m_descriptorWriter.WriteBuffer(
 			FRAME_BINDING_CLUSTERED,
-			clustered_UBO.buffer,
+			m_clustered_UBO.m_buffer,
 			sizeof(LightingSystem::ClusteredData),
 			offset,
 			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			set
+			m_frameSet
 		);
-		clusterWriteNeeded = false;
+		m_bClusterWriteNeeded = false;
 	}
 }
 
-void FrameContext::updateFrameSet(const VkDevice device) {
-	descriptorWriter.updateSet(device, set);
-}
-
-void cleanupFrameContexts(
-	std::vector<std::unique_ptr<FrameContext>>& frameContexts,
-	const VkDevice device,
-	const VmaAllocator alloc)
+void FrameContext::UpdateFrameSet()
 {
-	for (auto& framePtr : frameContexts) {
-		if (!framePtr) continue;
+	m_descriptorWriter.UpdateSet(m_frameSet);
+}
 
-		auto& frame = *framePtr;
+void FrameContext::Cleanup(const Allocator& allocator)
+{
+	m_cpuDeletionQueue.Flush();
 
-		frame.cpuDeletion.flush();
-
-		for (uint32_t i = 0; i < static_cast<uint32_t>(AddressBufferType::Count); ++i) {
-			AddressBufferType bufferType = static_cast<AddressBufferType>(i);
-			frame.addressTable.removeAddress(bufferType);
-		}
-
-		for (auto& buf : frame.persistentGPUBuffers)
-			BufferUtils::destroyAllocatedBuffer(buf, alloc);
-
-		if (frame.clustered_UBO.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.clustered_UBO, alloc);
-
-		for (auto& buf : frame.clusterGPUBuffers) {
-			if (buf.buffer != VK_NULL_HANDLE)
-				BufferUtils::destroyAllocatedBuffer(buf, alloc);
-		}
-		frame.clusterReset();
-
-		for (auto& buf : frame.cmaa2GPUBuffers) {
-			if (buf.buffer != VK_NULL_HANDLE)
-				BufferUtils::destroyAllocatedBuffer(buf, alloc);
-		}
-		frame.cmaa2Reset();
-
-		if (frame.graphicsTimestampPool != VK_NULL_HANDLE) {
-			vkDestroyQueryPool(device, frame.graphicsTimestampPool, nullptr);
-		}
-
-		frame.freeStashedCmds(device);
-
-		frame.transferCmds.clear();
-		frame.computeCmds.clear();
-		frame.secondaryCmds.clear();
-
-		if (frame.graphicsPool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.graphicsPool, nullptr);
-
-		if (frame.transferPool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.transferPool, nullptr);
-
-		if (frame.computePool != VK_NULL_HANDLE)
-			vkDestroyCommandPool(device, frame.computePool, nullptr);
-
-		if (frame.combinedGPUStaging.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.combinedGPUStaging, alloc);
-
-		if (frame.addressTable_GPU.buffer != VK_NULL_HANDLE)
-			BufferUtils::destroyAllocatedBuffer(frame.addressTable_GPU, alloc);
+	for (uint32_t i = 0; i < static_cast<uint32_t>(BufferSlot::Count); ++i)
+	{
+		BufferSlot bufferType = static_cast<BufferSlot>(i);
+		m_gpuAddressTable.RemoveAddress(bufferType);
 	}
 
-	frameContexts.clear();
+	for (auto& buf : m_persistentGPUBuffers) {
+		BufferUtils::DestroyAllocatedBuffer(buf, allocator);
+	}
+
+	BufferUtils::DestroyAllocatedBuffer(m_clustered_UBO, allocator);
+
+	for (auto& buf : m_clusterGPUBuffers) {
+		BufferUtils::DestroyAllocatedBuffer(buf, allocator);
+	}
+	ClusterReset();
+
+	for (auto& buf : m_cmaa2GPUBuffers) {
+		BufferUtils::DestroyAllocatedBuffer(buf, allocator);
+	}
+	Cmaa2Reset();
+
+	const VkDevice device = Backend::GetDevice();
+
+	if (m_graphicsTimestampPool != VK_NULL_HANDLE) {
+		vkDestroyQueryPool(device, m_graphicsTimestampPool, nullptr);
+	}
+
+	FreeStashedCmds();
+
+	m_transferCommands.clear();
+	m_computeCommands.clear();
+	m_secondaryCommands.clear();
+
+	if (m_graphicsPool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(device, m_graphicsPool, nullptr);
+
+	if (m_transferPool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(device, m_transferPool, nullptr);
+
+	if (m_computePool != VK_NULL_HANDLE)
+		vkDestroyCommandPool(device, m_computePool, nullptr);
+
+	BufferUtils::DestroyAllocatedBuffer(m_gpuCopyStaging, allocator);
+
+	BufferUtils::DestroyAllocatedBuffer(m_addressTable_GPU, allocator);
 }

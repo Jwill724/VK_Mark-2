@@ -383,8 +383,8 @@ namespace fastgltf {
 	/**
 	 * Returns the name of the passed glTF extension.
 	 *
-	 * @note If \p extensions has more than one bit set (multiple extensions), this
-	 * will return the name of the first set bit.
+	 * @note If \p extensions has more than one bit m_frameSet (multiple extensions), this
+	 * will return the name of the first m_frameSet bit.
 	 */
 	FASTGLTF_EXPORT
 #if FASTGLTF_CPP_20
@@ -915,12 +915,12 @@ namespace fastgltf {
 		[[nodiscard]] Expected<Asset> loadGltfBinary(GltfDataGetter& buffer, std::filesystem::path directory, Options options = Options::None, Category categories = Category::All);
 
         /**
-         * This function can be used to set callbacks so that you can control memory allocation for
+         * This function can be used to m_frameSet callbacks so that you can control memory allocation for
          * large buffers and images that are loaded from a glTF file. For example, one could use
          * the callbacks to map a GPU buffer through Vulkan or DirectX so that fastgltf can write
          * the buffer directly to the GPU to avoid a copy into RAM first. To remove the callbacks
          * for a specific load, call this method with both parameters as nullptr before load*GLTF.
-         * Using Parser::setUserPointer you can also set a user pointer to access your
+         * Using Parser::setUserPointer you can also m_frameSet a user pointer to access your
          * own class or other data you may need.
          *
          * @param mapCallback function called when the parser requires a buffer to write data
@@ -935,7 +935,7 @@ namespace fastgltf {
          * Allows setting callbacks for base64 decoding.
          * This can be useful if you have another base64 decoder optimised for a certain platform or architecture,
          * or want to use your own scheduler to schedule multiple threads for working on decoding individual chunks of the data.
-         * Using Parser::setUserPointer you can also set a user pointer to access your own class or other data you may need.
+         * Using Parser::setUserPointer you can also m_frameSet a user pointer to access your own class or other data you may need.
          *
          * It is still recommended to use fastgltf's base64 decoding features as they're highly optimised
          * for SSE4, AVX2, and ARM Neon.
@@ -1054,14 +1054,14 @@ namespace fastgltf {
 	public:
         /**
          * Writes a glTF JSON string generated from the given asset to the specified target file. This will also write
-         * all buffers and textures to disk using the buffer and image paths set using Exporter::setBufferPath and
+         * all buffers and textures to disk using the buffer and image paths m_frameSet using Exporter::setBufferPath and
          * Exporter::setImagePath.
          */
 		Error writeGltfJson(const Asset& asset, std::filesystem::path target, ExportOptions options = ExportOptions::None);
 
 		/**
 		 * Writes a glTF binary (GLB) blob from the given asset to the specified target file. This will also write
-         * all buffers and textures to disk using the buffer and image paths set using Exporter::setBufferPath and
+         * all buffers and textures to disk using the buffer and image paths m_frameSet using Exporter::setBufferPath and
          * Exporter::setImagePath.
          *
 		 * If the first buffer holds a sources::Vector, a sources::Array, a or sources::ByteView and the byte length is smaller than 2^32 (4.2GB),

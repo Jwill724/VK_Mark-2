@@ -5,6 +5,8 @@
 #include "renderer/Renderer.h"
 #include "utils/VulkanUtils.h"
 #include "utils/BufferUtils.h"
+#include "common/Mesh.h"
+#include "common/Vertex.h"
 
 // TODO: dynamic loading and non hard coded models
 
@@ -20,19 +22,19 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//spheresFile.value()->scene->sceneName = SceneNames.at(SceneID::MRSpheres);
 	//queue->push(spheresFile.value());
 
-	//// TODO: Use a script to download assets
-	//// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
-	//std::string bistroPath{ "res/assets/Bistro.glb" };
-	//auto bistroFile = loadGltfFiles(bistroPath);
-	//ASSERT(bistroFile.has_value());
-	//bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
-	//queue->push(bistroFile.value());
+	// TODO: Use a script to download assets
+	// Currently this isn't apart of the repo as its 190mb, download through dropbox on repo page.
+	std::string bistroPath{ "res/assets/Bistro.glb" };
+	auto bistroFile = loadGltfFiles(bistroPath);
+	ASSERT(bistroFile.has_value());
+	bistroFile.value()->scene->sceneName = SceneNames.at(SceneID::Bistro);
+	queue->Push(bistroFile.value());
 
-	std::string sponza1Path{ "res/assets/sponza.glb" };
-	auto sponza1File = loadGltfFiles(sponza1Path);
-	ASSERT(sponza1File.has_value());
-	sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
-	queue->push(sponza1File.value());
+	//std::string sponza1Path{ "res/assets/sponza.glb" };
+	//auto sponza1File = loadGltfFiles(sponza1Path);
+	//ASSERT(sponza1File.has_value());
+	//sponza1File.value()->scene->sceneName = SceneNames.at(SceneID::Sponza);
+	//queue->push(sponza1File.value());
 
 	//std::string mechPath{ "res/assets/mech.glb" };
 	//auto mechFile = loadGltfFiles(mechPath);
@@ -70,12 +72,6 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//dragonFile.value()->scene->sceneName = SceneNames.at(SceneID::DragonAttenuation);
 	//queue->push(dragonFile.value());
 
-	//std::string wrathDragonPath{ "res/assets/wrath_of_the_dragon.glb" };
-	//auto wrathDragonFile = loadGltfFiles(wrathDragonPath);
-	//ASSERT(wrathDragonFile.has_value());
-	//wrathDragonFile.value()->scene->sceneName = SceneNames.at(SceneID::WrathDragon);
-	//queue->push(wrathDragonFile.value());
-
 	//std::string emissPath{ "res/assets/EmissiveStrengthTest.glb" };
 	//auto emissFile = loadGltfFiles(emissPath);
 	//ASSERT(emissFile.has_value());
@@ -95,7 +91,7 @@ bool AssetManager::loadGltf(ThreadContext& threadCtx) {
 	//queue->push(cityFile.value());
 
 
-	return !queue->empty();
+	return !queue->Empty();
 }
 
 std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::string_view filePath) {
@@ -106,8 +102,8 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 	auto& scene = *context->scene;
 
 	std::filesystem::path path = filePath;
-	Engine::getState().getBasePath() = path.parent_path();
-	scene.basePath = Engine::getState().getBasePath();
+	Engine::GetState().getBasePath() = path.parent_path();
+	scene.basePath = Engine::GetState().getBasePath();
 	fastgltf::Parser parser;
 
 	auto data = fastgltf::GltfDataBuffer::FromPath(path);
@@ -152,78 +148,6 @@ std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::loadGltfFiles(std::
 	return context;
 }
 
-static VkFormat getImageFormatFromName(const std::string& imageName)
-{
-	bool isSRGB =
-		imageName.find("_BaseColor") != std::string::npos ||
-		imageName.find("_Albedo") != std::string::npos ||
-		imageName.find("diffuse") != std::string::npos ||
-		imageName.find("_Emissive") != std::string::npos ||
-		imageName.find("emissive") != std::string::npos;
-
-	return isSRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-}
-
-static void setRuntimeImageSemantic(
-	ModelAsset::GPUData& runtime,
-	uint32_t imageIndex,
-	TextureSemantic semantic)
-{
-	ASSERT(imageIndex < runtime.images.size());
-
-	RuntimeImage& runtimeImage = runtime.images[imageIndex];
-
-	if (runtimeImage.semantic == TextureSemantic::Unknown) {
-		runtimeImage.semantic = semantic;
-		return;
-	}
-
-	if (runtimeImage.semantic != semantic) {
-		fmt::println(
-			"[AssetManager] image semantic conflict at image index {}. Existing: {}, Incoming: {}",
-			imageIndex,
-			static_cast<uint32_t>(runtimeImage.semantic),
-			static_cast<uint32_t>(semantic)
-		);
-	}
-}
-
-static const char* textureSemanticToString(TextureSemantic semantic)
-{
-	switch (semantic) {
-	case TextureSemantic::Unknown:        return "Unknown";
-	case TextureSemantic::BaseColor:      return "BaseColor";
-	case TextureSemantic::Normal:         return "Normal";
-	case TextureSemantic::MetalRoughness: return "MetalRoughness";
-	case TextureSemantic::Occlusion:      return "Occlusion";
-	case TextureSemantic::Emissive:       return "Emissive";
-	default:                              return "Invalid";
-	}
-}
-
-// Add this helper near the top of AssetManager.cpp (or in a utils file)
-static bool isTreeMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf)
-{
-	if (!mat.name.empty()) {
-		std::string lowerName(mat.name.begin(), mat.name.end());
-
-		// Convert to lowercase for matching
-		std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-			[](unsigned char c) { return std::tolower(c); });
-
-		if (lowerName.find("tree") != std::string::npos/* ||
-			lowerName.find("leaf") != std::string::npos ||
-			lowerName.find("foliage") != std::string::npos ||
-			lowerName.find("branch") != std::string::npos ||
-			lowerName.find("pine") != std::string::npos ||
-			lowerName.find("palm") != std::string::npos ||
-			lowerName.find("bark") != std::string::npos*/) {
-			return true;
-		}
-	}
-
-	return false;
-}
 
 void AssetManager::decodeImages(
 	ThreadContext& threadCtx,
@@ -236,7 +160,7 @@ void AssetManager::decodeImages(
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[decodeImages] queue broken.");
 
-	auto gltfJobs = queue->collect();
+	auto gltfJobs = queue->Collect();
 	for (auto& context : gltfJobs) {
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
@@ -271,13 +195,13 @@ void AssetManager::decodeImages(
 
 			if (loadedImage.has_value()) {
 				runtimeImage.image = *loadedImage;
-				runtimeImage.semantic = TextureSemantic::Unknown;
+				runtimeImage.semantic = MaterialType::Unknown;
 			}
 			else {
-				runtimeImage.image = ResourceManager::getCheckboard_Texture();
-				runtimeImage.semantic = TextureSemantic::Unknown;
+				runtimeImage.image = ResourceManager::GetCheckboard_Texture();
+				runtimeImage.semantic = MaterialType::Unknown;
 
-				JobSystem::log(
+				JobSystem::Log(
 					threadCtx.threadID,
 					fmt::format("gltf failed to load texture {}\n", image.name)
 				);
@@ -286,7 +210,7 @@ void AssetManager::decodeImages(
 			scene.runtime.images.push_back(runtimeImage);
 		}
 
-		queue->push(context);
+		queue->Push(context);
 		context->markJobComplete(GLTFJobType::DecodeImages);
 	}
 }
@@ -298,9 +222,9 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[buildSamplers] queue broken.");
 
-	const auto device = Backend::getDevice();
+	const auto device = Backend::GetDevice();
 
-	auto gltfJobs = queue->collect();
+	auto gltfJobs = queue->Collect();
 	for (auto& context : gltfJobs) {
 		auto& gltf = context->gltfAsset;
 		auto& scene = *context->scene;
@@ -327,7 +251,7 @@ void AssetManager::buildSamplers(ThreadContext& threadCtx) {
 			scene.runtime.samplers.push_back(newSampler);
 		}
 
-		queue->push(context);
+		queue->Push(context);
 		context->markJobComplete(GLTFJobType::BuildSamplers);
 	}
 }
@@ -340,13 +264,13 @@ void AssetManager::processMaterials(
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto& imageManager = ResourceManager::_globalImageManager;
-	auto& resources = Engine::getState().getGPUResources();
+	auto& resources = Engine::GetState().getGPUResources();
 	auto& modelStats = resources.modelDataCounts;
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[processMaterials] queue broken.");
 
-	auto gltfJobs = queue->collect();
+	auto gltfJobs = queue->Collect();
 
 	// Collect global and local material counts
 	for (const auto& context : gltfJobs) {
@@ -365,60 +289,52 @@ void AssetManager::processMaterials(
 
 	// Pre-allocate space for flat material staging
 	const uint32_t totalMatCount = modelStats.totalMaterialCount;
-	std::vector<GPUMaterial> materialUploadList;
+	std::vector<Material> materialUploadList;
 	materialUploadList.reserve(totalMatCount);
 
-	const auto defaultLinear = ResourceManager::getDefaultLinear_Sampler();
-	const auto defaultNearest = ResourceManager::getDefaultNearest_Sampler();
+	const auto defaultLinear = ResourceManager::GetDefaultLinear_Sampler();
+	const auto defaultNearest = ResourceManager::GetDefaultNearest_Sampler();
 
 	// Default/fallback images
 	MaterialResources materialResources {
-		.albedoImage = ResourceManager::getWhiteMat_Texture(),
+		.albedoImage = ResourceManager::GetWhiteMat_Texture(),
 		.albedoSampler = defaultLinear,
-		.metalRoughImage = ResourceManager::getMetalRough_Texture(),
+		.metalRoughImage = ResourceManager::GetMetalRough_Texture(),
 		.metalRoughSampler = defaultNearest,
-		.aoImage = ResourceManager::getAO_Texture(),
-		.aoSampler = defaultNearest,
-		.normalImage = ResourceManager::getNormal_Texture(),
+		.normalImage = ResourceManager::GetNormal_Texture(),
 		.normalSampler = defaultLinear,
-		.emissiveImage = ResourceManager::getEmissive_Texture(),
+		.emissiveImage = ResourceManager::GetEmissive_Texture(),
 		.emissiveSampler = defaultLinear,
 	};
 
 	// Default lut indexes
-	const uint32_t defaultAlbedoID = imageManager.addCombinedImage(
+	const uint32_t defaultAlbedoID = imageManager.AddCombinedImage(
 		materialResources.albedoImage.imageView,
 		materialResources.albedoSampler,
 		&threadCtx
 	);
-	const uint32_t defaultMetalRoughID = imageManager.addCombinedImage(
+	const uint32_t defaultMetalRoughID = imageManager.AddCombinedImage(
 		materialResources.metalRoughImage.imageView,
 		materialResources.metalRoughSampler,
 		&threadCtx
 	);
-	const uint32_t defaultNormalID = imageManager.addCombinedImage(
+	const uint32_t defaultNormalID = imageManager.AddCombinedImage(
 		materialResources.normalImage.imageView,
 		materialResources.normalSampler,
 		&threadCtx
 	);
-	const uint32_t defaultAoID = imageManager.addCombinedImage(
-		materialResources.aoImage.imageView,
-		materialResources.aoSampler,
-		&threadCtx
-	);
-	const uint32_t defaultEmissiveID = imageManager.addCombinedImage(
+	const uint32_t defaultEmissiveID = imageManager.AddCombinedImage(
 		materialResources.emissiveImage.imageView,
 		materialResources.emissiveSampler,
 		&threadCtx
 	);
 
-	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAlbedoID));
-	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
-	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultNormalID));
-	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAoID));
-	resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultEmissiveID));
+	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAlbedoID));
+	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
+	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultNormalID));
+	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultEmissiveID));
 
-	auto& materialFlags = resources.getMaterialFlagsByID();
+	auto& materialFlags = resources.GetMaterialFlagsByID();
 	materialFlags.clear();
 
 	materialFlags.resize(totalMatCount, 0u);
@@ -440,20 +356,18 @@ void AssetManager::processMaterials(
 		if (gltf.materials.empty()) {
 			fmt::println("Asset includes no materials, assigning default.");
 
-			GPUMaterial newMaterial{};
+			Material newMaterial{};
 			newMaterial.albedoID = defaultAlbedoID;
 			newMaterial.metalRoughnessID = defaultMetalRoughID;
 			newMaterial.normalID = defaultNormalID;
-			newMaterial.aoID = defaultAoID;
 			newMaterial.emissiveID = defaultEmissiveID;
-			newMaterial.passType = static_cast<uint32_t>(MaterialPass::Opaque);
+			newMaterial.passType = static_cast<uint32_t>(MaterialPass::OPAQUE);
 			newMaterial.flags |= MATERIAL_FLAG_CASTS_SHADOWS;
 
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.aoID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
 
 			materialFlags[static_cast<size_t>(baseOffset + currentMat)] = newMaterial.flags;
 
@@ -471,7 +385,7 @@ void AssetManager::processMaterials(
 				if (texture.samplerIndex.has_value())
 					outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
 			};
-			auto markTextureSemantic = [&](const fastgltf::TextureInfo& texInfo, TextureSemantic semantic) {
+			auto markTextureSemantic = [&](const fastgltf::TextureInfo& texInfo, MaterialType semantic) {
 				const auto& texture = gltf.textures[texInfo.textureIndex];
 
 				if (!texture.imageIndex.has_value()) return;
@@ -482,14 +396,14 @@ void AssetManager::processMaterials(
 
 
 
-			GPUMaterial newMaterial{};
+			Material newMaterial{};
 
 			// Albedo
 			if (mat.pbrData.baseColorTexture.has_value()) {
-				markTextureSemantic(*mat.pbrData.baseColorTexture, TextureSemantic::BaseColor);
+				markTextureSemantic(*mat.pbrData.baseColorTexture, MaterialType::Albedo);
 				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.albedoImage, materialResources.albedoSampler);
 				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
-				newMaterial.albedoID = imageManager.addCombinedImage(
+				newMaterial.albedoID = imageManager.AddCombinedImage(
 					materialResources.albedoImage.imageView,
 					materialResources.albedoSampler,
 					&threadCtx
@@ -501,10 +415,10 @@ void AssetManager::processMaterials(
 
 			// Metal roughness
 			if (mat.pbrData.metallicRoughnessTexture.has_value()) {
-				markTextureSemantic(*mat.pbrData.metallicRoughnessTexture, TextureSemantic::MetalRoughness);
+				markTextureSemantic(*mat.pbrData.metallicRoughnessTexture, MaterialType::MetalRoughness);
 				getImageAndSampler(*mat.pbrData.metallicRoughnessTexture, materialResources.metalRoughImage, materialResources.metalRoughSampler);
 				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
-				newMaterial.metalRoughnessID = imageManager.addCombinedImage(
+				newMaterial.metalRoughnessID = imageManager.AddCombinedImage(
 					materialResources.metalRoughImage.imageView,
 					materialResources.metalRoughSampler,
 					&threadCtx
@@ -516,10 +430,10 @@ void AssetManager::processMaterials(
 
 			// Normals
 			if (mat.normalTexture.has_value()) {
-				markTextureSemantic(*mat.normalTexture, TextureSemantic::Normal);
+				markTextureSemantic(*mat.normalTexture, MaterialType::Normal);
 				getImageAndSampler(*mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
 				newMaterial.normalScale = mat.normalTexture->scale;
-				newMaterial.normalID = imageManager.addCombinedImage(
+				newMaterial.normalID = imageManager.AddCombinedImage(
 					materialResources.normalImage.imageView,
 					materialResources.normalSampler,
 					&threadCtx
@@ -530,28 +444,13 @@ void AssetManager::processMaterials(
 				newMaterial.normalID = defaultNormalID;
 			}
 
-			// Ambient occlusion
-			if (mat.occlusionTexture.has_value()) {
-				markTextureSemantic(*mat.occlusionTexture, TextureSemantic::Occlusion);
-				getImageAndSampler(*mat.occlusionTexture, materialResources.aoImage, materialResources.aoSampler);
-				newMaterial.ambientOcclusion = mat.occlusionTexture->strength;
-				newMaterial.aoID = imageManager.addCombinedImage(
-					materialResources.aoImage.imageView,
-					materialResources.aoSampler,
-					&threadCtx
-				);
-			}
-			else {
-				newMaterial.aoID = defaultAoID;
-			}
-
 			// Emissive
 			if (mat.emissiveTexture.has_value()) {
-				markTextureSemantic(*mat.emissiveTexture, TextureSemantic::Emissive);
+				markTextureSemantic(*mat.emissiveTexture, MaterialType::Emissive);
 				getImageAndSampler(*mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
 				newMaterial.emissiveColor = glm::make_vec3(mat.emissiveFactor.data());
 				newMaterial.emissiveStrength = mat.emissiveStrength;
-				newMaterial.emissiveID = imageManager.addCombinedImage(
+				newMaterial.emissiveID = imageManager.AddCombinedImage(
 					materialResources.emissiveImage.imageView,
 					materialResources.emissiveSampler,
 					&threadCtx
@@ -562,7 +461,7 @@ void AssetManager::processMaterials(
 			}
 
 			// Default mat: cast shadows and opaque
-			MaterialPass passType = MaterialPass::Opaque;
+			MaterialPass passType = MaterialPass::OPAQUE;
 			newMaterial.flags |= MATERIAL_FLAG_CASTS_SHADOWS;
 
 			if (mat.alphaMode == fastgltf::AlphaMode::Mask) {
@@ -571,7 +470,7 @@ void AssetManager::processMaterials(
 			}
 
 			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
-				passType = MaterialPass::Transparent;
+				passType = MaterialPass::TRANSPARENT;
 				newMaterial.flags &= ~MATERIAL_FLAG_CASTS_SHADOWS;
 			}
 			newMaterial.passType = static_cast<uint32_t>(passType);
@@ -582,20 +481,18 @@ void AssetManager::processMaterials(
 
 			materialFlags[static_cast<size_t>(baseOffset + currentMat)] = newMaterial.flags;
 
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.aoID));
-			resources.addImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
+			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
 
 			if (ENABLE_DEBUG_LOGS) {
-				JobSystem::log(threadCtx.threadID,
+				JobSystem::Log(threadCtx.threadID,
 					fmt::format("[Material:{}] A:{} MR:{} N:{} AO:{} E:{}\n",
 						currentMat,
 						newMaterial.albedoID,
 						newMaterial.metalRoughnessID,
 						newMaterial.normalID,
-						newMaterial.aoID,
 						newMaterial.emissiveID));
 			}
 
@@ -608,7 +505,7 @@ void AssetManager::processMaterials(
 
 		if (ENABLE_DEBUG_LOGS) {
 			for (uint32_t imageIndex = 0; imageIndex < scene.runtime.images.size(); imageIndex++) {
-				JobSystem::log(
+				JobSystem::Log(
 					threadCtx.threadID,
 					fmt::format(
 						"[Image:{}] semantic={}\n",
@@ -619,59 +516,45 @@ void AssetManager::processMaterials(
 			}
 		}
 
-		queue->push(context);
+		queue->Push(context);
 		context->markJobComplete(GLTFJobType::ProcessMaterials);
 	}
 
 	ASSERT(!materialUploadList.empty() && "Material list is invalid.");
 
 	// Upload flattened materials
-	const size_t totalMatBufSize = totalMatCount * sizeof(GPUMaterial);
-	AllocatedBuffer materialStaging = BufferUtils::createBuffer(
+	const size_t totalMatBufSize = totalMatCount * sizeof(Material);
+	AllocatedBuffer materialStaging = BufferUtils::CreateBuffer(
 		totalMatBufSize,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
 		allocator
 	);
 
-	memcpy(materialStaging.info.pMappedData, materialUploadList.data(), totalMatBufSize);
+	memcpy(materialStaging.m_allocInfo.pMappedData, materialUploadList.data(), totalMatBufSize);
 
 	// Material ssbo
-	AllocatedBuffer materialBuffer = BufferUtils::createGPUAddressBuffer(
-		AddressBufferType::Material,
-		resources.getAddressTable(),
+	AllocatedBuffer materialBuffer = BufferUtils::CreateGPUAddressBuffer(
+		BufferSlot::Material,
+		resources.GetAddressTable(),
 		totalMatBufSize,
 		allocator
 	);
-	resources.addGPUBufferToGlobalAddress(AddressBufferType::Material, materialBuffer);
+	resources.AddGPUBufferToGlobalAddress(BufferSlot::Material, materialBuffer);
 
-	CommandBuffer::recordDeferredCmd([&](VkCommandBuffer cmd) {
+	CommandBuffer::RecordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
 		copyRegion.size = totalMatBufSize;
-		vkCmdCopyBuffer(cmd, materialStaging.buffer, materialBuffer.buffer, 1, &copyRegion);
+		vkCmdCopyBuffer(cmd, materialStaging.m_buffer, materialBuffer.m_buffer, 1, &copyRegion);
 	}, threadCtx.cmdPool, QueueType::Transfer, device);
 
-	auto matBuf = materialStaging.buffer;
-	auto matAlloc = materialStaging.allocation;
-	resources.getTempDQueue().push_function([matBuf, matAlloc, allocator]() mutable {
-		BufferUtils::destroyBuffer(matBuf, matAlloc, allocator);
+	auto matBuf = materialStaging.m_buffer;
+	auto matAlloc = materialStaging.m_allocation;
+	resources.GetTempDQueue().PushFunction([matBuf, matAlloc, allocator]() mutable {
+		BufferUtils::DestroyBuffer(matBuf, matAlloc, allocator);
 	});
 }
 
-// Catches tiny meshes for light leak potential
-static bool isThinMeshForShadows(const GPUMeshData& mesh)
-{
-
-	const glm::vec3 extent = (0.5f + (mesh.localAABB.vmax - mesh.localAABB.vmin)) * 2.0f; // full size
-
-	const float minAxis = std::min(extent.x, std::min(extent.y, extent.z));
-	const float maxAxis = std::max(extent.x, std::max(extent.y, extent.z));
-
-	if (maxAxis <= 0.0001f) return true;
-
-	const float thinRatio = minAxis / maxAxis;
-	return thinRatio < 0.03f;
-}
 
 // Define Instances for models, meshID, materialID are setup here.
 // A global meshes registry holds the mesh vector that'll be uploaded.
@@ -681,14 +564,14 @@ void AssetManager::processMeshes(
 	MeshRegistry& meshes,
 	std::vector<Vertex>& vertices,
 	std::vector<uint32_t>& indices,
-	ModelDataCounts& modelDataCounts)
+	TotalAssetDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue && "[processMeshes] queue broken.");
 
-	auto gltfJobs = queue->collect();
+	auto gltfJobs = queue->Collect();
 
 	// Compute total vertex/index counts per scene
 	size_t totalVertexCount = 0;
@@ -702,17 +585,21 @@ void AssetManager::processMeshes(
 		scene.runtime.vertexOffset = totalVertexCount;
 		scene.runtime.indexOffset = totalIndexCount;
 
-		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
+		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx)
+		{
 			const auto& node = gltf.nodes[nodeIdx];
 			if (!node.meshIndex.has_value()) continue;
 
 			const auto& mesh = gltf.meshes[*node.meshIndex];
 
-			for (auto& p : mesh.primitives) {
-				if (auto posAttr = p.findAttribute("POSITION"); posAttr != p.attributes.end()) {
+			for (auto& p : mesh.primitives)
+			{
+				if (auto posAttr = p.findAttribute("POSITION"); posAttr != p.attributes.end())
+				{
 					totalVertexCount += gltf.accessors[posAttr->accessorIndex].count;
 				}
-				if (p.indicesAccessor.has_value()) {
+				if (p.indicesAccessor.has_value())
+				{
 					totalIndexCount += gltf.accessors[p.indicesAccessor.value()].count;
 				}
 			}
@@ -734,6 +621,8 @@ void AssetManager::processMeshes(
 	std::vector<Vertex> optimizedVertices;
 	std::vector<uint32_t> lodIndex;
 	std::vector<uint32_t> baseIndexCopy;
+	std::vector<glm::vec3> tempPositions;
+	tempPositions.resize(totalVertexCount);
 
 	// Fill pass
 	for (auto& context : gltfJobs) {
@@ -771,40 +660,18 @@ void AssetManager::processMeshes(
 				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
 					[&](glm::vec3 v, size_t i) {
 						ASSERT(vtxOff + i < vertices.size());
-						Vertex vtx{};
-						vtx.position = v;
-						vertices[vtxOff + i] = vtx;
-					});
+						Vertex vertex{};
+						EncodePosition(vertex, v);
 
-				auto toSnorm16 = [](float value) -> int16_t {
-					float clamped = glm::clamp(value, -1.0f, 1.0f);
-					int32_t scaled = static_cast<int32_t>(std::round(clamped * 32767.0f));
-					scaled = std::min<int32_t>(32767, std::max<int32_t>(-32767, scaled));
-					return static_cast<int16_t>(scaled);
-				};
+						vertices[vtxOff + i] = vertex;
+						tempPositions[i] = v;
+					});
 
 				if (auto normals = p.findAttribute("NORMAL"); normals != p.attributes.end()) {
 					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
 						[&](glm::vec3 v, size_t i) {
 							Vertex& vertex = vertices[vtxOff + i];
-
-							glm::vec3 normal = glm::normalize(v);
-
-							// Oct encode
-							glm::vec3 oct = normal / (abs(normal.x) + abs(normal.y) + abs(normal.z));
-							glm::vec2 enc = glm::vec2(oct.x, oct.y);
-
-							if (oct.z < 0.0f) {
-								glm::vec2 signNotZero = glm::vec2(
-									(enc.x >= 0.0f) ? 1.0f : -1.0f,
-									(enc.y >= 0.0f) ? 1.0f : -1.0f
-								);
-
-								enc = (glm::vec2(1.0f) - glm::abs(glm::vec2(enc.y, enc.x))) * signNotZero;
-							}
-
-							vertex.normalX = toSnorm16(enc.x);
-							vertex.normalY = toSnorm16(enc.y);
+							EncodeOctahedral_Normal(vertex, v);
 						});
 				}
 
@@ -812,22 +679,7 @@ void AssetManager::processMeshes(
 					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->accessorIndex],
 						[&](glm::vec4 v, size_t i) {
 							Vertex& vertex = vertices[vtxOff + i];
-
-							glm::vec3 t = glm::normalize(glm::vec3(v.x, v.y, v.z));
-
-							glm::vec3 oct = t / (abs(t.x) + abs(t.y) + abs(t.z));
-							glm::vec2 enc = glm::vec2(oct.x, oct.y);
-							if (oct.z < 0.0f) {
-								glm::vec2 signNotZero = glm::vec2(
-									(enc.x >= 0.0f) ? 1.0f : -1.0f,
-									(enc.y >= 0.0f) ? 1.0f : -1.0f
-								);
-								enc = (glm::vec2(1.0f) - glm::abs(glm::vec2(enc.y, enc.x))) * signNotZero;
-							}
-
-							vertex.tangentX = toSnorm16(enc.x);
-							vertex.tangentY = toSnorm16(enc.y);
-							vertex.tangentW = (v.w >= 0.0f) ? 1 : -1;
+							EncodeOctahedral_Tangent(vertex, v);
 						});
 				}
 
@@ -836,36 +688,8 @@ void AssetManager::processMeshes(
 						[&](glm::vec2 v, size_t i) {
 							Vertex& vertex = vertices[vtxOff + i];
 
-							// Store UV as FP16 bits
-							auto floatToHalfBits = [](float value) -> uint16_t {
-								// minimal float->half conversion (IEEE 754), no dependencies
-								union { uint32_t u; float f; } in{};
-								in.f = value;
-
-								uint32_t sign = (in.u >> 31) & 1u;
-								int32_t exp = static_cast<int32_t>((in.u >> 23) & 0xFFu) - 127;
-								uint32_t mantissa = in.u & 0x7FFFFFu;
-
-								if (exp > 15) {
-									return static_cast<uint16_t>((sign << 15) | (0x1Fu << 10)); // inf
-								}
-								if (exp < -14) {
-									if (exp < -24) {
-										return static_cast<uint16_t>(sign << 15); // 0
-									}
-									mantissa |= 0x800000u;
-									uint32_t shift = static_cast<uint32_t>(-exp - 14);
-									uint32_t halfMantissa = mantissa >> (shift + 13);
-									return static_cast<uint16_t>((sign << 15) | halfMantissa);
-								}
-
-								uint16_t halfExp = static_cast<uint16_t>(exp + 15);
-								uint16_t halfMantissa = static_cast<uint16_t>(mantissa >> 13);
-								return static_cast<uint16_t>((sign << 15) | (halfExp << 10) | halfMantissa);
-							};
-
-							vertex.uvX = floatToHalfBits(v.x);
-							vertex.uvY = floatToHalfBits(v.y);
+							vertex.uvX = FloatToHalfBits(v.x);
+							vertex.uvY = FloatToHalfBits(v.y);
 						});
 				}
 
@@ -874,19 +698,7 @@ void AssetManager::processMeshes(
 						[&](glm::vec4 v, size_t i) {
 							Vertex& vertex = vertices[vtxOff + i];
 
-							glm::vec4 c = glm::clamp(v, 0.0f, 1.0f);
-
-							auto toUnorm8 = [](float value) -> uint32_t {
-								float clamped = glm::clamp(value, 0.0f, 1.0f);
-								return static_cast<uint32_t>(std::round(clamped * 255.0f));
-								};
-
-							uint32_t r = toUnorm8(c.r);
-							uint32_t g = toUnorm8(c.g);
-							uint32_t b = toUnorm8(c.b);
-							uint32_t a = toUnorm8(c.a);
-
-							vertex.colorRGBA8 = (r) | (g << 8) | (b << 16) | (a << 24);
+							EncodeRGBA8(vertex, v);
 						});
 				}
 
@@ -919,17 +731,12 @@ void AssetManager::processMeshes(
 					static_cast<size_t>(vertexCount));
 
 
-				const float* positionPtr = nullptr;
-
 				if ((indexCount % 3u) == 0u) {
-					positionPtr = reinterpret_cast<const float*>(
-						reinterpret_cast<const uint8_t*>(vertexData) + offsetof(Vertex, position));
-
 					meshopt_optimizeOverdraw(
 						indexData,
 						indexData,
 						static_cast<size_t>(indexCount),
-						positionPtr,
+						reinterpret_cast<const float*>(tempPositions.data()),
 						static_cast<size_t>(vertexCount),
 						sizeof(Vertex),
 						1.05f);
@@ -966,7 +773,7 @@ void AssetManager::processMeshes(
 
 
 				// Register mesh
-				GPUMeshData newMesh{
+				Mesh newMesh {
 					.firstIndex = static_cast<uint32_t>(idxOff),
 					.indexCount = indexCount,
 					.vertexOffset = static_cast<uint32_t>(vtxOff),
@@ -974,10 +781,10 @@ void AssetManager::processMeshes(
 				};
 
 				// AABB computation
-				glm::vec3 vmin = vertices[vtxOff].position;
+				glm::vec3 vmin = tempPositions[vtxOff];
 				glm::vec3 vmax = vmin;
 				for (uint32_t i = 0; i < vertexCount; ++i) {
-					glm::vec3 pos = vertices[vtxOff + static_cast<size_t>(i)].position;
+					glm::vec3 pos = tempPositions[vtxOff + static_cast<size_t>(i)];
 					vmin = glm::min(vmin, pos);
 					vmax = glm::max(vmax, pos);
 				}
@@ -986,7 +793,7 @@ void AssetManager::processMeshes(
 				newMesh.localAABB.vmax = vmax;
 				glm::vec3 extent = (vmax - vmin) * 0.5f;
 
-				GPUInstance newInst{};
+				Instance newInst{};
 
 				// Attach local materialID and account for global bindless array,
 				// as well as pass types.
@@ -999,95 +806,61 @@ void AssetManager::processMeshes(
 				else {
 					// Default material types
 					newInst.materialID = static_cast<uint32_t>(scene.runtime.materialBaseOffset);
-					newInst.passType = static_cast<uint32_t>(MaterialPass::Opaque);
+					newInst.passType = static_cast<uint32_t>(MaterialPass::OPAQUE);
 				}
 				ASSERT(newInst.materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
 
 				// Mesh ID registration
-				newInst.meshID = meshes.registerMesh(newMesh);
+				newInst.meshID = meshes.RegisterMesh(newMesh);
+
+				const float* positionPtr = reinterpret_cast<const float*>(tempPositions.data());
 
 				// Mesh LOD setup
 				if ((indexCount % 3u) == 0u && positionPtr != nullptr) {
-					if (meshes.meshLODs.size() < meshes.meshData.size()) {
-						meshes.meshLODs.resize(meshes.meshData.size());
-					}
+					meshes.ResizeMeshLods();
 
 					const float simplifyScale = meshopt_simplifyScale(
 						positionPtr,
 						static_cast<size_t>(vertexCount),
 						sizeof(Vertex));
 
-					auto buildLOD = [&](float ratio, float error) -> uint32_t {
-						size_t targetIndexCount = static_cast<size_t>(static_cast<float>(indexCount) * ratio);
-						targetIndexCount = (targetIndexCount / 3u) * 3u;
-						targetIndexCount = std::max<size_t>(3u, targetIndexCount);
-
-						if (targetIndexCount >= static_cast<size_t>(indexCount)) {
-							return UINT32_MAX;
-						}
-
-						lodIndex.resize(static_cast<size_t>(indexCount));
-
-						const float targetError = error * simplifyScale;
-
-						const size_t lodIndexCount = meshopt_simplify(
-							lodIndex.data(),
-							baseIndexCopy.data(),
-							static_cast<size_t>(indexCount),
-							positionPtr,
-							static_cast<size_t>(vertexCount),
-							sizeof(Vertex),
-							targetIndexCount,
-							targetError);
-
-						if (lodIndexCount < 3u || (lodIndexCount % 3u) != 0u) {
-							return UINT32_MAX;
-						}
-
-						lodIndex.resize(lodIndexCount);
-
-						meshopt_optimizeVertexCache(
-							lodIndex.data(),
-							lodIndex.data(),
-							lodIndexCount,
-							static_cast<size_t>(vertexCount));
-
-						meshopt_optimizeOverdraw(
-							lodIndex.data(),
-							lodIndex.data(),
-							lodIndexCount,
-							positionPtr,
-							static_cast<size_t>(vertexCount),
-							sizeof(Vertex),
-							1.05f);
-
-					#ifndef NDEBUG
-						uint32_t lodMaxIndex = 0;
-						for (size_t k = 0; k < lodIndexCount; ++k) {
-							lodMaxIndex = std::max(lodMaxIndex, lodIndex[k]);
-						}
-						ASSERT(lodMaxIndex < vertexCount && "[meshopt] LOD indices out of bounds.");
-					#endif
-
-						const size_t lodIdxOff = indices.size();
-						indices.insert(indices.end(), lodIndex.begin(), lodIndex.end());
-
-						GPUMeshData lodMesh = newMesh;
-						lodMesh.firstIndex = static_cast<uint32_t>(lodIdxOff);
-						lodMesh.indexCount = static_cast<uint32_t>(lodIndexCount);
-
-						return meshes.registerMesh(lodMesh);
-					};
-
-
 					const uint32_t lod0MeshID = newInst.meshID;
 
-					const uint32_t lod1 = buildLOD(0.60f, 0.005f);
-					const uint32_t lod2 = buildLOD(0.35f, 0.01f);
-					const uint32_t lod3 = buildLOD(0.20f, 0.02f);
-					//const uint32_t lod1 = buildLOD(0.50f, 0.005f);
-					//const uint32_t lod2 = buildLOD(0.25f, 0.01f);
-					//const uint32_t lod3 = buildLOD(0.10f, 0.02f);
+					const uint32_t lod1 =  meshes.BuildLOD(
+						newMesh,
+						0.60f,
+						0.005f,
+						totalVertexCount,
+						totalIndexCount,
+						indices,
+						lodIndex,
+						baseIndexCopy,
+						simplifyScale,
+						positionPtr);
+
+					const uint32_t lod2 =  meshes.BuildLOD(
+						newMesh,
+						0.35f,
+						0.01f,
+						totalVertexCount,
+						totalIndexCount,
+						indices,
+						lodIndex,
+						baseIndexCopy,
+						simplifyScale,
+						positionPtr);
+
+					const uint32_t lod3 =  meshes.BuildLOD(
+						newMesh,
+						0.20f,
+						0.02f,
+						totalVertexCount,
+						totalIndexCount,
+						indices,
+						lodIndex,
+						baseIndexCopy,
+						simplifyScale,
+						positionPtr);
 
 
 					MeshLODs& lods = meshes.meshLODs[lod0MeshID];
@@ -1099,9 +872,9 @@ void AssetManager::processMeshes(
 					// Special shadow lods
 					lods.shadowLod0 = lod0MeshID;
 					const bool forceShadowLod0 =
-						isThinMeshForShadows(newMesh) ||
+						MeshRegistry::IsThinMeshForShadows(newMesh) ||
 						(indexCount < 300u) ||
-						(newInst.passType == static_cast<uint32_t>(MaterialPass::Opaque));
+						(newInst.passType == static_cast<uint32_t>(MaterialPass::OPAQUE));
 
 					// Meshes that could be hard to simplify or too small are just given highest lod
 					if (forceShadowLod0) {
@@ -1111,8 +884,29 @@ void AssetManager::processMeshes(
 					}
 					// A more conservative lod setup than regular meshes
 					else {
-						const uint32_t shadow1 = buildLOD(0.75f, 0.002f);
-						const uint32_t shadow2 = buildLOD(0.55f, 0.004f);
+						const uint32_t shadow1 = meshes.BuildLOD(
+							newMesh,
+							0.75f,
+							0.002f,
+							totalVertexCount,
+							totalIndexCount,
+							indices,
+							lodIndex,
+							baseIndexCopy,
+							simplifyScale,
+							positionPtr);
+
+						const uint32_t shadow2 = meshes.BuildLOD(
+							newMesh,
+							0.55f,
+							0.004f,
+							totalVertexCount,
+							totalIndexCount,
+							indices,
+							lodIndex,
+							baseIndexCopy,
+							simplifyScale,
+							positionPtr);
 
 						lods.shadowLod1 = (shadow1 != UINT32_MAX) ? shadow1 : lods.shadowLod0;
 						lods.shadowLod2 = (shadow2 != UINT32_MAX) ? shadow2 : lods.shadowLod1;
@@ -1130,14 +924,14 @@ void AssetManager::processMeshes(
 		}
 
 		if (ENABLE_DEBUG_LOGS) {
-			JobSystem::log(threadCtx.threadID,
+			JobSystem::Log(threadCtx.threadID,
 				fmt::format("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
 					localMeshCount,
 					scene.runtime.vertexCount,
 					scene.runtime.indexCount));
 		}
 
-		queue->push(context);
+		queue->Push(context);
 		context->markJobComplete(GLTFJobType::ProcessMeshes);
 	}
 
@@ -1170,7 +964,7 @@ void AssetManager::processMeshes(
 
 	modelDataCounts.totalVertexCount = static_cast<uint32_t>(vertices.size());
 	modelDataCounts.totalIndexCount = static_cast<uint32_t>(indices.size());
-	modelDataCounts.totalMeshCount = static_cast<uint32_t>(meshes.meshData.size());
+	modelDataCounts.totalMeshCount = meshes.GetMeshCount();
 
 	ASSERT(modelDataCounts.totalMeshCount > 0 &&
 		modelDataCounts.totalVertexCount > 0 &&
@@ -1180,15 +974,15 @@ void AssetManager::processMeshes(
 
 void AssetManager::buildSceneGraph(
 	ThreadContext& threadCtx,
-	std::vector<GlobalInstance>& globalInstances,
+	std::vector<VirtualInstance>& globalInstances,
 	std::vector<glm::mat4>& globalTransforms,
-	ModelDataCounts& modelDataCounts)
+	TotalAssetDataCounts& modelDataCounts)
 {
 	ASSERT(threadCtx.workQueueActive != nullptr);
 	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
 	ASSERT(queue);
 
-	auto gltfJobs = queue->collect();
+	auto gltfJobs = queue->Collect();
 
 	uint32_t instanceCounter = 0;
 	uint32_t firstTransform = 0;
@@ -1255,7 +1049,7 @@ void AssetManager::buildSceneGraph(
 		modelAsset.sceneID = sceneID;
 
 		// === Assign global instances ===
-		GlobalInstance gblInst{};
+		VirtualInstance gblInst{};
 		gblInst.sceneID = static_cast<uint8_t>(sceneID);
 
 		const auto& bakedInstances = modelAsset.runtime.bakedInstances;
@@ -1263,7 +1057,7 @@ void AssetManager::buildSceneGraph(
 
 		ASSERT(bakedNodeIDs.size() == bakedInstances.size() && "[BuildSceneGraph]: bakedNodes should equal bakedInstances.");
 
-		// Build unique node set + local->slot map from bakedNodeIDs
+		// Build unique node m_frameSet + local->slot map from bakedNodeIDs
 		modelAsset.runtime.uniqueNodeIDs.clear();
 		modelAsset.runtime.localToNodeSlot.resize(bakedNodeIDs.size());
 
@@ -1315,7 +1109,7 @@ void AssetManager::buildSceneGraph(
 		globalInstances.push_back(gblInst);
 
 		if (ENABLE_DEBUG_LOGS) {
-			JobSystem::log(threadCtx.threadID,
+			JobSystem::Log(threadCtx.threadID,
 				fmt::format("SceneGraph built: '{}'. Total bakedInstances = {}. Total materials = {}. Total transforms = {}\n",
 					modelAsset.sceneName,
 					bakedInstances.size(),
@@ -1323,27 +1117,27 @@ void AssetManager::buildSceneGraph(
 					gblInst.transformCount));
 		}
 
-		queue->push(context);
+		queue->Push(context);
 	}
 }
 
 
 void ModelAsset::clearAll() {
-	auto device = Backend::getDevice();
-	const auto allocator = Engine::getState().getGPUResources().getAllocator();
+	auto device = Backend::GetDevice();
+	const auto allocator = Engine::GetState().getGPUResources().GetAllocator();
 
-	Backend::getGraphicsQueue().waitIdle();
+	Backend::GetGraphicsQueue().WaitIdle();
 
 	// Don't free global images or samplers twice
 	for (auto& img : runtime.images) {
 		// holy naming
 		if (img.image.image == VK_NULL_HANDLE ||
-			img.image.image == ResourceManager::getCheckboard_Texture().image ||
-			img.image.image == ResourceManager::getWhiteMat_Texture().image ||
-			img.image.image == ResourceManager::getMetalRough_Texture().image ||
+			img.image.image == ResourceManager::GetCheckboard_Texture().image ||
+			img.image.image == ResourceManager::GetWhiteMat_Texture().image ||
+			img.image.image == ResourceManager::GetMetalRough_Texture().image ||
 			img.image.image == ResourceManager::getAO_Texture().image ||
-			img.image.image == ResourceManager::getNormal_Texture().image ||
-			img.image.image == ResourceManager::getEmissive_Texture().image) {
+			img.image.image == ResourceManager::GetNormal_Texture().image ||
+			img.image.image == ResourceManager::GetEmissive_Texture().image) {
 			continue;
 		}
 
@@ -1352,8 +1146,8 @@ void ModelAsset::clearAll() {
 
 	for (auto& sampler : runtime.samplers) {
 		if (sampler == VK_NULL_HANDLE ||
-			sampler == ResourceManager::getDefaultLinear_Sampler() ||
-			sampler == ResourceManager::getDefaultNearest_Sampler()) {
+			sampler == ResourceManager::GetDefaultLinear_Sampler() ||
+			sampler == ResourceManager::GetDefaultNearest_Sampler()) {
 			continue;
 		}
 

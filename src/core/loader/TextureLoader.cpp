@@ -21,7 +21,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 	std::visit(fastgltf::visitor{
 		[&](auto& arg) {
-			JobSystem::log(ctx.threadID,
+			JobSystem::Log(ctx.threadID,
 				fmt::format("[loadImage] fastgltf::visitor fallback: unsupported image source type: {}\n", typeid(arg).name()));
 		},
 
@@ -44,14 +44,14 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				newImage.extent = imagesize;
 
 				if (width >= 8 && height >= 8) {
-					newImage.mipmapped = true;
+					newImage.bIsMipmapped = true;
 				}
 				else {
-					newImage.mipmapped = false;
+					newImage.bIsMipmapped = false;
 				}
 				newImage.format = format;
 
-				ImageUtils::createTexture(
+				ImageUtils::CreateTexture(
 					device,
 					ctx.cmdPool,
 					data,
@@ -67,7 +67,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				stbi_image_free(data);
 			}
 			else {
-				JobSystem::log(ctx.threadID,
+				JobSystem::Log(ctx.threadID,
 					fmt::format("[loadImage] stbi_load FAILED for file: {}\n", fullPath.string()));
 			}
 		},
@@ -88,14 +88,14 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				newImage.extent = imagesize;
 
 				if (width >= 8 && height >= 8) {
-					newImage.mipmapped = true;
+					newImage.bIsMipmapped = true;
 				}
 				else {
-					newImage.mipmapped = false;
+					newImage.bIsMipmapped = false;
 				}
 				newImage.format = format;
 
-				ImageUtils::createTexture(
+				ImageUtils::CreateTexture(
 					device,
 					ctx.cmdPool,
 					data,
@@ -111,7 +111,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 				stbi_image_free(data);
 			}
 			else {
-				JobSystem::log(ctx.threadID,
+				JobSystem::Log(ctx.threadID,
 					fmt::format("[loadImage] stbi_load_from_memory FAILED (Array source)\n"));
 			}
 		},
@@ -136,14 +136,14 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						newImage.extent = imagesize;
 
 						if (width >= 8 && height >= 8) {
-							newImage.mipmapped = true;
+							newImage.bIsMipmapped = true;
 						}
 						else {
-							newImage.mipmapped = false;
+							newImage.bIsMipmapped = false;
 						}
 						newImage.format = format;
 
-						ImageUtils::createTexture(
+						ImageUtils::CreateTexture(
 							device,
 							ctx.cmdPool,
 							data,
@@ -159,7 +159,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						stbi_image_free(data);
 					}
 					else {
-						JobSystem::log(ctx.threadID,
+						JobSystem::Log(ctx.threadID,
 							fmt::format("[loadImage] stbi_load_from_memory FAILED (BufferView->Array)\n"));
 					}
 				},
@@ -171,7 +171,7 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 					std::ifstream file(bufferPath, std::ios::binary);
 
 					if (!file) {
-						JobSystem::log(ctx.threadID,
+						JobSystem::Log(ctx.threadID,
 							fmt::format("[loadImage] Failed to open external buffer file: {}\n", bufferPath.string()));
 						return;
 					}
@@ -194,14 +194,14 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 						newImage.extent = imagesize;
 
 						if (width >= 8 && height >= 8) {
-							newImage.mipmapped = true;
+							newImage.bIsMipmapped = true;
 						}
 						else {
-							newImage.mipmapped = false;
+							newImage.bIsMipmapped = false;
 						}
 						newImage.format = format;
 
-						ImageUtils::createTexture(
+						ImageUtils::CreateTexture(
 							device,
 							ctx.cmdPool,
 							data,
@@ -218,12 +218,12 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 					}
 					else {
-						JobSystem::log(ctx.threadID,
+						JobSystem::Log(ctx.threadID,
 							fmt::format("[loadImage] stbi_load_from_memory FAILED for external buffer file: {}\n", bufferPath.string()));
 					}
 				},
 				[&](auto& arg) {
-					JobSystem::log(ctx.threadID,
+					JobSystem::Log(ctx.threadID,
 						fmt::format("[loadImage] Unsupported buffer source inside BufferView: {}\n", typeid(arg).name()));
 				}
 			}, buffer.data);
@@ -232,11 +232,11 @@ std::optional<AllocatedImage> TextureLoader::loadImage(
 
 	// If any of the attempts to load the data failed, we haven't written the image.
 	if (newImage.image == VK_NULL_HANDLE) {
-		JobSystem::log(ctx.threadID, fmt::format("[loadImage] FAILED: No valid image allocated for '{}'\n", image.name));
+		JobSystem::Log(ctx.threadID, fmt::format("[loadImage] FAILED: No valid image allocated for '{}'\n", image.name));
 		return {};
 	}
 	else {
-		//JobSystem::log(ctx.threadID, fmt::format("[loadImage] SUCCESS: Allocated image for '{}'\n", image.name));
+		//JobSystem::Log(ctx.threadID, fmt::format("[loadImage] SUCCESS: Allocated image for '{}'\n", image.name));
 		return newImage;
 	}
 }

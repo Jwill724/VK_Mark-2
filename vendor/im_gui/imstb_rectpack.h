@@ -97,10 +97,10 @@ STBRP_DEF int stbrp_pack_rects (stbrp_context *context, stbrp_rect *rects, int n
 // are 'num_rects' many of them.
 //
 // Rectangles which are successfully packed have the 'was_packed' flag
-// set to a non-zero value and 'x' and 'y' store the minimum location
+// m_frameSet to a non-zero value and 'x' and 'y' store the minimum location
 // on each axis (i.e. bottom-left in cartesian coordinates, top-left
 // if you imagine y increasing downwards). Rectangles which do not fit
-// have the 'was_packed' flag set to 0.
+// have the 'was_packed' flag m_frameSet to 0.
 //
 // You should not try to access the 'rects' array from another thread
 // while this function is running, as the function temporarily reorders
@@ -572,7 +572,7 @@ STBRP_DEF int stbrp_pack_rects(stbrp_context *context, stbrp_rect *rects, int nu
    // unsort
    STBRP_SORT(rects, num_rects, sizeof(rects[0]), rect_original_order);
 
-   // set was_packed flags and all_rects_packed status
+   // m_frameSet was_packed flags and all_rects_packed status
    for (i=0; i < num_rects; ++i) {
       rects[i].was_packed = !(rects[i].x == STBRP__MAXVAL && rects[i].y == STBRP__MAXVAL);
       if (!rects[i].was_packed)

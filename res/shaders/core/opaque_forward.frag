@@ -29,8 +29,8 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D bentNorm
 layout(push_constant) uniform ForwardPush {
 	uint activeLightCount;
 	float oitDepthScale;
-	float pad0;
-	float pad1;
+	uint flashlightShadowMapID;
+	uint flashlightCookieTexID;
 	mat4 flashlightVP;
 } pc;
 
@@ -72,7 +72,6 @@ void main()
 	if (DBG(showNormals)) RET(N * 0.5 + 0.5, 1.0);
 
 	vec3  albedo = inColor * base.rgb;
-	float ao     = SampleTexture(mat.aoID,             inUV).r * mat.ambientOcclusion;
 	float rough  = SampleTexture(mat.metalRoughnessID, inUV).g * mat.metalRoughFactors.y;
 	float metal  = SampleTexture(mat.metalRoughnessID, inUV).b * mat.metalRoughFactors.x;
 	vec3  emissT = SampleTexture(mat.emissiveID,       inUV).rgb;
@@ -101,7 +100,7 @@ void main()
 	float LdotH = max(dot(L, H), 0.0);
 
 	// Screen space ambient occlusion
-	float aoTerm = ao;
+	float aoTerm = 1.0;
 	if (DBG(aoMode)) {
 		float aoFactor = texture(aoFinal, screenspace_uv).r;
 		if(DBG(showAmbientOcclusion)) {
@@ -367,7 +366,7 @@ void main()
 
 						float shadowTerm = PCFPoissonLow(
 							shadowHash,
-							light.shadowMapID,
+							pc.flashlightShadowMapID,
 							flashlightShadowUV,
 							flashlightShadowZ,
 							flashlightShadowBias,
@@ -378,20 +377,17 @@ void main()
 					}
 
 					// Cookie / gobo (projected spotlight mask)
-					if (light.cookieTexID != 0xFFFFFFFFu) {
+					float cookieGobo = 0.0;
 
-						float cookieGobo = 0.0;
-
-						// Outside projection => no cookie contribution
-						if (!(flashlightShadowUV.x < 0.0 || flashlightShadowUV.x > 1.0 ||
-							  flashlightShadowUV.y < 0.0 || flashlightShadowUV.y > 1.0))
-						{
-							float rawCookie = SampleTexture(light.cookieTexID, flashlightShadowUV).r;
-							cookieGobo      = pow(rawCookie, 2.0);
-						}
+					// Outside projection => no cookie contribution
+					if (!(flashlightShadowUV.x < 0.0 || flashlightShadowUV.x > 1.0 ||
+						  flashlightShadowUV.y < 0.0 || flashlightShadowUV.y > 1.0))
+					{
+						float rawCookie = SampleTexture(pc.flashlightCookieTexID, flashlightShadowUV).r;
+						cookieGobo      = pow(rawCookie, 2.0);
+					}
 
 						lightResult *= cookieGobo;
-					}
 				}
 
 				localLightColor += lightResult;

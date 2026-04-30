@@ -1,91 +1,37 @@
 #pragma once
 
-#include "Vk_Types.h"
-#include "common/ErrorChecking.h"
+#include "Core.h"
 
-// General use cpu side
-// Device getters are required for this to work, call into an auto
-// thanks vkguide
-struct DeletionQueue {
-	std::deque<std::function<void()>> deletors;
-
-	void push_function(std::function<void()>&& function) {
-		deletors.push_back(function);
+// Very simple function fifo queue
+// Primary use for storing destruction for buffers and images.
+// Thanks vkguide
+class DeletionQueue
+{
+public:
+	void PushFunction(std::function<void()>&& function)
+	{
+		m_deletors.push_back(function);
 	}
 
-	void flush() {
-		if (deletors.empty()) return;
+	void Flush()
+	{
+		if (m_deletors.empty()) return;
+
 		// reverse iterate the deletion queue to execute all the functions
-		for (auto it = deletors.rbegin(); it != deletors.rend(); ++it) {
+		for (auto it = m_deletors.rbegin(); it != m_deletors.rend(); ++it)
+		{
 			(*it)(); //call functors
 		}
 
-		deletors.clear();
+		m_deletors.clear();
 	}
-};
-
-struct TimelineDeletionQueue {
-	struct Entry {
-		uint64_t timelineValue = UINT32_MAX;
-		std::function<void()> destroy;
-	};
-
-	VkSemaphore semaphore = VK_NULL_HANDLE;
-	std::vector<Entry> queue;
-
-	inline void enqueue(uint64_t timelineValue, std::function<void()> fn) {
-		queue.push_back({ timelineValue, std::move(fn) });
-	}
-
-	inline void process(VkDevice device) {
-		if (queue.empty()) return;
-		uint64_t current = 0;
-		VK_CHECK(vkGetSemaphoreCounterValue(device, semaphore, &current));
-
-		auto it = queue.begin();
-		while (it != queue.end()) {
-			if (current >= it->timelineValue) {
-				it->destroy();
-				it = queue.erase(it);
-			}
-			else {
-				++it;
-			}
-		}
-	}
+private:
+	std::deque<std::function<void()>> m_deletors;
 };
 
 
-enum EngineStage {
-	ENGINE_STAGE_NONE = 0, // No dependencies
-
-	// Asset loading
-	ENGINE_STAGE_LOADING_START = 1 << 1,
-	ENGINE_STAGE_LOADING_FILES_READY = 1 << 2,
-	ENGINE_STAGE_LOADING_SAMPLERS_READY = 1 << 3,
-	ENGINE_STAGE_LOADING_TEXTURES_READY = 1 << 4,
-	ENGINE_STAGE_LOADING_MATERIALS_READY = 1 << 5,
-	ENGINE_STAGE_LOADING_MESHES_READY = 1 << 6,
-	ENGINE_STAGE_MESH_UPLOAD_READY = 1 << 7,
-	ENGINE_STAGE_LOADING_SCENE_GRAPH_READY = 1 << 8,
-
-
-	// === Render stages ===
-	ENGINE_STAGE_RENDER_PREPARING_FRAME = 1 << 9,
-	ENGINE_STAGE_RENDER_FRAME_CONTEXT_READY = 1 << 10,
-	ENGINE_STAGE_RENDER_CAMERA_READY = 1 << 11,
-	ENGINE_STAGE_RENDER_FRUSTUM_READY = 1 << 12,
-	ENGINE_STAGE_RENDER_SCENE_READY = 1 << 13,
-	ENGINE_STAGE_RENDER_READY_TO_RENDER = 1 << 14,
-	ENGINE_STAGE_RENDER_FRAME_IN_FLIGHT = 1 << 15,
-
-	// === Global usages ===
-	ENGINE_STAGE_READY = 1 << 16,
-	ENGINE_STAGE_SHUTDOWN = 1 << 17,
-	ENGINE_STAGE_SHUTDOWN_COMPLETE = 1 << 18
-};
-
-enum class GLTFJobType : uint8_t {
+enum class GLTFJobType
+{
 	DecodeImages,
 	BuildSamplers,
 	ProcessMaterials,
@@ -93,257 +39,111 @@ enum class GLTFJobType : uint8_t {
 	Count
 };
 
-enum class QueueType : uint8_t {
-	Graphics,
-	Transfer,
-	Compute,
-	Present,
-	Generic
-};
-
-struct JobInfo {
+struct JobInfo
+{
 	std::function<void(uint32_t threadID)> task;
 	uint32_t requiredStages;
-	QueueType queueType;
 	bool done = false;
 };
 
-struct BaseWorkQueue {
+struct BaseWorkQueue
+{
 	virtual ~BaseWorkQueue() = default;
 };
 
 template<typename T>
-class DeferredWorkQueue {
+class DeferredWorkQueue
+{
 public:
-	void push(const T& workItem) {
-		std::scoped_lock lock(_mutex);
-		_queue.push_back(workItem);
+	void Push(const T& workItem)
+	{
+		std::scoped_lock lock(m_mutex);
+		m_queue.push_back(workItem);
 	}
 
-	std::vector<T> collect() {
-		std::scoped_lock lock(_mutex);
-		std::vector<T> result = std::move(_queue);
-		_queue.clear();
+	std::vector<T> Collect()
+	{
+		std::scoped_lock lock(m_mutex);
+		std::vector<T> result = std::move(m_queue);
+		m_queue.clear();
 		return result;
 	}
 
-	bool empty() const {
-		std::scoped_lock lock(_mutex);
-		return _queue.empty();
+	bool Empty() const
+	{
+		std::scoped_lock lock(m_mutex);
+		return m_queue.empty();
 	}
 
 private:
-	mutable std::mutex _mutex;
-	std::vector<T> _queue;
+	mutable std::mutex m_mutex;
+	std::vector<T> m_queue;
 };
 
 template<typename T>
-struct TypedWorkQueue : BaseWorkQueue {
-	DeferredWorkQueue<T> queue;
+class TypedWorkQueue : BaseWorkQueue
+{
+	void Push(const T& item) { m_queue.Push(item); }
+	std::vector<T> Collect() { return m_queue.Collect(); }
+	bool Empty() const { return m_queue.Empty(); }
 
-	void push(const T& item) { queue.push(item); }
-	std::vector<T> collect() { return queue.collect(); }
-	bool empty() const { return queue.empty(); }
+private:
+	DeferredWorkQueue<T> m_queue;
 };
 
-struct ThreadContext {
+struct LinearAllocator
+{
+	uint8_t* base;
+	size_t   offset;
+	size_t   capacity;
+};
+
+struct ThreadContext
+{
 	uint32_t threadID = 0;
-	QueueType queueType = QueueType::Generic;
-	VkCommandPool cmdPool = VK_NULL_HANDLE;
-	DeletionQueue deletionQueue{};
-	void* stagingMapped = nullptr;
-	BaseWorkQueue* workQueueActive = nullptr; // Functions handle this variables scope
-	VkFence lastSubmittedFence = VK_NULL_HANDLE;
+
+	// Generic per-thread memory
+	LinearAllocator scratchAllocator{};
+
+	// Reusable temp storage
+	std::vector<uint8_t> scratchBuffer{};
+
+	// Job system
+	BaseWorkQueue* workQueueActive = nullptr;
+
+	// Debug / profiling
+	uint32_t jobsExecuted = 0;
+
+	// Optional utilities
+	uint32_t randomState = 0;
 };
 
 // Thread and queue connector struct
-struct ScopedWorkQueue {
+struct ScopedWorkQueue
+{
 	ThreadContext& ctx;
 	BaseWorkQueue* previousQueue;
 
 	ScopedWorkQueue(ThreadContext& ctx, BaseWorkQueue* newQueue)
-		: ctx(ctx), previousQueue(ctx.workQueueActive) {
+		: ctx(ctx), previousQueue(ctx.workQueueActive)
+	{
 		ctx.workQueueActive = newQueue;
 	}
 
-	~ScopedWorkQueue() {
+	~ScopedWorkQueue()
+	{
 		ctx.workQueueActive = previousQueue;
 	}
 };
 
-// === FENCES AND QUEUES ===
-struct FencePool {
-	std::vector<VkFence> availableFences;
-	std::vector<VkFence> inFlightFences;
-	std::mutex mutex;
-
-	VkDevice device = VK_NULL_HANDLE;
-
-	inline VkFence get() {
-		std::scoped_lock lock(mutex);
-		if (!availableFences.empty()) {
-			VkFence fence = availableFences.back();
-			availableFences.pop_back();
-			VK_CHECK(vkResetFences(device, 1, &fence));
-			inFlightFences.push_back(fence);
-			return fence;
-		}
-
-		VkFenceCreateInfo info{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-		VkFence fence;
-		VK_CHECK(vkCreateFence(device, &info, nullptr, &fence));
-		inFlightFences.push_back(fence);
-		return fence;
-	}
-
-	inline void recycle(VkFence fence) {
-		std::scoped_lock lock(mutex);
-		availableFences.push_back(fence);
-		inFlightFences.erase(std::remove(inFlightFences.begin(), inFlightFences.end(), fence), inFlightFences.end());
-	}
-
-	inline bool isFenceReady(VkFence fence) const {
-		return vkGetFenceStatus(device, fence) == VK_SUCCESS;
-	}
-
-	void resetAll() {
-		std::scoped_lock lock(mutex);
-		for (auto& fence : inFlightFences) {
-			VK_CHECK(vkResetFences(device, 1, &fence));
-			availableFences.push_back(fence);
-		}
-		inFlightFences.clear();
-	}
-
-	inline void destroyFences() {
-		std::scoped_lock lock(mutex);
-		for (auto& fence : availableFences)
-			vkDestroyFence(device, fence, nullptr);
-		for (auto& fence : inFlightFences)
-			vkDestroyFence(device, fence, nullptr);
-		availableFences.clear();
-		inFlightFences.clear();
-	}
-};
-
-struct GPUQueue {
-	VkQueue queue = VK_NULL_HANDLE;
-	std::mutex submitMutex;
-	FencePool fencePool;
-
-	uint32_t familyIndex = UINT32_MAX;
-
-	QueueType qType = QueueType::Generic;
-
-	uint32_t timestampValidBits = 0;
-
-	inline VkFence submit(const VkSubmitInfo& info) {
-		std::scoped_lock lock(submitMutex);
-		VkFence fence = fencePool.get();
-		VK_CHECK(vkQueueSubmit(queue, 1, &info, fence));
-		return fence;
-	}
-
-	inline VkFence submitBatch(const std::vector<VkSubmitInfo>& infos) {
-		std::scoped_lock lock(submitMutex);
-		VkFence fence = fencePool.get();
-		VK_CHECK(vkQueueSubmit(queue, static_cast<uint32_t>(infos.size()), infos.data(), fence));
-		return fence;
-	}
-
-	inline void waitIdle() {
-		std::scoped_lock lock(submitMutex);
-		VK_CHECK(vkQueueWaitIdle(queue));
-	}
-
-	inline uint64_t submitWithTimelineSync(
-		const std::vector<VkCommandBuffer>& cmdBuffers,
-		VkSemaphore timelineSemaphore,
-		uint64_t signalValue,
-		VkSemaphore waitSemaphore = VK_NULL_HANDLE,
-		uint64_t waitValue = 0,
-		VkPipelineStageFlags2 waitStages = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-	) {
-		std::scoped_lock lock(submitMutex);
-
-		// Ensure to signal a strictly greater value than current.
-		ASSERT(fencePool.device != VK_NULL_HANDLE);
-		uint64_t current = 0;
-		VK_CHECK(vkGetSemaphoreCounterValue(fencePool.device, timelineSemaphore, &current));
-		if (signalValue <= current) signalValue = current + 1;
-
-		std::vector<VkSemaphoreSubmitInfo> waitInfos;
-		if (waitSemaphore != VK_NULL_HANDLE) {
-			VkSemaphoreSubmitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
-			waitInfo.semaphore = waitSemaphore;
-			waitInfo.value = waitValue;
-			waitInfo.stageMask = waitStages;
-			waitInfo.deviceIndex = 0;
-			waitInfos.push_back(waitInfo);
-		}
-
-		std::vector<VkCommandBufferSubmitInfo> cmdInfos;
-		cmdInfos.reserve(cmdBuffers.size());
-		for (VkCommandBuffer cmd : cmdBuffers) {
-			VkCommandBufferSubmitInfo cmdInfo{ VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO };
-			cmdInfo.commandBuffer = cmd;
-			cmdInfo.deviceMask = 1;
-			cmdInfos.push_back(cmdInfo);
-		}
-
-		VkSemaphoreSubmitInfo signalInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
-		signalInfo.semaphore = timelineSemaphore;
-		signalInfo.value = signalValue;
-		signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-		signalInfo.deviceIndex = 0;
-
-		VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
-		submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitInfos.size());
-		submitInfo.pWaitSemaphoreInfos = waitInfos.data();
-		submitInfo.commandBufferInfoCount = static_cast<uint32_t>(cmdInfos.size());
-		submitInfo.pCommandBufferInfos = cmdInfos.data();
-		submitInfo.signalSemaphoreInfoCount = 1;
-		submitInfo.pSignalSemaphoreInfos = &signalInfo;
-
-		VK_CHECK(vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE));
-
-		return signalValue;
-	}
-
-	inline void waitTimelineValue(VkDevice device, VkSemaphore timelineSemaphore, uint64_t waitValue) {
-		std::scoped_lock lock(submitMutex);
-
-		VkSemaphoreWaitInfo waitInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO };
-		waitInfo.flags = 0;
-		waitInfo.semaphoreCount = 1;
-		waitInfo.pSemaphores = &timelineSemaphore;
-		waitInfo.pValues = &waitValue;
-
-		VK_CHECK(vkWaitSemaphores(device, &waitInfo, UINT64_MAX));
-	}
-};
-
-inline void waitAndRecycleLastFence(VkFence& lastSubmittedFence, GPUQueue& queue, VkDevice device) {
-	if (lastSubmittedFence != VK_NULL_HANDLE) {
-		if (!queue.fencePool.isFenceReady(lastSubmittedFence)) {
-			VK_CHECK(vkWaitForFences(device, 1, &lastSubmittedFence, VK_TRUE, UINT64_MAX));
-		}
-
-		queue.fencePool.recycle(lastSubmittedFence);
-		lastSubmittedFence = VK_NULL_HANDLE;
-	}
-	else {
-		fmt::print("No fence... skipping.\n");
-	}
-}
-
-struct ShadowControl {
-	float splitLambda = 0.97f;
-	float bias = 0.0001f;
+struct ShadowControl
+{
+	float splitLambda          = 0.97f;
+	float bias                 = 0.0001f;
 	float softnessFactor;
 	float maxCasterDistance[4] = { 3000.0f, 4000.0f, 5000.0f, 6000.0f };
-	float xyPadding = 150.0f;
-	float lsEpsilon = 5.0f;
-	float dirEpsilon = 20.0f;
-	float shadowRadii[4] = { 17.0f, 46.0f, 160.0f, 1000.0f };
+	float xyPadding            = 150.0f;
+	float lsEpsilon            = 5.0f;
+	float dirEpsilon           = 20.0f;
+	float shadowRadii[4]       = { 17.0f, 46.0f, 160.0f, 1000.0f };
 };
