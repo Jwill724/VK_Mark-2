@@ -255,6 +255,9 @@
     <ClCompile Include="vendor\fmt\format.cc">
       <Filter>vendor</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\frame\FrameResources.cpp">
+      <Filter>src\renderer\frame</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -443,6 +446,9 @@
     </ClInclude>
     <ClInclude Include="res\assets\SearchTex.h">
       <Filter>res\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\frame\FrameResources.h">
+      <Filter>src\renderer\frame</Filter>
     </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->

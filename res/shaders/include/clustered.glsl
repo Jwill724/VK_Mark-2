@@ -12,8 +12,12 @@ const uint LIGHT_FLAG_FLASHLIGHT_OFF    = 1u << 2;
 // Determines switch between dispatching over clusters or lights
 const uint LIGHT_THRESHOLD = 1300u;
 
-const uint LIGHT_LIST_STATIC_COUNT    = 1u;
-const uint LIGHT_LIST_SLOT_FLASHLIGHT = 0u;
+//const uint LIGHT_LIST_STATIC_COUNT     = 2u;
+//const uint LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
+//const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 1u;
+
+const uint LIGHT_LIST_STATIC_COUNT     = 1u;
+const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
 
 //const uint MAX_VISIBLE_LIGHTS = 1024u - LIGHT_LIST_STATIC_COUNT;
 const uint MAX_VISIBLE_LIGHTS = 4096u - LIGHT_LIST_STATIC_COUNT;

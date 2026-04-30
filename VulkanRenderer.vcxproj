@@ -115,6 +115,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer (root) -->
+    <ClCompile Include="src\renderer\frame\FrameResources.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -321,6 +322,7 @@
     <ClInclude Include="src\renderer\backend\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
+    <ClInclude Include="src\renderer\frame\FrameResources.h" />
     <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <!-- renderer / frame -->

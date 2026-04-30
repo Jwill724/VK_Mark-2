@@ -26,6 +26,7 @@ class FrameContext
 public:
 	void Init(
 		uint32_t frameIndex,
+		VkExtent2D drawExtent,
 		Device& device,
 		DescriptorManager& descriptorsManager,
 		Allocator& allocator);
@@ -63,15 +64,12 @@ public:
 			m_gpuAddressTable.ResetGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i));
 		}
 	}
-	void CreateClusterBuffers(
-		const uint32_t extentWidth,
-		const uint32_t extentHeight,
-		const VmaAllocator alloc);
+	void CreateClusterBuffers(const ClusterBufferSizes& clusterBufSizes, Allocator& allocator);
 
 	void CreateCMAA2Buffers(
 		const uint32_t extentWidth,
 		const uint32_t extentHeight,
-		const VmaAllocator alloc);
+		Allocator& allocator);
 
 	void Cmaa2Reset()
 	{
@@ -165,7 +163,7 @@ private:
 	bool m_bRecentDynamicLightsTransform = false;
 
 	// frame owned gpu buffers
-	std::optional<BindlessBufferTable> m_gpuAddressTable;
+	BindlessBDATable m_gpuAddressTable;
 	uint32_t m_pendingAddressTableVersion = 0u;
 
 	AllocatedBuffer m_directionalCSM_UBO;

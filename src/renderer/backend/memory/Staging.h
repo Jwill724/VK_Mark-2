@@ -86,12 +86,7 @@ public:
 	size_t GetUsed()       const noexcept { return m_head; }
 	float  GetUsageRatio() const noexcept { return float(m_head) / float(m_capacity); }
 	bool   IsValid()       const noexcept { return m_staging.IsValid(); }
-
 private:
-	static size_t AlignUp(size_t value, size_t alignment) noexcept
-	{
-		return (value + alignment - 1) & ~(alignment - 1);
-	}
 	size_t Suballocate(size_t bytes, size_t alignment);
 
 	AllocatedBuffer m_staging{};

@@ -7,6 +7,9 @@
 
 using RB = FIX8::conjure_enum<RD::Renderer_Buffer>;
 
+static VmaMemoryUsage HeapTypeToVma(HeapType heap) noexcept;
+static VmaAllocationCreateFlags HeapTypeToVmaFlags(HeapType heap, size_t size) noexcept;
+
 void Allocator::Init(const DeviceContext& ctx)
 {
 	VmaAllocatorCreateInfo allocInfo {
@@ -28,7 +31,7 @@ void Allocator::Shutdown()
 
 void Allocator::AllocateGPUBuffer(
 	RD::Renderer_Buffer slot,
-	BindlessBufferTable& addressTable,
+	BindlessBDATable& addressTable,
 	size_t size)
 {
 	BufferDesc desc{};
@@ -154,8 +157,14 @@ AllocatedBuffer Allocator::AllocateBuffer(const BufferDesc& desc)
 	return newBuffer;
 }
 
+void Allocator::FreeBuffer(AllocatedBuffer buf) const
+{
+	if (buf.IsValid())
+		vmaDestroyBuffer(m_vmaAlloc, buf.m_buffer, buf.m_allocation);
+}
 
-VmaMemoryUsage Allocator::HeapTypeToVma(HeapType heap) const noexcept
+
+VmaMemoryUsage HeapTypeToVma(HeapType heap) noexcept
 {
 	switch (heap)
 	{
@@ -170,7 +179,7 @@ VmaMemoryUsage Allocator::HeapTypeToVma(HeapType heap) const noexcept
 	}
 }
 
-VmaAllocationCreateFlags Allocator::HeapTypeToVmaFlags(HeapType heap, size_t size) const noexcept
+VmaAllocationCreateFlags HeapTypeToVmaFlags(HeapType heap, size_t size) noexcept
 {
 	VmaAllocationCreateFlags flags = 0;
 
@@ -178,12 +187,10 @@ VmaAllocationCreateFlags Allocator::HeapTypeToVmaFlags(HeapType heap, size_t siz
 	{
 		case HeapType::Upload:
 		case HeapType::Staging:
-			flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT |
-					 VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+			flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 			break;
 		case HeapType::Readback:
-			flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT |
-					 VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+			flags |= VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
 			break;
 		case HeapType::GPU_Local:
 			flags |= VMA_ALLOCATION_CREATE_STRATEGY_MIN_MEMORY_BIT;

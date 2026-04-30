@@ -5,9 +5,11 @@
 #include "renderer/backend/memory/Budgets.h"
 #include "renderer/backend/Device.h"
 #include "renderer/backend/Descriptor.h"
+#include "FrameResources.h"
 
 void FrameContext::Init(
 	uint32_t frameIndex,
+	VkExtent2D drawExtent,
 	Device& device,
 	DescriptorManager& descriptorsManager,
 	Allocator& allocator)
@@ -18,57 +20,108 @@ void FrameContext::Init(
 	auto alloc  = allocator.GetVma();
 	m_frameIndex = frameIndex;
 
+	m_cachedDrawExtentW = drawExtent.width;
+	m_cachedDrawExtentH = drawExtent.height;
+
+	Cmaa2BufferSizes cmaa2BufSizes;
+	cmaa2BufSizes.UpdateCmaa2BufferSizes(m_cachedDrawExtentW, m_cachedDrawExtentH);
+	m_cmaa2Push.halfWidth = cmaa2BufSizes.quadCountX;
+	m_cmaa2Push.maxShapeCandidates = cmaa2BufSizes.pixelCount;
+	m_cmaa2Push.maxDeferredItems = cmaa2BufSizes.deferredItemsCapacity;
+	m_cmaa2Push.maxDeferredLocations = cmaa2BufSizes.quadCount;
+
+	ClusterBufferSizes clusterBufSizes;
+	ClusterTileSliceRanges tileSlices;
+	clusterBufSizes.UpdateClusterBufferSizes(
+		m_cachedDrawExtentW,
+		m_cachedDrawExtentH,
+		tileSlices.tileSizeX,
+		tileSlices.tileSizeY,
+		tileSlices.zSlices);
+
 	m_graphicsPool = device.CreateCommandPool(QueueType::Graphics);
 	m_commandBuffer = device.CreateCommandBuffer(m_graphicsPool);
 	m_frameSet = descriptorsManager.AllocateFrameDescriptorSet(logicalDevice);
 
 	// GPU address table
 	BufferDesc addressTableDesc {
-		.size = GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
+		.size = BindlessBDATable::GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
 		.usage = static_cast<VkBufferUsageFlags>(BufferUsage::ADDRESS_TABLE),
 		.debugName = "FrameAddressTable"
 	};
-	m_gpuAddressTable.emplace(allocator.AllocateBuffer(addressTableDesc));
+	m_gpuAddressTable.Init(allocator.AllocateBuffer(addressTableDesc));
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::VisibleInstances,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_INSTANCE_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::IndirectDraws,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_INDIRECT_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::VisibleLightCount,
-		m_gpuAddressTable.value(),
-		256u);
+		m_gpuAddressTable,
+		MIN_SSBO_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::VisibleLightIDs,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_LIGHT_IDS_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::DispatchIndirectArgs,
-		m_gpuAddressTable.value(),
-		256u);
+		m_gpuAddressTable,
+		MIN_SSBO_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::Transforms,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_TRANSFORMS_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::PrevTransforms,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_TRANSFORMS_SIZE_GPU_BYTES);
 
 	allocator.AllocateGPUBuffer(
 		RD::Renderer_Buffer::Lights,
-		m_gpuAddressTable.value(),
+		m_gpuAddressTable,
 		MAX_LIGHTS_SIZE_GPU_BYTES);
+
+
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Cmaa2Control,
+		m_gpuAddressTable,
+		cmaa2BufSizes.controlBytes
+	);
+
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Cmaa2ShapeCandidates,
+		m_gpuAddressTable,
+		cmaa2BufSizes.shapeCandidatesBytes
+	);
+
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Cmaa2DeferredLocations,
+		m_gpuAddressTable,
+		cmaa2BufSizes.deferredLocationsBytes
+	);
+
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Cmaa2DeferredItems,
+		m_gpuAddressTable,
+		cmaa2BufSizes.deferredItemsBytes
+	);
+
+	allocator.AllocateGPUBuffer(
+		RD::Renderer_Buffer::Cmaa2DeferredHeads,
+		m_gpuAddressTable,
+		cmaa2BufSizes.deferredHeadsBytes
+	);
+
 
 
 	VkQueryPoolCreateInfo queryPoolInfo{};
@@ -93,12 +146,11 @@ void FrameContext::Init(
 }
 
 void FrameContext::CreateClusterBuffers(
-	const uint32_t extentWidth,
-	const uint32_t extentHeight,
-	const VmaAllocator alloc)
+	const ClusterBufferSizes& clusterBufSizes,
+	Allocator& allocator)
 {
 	ClusterBufferSizes newClusterSizes;
-	newClusterSizes = LightingSystem::computeClusterBufferSizes(
+	newClusterSizes = LightingSystem::ComputeClusterBufferSizes(
 		extentWidth,
 		extentHeight,
 		m_clustered_UBO,
@@ -162,8 +214,8 @@ void FrameContext::CreateClusterBuffers(
 
 void FrameContext::CreateCMAA2Buffers(
 	const uint32_t extentWidth,
-	const uint32_t extentHeight,
-	const VmaAllocator alloc)
+	const uint32_t extentHeight
+	Allocator& allocator)
 {
 	for (auto& buffer : m_cmaa2GPUBuffers)
 	{
@@ -298,7 +350,7 @@ void FrameContext::UpdateAddressTableIfDirty() {
 		m_descriptorWriter.WriteBuffer(
 			ADDRESS_TABLE_BINDING,
 			m_addressTable_GPU.m_buffer,
-			sizeof(BindlessBufferTable),
+			sizeof(BindlessBDATable),
 			0,
 			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 			m_frameSet);

@@ -113,7 +113,7 @@ AllocatedBuffer BufferUtils::CreateBuffer(
 
 AllocatedBuffer BufferUtils::CreateGPUAddressBuffer(
 	Renderer_Buffer bufferSlot,
-	BindlessBufferTable& bufferTable,
+	BindlessBDATable& bufferTable,
 	size_t size,
 	const VmaAllocator allocator)
 {

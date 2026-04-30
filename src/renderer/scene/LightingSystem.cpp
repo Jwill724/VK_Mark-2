@@ -1,17 +1,15 @@
 #include "pch.h"
 
 #include "LightingSystem.h"
-#include "utils/BufferUtils.h"
 
-namespace LightingSystem {
+namespace LightingSystem
+{
 	FlashLight _mainFlashLight;
 	bool _dynamicLightsEnabled = false;
 
 	std::vector<LocalLight> _globalLightList;
 	uint32_t _activeLightCount = 0u;
-	const uint32_t& getActiveLightCount() { return _activeLightCount; }
-
-	void createClusteredUBO(AllocatedBuffer& clusteredUBO, const VmaAllocator alloc);
+	const uint32_t& GetActiveLightCount() { return _activeLightCount; }
 
 	static uint32_t getDynamicLightBeginIndex() {
 		return LIGHT_LIST_STATIC_COUNT;
@@ -185,7 +183,7 @@ void LightingSystem::createClusteredUBO(AllocatedBuffer& clusteredUBO, const Vma
 }
 
 
-ClusterBufferSizes LightingSystem::computeClusterBufferSizes(
+ClusterBufferSizes LightingSystem::ComputeClusterBufferSizes(
 	uint32_t screenWidth,
 	uint32_t screenHeight,
 	AllocatedBuffer& clusteredUBO,
@@ -204,7 +202,7 @@ ClusterBufferSizes LightingSystem::computeClusterBufferSizes(
 	_clusteredData.zSlices = _clusteredSettings.zSlices;
 	_clusteredData.clusterCount = sizes.clusterCount;
 
-	createClusteredUBO(clusteredUBO, alloc);
+	//createClusteredUBO(clusteredUBO, alloc);
 
 	// Packed clustered buffers (per-frame)
 	sizes.clusterCountsBytes = static_cast<size_t>(sizes.clusterCount) * sizeof(uint32_t);
@@ -288,7 +286,7 @@ void LightingSystem::init(GPUResources& resources) {
 	}
 }
 
-void LightingSystem::setTargetActiveLightCount(uint32_t targetCount) {
+void LightingSystem::SetTargetActiveLightCount(uint32_t targetCount) {
 	uint32_t currentCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
 
 	if (targetCount == currentCount) return;
@@ -418,7 +416,7 @@ bool FlashLight::UpdateFlashLight(
 	return lightDirty;
 }
 
-bool LightingSystem::updateLightList() {
+bool LightingSystem::UpdateLightList() {
 	bool listChanged = false;
 
 	for (uint32_t lightID : _lightIDTable.cleanupIDs) {
@@ -431,7 +429,7 @@ bool LightingSystem::updateLightList() {
 
 	for (uint32_t sourceID : _lightIDTable.newCopiedIDs) {
 		if (activeCount >= MAX_LIGHTS) {
-			fmt::print("[LightingSystem::updateLightList] copy break: activeCount={} max={}\n",
+			fmt::print("[LightingSystem::UpdateLightList] copy break: activeCount={} max={}\n",
 				activeCount,
 				MAX_LIGHTS
 			);
@@ -439,19 +437,19 @@ bool LightingSystem::updateLightList() {
 		}
 
 		if (!isLightIDAlive(sourceID)) {
-			fmt::print("[LightingSystem::updateLightList] copy skip: sourceID={} not alive\n", sourceID);
+			fmt::print("[LightingSystem::UpdateLightList] copy skip: sourceID={} not alive\n", sourceID);
 			continue;
 		}
 
 		LocalLight* sourceLight = getDynamicLightByID(sourceID);
 		if (sourceLight == nullptr) {
-			fmt::print("[LightingSystem::updateLightList] copy skip: sourceID={} has no mapped dense light\n", sourceID);
+			fmt::print("[LightingSystem::UpdateLightList] copy skip: sourceID={} has no mapped dense light\n", sourceID);
 			continue;
 		}
 
 		uint32_t newID = allocateLightID();
 
-		fmt::print("[LightingSystem::updateLightList] copy: sourceID={} -> newID={} (activeBefore={})\n",
+		fmt::print("[LightingSystem::UpdateLightList] copy: sourceID={} -> newID={} (activeBefore={})\n",
 			sourceID,
 			newID,
 			activeCount
@@ -508,7 +506,7 @@ static void rotateLightAroundOriginXZ(
 	position = rotated;
 }
 
-bool LightingSystem::updateDynamicLightsOrbit(float deltaTime) {
+bool LightingSystem::UpdateDynamicLightsOrbit(float deltaTime) {
 	if (_lightIDTable.activeLightIDs.empty()) return false;
 
 	constexpr float baseSpeed = glm::radians(0.8f);

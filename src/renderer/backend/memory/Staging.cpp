@@ -53,7 +53,7 @@ void StagingBuffer::Shutdown()
 
 size_t StagingBuffer::Suballocate(size_t bytes, size_t alignment)
 {
-	const size_t offset = AlignUp(m_head, alignment);
+	const size_t offset = AllocatedBuffer::AlignUp(m_head, alignment);
 
 	ASSERT(offset + bytes <= m_capacity);
 
@@ -205,7 +205,7 @@ void StagingBuffer::Flush() const
 	if (m_head == 0) return;
 
 	const size_t begin = 0;
-	const size_t end   = AlignUp(m_head, m_atomSize);
+	const size_t end   = AllocatedBuffer::AlignUp(m_head, m_atomSize);
 	vmaFlushAllocation(m_vma, m_staging.m_allocation, begin, end);
 }
 
@@ -214,6 +214,6 @@ void StagingBuffer::FlushRange(size_t offset, size_t bytes) const
 	ASSERT(offset + bytes <= m_capacity);
 
 	const size_t begin = offset & ~(m_atomSize - 1);
-	const size_t end   = AlignUp(offset + bytes, m_atomSize);
+	const size_t end   = AllocatedBuffer::AlignUp(offset + bytes, m_atomSize);
 	vmaFlushAllocation(m_vma, m_staging.m_allocation, begin, end - begin);
 }

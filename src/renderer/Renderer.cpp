@@ -43,7 +43,7 @@ void Renderer::InitFrameResources()
 	size_t totalGPUStagingSize =
 		MAX_GPU_INSTANCE_SIZE_BYTES +
 		MAX_GPU_INDIRECT_SIZE_BYTES +
-		sizeof(BindlessBufferTable);
+		sizeof(BindlessBDATable);
 
 
 }
@@ -454,7 +454,7 @@ void Renderer::RecordRenderCommand()
 
 		// ==================================
 		// === CLUSTERED LIGHT BUILD PASS ===
-		if (LightingSystem::getActiveLightCount() > 0) {
+		if (LightingSystem::GetActiveLightCount() > 0) {
 			RenderPasses::ComputeScope clusterScope;
 			clusterScope.passID = PassID::ClusteredLightBuild;
 			clusterScope.extent = {
@@ -593,7 +593,7 @@ void Renderer::RecordRenderCommand()
 	RenderPasses::GraphicsScope opaqueScope;
 	opaqueScope.passID = PassID::OpaqueForward;
 	// Define push constant for forward rendering passes opaque and transparent
-	_forwardPush.activeLightCount = LightingSystem::getActiveLightCount();
+	_forwardPush.activeLightCount = LightingSystem::GetActiveLightCount();
 	_forwardPush.flashlightVP = LightingSystem::_mainFlashLight.viewProj;
 
 	RenderPasses::BeginRendering(

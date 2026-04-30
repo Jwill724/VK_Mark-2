@@ -216,7 +216,7 @@ void GPUResources::UpdateAddressTableMapped() {
 	}
 
 	// Copy latest address data into mapped buffer
-	memcpy(addressTableStagingBuffer.m_allocInfo.pMappedData, &gpuAddresses, sizeof(BindlessBufferTable));
+	memcpy(addressTableStagingBuffer.m_allocInfo.pMappedData, &gpuAddresses, sizeof(BindlessBDATable));
 
 	ASSERT(addressTableBuffer.m_buffer != VK_NULL_HANDLE);
 	ASSERT(transferPool != VK_NULL_HANDLE);
@@ -225,7 +225,7 @@ void GPUResources::UpdateAddressTableMapped() {
 
 	CommandBuffer::RecordDeferredCmd([&](VkCommandBuffer cmd) {
 		VkBufferCopy copyRegion{};
-		copyRegion.size = sizeof(BindlessBufferTable);
+		copyRegion.size = sizeof(BindlessBDATable);
 		vkCmdCopyBuffer(cmd, addressTableStagingBuffer.m_buffer, addressTableBuffer.m_buffer, 1, &copyRegion);
 	}, transferPool, QueueType::Transfer, device);
 

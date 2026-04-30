@@ -7,6 +7,8 @@
 
 using PM = PipelineManager;
 
+static PipelineBuilder TheBuilder;
+
 void PM::RegisterPipelines()
 {
 	using RS = RD::Renderer_Shader;
@@ -168,7 +170,7 @@ void PM::CreatePipelineLayout(
 void PM::InitPipelines(VkDevice device)
 {
 	// Default image formats
-	m_pipelineBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::RGBA16F), static_cast<VkFormat>(Vulkan_Format::D32));
+	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::RGBA16F), static_cast<VkFormat>(Vulkan_Format::D32));
 
 	RegisterPipelines();
 
@@ -179,7 +181,7 @@ void PM::InitPipelines(VkDevice device)
 
 		if (handle.bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
 		{
-			m_pipelineBuilder.InitCreateInfoStructs();
+			TheBuilder.InitCreateInfoStructs();
 			SetupPipelineConfig(preset);
 
 			// Only raster pipelines will get topology info
@@ -187,24 +189,24 @@ void PM::InitPipelines(VkDevice device)
 		}
 		handle.swappable = IsPipelineSwapable(pipeline.ID());
 
-		pipeline.Build(m_pipelineBuilder, preset, device);
+		pipeline.Build(TheBuilder, preset, device);
 	}
 }
 
 void PM::SetupPipelineConfig(const PipelinePreset& preset)
 {
-	m_pipelineBuilder.InputAssemblyConfig(preset.topology);
+	TheBuilder.InputAssemblyConfig(preset.topology);
 
 	if (preset.enableDepthBias)
 	{
-		m_pipelineBuilder.DepthBiasConfig(preset.depthBiasConstant, preset.depthBiasSlope);
+		TheBuilder.DepthBiasConfig(preset.depthBiasConstant, preset.depthBiasSlope);
 	}
 
-	m_pipelineBuilder.RasterizerConfig(preset.polygonMode, preset.cullMode, preset.frontFace);
+	TheBuilder.RasterizerConfig(preset.polygonMode, preset.cullMode, preset.frontFace);
 
-	m_pipelineBuilder.MultisamplingConfig();
+	TheBuilder.MultisamplingConfig();
 
-	m_pipelineBuilder.ColorBlendingConfig(
+	TheBuilder.ColorBlendingConfig(
 		preset.blendAttachments,
 		VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
 		preset.enableBlending,
@@ -213,19 +215,19 @@ void PM::SetupPipelineConfig(const PipelinePreset& preset)
 	// Manual formats
 	if (preset.IsColorDefined() && preset.IsDepthDefined())
 	{
-		m_pipelineBuilder.ColorAndDepthConfig(
+		TheBuilder.ColorAndDepthConfig(
 			preset.colorFormats,
 			preset.depthFormat);
 	}
 	else // Default builder formats
 	{
-		std::vector<Vulkan_Format> baseColorFormat_v { static_cast<Vulkan_Format>(m_pipelineBuilder.GetColorFormat()) };
-		m_pipelineBuilder.ColorAndDepthConfig(
+		std::vector<Vulkan_Format> baseColorFormat_v { static_cast<Vulkan_Format>(TheBuilder.GetColorFormat()) };
+		TheBuilder.ColorAndDepthConfig(
 			baseColorFormat_v,
-			(static_cast<Vulkan_Format>(m_pipelineBuilder.GetDepthFormat())));
+			(static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat())));
 	}
 
-	m_pipelineBuilder.DepthStencilConfig(
+	TheBuilder.DepthStencilConfig(
 		preset.enableDepthTest,
 		preset.enableDepthWrite,
 		preset.depthCompareOp);
@@ -256,11 +258,11 @@ bool PM::Rebuild(RD::Renderer_Pipeline id, VkDevice device)
 
 	if (m_pipelines[i].Handle().bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
 	{
-		m_pipelineBuilder.InitCreateInfoStructs();
+		TheBuilder.InitCreateInfoStructs();
 		SetupPipelineConfig(m_pipelinePresets[i]);
 	}
 
-	if (!m_pipelines[i].Build(m_pipelineBuilder, m_pipelinePresets[i], device))
+	if (!m_pipelines[i].Build(TheBuilder, m_pipelinePresets[i], device))
 		return false; // build failed, old pipeline untouched and still live
 
 	// Build succeeded — retire the old one, keep what Build wrote

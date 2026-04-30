@@ -78,7 +78,6 @@ private:
 	PipelineLayoutConst m_globalLayout;
 	const PipelineLayoutConst& GetGlobalLayout() { return m_globalLayout; }
 
-	PipelineBuilder m_pipelineBuilder;
 	void SetupPipelineConfig(const PipelinePreset& preset);
 
 	void RegisterPipelines();
