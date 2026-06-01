@@ -1,39 +1,78 @@
 #pragma once
 
-#include <renderer/RendererDefinitions.h>
-#include <renderer/backend/memory/VmaForward.h>
-#include <vector>
-#include <vulkan/vulkan.h>
+#include "VmaForward.h"
+#include "../VulkanForward.h"
+#include <string>
+#include "EngineTypes.h"
+
+enum class ImageAspect
+{
+	Color,
+	Depth
+};
 
 struct AllocatedImage
 {
-	VkImage     image     = VK_NULL_HANDLE;
-	VkImageView imageView = VK_NULL_HANDLE;
+	VkImage                  m_image      = VK_NULL_HANDLE;
+	VkImageView              m_imageView  = VK_NULL_HANDLE;
+	VmaAllocation            m_allocation = VK_NULL_HANDLE;
 
-	// Storage views — only Allocator/ImageUtils touch these
-	std::vector<VkImageView> storageViews{};
-	std::vector<VkImageView> layerViews{};
-	bool bPerMipStorageViews            = false;
+	std::vector<VkImageView> m_vStorageViews{};
+	bool                     m_bPerMipStorageViews = false;
 
-	VkFormat              format        = VK_FORMAT_UNDEFINED;
-	VkExtent3D            extent        {};
-	VkImageLayout         currentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkSampleCountFlagBits samples       = VK_SAMPLE_COUNT_1_BIT;
-	VkImageType           imageType     = VK_IMAGE_TYPE_2D;
-	VkImageViewType       viewType      = VK_IMAGE_VIEW_TYPE_2D;
+	ImageAspect              m_aspect        = ImageAspect::Color;
+	bool                     m_isFirstLayout = false; // Undefined at creation
+	uint32_t                 m_pixelBytes    = 0;
 
-	uint32_t mipLevelCount = 0;
-	uint32_t arrayLayers   = 1;
+	Extents3D                m_extent        = { 0, 0, 0 };
 
-	VmaAllocation allocation = VK_NULL_HANDLE;
+	uint32_t                 m_mipLevels     = 0;
+	uint32_t                 m_arrayLayers   = 1;
+	uint32_t                 m_bindlessID    = UINT32_MAX;
+	bool                     m_bIsMipmapped  = false;
+	bool                     m_bIsCubemap    = false;
+	std::string              m_name;
 
-	uint32_t bindlessID = UINT32_MAX;
+	uint32_t Width()  const { return m_extent.Width(); }
+	uint32_t Height() const { return m_extent.Height(); }
+	uint32_t Depth()  const { return m_extent.Depth(); }
 
-	RendererDefinitions::ResourceLifetime lifetime = RendererDefinitions::ResourceLifetime::Persistent;
-
-	bool bIsMipmapped = false;
-	bool bIsCubemap = false;
-
-	bool IsValid() const noexcept { return image != VK_NULL_HANDLE; }
+	bool IsValid() const noexcept { return m_image != VK_NULL_HANDLE; }
 	void Reset()   { *this = AllocatedImage{}; }
+};
+
+struct EnvironmentSet
+{
+	struct alignas(16) SpecularPrefilterPush
+	{
+		float    roughness;
+		uint32_t width;
+		uint32_t height;
+		uint32_t sampleCount;
+	};
+
+	AllocatedImage irradiance{};
+	AllocatedImage specular{};
+	AllocatedImage skybox{};
+	AllocatedImage equirect{}; // Transient, used during prefilter bake
+	uint32_t       setIndex = UINT32_MAX;
+	std::vector<SpecularPrefilterPush> specularPCs{};
+
+	bool IsValid() const noexcept { return setIndex != UINT32_MAX; }
+	void Reset()   { *this = EnvironmentSet{}; }
+};
+
+struct MaterialResources
+{
+	AllocatedImage albedoImage;
+	VkSampler albedoSampler;
+
+	AllocatedImage metalRoughImage;
+	VkSampler metalRoughSampler;
+
+	AllocatedImage normalImage;
+	VkSampler normalSampler;
+
+	AllocatedImage emissiveImage;
+	VkSampler emissiveSampler;
 };

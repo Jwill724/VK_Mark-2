@@ -25,12 +25,17 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D aoFinal;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D contactShadowMask;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D bentNormals;
 
-// Reusing push struct to get activeLights
-layout(push_constant) uniform ForwardPush {
+layout(push_constant) uniform ForwardPush
+{
 	uint activeLightCount;
+	uint diffuseID;
+	uint specularID;
+	uint brdfID;
 	float oitDepthScale;
 	uint flashlightShadowMapID;
 	uint flashlightCookieTexID;
+	uint pad0;
+
 	mat4 flashlightVP;
 } pc;
 
@@ -82,7 +87,7 @@ void main()
 	float boost    = smoothstep(1.0, 10.0, lum);
 	emissive      *= mix(1.0, 3.0, boost);
 
-	rough = SpecularAA(rough, N);
+	rough = specularAA(rough, N);
 	metal = clamp(metal, 0.0, 1.0);
 
 	if (DBG(showAlbedo))    RET(albedo,      alpha);
@@ -127,15 +132,8 @@ void main()
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
 
-	// ENVIRONMENT INDICES
-	const uint             envMapID    = debug.activeEnvMap;
-	const EnvMapIndexArray envMapArray = getEnvIdxArray();
-	const uint             irrIdx      = envMapArray.indices[envMapID].x;
-	const uint             specIdx     = envMapArray.indices[envMapID].y;
-	const uint             brdfIdx     = envMapArray.indices[envMapID].z; // All using the same index
-
 	// multi-scatter energy compensation for direct spec
-	vec2 brdf = SampleTexture(brdfIdx, vec2(NdotV, rough)).rg;
+	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
 	spec *= MultiScatterEnergyComp(F0, brdf);
 
 	if (DBG(showDiffuse))  RET(diff * (sunColor) * NdotL, alpha);
@@ -400,7 +398,7 @@ void main()
 	vec3 direct = (diff + spec) * sunColor * NdotL * shadow * microVisSun * contactShadows;
 
 	// IBL specular
-	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
+	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, pc.specularID);
 
 	// IBL diffuse
 	vec3 irradianceN = N;
@@ -425,7 +423,7 @@ void main()
 		vec3 blended = normalize(mix(N, bentWS, bentBlend));
 		irradianceN  = blended;
 	}
-	vec3 iblDiff = (sampleIrradiance(irradianceN, irrIdx) * albedo);
+	vec3 iblDiff = (sampleIrradiance(irradianceN, pc.diffuseID) * albedo);
 
 	// Split ambient components
 	vec3 ambientDiffuse  = kD * (iblDiff * aoTerm);

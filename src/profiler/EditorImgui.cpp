@@ -2,33 +2,27 @@
 
 #include "EditorImgui.h"
 
-#include "renderer/scene/RenderScene.h"
+#include "input/Camera.h"
+#include "renderer/scene/World.h"
+#include "renderer/scene/Scene.h"
 #include "renderer/Renderer.h"
-#include "renderer/backend/Backend.h"
+#include "renderer/backend/Device.h"
+#include "renderer/backend/Swapchain.h"
+#include "renderer/backend/Queue.h"
 
-static float SETTINGS_SIZE_X = 500.0f;
-static float SETTINGS_SIZE_Y = 450.0f;
+#include "../core/Environment.h"
 
-static float PROFILER_SIZE_X = 290.0f;
-static float PROFILER_SIZE_Y = 900.0f;
+#include "renderer/scene/LightingSystem.h"
+
+#include "renderer/RendererDefinitions.h"
+
+// TODO: Refactor this fucking mess
+
+namespace RD = RendererDefinitions;
 
 static void MyWindowFocusCallback(GLFWwindow* window, int focused)
 {
 	ImGui_ImplGlfw_WindowFocusCallback(window, focused);
-}
-
-static void uploadDebugInlineIfDirty(Profiler& profiler)
-{
-	static RenderToggles last{};
-	const RenderToggles& cur = profiler.debugToggles;
-
-	if (memcmp(&last, &cur, sizeof(RenderToggles)) != 0) {
-		DescriptorWriter w;
-		w.WriteInlineUniform(
-			&cur,
-			static_cast<uint32_t>(sizeof(RenderToggles)));
-		last = cur;
-	}
 }
 
 namespace
@@ -37,7 +31,7 @@ namespace
 	{
 		Profiler* profiler = nullptr;
 		FrameStats* stats = nullptr;
-		RenderToggles* dbg = nullptr;
+		RD::RenderToggles* dbg = nullptr;
 	};
 
 	namespace UI
@@ -208,7 +202,7 @@ namespace
 	};
 
 
-	static void drawCategorySelector(EditorImgui::SettingsCategory& selectedCategory)
+	static void DrawCategorySelector(Editor::SettingsCategory& selectedCategory)
 	{
 		const char* categoryLabels[] = {
 			"Render",
@@ -218,59 +212,59 @@ namespace
 		};
 
 		static_assert(
-			IM_ARRAYSIZE(categoryLabels) == (int)EditorImgui::SettingsCategory::Count,
+			IM_ARRAYSIZE(categoryLabels) == static_cast<int>(Editor::SettingsCategory::Count),
 			"Category label count mismatch.");
 
 		UI::separatorText("Categories");
 
-		for (int categoryIndex = 0; categoryIndex < (int)EditorImgui::SettingsCategory::Count; ++categoryIndex) {
-			const bool isSelected = ((int)selectedCategory == categoryIndex);
+		for (int categoryIndex = 0; categoryIndex < static_cast<int>(Editor::SettingsCategory::Count); ++categoryIndex) {
+			const bool isSelected = (static_cast<int>(selectedCategory) == categoryIndex);
 
 			if (ImGui::Selectable(categoryLabels[categoryIndex], isSelected)) {
-				selectedCategory = (EditorImgui::SettingsCategory)categoryIndex;
+				selectedCategory = (Editor::SettingsCategory)categoryIndex;
 			}
 		}
 	}
 
-	static void drawCategoryRender(UIContext& ui)
+	static void DrawCategoryRender(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
+		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 		FrameStats& stats = *ui.stats;
 		{
 			UI::separatorText("Camera");
-			auto& camera = RenderScene::getCamera();
+			auto& camera = World::GetScene().GetCamera();
 
-			const auto& pos = camera.getPosition();
+			const auto& pos = camera.GetPosition();
 			ImGui::Text("World Position: %.2f %.2f %.2f", pos.x, pos.y, pos.z);
-			const auto& camVelo = camera.getVelocity();
+			const auto& camVelo = camera.GetVelocity();
 			ImGui::Text("Velocity: %.2f %.2f %.2f", camVelo.x, camVelo.y, camVelo.z);
 
 			if (ImGui::CollapsingHeader("Camera Settings"))
 			{
-				float camSens = camera.getSensitivity();
+				float camSens = camera.GetSensitivity();
 				ImGui::SliderFloat("Sensitivity", &camSens, 1.0, 100.0, "%.0f");
-				camera.setSensitivity(camSens);
+				camera.SetSensitivity(camSens);
 
-				float camFOV = camera.getFovY();
-				ImGui::SliderFloat("FOV", &camFOV, CAMERA_MIN_FOV, CAMERA_MAX_FOV, "%.0f");
-				camera.setFovY(camFOV);
+				float camFOV = camera.GetFovY();
+				ImGui::SliderFloat("FOV", &camFOV, Camera::CAMERA_MIN_FOV, Camera::CAMERA_MAX_FOV, "%.0f");
+				camera.SetFovY(camFOV);
 
-				float maxSpeed = camera.getMaxSpeed();
+				float maxSpeed = camera.GetMaxSpeed();
 				ImGui::SliderFloat("Max Speed", &maxSpeed, 1.0, 100.0, "%.0f");
-				camera.setMaxSpeed(maxSpeed);
+				camera.SetMaxSpeed(maxSpeed);
 
-				float minSpeed = camera.getMinSpeed();
+				float minSpeed = camera.GetMinSpeed();
 				ImGui::SliderFloat("Min Speed", &minSpeed,  1.0, 100.0, "%.0f");
-				camera.setMinSpeed(minSpeed);
+				camera.SetMinSpeed(minSpeed);
 
-				float accel = camera.getAcceleration();
+				float accel = camera.GetAcceleration();
 				ImGui::SliderFloat("Acceleration", &accel, 1.0, 100.0, "%.0f");
-				camera.setAcceleration(accel);
+				camera.SetAcceleration(accel);
 
-				float damping = camera.getDamping();
+				float damping = camera.GetDamping();
 				ImGui::SliderFloat("Damping", &damping, 1.0, 100.0, "%.0f");
-				camera.setDamping(damping);
+				camera.SetDamping(damping);
 			}
 		}
 
@@ -285,55 +279,6 @@ namespace
 		}
 
 		if (dbg.enableShadows) {
-			//ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
-
-			auto& sc = RenderScene::_shadowControl;
-
-			//ImGui::Separator();
-			//ImGui::Text("Cascade Radii (FOV Stabilization)");
-			//float* shadowRadii = RenderScene::_shadowControl.shadowRadii;
-			//for (int i = MAX_SHADOW_CASCADES - 1u; i < MAX_SHADOW_CASCADES; ++i) {
-			//	int cascade = i + 1;
-			//	ImGui::PushID(cascade);
-
-			//	ImGui::Text("Cascade %d", cascade);
-
-			//	ImGui::SliderFloat(
-			//		"Radius",
-			//		&shadowRadii[i],
-			//		400.0f,
-			//		2000.0f,
-			//		"%.0f"
-			//	);
-
-			//	ImGui::PopID();
-			//}
-
-			//ImGui::Text("Shadow Caster Culling (per cascade)");
-
-			//for (int i = 0; i < MAX_SHADOW_CASCADES; ++i) {
-			//	int cascade = i;
-			//	cascade++;
-			//	ImGui::PushID(cascade);
-			//	ImGui::Text("Cascade %d", cascade);
-			//	ImGui::SliderFloat("Max Caster Dist", &sc.maxCasterDistance[i], 100.0f, 6000.0f, "%.0f");
-			//	ImGui::PopID();
-			//}
-
-			//ImGui::SliderFloat("XY Padding", &sc.xyPadding, 0.0f, 500.0f, "%.0f");
-			//ImGui::SliderFloat("LS Epsilon", &sc.lsEpsilon, 1.0f, 100.0f, "%.1f");
-			//ImGui::SliderFloat("Dir Epsilon", &sc.dirEpsilon, 1.0f, 100.0f, "%.1f");
-
-			//if (ImGui::Button("Reset to defaults")) {
-			//	sc.maxCasterDistance[0] = 3000.0f;
-			//	sc.maxCasterDistance[1] = 4000.0f;
-			//	sc.maxCasterDistance[2] = 5000.0f;
-			//	sc.maxCasterDistance[3] = 6000.0f;
-			//	sc.xyPadding = 150.0f;
-			//	sc.lsEpsilon = 5.0f;
-			//	sc.dirEpsilon = 20.0f;
-			//}
-
 			if (ImGui::Checkbox("Enable Screen Space Contact Shadows##rt", &contact)) {
 				dbg.enableSSS = contact ? 1u : 0u;
 			}
@@ -359,7 +304,7 @@ namespace
 		if (ImGui::Combo("AA Method", &currentAA, aaModes, IM_ARRAYSIZE(aaModes))) {
 			dbg.aaMode = static_cast<uint32_t>(currentAA);
 		}
-		if (dbg.aaMode == AA_TAA) {
+		if (dbg.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA)) {
 			auto& taaSettings = profiler.taaSettings;
 			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.2f");
 			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.2f");
@@ -371,17 +316,13 @@ namespace
 		static int selectedEnv = 0;
 
 		if (ImGui::BeginCombo("Active", fmt::format("Image {}", selectedEnv + 1).c_str())) {
-			for (auto& env : ResourceManager::_environmentSets) {
-				if (env.setIndex == UINT32_MAX) {
-					break;
-				}
-
-				const bool isSelected = (selectedEnv == static_cast<int>(env.setIndex));
-				const std::string label = fmt::format("Image {}", env.setIndex + 1);
+			for (uint32_t i = 0; i < Environment::_HDRPathCount; ++i) {
+				const bool isSelected = (selectedEnv == static_cast<int>(i));
+				const std::string label = fmt::format("Image {}", i + 1);
 
 				if (ImGui::Selectable(label.c_str(), isSelected)) {
-					selectedEnv = (int)env.setIndex;
-					dbg.activeEnvMap = env.setIndex;
+					selectedEnv = static_cast<int>(i);
+					dbg.activeEnvMap = i;
 				}
 
 				if (isSelected) {
@@ -392,8 +333,10 @@ namespace
 		}
 
 		UI::separatorText("Transparency");
-		auto& forwardPC = Renderer::GetForwardPush();
-		ImGui::SliderFloat("OIT Z Scale", &forwardPC.oitDepthScale, 50.0f, 2000.0f, "%.0f");
+		auto oitScale = profiler.forwardPush.oitDepthScale;
+
+		ImGui::SliderFloat("OIT Z Scale", &oitScale, 50.0f, 2000.0f, "%.0f");
+		profiler.forwardPush.oitDepthScale = oitScale;
 
 		UI::separatorText("Shading Overlay");
 
@@ -487,12 +430,12 @@ namespace
 
 	static void drawCategoryLighting(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
+		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
 		UI::separatorText("Sun");
 
-		auto& scene = RenderScene::getCurrentSceneData();
+		auto& scene = World::GetScene().GetSceneData();
 
 		static glm::vec3 sunCol = glm::vec3(scene.sunlightColor);
 		static float sunI = scene.sunlightColor.w;
@@ -515,18 +458,18 @@ namespace
 		}
 
 		static uint32_t targetLightCount = 0u;
-		if (UIWidgets::sliderU32("Light Count##light", &targetLightCount, 0u, static_cast<uint32_t>(MAX_VISIBLE_LIGHTS))) {
+		if (UIWidgets::sliderU32("Light Count##light", &targetLightCount, 0u, static_cast<uint32_t>(RD::MAX_VISIBLE_LIGHTS))) {
 			LightingSystem::SetTargetActiveLightCount(targetLightCount);
 		}
 
 		const uint32_t activeCount = LightingSystem::GetActiveLightCount();
-		ImGui::Text("Active: %u / %u", activeCount, static_cast<uint32_t>(MAX_VISIBLE_LIGHTS));
+		ImGui::Text("Active: %u / %u", activeCount, static_cast<uint32_t>(RD::MAX_VISIBLE_LIGHTS));
 
-		auto& flashlight = LightingSystem::_flashLightSettings;
+		auto& flashlight = LightingSystem::_flashlightSettings;
 		auto& flashlightReal = LightingSystem::_mainFlashLight;
 		UI::separatorText("Flash Light settings");
-		ImGui::SliderFloat("Lag Strength", &flashlightReal.lagStrength, 10.0, 100.0f);
-		ImGui::SliderFloat("Sway Strength", &flashlightReal.swayStrength, 0.001f, 0.1f, "%.3f");
+		ImGui::SliderFloat("Lag Strength", &flashlightReal.m_lagStrength, 10.0, 100.0f);
+		ImGui::SliderFloat("Sway Strength", &flashlightReal.m_swayStrength, 0.001f, 0.1f, "%.3f");
 		//ImGui::SliderFloat("light radius##light", &flashlight.radius, 5, 100.0f);
 		ImGui::SliderFloat("Intensity##light", &flashlight.intensity, 10.0f, 500.0f);
 		//ImGui::SliderFloat("light outer degree##light", &flashlight.outerDeg, 10.0f, 40.0f);
@@ -600,7 +543,7 @@ namespace
 
 	static void drawCategoryPostFX(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
+		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
 		{
@@ -657,8 +600,8 @@ namespace
 
 	static void drawCategoryPipelines(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
-		Profiler& profiler = *ui.profiler;
+		RD::RenderToggles& dbg = *ui.dbg;
+		//Profiler& profiler = *ui.profiler;
 
 		UI::separatorText("Pipeline Views");
 
@@ -669,29 +612,13 @@ namespace
 			}
 		}
 
-		ImGui::Checkbox("Pipeline Override##ovr", &profiler.pipeOverride.enabled);
-
-		auto swappables = Pipelines::GetSwappablePipelines();
-		static int selected = 0;
-
-		std::vector<const char*> names;
-		names.reserve(swappables.size());
-
-		for (auto& [id, handle] : swappables) {
-			names.push_back(handle.name.c_str());
-		}
-
-		if (!names.empty()) {
-			if (ImGui::Combo("Force Pipeline##ovr", &selected, names.data(), (int)names.size())) {
-				profiler.pipeOverride.selectedID = swappables[(size_t)selected].first;
-			}
-		}
+		// TODO: Add check box to turn on wireframe view, and setup shader
 	}
 
 	// For the profiler window
 	static void drawCategoryProfiling(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
+		//RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 		FrameStats& stats = *ui.stats;
 
@@ -699,9 +626,9 @@ namespace
 
 		//ImGui::Text("Delta Raw: %.3f ms", stats.deltaSecondsRaw * 1000.0f);
 
-		ImGui::Text("Frame Time True: %.3f ms", stats.frameTimeRaw.get());
-		ImGui::Text("Frame Time Capped: %.3f ms", stats.frameTime.get());
-		ImGui::Text("FPS: %.1f", stats.fps.get());
+		ImGui::Text("Frame Time True: %.3f ms", stats.frameTimeRaw.Get());
+		ImGui::Text("Frame Time Capped: %.3f ms", stats.frameTime.Get());
+		ImGui::Text("FPS: %.1f", stats.fps.Get());
 
 		{
 			bool capEnabled = stats.capFramerate;
@@ -714,22 +641,22 @@ namespace
 				const float buttonWidth = 60.0f;
 
 				if (ImGui::Button("60", ImVec2(buttonWidth, 0))) {
-					stats.targetFrameRate = TARGET_FPS_60;
+					stats.targetFrameRate = RD::TARGET_FPS_60;
 				}
 				ImGui::SameLine();
 
 				if (ImGui::Button("120", ImVec2(buttonWidth, 0))) {
-					stats.targetFrameRate = TARGET_FPS_120;
+					stats.targetFrameRate = RD::TARGET_FPS_120;
 				}
 				ImGui::SameLine();
 
 				if (ImGui::Button("144", ImVec2(buttonWidth, 0))) {
-					stats.targetFrameRate = TARGET_FPS_144;
+					stats.targetFrameRate = RD::TARGET_FPS_144;
 				}
 				ImGui::SameLine();
 
 				if (ImGui::Button("240", ImVec2(buttonWidth, 0))) {
-					stats.targetFrameRate = TARGET_FPS_240;
+					stats.targetFrameRate = RD::TARGET_FPS_240;
 				}
 
 				ImGui::EndDisabled();
@@ -738,12 +665,12 @@ namespace
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("GPU update timings");
-		ImGui::Text("GPU total:  %.3f ms", stats.gpuFrameTime.get());
+		ImGui::Text("GPU total:  %.3f ms", stats.gpuFrameTime.Get());
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("CPU update timings");
-		ImGui::Text("Draw:  %.3f ms", stats.drawTime.get());
-		ImGui::Text("Scene: %.3f ms", stats.sceneUpdateTime.get());
+		ImGui::Text("Draw:  %.3f ms", stats.drawTime.Get());
+		ImGui::Text("Scene: %.3f ms", stats.sceneUpdateTime.Get());
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("GPU Info");
@@ -754,13 +681,14 @@ namespace
 		);
 		ImGui::Text("GPU: %s", stats.gpuName.c_str());
 
-		ImGui::Separator();
-		ImGui::TextUnformatted("Model Data");
-		ImGui::Text("Meshes:     %u", dbg.meshCount);
-		ImGui::Text("Materials:  %u", dbg.materialCount);
-		ImGui::Text("Transforms: %u", dbg.transformCount);
-		ImGui::Text("Vertices:   %u", dbg.vertexCount);
-		ImGui::Text("Indices:    %u", dbg.indexCount);
+		// TODO: Figure out a different way to get present this data
+		//ImGui::Separator();
+		//ImGui::TextUnformatted("Model Data");
+		//ImGui::Text("Meshes:     %u", dbg.meshCount);
+		//ImGui::Text("Materials:  %u", dbg.materialCount);
+		//ImGui::Text("Transforms: %u", dbg.transformCount);
+		//ImGui::Text("Vertices:   %u", dbg.vertexCount);
+		//ImGui::Text("Indices:    %u", dbg.indexCount);
 		ImGui::Text("Triangles: %llu", (unsigned long long)stats.triangleCount);
 
 		ImGui::Separator();
@@ -849,10 +777,10 @@ namespace
 			}
 		}
 
-		if (profiler.isTracyCompiledIn()) {
+		if (profiler.IsTracyCompiledIn()) {
 			ImGui::Text(
 				"Render Pass Timings: %s",
-				profiler.isTracyGPUActive() ? "Active" : "Inactive"
+				profiler.IsTracyGPUActive() ? "Active" : "Inactive"
 			);
 		}
 		else {
@@ -876,10 +804,10 @@ namespace
 				ImGui::TableSetupColumn("GPU ms");
 				ImGui::TableHeadersRow();
 
-				const auto& allPassStats = profiler.getAllPassStats();
+				const auto& allPassStats = profiler.GetAllPassStats();
 
 				for (size_t passIndex = 1; passIndex < allPassStats.size(); ++passIndex) {
-					const PassID passID = static_cast<PassID>(passIndex);
+					const RD::Renderer_Pass passID = static_cast<RD::Renderer_Pass>(passIndex);
 					const PassTimingStats& passStats = allPassStats[passIndex];
 
 					if (showOnlyActivePasses && !passStats.activeLastFrame) continue;
@@ -887,19 +815,19 @@ namespace
 					ImGui::TableNextRow();
 
 					ImGui::TableSetColumnIndex(0);
-					ImGui::TextUnformatted(profiler.getPassName(passID));
+					ImGui::TextUnformatted(profiler.GetPassName(passID));
 
 					ImGui::TableSetColumnIndex(1);
-					if (passStats.cpuMsAverage.initialized) {
-						ImGui::Text("%.3f", passStats.cpuMsAverage.get());
+					if (passStats.cpuMsAverage.IsInitialized()) {
+						ImGui::Text("%.3f", passStats.cpuMsAverage.Get());
 					}
 					else {
 						ImGui::TextUnformatted("--");
 					}
 
 					ImGui::TableSetColumnIndex(2);
-					if (passStats.gpuMsAverage.initialized) {
-						ImGui::Text("%.3f", passStats.gpuMsAverage.get());
+					if (passStats.gpuMsAverage.IsInitialized()) {
+						ImGui::Text("%.3f", passStats.gpuMsAverage.Get());
 					}
 					else {
 						ImGui::TextUnformatted("--");
@@ -911,12 +839,12 @@ namespace
 
 	static void panelSettingsWindow(UIContext& ui)
 	{
-		RenderToggles& dbg = *ui.dbg;
+		RD::RenderToggles& dbg = *ui.dbg;
 
 		if (!dbg.enableSettings) return;
 
 		ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_FirstUseEver);
-		ImGui::SetNextWindowSize(ImVec2(SETTINGS_SIZE_X, SETTINGS_SIZE_Y), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(Editor::SETTINGS_SIZE_X, Editor::SETTINGS_SIZE_Y), ImGuiCond_FirstUseEver);
 
 		UI::WindowScope window(
 			"Settings",
@@ -925,12 +853,12 @@ namespace
 
 		if (!window) return;
 
-		static EditorImgui::SettingsCategory selectedCategory = EditorImgui::SettingsCategory::Render;
+		static Editor::SettingsCategory selectedCategory = Editor::SettingsCategory::Render;
 
 		const float leftWidth = 130.0f;
 
 		if (ImGui::BeginChild("SettingsLeft", ImVec2(leftWidth, 0.0f), true)) {
-			drawCategorySelector(selectedCategory);
+			DrawCategorySelector(selectedCategory);
 		}
 		ImGui::EndChild();
 
@@ -939,19 +867,19 @@ namespace
 		if (ImGui::BeginChild("SettingsRight", ImVec2(0.0f, 0.0f), true)) {
 			switch (selectedCategory)
 			{
-			case EditorImgui::SettingsCategory::Render:
-				drawCategoryRender(ui);
+			case Editor::SettingsCategory::Render:
+				DrawCategoryRender(ui);
 				break;
 
-			case EditorImgui::SettingsCategory::Lighting:
+			case Editor::SettingsCategory::Lighting:
 				drawCategoryLighting(ui);
 				break;
 
-			case EditorImgui::SettingsCategory::PostFX:
+			case Editor::SettingsCategory::PostFX:
 				drawCategoryPostFX(ui);
 				break;
 
-			case EditorImgui::SettingsCategory::Pipelines:
+			case Editor::SettingsCategory::Pipelines:
 				drawCategoryPipelines(ui);
 				break;
 
@@ -964,9 +892,9 @@ namespace
 
 	static void panelProfilerWindow(UIContext& ui)
 	{
-		Profiler& profiler = *ui.profiler;
-		FrameStats& stats = *ui.stats;
-		RenderToggles& dbg = *ui.dbg;
+		//Profiler& profiler = *ui.profiler;
+		//FrameStats& stats = *ui.stats;
+		RD::RenderToggles& dbg = *ui.dbg;
 
 		if (!dbg.enableProfilerView) return;
 
@@ -976,12 +904,12 @@ namespace
 		const float topPadding = 10.0f;
 
 		ImVec2 profilerPos = ImVec2(
-			io.DisplaySize.x - PROFILER_SIZE_X - rightPadding,
+			io.DisplaySize.x - Editor::PROFILER_SIZE_X - rightPadding,
 			topPadding
 		);
 
 		ImGui::SetNextWindowPos(profilerPos, ImGuiCond_Always);
-		ImGui::SetNextWindowSize(ImVec2(PROFILER_SIZE_X, PROFILER_SIZE_Y), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(Editor::PROFILER_SIZE_X, Editor::PROFILER_SIZE_Y), ImGuiCond_Always);
 
 		UI::WindowScope window(
 			"Profiler",
@@ -994,134 +922,102 @@ namespace
 	}
 }
 
-namespace EditorImgui
+void Editor::InitImgui(
+	Renderer& renderer,
+	GLFWwindow* window)
 {
-	void InitImgui(DeletionQueue& queue)
+	VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+		{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	pool_info.maxSets = 1000;
+	pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
+	pool_info.pPoolSizes = pool_sizes;
+
+
+	const auto& deviceCtx = renderer.GetDevice().GetContext();
+
+	const auto& graphicsQ = renderer.GetDevice().GetGraphicsQueue();
+
+	VK_CHECK(vkCreateDescriptorPool(deviceCtx.device, &pool_info, nullptr, &m_imguiPool));
+
+	// this initializes the core structures of imgui
+	ImGui::CreateContext();
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable gamepad controls
+	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange; // Prevent ImGui from overriding the cursor
+	io.IniFilename = nullptr; // Won't create imgui file
+
+	ImGui_ImplGlfw_InitForVulkan(window, true);
+
+	// this initializes imgui for Vulkan
+	ImGui_ImplVulkan_InitInfo init_info = {};
+	init_info.Instance = deviceCtx.instance;
+	init_info.PhysicalDevice = deviceCtx.physicalDevice;
+	init_info.Device = deviceCtx.device;
+	init_info.Queue = graphicsQ.GetQueue();
+	init_info.DescriptorPool = m_imguiPool;
+	init_info.MinImageCount = 3;
+	init_info.ImageCount = 3;
+	init_info.UseDynamicRendering = true;
+
+	//dynamic rendering parameters for imgui to use
+	VkFormat swapchainFormat = renderer.GetSwapchain().GetFormat();
+	init_info.PipelineInfoMain.PipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+	init_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+	init_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &swapchainFormat;
+
+	init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+	ImGui_ImplVulkan_Init(&init_info);
+
+	glfwSetWindowFocusCallback(window, MyWindowFocusCallback);
+}
+
+void Editor::Shutdown(Renderer& renderer)
+{
+	ImGui_ImplVulkan_Shutdown();
+	vkDestroyDescriptorPool(renderer.GetDevice().GetContext().device, m_imguiPool, nullptr);
+}
+
+void Editor::RenderImgui(Renderer& renderer)
+{
+	ImGui_ImplGlfw_NewFrame();
+	ImGui_ImplVulkan_NewFrame();
+	ImGui::NewFrame();
+
+	UIContext ui;
+	ui.profiler = &renderer.GetProfiler();
+	ui.stats = &renderer.GetFrameStats();
+	ui.dbg = &renderer.GetRenderToggles();
+
+	static PanelRegistry registry;
+	static bool didInit = false;
+
+	if (!didInit)
 	{
-		VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
-			{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+		didInit = true;
 
-		VkDescriptorPoolCreateInfo pool_info = {};
-		pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-		pool_info.maxSets = 1000;
-		pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
-		pool_info.pPoolSizes = pool_sizes;
-
-		const auto device = Backend::GetDevice();
-
-		VkDescriptorPool imguiPool;
-		VK_CHECK(vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiPool));
-
-		// this initializes the core structures of imgui
-		ImGui::CreateContext();
-
-		ImGuiIO& io = ImGui::GetIO();
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard controls
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable gamepad controls
-		io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange; // Prevent ImGui from overriding the cursor
-		io.IniFilename = nullptr; // Won't create imgui file
-
-		auto window = Engine::GetWindow();
-
-		ImGui_ImplGlfw_InitForVulkan(window, true);
-
-		// this initializes imgui for Vulkan
-		ImGui_ImplVulkan_InitInfo init_info = {};
-		init_info.Instance = Backend::GetInstance();
-		init_info.PhysicalDevice = Backend::GetPhysicalDevice();
-		init_info.Device = device;
-		init_info.Queue = Backend::GetGraphicsQueue().queue;
-		init_info.DescriptorPool = imguiPool;
-		init_info.MinImageCount = 3;
-		init_info.ImageCount = 3;
-		init_info.UseDynamicRendering = true;
-
-		//dynamic rendering parameters for imgui to use
-		init_info.PipelineInfoMain.PipelineRenderingCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-		init_info.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-		init_info.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &Backend::GetSwapchainDef().format;
-
-		init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-
-		ImGui_ImplVulkan_Init(&init_info);
-
-		glfwSetWindowFocusCallback(window, MyWindowFocusCallback);
-
-		// add the destroy the imgui created structures
-		queue.PushFunction([=]() {
-			ImGui_ImplVulkan_Shutdown();
-			vkDestroyDescriptorPool(device, imguiPool, nullptr);
+		registry.addPanel("SettingsWindow", &panelSettingsWindow);
+		registry.addPanel("ProfilerWindow", [](UIContext& ui) {
+			panelProfilerWindow(ui);
 		});
 	}
 
-	void renderImgui(Profiler& profiler)
-	{
-		ImGui_ImplGlfw_NewFrame();
-		ImGui_ImplVulkan_NewFrame();
-		ImGui::NewFrame();
+	registry.draw(ui);
 
-		UIContext ui;
-		ui.profiler = &profiler;
-		ui.stats = &profiler.getStats();
-		ui.dbg = &profiler.debugToggles;
-
-		static PanelRegistry registry;
-		static bool didInit = false;
-
-		if (!didInit) {
-			didInit = true;
-
-			registry.addPanel("SettingsWindow", &panelSettingsWindow);
-			registry.addPanel("ProfilerWindow", &panelProfilerWindow);
-		}
-
-		registry.draw(ui);
-
-		ImGui::Render();
-		uploadDebugInlineIfDirty(profiler);
-	}
-
-	void drawImgui(
-		VkCommandBuffer cmd,
-		VkImageView targetImageView,
-		const VkExtent2D swapExtent,
-		bool shouldClear)
-	{
-		VkClearValue clearValue{};
-		clearValue.color = { 0.0f, 0.0f, 0.0f, 1.0f };
-
-		VkRenderingAttachmentInfo colorAttachment{};
-		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		colorAttachment.pNext = nullptr;
-		colorAttachment.imageView = targetImageView;
-		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.loadOp = shouldClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-		if (shouldClear) {
-			colorAttachment.clearValue = clearValue;
-		}
-
-		VkRenderingInfo renderingInfo{};
-		renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		renderingInfo.colorAttachmentCount = 1;
-		renderingInfo.pColorAttachments = &colorAttachment;
-		renderingInfo.renderArea = { {0, 0}, { swapExtent.width, swapExtent.height } };
-		renderingInfo.layerCount = 1;
-		renderingInfo.viewMask = 0;
-
-		vkCmdBeginRendering(cmd, &renderingInfo);
-		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-		vkCmdEndRendering(cmd);
-	}
+	ImGui::Render();
 }

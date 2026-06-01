@@ -1,106 +1,153 @@
 #pragma once
 
-#include "profiler/Profiler.h"
-#include "renderer/frame/FrameContext.h"
-#include "renderer/backend/memory/Allocator.h"
-#include "renderer/backend/memory/AllocatedImage.h"
-#include "renderer/backend/memory/AllocatedBuffer.h"
-#include "renderer/backend/Device.h"
-#include "renderer/backend/PipelineManager.h"
-#include "renderer/backend/Descriptor.h"
+#include "backend/memory/ResourceAllocator.h"
+#include "renderer/backend/DescriptorWriter.h"
+#include "backend/memory/BindlessBDATable.h"
+#include "backend/memory/BindlessImageTable.h"
+#include "backend/Swapchain.h"
+#include "frame/FrameContext.h"
 #include "Material.h"
+#include "Mesh.h"
 #include "RendererDefinitions.h"
-#include <array>
+#include "profiler/Profiler.h"
+#include "rendergraph/RenderGraph.h"
+#include "rendergraph/RenderGraphResources.h"
 
 namespace RD = RendererDefinitions;
 
-class FrameContext;
-class Profiler;
-struct ForwardPush;
-
-class MeshRegistry;
-class ImageLUTManager;
-class BindlessBDATable;
-class BindlessImageTable;
-class DeletionQueue;
-
 class PipelineManager;
 class DescriptorManager;
+class Device;
+class Window;
+class JobSystem;
+struct FrameStats;
+class Scene;
+struct GLFWwindow;
 
-struct AllocatedBuffer;
-struct AllocatedImage;
-
+// Manages core vulkan state and memory allocation.
+// All primary resources are stored here, gpu buffers, image, frame data.
+// Bindless textures, push descriptors for render targets, indirect buffer table for bindless gpu buffers.
 class Renderer
 {
 public:
-	VkExtent3D GetDrawExtent() const { return m_drawExtent; }
-	void SetDrawExtent(VkExtent3D extent) { m_drawExtent = extent; }
-
-	uint32_t GetFrameNumber() const { return m_frameNumber; }
-
-	bool IsFirstFrame() const noexcept { return m_frameNumber == 0; }
-
-	FrameContext& GetCurrentFrame() const
-	{
-		return *m_frameContexts[m_frameNumber % m_framesInFlight];
-	}
-
-	FrameContext& GetLastFrame() const
-	{
-		uint32_t lastFrameNumber = m_frameNumber + m_framesInFlight - 1u;
-		return *m_frameContexts[lastFrameNumber % m_framesInFlight];
-	}
-
-	//ForwardPush& GetForwardPush() { return m_forwardPush; }
-
-	void Init();
+	void Init(
+		const Window& window,
+		JobSystem& jobSystem);
 	void Cleanup();
 
+	// Calls idle for device, should be only used at shutdown
+	void StallDevice();
+
+	bool ShouldRenderImgui() const noexcept
+	{
+		const auto& debug = m_profiler.debugToggles;
+		return debug.enableProfilerView || debug.enableSettings;
+	}
+
 	void RecordRenderCommand();
-	void PrepareFrame();
-	void SubmitFrame();
+
+	bool PrepareFrame(); // Returns false if no resize occured
+	bool SubmitFrame();
+
+	void BeingFrameTimer() { m_profiler.BeginFrame(); }
+	void EndFrameTimer() { m_profiler.EndFrame(); }
+
+	Profiler& GetProfiler() { return m_profiler; }
+	RD::RenderToggles& GetRenderToggles() { return m_profiler.debugToggles; }
+	FrameStats& GetFrameStats() { return m_profiler.getStats(); }
+
+	PipelineManager& GetPipelineManager() { return *m_pipelineManager; }
+
+	const DescriptorManager& GetDescriptorManager() { return *m_descriptorManager; }
+	const Device& GetDevice() { return *m_device; }
+	const Swapchain& GetSwapchain() { return m_swapchain; }
+
+	// Updates swapchain size and any resources that depend on draw extent size.
+	void UpdateDrawExtentUsage(Extents2D newWindowExtent);
+
+	void TickVramUsage();
+
+	bool AreAssetsLoaded() const noexcept { return m_bAssetsLoaded == true; }
+
+	Extents2D GetDrawExtent() const { return m_drawExtent; }
+
+	uint32_t GetFrameNumber() const { return m_frameNumber; }
+	bool IsFirstFrame() const noexcept { return m_frameNumber == 0; }
+
+	void UpdateRendererContext(GLFWwindow* window);
+
+	void ResetFrameStats() { m_profiler.ResetDrawCalls(); m_profiler.ResetPassStats(); }
+	void StartTimer() { m_profiler.StartTimer(); }
+	void EndSceneUpdateTimer() { m_profiler.getStats().sceneUpdateTime.Add(m_profiler.EndTimerMS()); }
+	void EndDrawTimer() { m_profiler.getStats().drawTime.Add(m_profiler.EndTimerMS()); }
 
 private:
 	uint32_t m_frameNumber = 0;
-	uint32_t m_framesInFlight =  0;
+	uint32_t m_framesInFlight = 0;
 
-	VkExtent3D m_drawExtent;
+	Extents2D m_drawExtent;
+	void SetDrawExtent(Extents2D extent) { m_drawExtent = extent; }
+
+	RenderPassExecutionContext m_renderPassExecutionContext;
+	RD::RenderStateInfo m_renderGraphState;
+	RenderGraph m_renderGraph;
+
+	void CreateRenderGraph();
+	void DestroyRenderGraph();
 
 	void InitFrameResources();
 	void CleanupFrameResources();
 
-	std::vector<std::unique_ptr<FrameContext>> m_frameContexts;
-	std::unique_ptr<BindlessBDATable> m_globalAddressTable;
+	void CheckGlobalDescriptorSetSync();
 
-	//// Staging buffers
-	//AllocatedBuffer m_addressTableStagingBuffer;
-	//AllocatedBuffer m_lightListStagingBuffer;
-	//AllocatedBuffer m_transformsStagingBuffer;
+	void TimestampPoolStart(FrameContext& frameCtx);
+	void TimestampPoolEnd(FrameContext& frameCtx);
 
-	// Runtime resource data
+	void BarrierDynamicBuffers(FrameContext& frameCtx);
+
+	FrameContext& GetCurrentFrame()
+	{
+		return m_frameContexts[m_frameNumber % m_framesInFlight];
+	}
+
+	FrameContext& GetLastFrame()
+	{
+		uint32_t lastFrameNumber = m_frameNumber + m_framesInFlight - 1u;
+		return m_frameContexts[lastFrameNumber % m_framesInFlight];
+	}
+
+	// Will vary, vsync is 2 contexts. When vsync off its 3.
+	std::array<FrameContext, RD::MAX_FRAMES_IN_FLIGHT> m_frameContexts;
+
+	BindlessBDATable m_globalAddressTable;
 	std::vector<Material> m_materials;
-	std::unique_ptr<MeshRegistry> m_registeredMeshes;
-	std::unique_ptr<ImageLUTManager> m_lutManager;
+	MeshRegistry m_registeredMeshes;
 
-	std::optional<BindlessBDATable> m_globalImageManager;
-	//EnvironmentSet m_environmentSets[MAX_ENV_SETS];
-	EnvironmentIndexArray m_environmentMapIndices;
+	BindlessImageTable m_bindlessImageTable;
 
 	std::vector<uint32_t> m_materialFlagsIDs;
 
-	std::array<AllocatedImage, static_cast<size_t>(RD::Renderer_RenderTarget::Count)> m_renderTargets;
-	std::array<AllocatedImage, static_cast<size_t>(RD::Renderer_Texture::Count)> m_textures;
+	DescriptorWriter m_mainWriter;
 
 	std::unique_ptr<DescriptorManager> m_descriptorManager;
 	std::unique_ptr<PipelineManager> m_pipelineManager;
-	Allocator m_allocator;
 	std::unique_ptr<Device> m_device;
+	Swapchain m_swapchain;
+	Allocator m_allocator;
 
-	DeletionQueue m_PersistentQueue;   // All static global vulkan state and resources for renderer lifetime
-	DeletionQueue m_VolatileQueue;     // Will flush often
-	DeletionQueue m_RenderTargetQueue; // Only flush on resized swapchain
+	ClusterBufferSizes m_clusterBufferSizes;
+	Cmaa2BufferSizes m_cmaa2BufferSizes;
 
-	ForwardPush m_forwardPush{};
+	bool m_bHasDrawExtentResized = false;
 
 	Profiler m_profiler;
+
+	bool m_bAssetsLoaded = false;
+
+	// Must always initialize to read states
+	bool m_bRenderTargetsLayoutsTransitioned = false;
+
+	uint32_t m_activeEnvSet = 0;
+
+	glm::vec4 m_luminanceSums[RD::MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) };
 };

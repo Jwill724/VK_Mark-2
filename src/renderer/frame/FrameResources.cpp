@@ -1,8 +1,8 @@
 #include "pch.h"
 
 #include "FrameResources.h"
-#include "renderer/backend/memory/AllocatedBuffer.h"
-#include "renderer/backend/memory/Budgets.h"
+#include "../backend/memory/AllocatedBuffer.h"
+#include "../backend/memory/Budgets.h"
 
 void Cmaa2BufferSizes::UpdateCmaa2BufferSizes(
 	const uint32_t extentWidth,
@@ -31,20 +31,19 @@ void Cmaa2BufferSizes::UpdateCmaa2BufferSizes(
 		static_cast<size_t>(deferredItemsCapacity) *
 		sizeof(uint32_t) * 4u;
 
-	// alignment (final stage only)
-	controlBytes = AllocatedBuffer::AlignUp(controlBytes, MIN_SSBO_SIZE_GPU_BYTES);
+	controlBytes = AllocatedBuffer::AlignUp(controlBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	shapeCandidatesBytes =
-		AllocatedBuffer::AlignUp(shapeCandidatesBytes, MIN_SSBO_SIZE_GPU_BYTES);
+		AllocatedBuffer::AlignUp(shapeCandidatesBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	deferredLocationsBytes =
-		AllocatedBuffer::AlignUp(deferredLocationsBytes, MIN_SSBO_SIZE_GPU_BYTES);
+		AllocatedBuffer::AlignUp(deferredLocationsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	deferredHeadsBytes =
-		AllocatedBuffer::AlignUp(deferredHeadsBytes, MIN_SSBO_SIZE_GPU_BYTES);
+		AllocatedBuffer::AlignUp(deferredHeadsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	deferredItemsBytes =
-		AllocatedBuffer::AlignUp(deferredItemsBytes, MIN_SSBO_SIZE_GPU_BYTES);
+		AllocatedBuffer::AlignUp(deferredItemsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 }
 
 void ClusterBufferSizes::UpdateClusterBufferSizes(
@@ -54,14 +53,12 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 	uint32_t tileSizeY,
 	uint32_t zSlices)
 {
-	// --- derived grid sizes ---
 	tileCountX = (screenWidth + tileSizeX - 1u) / tileSizeX;
 	tileCountY = (screenHeight + tileSizeY - 1u) / tileSizeY;
 
 	tileCount = tileCountX * tileCountY;
 	clusterCount = tileCount * zSlices;
 
-	// --- per-cluster buffers ---
 	clusterCountsBytes =
 		static_cast<size_t>(clusterCount) * sizeof(uint32_t);
 
@@ -73,38 +70,32 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 
 	clusterLightIDsBytes =
 		static_cast<size_t>(clusterCount) *
-		static_cast<size_t>(MAX_LIGHTS_PER_CLUSTER) *
+		static_cast<size_t>(RD::MAX_LIGHTS_PER_CLUSTER) *
 		sizeof(uint32_t);
 
-	// --- tile-level Hi-Z slice ranges ---
-	clusterTileSliceRangesBytes =
-		static_cast<size_t>(tileCount) * sizeof(glm::uvec2); 
-		// (better than raw 8u magic)
+	clusterTileSliceRangesBytes = static_cast<size_t>(tileCount) * sizeof(glm::uvec2); 
 
-	// --- scan scratch ---
 	const uint32_t elementsPerBlock = 256u;
 	const uint32_t blockCount =
 		(clusterCount + elementsPerBlock - 1u) / elementsPerBlock;
 
 	clusterScanScratchBytes = 4u;
 
-	const uint32_t alignment = 256u;
-
 	clusterCountsBytes =
-		AllocatedBuffer::AlignUp(clusterCountsBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterCountsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	clusterOffsetsBytes =
-		AllocatedBuffer::AlignUp(clusterOffsetsBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterOffsetsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	clusterCursorsBytes =
-		AllocatedBuffer::AlignUp(clusterCursorsBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterCursorsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	clusterLightIDsBytes =
-		AllocatedBuffer::AlignUp(clusterLightIDsBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterLightIDsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	clusterTileSliceRangesBytes =
-		AllocatedBuffer::AlignUp(clusterTileSliceRangesBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterTileSliceRangesBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
 	clusterScanScratchBytes =
-		AllocatedBuffer::AlignUp(clusterScanScratchBytes, alignment);
+		AllocatedBuffer::AlignUp(clusterScanScratchBytes, MIN_SSBO_ALIGNMENT_BYTES);
 }

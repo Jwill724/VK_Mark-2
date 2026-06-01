@@ -1,6 +1,9 @@
 #pragma once
 
-#include "common/Vk_Types.h"
+#include <unordered_map>
+#include "Core.h"
+
+struct GLFWwindow;
 
 namespace UserInput
 {
@@ -25,7 +28,7 @@ namespace UserInput
 		bool rightJustClicked;
 
 		// Used for setting up a [1, -1] for virtual mouse position
-		// Mouse will spin out if window extent isn't 1:1
+		// Mouse will spin out if window m_extent isn't 1:1
 		float normalizedPos[2];
 
 		double mousePos[2];
@@ -38,7 +41,7 @@ namespace UserInput
 			normalizedPos{ 0.0f, 0.0f }, mousePos{ 0.0, 0.0 } {
 		}
 
-		void update(GLFWwindow* window);
+		void Update(GLFWwindow* window);
 	};
 
 	enum struct KeyState
@@ -49,21 +52,30 @@ namespace UserInput
 		Released
 	};
 
+	enum class Keys
+	{
+		W, A, S, D, SPACE,
+		LEFT_CTRL, LEFT_SHIFT, ESC,
+		TAB, R, F, P
+	};
+
+	constexpr std::array trackedKeys
+	{
+		Keys::W, Keys::A, Keys::S, Keys::D, Keys::SPACE,
+		Keys::LEFT_CTRL, Keys::LEFT_SHIFT, Keys::ESC,
+		Keys::TAB, Keys::R, Keys::F, Keys::P
+	};
+
 	struct KeyboardState
 	{
 		std::unordered_map<int, KeyState> keyStates;
 
-		inline static constexpr std::array trackedKeys
-		{
-			GLFW_KEY_W, GLFW_KEY_A, GLFW_KEY_S, GLFW_KEY_D,
-			GLFW_KEY_SPACE, GLFW_KEY_LEFT_CONTROL, GLFW_KEY_LEFT_SHIFT,
-			GLFW_KEY_ESCAPE, GLFW_KEY_TAB, GLFW_KEY_R, GLFW_KEY_F, GLFW_KEY_P
-		};
+		static int ToGlfw(Keys key);
 
 		void update(GLFWwindow* window);
-		bool isPressed(int key) const;
-		bool isHeld(int key) const;
-		bool isReleased(int key) const;
+		bool isPressed(Keys key) const;
+		bool isHeld(Keys key) const;
+		bool isReleased(Keys key) const;
 
 		void resetKeyStates();
 	};
@@ -72,4 +84,6 @@ namespace UserInput
 	extern KeyboardState keyboard;
 
 	void updateLocalInput(GLFWwindow* window);
+
+	void UpdateCachedWindowExtent(uint32_t w, uint32_t h);
 }

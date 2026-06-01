@@ -1613,7 +1613,7 @@ meshopt_Bounds meshopt_computeClusterBounds(const unsigned int* indices, size_t 
 	// which gives us -cos(a+90) = -(-sin(a)) = sin(a) = sqrt(1 - cos^2(a))
 	bounds.cone_cutoff = sqrtf(1 - mindp * mindp);
 
-	// quantize axis & cutoff to 8-bit SNORM format
+	// quantize axis & cutoff to 8-bit SNORM m_format
 	bounds.cone_axis_s8[0] = (signed char)(meshopt_quantizeSnorm(bounds.cone_axis[0], 8));
 	bounds.cone_axis_s8[1] = (signed char)(meshopt_quantizeSnorm(bounds.cone_axis[1], 8));
 	bounds.cone_axis_s8[2] = (signed char)(meshopt_quantizeSnorm(bounds.cone_axis[2], 8));

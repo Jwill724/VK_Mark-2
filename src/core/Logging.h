@@ -4,8 +4,6 @@
 #include <string>
 #include <mutex>
 #include <cstdint>
-
-#include <fmt/format.h>
 #include <fmt/base.h>
 
 inline bool ENABLE_DEBUG_LOGS =

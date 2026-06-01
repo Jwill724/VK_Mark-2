@@ -1,27 +1,28 @@
 #pragma once
 
 #include "ResourceTypes.h"
-
 #include "renderer/frame/FrameResources.h"
 #include "Bounds.h"
 
+#include "renderer/RendererDefinitions.h"
 namespace RD = RendererDefinitions;
 
+// TODO: Redesign all this
 
-struct FlashLight final : public LocalLight
+// TODO: work on this further
+struct Flashlight final : public LocalLight
 {
-public:
-	Frustum frustum;
-	glm::mat4 viewProj;
-	bool IsFlashLightActive() const { return flashLightEnabled || flashLightFlagsChanged; }
-	bool IsFlashLightOn() const { return flashLightEnabled; }
-	bool AreFlagsToggled() const { return flashLightFlagsChanged; }
+	Frustum Frustum;
+	glm::mat4 ViewProj;
+	bool IsFlashLightActive() const { return m_flashlightEnabled || m_flashlightFlagsChanged; }
+	bool IsFlashLightOn() const { return m_flashlightEnabled; }
+	bool AreFlagsToggled() const { return m_flashlightFlagsChanged; }
 	constexpr void ToggleFlashLight() noexcept
 	{
-		flashLightEnabled = !flashLightEnabled;
+		m_flashlightEnabled = !m_flashlightEnabled;
 
-		flashLightFlagsChanged = true;
-		if (flashLightEnabled)
+		m_flashlightFlagsChanged = true;
+		if (m_flashlightEnabled)
 		{
 			flags |= RD::LIGHT_FLAG_FLASHLIGHT;
 			flags &= ~RD::LIGHT_FLAG_FLASHLIGHT_OFF;
@@ -35,6 +36,8 @@ public:
 		}
 	}
 
+	void Init(uint32_t shadowMapID, uint32_t cookieGoboID);
+
 	constexpr void InitFlags() noexcept
 	{
 		flags &= ~RD::LIGHT_FLAG_FLASHLIGHT;
@@ -42,39 +45,37 @@ public:
 		flags &= ~RD::LIGHT_FLAG_CASTS_SPOT_SHADOW;
 	}
 
-	void Init()
-	{
-
-	}
-
 	// position and direction based off camera
 	bool UpdateFlashLight(
 		std::vector<LocalLight>& globalLightList,
-		const uint32_t shadowMapID,
-		const uint32_t cookieTexID,
 		const glm::vec3& pos,
 		const glm::vec3& dir,
 		const float dt,
 		const glm::vec2 mouseDelta,
 		const glm::vec3 camForward);
 
-private:
-	glm::vec3 smoothedDir{0.0f, 0.0f, -1.0f};
-	glm::vec3 smoothedPos{0.0f};
+// Should be private members
+	glm::vec3 m_smoothedDir{0.0f, 0.0f, -1.0f};
+	glm::vec3 m_smoothedPos{0.0f};
 
-	glm::vec3 dirVelocity{0.0f}; // for spring
-	glm::vec3 posVelocity{0.0f};
+	glm::vec3 m_dirVelocity{0.0f}; // for spring
+	glm::vec3 m_posVelocity{0.0f};
 
-	float lagStrength = 40.0f;   // responsiveness
-	float swayStrength = 0.025f; // camera motion
+	float m_lagStrength = 40.0f;   // responsiveness
+	float m_swayStrength = 0.025f; // camera motion
 
-	bool flashLightFlagsChanged = false;
-	bool flashLightEnabled = false;
+	bool m_flashlightFlagsChanged = false;
+	bool m_flashlightEnabled = false;
+
+	bool m_bTextureIDsInitialized = false;
+	bool m_bLightStateUpdated = false;
+
+	uint32_t m_shadowMapID = UINT32_MAX; // bindless image array indices
+	uint32_t m_cookieGoboID = UINT32_MAX;
 };
 
 namespace LightingSystem
 {
-
 	inline struct alignas(16) FlashLightSettings
 	{
 		float offsetRight = 0.07f;
@@ -92,10 +93,6 @@ namespace LightingSystem
 		float outerDeg = 38.0f;
 		float innerDeg = 22.0f;
 	} _flashlightSettings{};
-
-	ClusterBufferSizes ComputeClusterBufferSizes(
-		uint32_t screenWidth,
-		uint32_t screenHeight);
 
 	inline struct LightIDTable {
 		std::vector<uint32_t> activeLightIDs;
@@ -125,21 +122,6 @@ namespace LightingSystem
 		}
 	} _lightIDTable;
 
-	inline struct alignas(16) ClusteredData
-	{
-		uint32_t tileSizeX = 0;
-		uint32_t tileSizeY = 0;
-		uint32_t zSlices = 0;
-		uint32_t maxLightsPerCluster = MAX_LIGHTS_PER_CLUSTER;
-
-		uint32_t tileCountX = 0;
-		uint32_t tileCountY = 0;
-		uint32_t clusterCount = 0;
-		uint32_t maxVisibleLights = MAX_VISIBLE_LIGHTS;
-
-		glm::vec4 pad0[6] = { glm::vec4(0.0f) };
-	} _clusteredData{};
-
 	extern bool _dynamicLightsEnabled;
 
 	const uint32_t& GetActiveLightCount();
@@ -150,8 +132,18 @@ namespace LightingSystem
 	bool UpdateLightList();
 	bool UpdateDynamicLightsOrbit(float deltaTime);
 
-	extern FlashLight _mainFlashLight;
+	extern Flashlight _mainFlashLight;
 
-	void Init(GPUResources& resources);
+	void Init();
 	void Cleanup();
+
+	inline uint32_t getDynamicLightBeginIndex()
+	{
+		return RD::LIGHT_LIST_STATIC_COUNT;
+	}
+
+	inline bool isDynamicLightID(uint32_t lightID) noexcept
+	{
+		return lightID >= RD::LIGHT_LIST_STATIC_COUNT;
+	}
 }

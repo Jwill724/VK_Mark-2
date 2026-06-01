@@ -115,7 +115,7 @@ namespace fastgltf {
 	}
 
 #pragma region Enums
-    // clang-format off
+    // clang-m_format off
     FASTGLTF_EXPORT enum class PrimitiveType : std::uint8_t {
         Points = 0,
         Lines = 1,
@@ -148,7 +148,7 @@ namespace fastgltf {
 
     /**
      * Represents the various types of components an accessor could point at. This describes the
-     * format each component of the structure, which in return is described by fastgltf::AccessorType, is in.
+     * m_format each component of the structure, which in return is described by fastgltf::AccessorType, is in.
      *
      * As the constants used to identify component type in glTF fit within 13-bits, we store them in the lower 13 bits.
      * The remaining three bits are then used to store the byte width of the type, minus 1, as 8 is not representable
@@ -301,7 +301,7 @@ namespace fastgltf {
     FASTGLTF_ASSIGNMENT_OP_TEMPLATE_MACRO(Category, Category, |)
     FASTGLTF_ASSIGNMENT_OP_TEMPLATE_MACRO(Category, Category, &)
     FASTGLTF_UNARY_OP_TEMPLATE_MACRO(Category, ~)
-    // clang-format on
+    // clang-m_format on
 #pragma endregion
 
 #pragma region ConversionFunctions
@@ -452,10 +452,10 @@ namespace fastgltf {
 		return accessorTypeNames[idx - 1];
 	}
 
-	constexpr std::string_view mimeTypeJpeg = "image/jpeg";
-	constexpr std::string_view mimeTypePng = "image/png";
-	constexpr std::string_view mimeTypeKtx = "image/ktx2";
-	constexpr std::string_view mimeTypeDds = "image/vnd-ms.dds";
+	constexpr std::string_view mimeTypeJpeg = "m_image/jpeg";
+	constexpr std::string_view mimeTypePng = "m_image/png";
+	constexpr std::string_view mimeTypeKtx = "m_image/ktx2";
+	constexpr std::string_view mimeTypeDds = "m_image/vnd-ms.dds";
 	constexpr std::string_view mimeTypeGltfBuffer = "application/gltf-buffer";
 	constexpr std::string_view mimeTypeOctetStream = "application/octet-stream";
 
@@ -786,7 +786,7 @@ namespace fastgltf {
 				}
 			}
 
-			// Destroy all objects in the old allocation
+			// Destroy all objects in the old m_allocation
 			std::destroy(begin(), end());
 
             if (!isUsingStack() && _data && size() != 0) {
@@ -1329,7 +1329,7 @@ namespace fastgltf {
 	 * this supports all types of URIs as defined in RFC 3986.
 	 *
 	 * This class, unlike fastgltf::URI, only holds a std::string_view to the URI and therefore
-	 * doesn't own the allocation.
+	 * doesn't own the m_allocation.
 	 */
 	FASTGLTF_EXPORT class URIView {
 		friend class URI;
@@ -1433,7 +1433,7 @@ namespace fastgltf {
 
     /**
      * Custom span class imitating C++20's std::span for referencing bytes without owning the
-     * allocation. Can also directly be converted to a std::span or used by itself.
+     * m_allocation. Can also directly be converted to a std::span or used by itself.
      */
     FASTGLTF_EXPORT template <typename T, std::size_t Extent = dynamic_extent>
     class span {
@@ -1554,7 +1554,7 @@ namespace fastgltf {
     } // namespace sources
 
     /**
-     * Represents the data source of a buffer or image. These could be a buffer view, a file path
+     * Represents the data source of a buffer or m_image. These could be a buffer view, a file path
      * (including offsets), a StaticVector (if #Options::LoadExternalBuffers or #Options::LoadGLBBuffers
      * was specified), or the ID of a custom buffer.
      *
@@ -1756,7 +1756,7 @@ namespace fastgltf {
      */
     FASTGLTF_EXPORT struct TextureTransform {
         /**
-         * Rotate the UVs by this many radians counter-clockwise around the origin. This is equivalent to a similar rotation of the image clockwise.
+         * Rotate the UVs by this many radians counter-clockwise around the origin. This is equivalent to a similar rotation of the m_image clockwise.
          */
         num rotation;
 
@@ -1997,7 +1997,7 @@ namespace fastgltf {
 		Optional<std::size_t> samplerIndex;
 
 		/**
-		 * The index of the image used by this texture. Either this will have a value,
+		 * The index of the m_image used by this texture. Either this will have a value,
 		 * or one of the following extensions will define a texture index. If no extensions
 		 * were enabled while parsing, this will always have a value.
 		 */

@@ -1,8 +1,30 @@
 #include <pch.h>
 
 #include "DescriptorWriter.h"
-#include "resources/AllocatedImage.h"
-#include "resources/AllocatedBuffer.h"
+#include "memory/AllocatedImage.h"
+#include "memory/AllocatedBuffer.h"
+#include "../RendererDefinitions.h"
+
+namespace RD = RendererDefinitions;
+
+static VkImageLayout ResolvePushLayout(PushLayout layout)
+{
+	switch(layout)
+	{
+		case PushLayout::Read:
+			return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		case PushLayout::Write:
+			return VK_IMAGE_LAYOUT_GENERAL;
+
+		case PushLayout::DepthRead:
+			return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+
+		default:
+			ASSERT(false);
+			return VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+}
 
 // ------------------------
 // Push descriptor writing
@@ -10,8 +32,8 @@
 void PushDescriptorWriter::WritePushImage(
 	uint32_t binding,
 	const AllocatedImage& image,
+	PushLayout imgLayout,
 	VkSampler sampler,
-	VkImageLayout overrideLayout,
 	uint32_t storageViewIndex)
 {
 	m_bEnablePushDescriptor = true;
@@ -20,19 +42,19 @@ void PushDescriptorWriter::WritePushImage(
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER :
 		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 
-	VkImageView view = image.imageView;
-	if (storageViewIndex != UINT32_MAX && storageViewIndex < image.mipLevelCount)
-		view = image.storageViews[static_cast<size_t>(storageViewIndex)];
+	ASSERT(image.m_imageView != VK_NULL_HANDLE);
 
-	VkImageLayout layout = image.currentLayout;
-	if (overrideLayout != VK_IMAGE_LAYOUT_MAX_ENUM)
-		layout = overrideLayout;
+	VkImageView view = image.m_imageView;
+	if (storageViewIndex != UINT32_MAX && storageViewIndex < image.m_mipLevels)
+		view = image.m_vStorageViews[static_cast<size_t>(storageViewIndex)];
+
+	VkImageLayout layout = ResolvePushLayout(imgLayout);
 
 	m_imageWriteGroups.emplace_back(ImageWriteGroup{
-		.binding   = binding,
-		.type      = type,
-		.dstSet    = VK_NULL_HANDLE,
-		.imageInfo = { sampler, view, layout }
+		.binding     = binding,
+		.type        = type,
+		.dstSet      = VK_NULL_HANDLE,
+		.imageInfos  = { {sampler, view, layout } }
 	});
 }
 
@@ -43,18 +65,21 @@ void PushDescriptorWriter::UpdatePushLayout(
 {
 	if (!m_bEnablePushDescriptor) return;
 
+	ASSERT(pipelineLayout != VK_NULL_HANDLE);
+
 	std::vector<VkWriteDescriptorSet> writes;
 	writes.reserve(m_imageWriteGroups.size());
 
 	for (const auto& group : m_imageWriteGroups)
 	{
+		ASSERT(group.imageInfos.size() == 1);
+
 		writes.emplace_back(VkWriteDescriptorSet{
-			.sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet           = VK_NULL_HANDLE,
-			.dstBinding       = group.binding,
-			.descriptorCount  = 1u,
-			.descriptorType   = group.type,
-			.pImageInfo       = &group.imageInfo
+			.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstBinding      = group.binding,
+			.descriptorCount = 1,
+			.descriptorType  = group.type,
+			.pImageInfo      = group.imageInfos.data()
 		});
 	}
 
@@ -62,7 +87,7 @@ void PushDescriptorWriter::UpdatePushLayout(
 		cmd,
 		bindPoint,
 		pipelineLayout,
-		RendererDefinitions::PUSH_SET, // Hard coded frameSet 2
+		RD::PUSH_SET,
 		static_cast<uint32_t>(writes.size()),
 		writes.data());
 
@@ -79,15 +104,33 @@ void DescriptorWriter::WriteBuffer(
 	VkDescriptorSet set)
 {
 	const size_t bufferIndex = m_bufferInfos.size();
+	ASSERT(buffer.m_bytesSize != 0);
 
 	m_bufferInfos.emplace_back(buffer.m_buffer, 0, buffer.m_bytesSize);
+
+	VkDescriptorType bufferType{};
+	switch(binding)
+	{
+		case RD::ADDRESS_TABLE_BINDING:
+			bufferType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			break;
+
+		case RD::FRAME_BINDING_SCENE:
+		case RD::FRAME_BINDING_CSM:
+		case RD::FRAME_BINDING_CLUSTERED:
+			bufferType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			break;
+
+		default:
+			ASSERT(false && "Invalid buffer binding added.");
+	}
 
 	m_bufferWrites.emplace_back(VkWriteDescriptorSet{
 		.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.dstSet          = set,
 		.dstBinding      = binding,
 		.descriptorCount = 1u,
-		.descriptorType  = static_cast<VkDescriptorType>(buffer.m_type),
+		.descriptorType  = bufferType,
 		.pBufferInfo     = nullptr,
 	});
 
@@ -95,18 +138,23 @@ void DescriptorWriter::WriteBuffer(
 }
 
 void DescriptorWriter::WriteBindlessImages(
-	const std::vector<VkDescriptorImageInfo>& images,
+	std::span<const VkDescriptorImageInfo> images,
 	uint32_t binding,
 	VkDescriptorSet set,
 	Vulkan_DescriptorType type)
 {
-	if (images.empty()) return;
-	m_imageWriteGroups.emplace_back(ImageWriteGroup{
-		.binding      = binding,
-		.type         = static_cast<VkDescriptorType>(type),
-		.dstSet       = set,
-		.vImageInfos = images
-	});
+	if (images.empty())
+		return;
+
+	auto& group = m_imageWriteGroups.emplace_back();
+
+	group.binding = binding;
+	group.type = static_cast<VkDescriptorType>(type);
+	group.dstSet = set;
+
+	group.imageInfos.assign(
+		images.begin(),
+		images.end());
 }
 
 // Special instant inline set update
@@ -149,9 +197,9 @@ void DescriptorWriter::UpdateSet(VkDevice device, VkDescriptorSet set)
 				.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 				.dstSet          = group.dstSet,
 				.dstBinding      = group.binding,
-				.descriptorCount = static_cast<uint32_t>(group.vImageInfos.size()),
+				.descriptorCount = static_cast<uint32_t>(group.imageInfos.size()),
 				.descriptorType  = group.type,
-				.pImageInfo      = group.vImageInfos.data()
+				.pImageInfo      = group.imageInfos.data()
 			});
 		}
 

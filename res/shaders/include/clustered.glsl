@@ -1,9 +1,9 @@
 #ifndef CLUSTERED_GLSL
 #define CLUSTERED_GLSL
 
-const uint LIGHT_TYPE_DIRECTIONAL = 0u;
-const uint LIGHT_TYPE_POINT       = 1u;
-const uint LIGHT_TYPE_SPOT        = 2u;
+//const uint LIGHT_TYPE_DIRECTIONAL = 0u;
+const uint LIGHT_TYPE_POINT       = 0u;
+const uint LIGHT_TYPE_SPOT        = 1u;
 
 const uint LIGHT_FLAG_CASTS_SPOT_SHADOW = 1u << 0;
 const uint LIGHT_FLAG_FLASHLIGHT        = 1u << 1;

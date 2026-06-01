@@ -87,7 +87,7 @@ namespace fastgltf {
 		MissingField = 8,
 		MissingExternalBuffer = 9, ///< With Options::LoadExternalBuffers, an external buffer was not found.
 		UnsupportedVersion = 10, ///< The glTF version is not supported by fastgltf.
-		InvalidURI = 11, ///< A URI from a buffer or image failed to be parsed.
+		InvalidURI = 11, ///< A URI from a buffer or m_image failed to be parsed.
 		InvalidFileData = 12, ///< The file data is invalid, or the file type could not be determined.
 		FailedWritingFiles = 13, ///< The exporter failed to write some files (buffers/images) to disk.
 		FileBufferAllocationFailed = 14, ///< The constructor of GltfDataBuffer failed to allocate a sufficiently large buffer.
@@ -127,7 +127,7 @@ namespace fastgltf {
 			case Error::MissingField: return "";
 			case Error::MissingExternalBuffer: return "An external buffer was not found.";
 			case Error::UnsupportedVersion: return "The glTF version is not supported by fastgltf.";
-			case Error::InvalidURI: return "A URI from a buffer or image failed to be parsed.";
+			case Error::InvalidURI: return "A URI from a buffer or m_image failed to be parsed.";
             case Error::InvalidFileData: return "The file data is invalid, or the file type could not be determined.";
             case Error::FailedWritingFiles: return "The exporter failed to write some files (buffers/images) to disk.";
 			case Error::FileBufferAllocationFailed: return "The constructor of GltfDataBuffer failed to allocate a sufficiently large buffer.";
@@ -135,7 +135,7 @@ namespace fastgltf {
 		}
 	}
 
-	// clang-format off
+	// clang-m_format off
     FASTGLTF_EXPORT enum class Extensions : std::uint64_t {
         None = 0,
 
@@ -213,7 +213,7 @@ namespace fastgltf {
 		// See https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_accessor_float64
 		KHR_accessor_float64 = 1 << 25,
     };
-    // clang-format on
+    // clang-m_format on
 
     FASTGLTF_ARITHMETIC_OP_TEMPLATE_MACRO(Extensions, Extensions, |)
     FASTGLTF_ARITHMETIC_OP_TEMPLATE_MACRO(Extensions, Extensions, &)
@@ -227,7 +227,7 @@ namespace fastgltf {
 		return static_cast<Extensions>(to_underlying(a) - b);
 	}
 
-    // clang-format off
+    // clang-m_format off
     FASTGLTF_EXPORT enum class Options : std::uint64_t {
         None                            = 0,
         /**
@@ -296,7 +296,7 @@ namespace fastgltf {
          */
         PrettyPrintJson                 = 1 << 2,
     };
-    // clang-format on
+    // clang-m_format on
 
     FASTGLTF_ARITHMETIC_OP_TEMPLATE_MACRO(Options, Options, |)
     FASTGLTF_ARITHMETIC_OP_TEMPLATE_MACRO(Options, Options, &)
@@ -340,7 +340,7 @@ namespace fastgltf {
 #endif
     } // namespace extensions
 
-	// clang-format off
+	// clang-m_format off
 	// An array of pairs of string representations of extension identifiers and their respective enum
 	// value used for enabling/disabling the loading of it. This also represents all extensions that
 	// fastgltf supports and understands.
@@ -378,7 +378,7 @@ namespace fastgltf {
 		{ extensions::KHR_materials_pbrSpecularGlossiness,Extensions::KHR_materials_pbrSpecularGlossiness },
 #endif
 	}};
-	// clang-format on
+	// clang-m_format on
 
 	/**
 	 * Returns the name of the passed glTF extension.
@@ -456,7 +456,7 @@ namespace fastgltf {
 			auto& block = blocks[blockIdx];
 			auto availableSize = static_cast<std::size_t>(block.dataPointer - block.data.get());
 			if ((availableSize + bytes) > block.size) {
-				// The block can't fit the new allocation. We'll just create a new block and use that.
+				// The block can't fit the new m_allocation. We'll just create a new block and use that.
 				allocateNewBlock();
 				++blockIdx;
 				return do_allocate(bytes, alignment);
@@ -791,7 +791,7 @@ namespace fastgltf {
 	/**
 	 * Enum to represent the type of a glTF file. glTFs can either be the standard JSON file with
 	 * paths to buffers or with a base64 embedded buffers, or they can be in a so called GLB
-	 * container format which has two or more chunks of binary data, where one represents buffers
+	 * container m_format which has two or more chunks of binary data, where one represents buffers
 	 * and the other contains the JSON string.
 	 */
 	FASTGLTF_EXPORT enum class GltfType : std::uint8_t {
@@ -915,7 +915,7 @@ namespace fastgltf {
 		[[nodiscard]] Expected<Asset> loadGltfBinary(GltfDataGetter& buffer, std::filesystem::path directory, Options options = Options::None, Category categories = Category::All);
 
         /**
-         * This function can be used to m_frameSet callbacks so that you can control memory allocation for
+         * This function can be used to m_frameSet callbacks so that you can control memory m_allocation for
          * large buffers and images that are loaded from a glTF file. For example, one could use
          * the callbacks to map a GPU buffer through Vulkan or DirectX so that fastgltf can write
          * the buffer directly to the GPU to avoid a copy into RAM first. To remove the callbacks
@@ -950,7 +950,7 @@ namespace fastgltf {
     };
 
     /**
-     * This converts a compacted JSON string into a more readable pretty format.
+     * This converts a compacted JSON string into a more readable pretty m_format.
      */
     void prettyPrintJson(std::string& json);
 
@@ -1018,7 +1018,7 @@ namespace fastgltf {
          */
         void setBufferPath(std::filesystem::path folder);
         /**
-         * Sets the relative base path for image URIs.
+         * Sets the relative base path for m_image URIs.
          *
          * If folder.is_relative() returns false, this has no effect.
          */
@@ -1054,14 +1054,14 @@ namespace fastgltf {
 	public:
         /**
          * Writes a glTF JSON string generated from the given asset to the specified target file. This will also write
-         * all buffers and textures to disk using the buffer and image paths m_frameSet using Exporter::setBufferPath and
+         * all buffers and textures to disk using the buffer and m_image paths m_frameSet using Exporter::setBufferPath and
          * Exporter::setImagePath.
          */
 		Error writeGltfJson(const Asset& asset, std::filesystem::path target, ExportOptions options = ExportOptions::None);
 
 		/**
 		 * Writes a glTF binary (GLB) blob from the given asset to the specified target file. This will also write
-         * all buffers and textures to disk using the buffer and image paths m_frameSet using Exporter::setBufferPath and
+         * all buffers and textures to disk using the buffer and m_image paths m_frameSet using Exporter::setBufferPath and
          * Exporter::setImagePath.
          *
 		 * If the first buffer holds a sources::Vector, a sources::Array, a or sources::ByteView and the byte length is smaller than 2^32 (4.2GB),

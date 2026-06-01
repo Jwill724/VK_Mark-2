@@ -141,35 +141,35 @@ typedef struct rpmalloc_config_t {
 	//  actual start of the memory region due to this alignment. The alignment offset
 	//  will be passed to the memory unmap function. The alignment offset MUST NOT be
 	//  larger than 65535 (storable in an uint16_t), if it is you must use natural
-	//  alignment to shift it into 16 bits. If you m_frameSet a memory_map function, you
-	//  must also m_frameSet a memory_unmap function or else the default implementation will
+	//  alignment to shift it into 16 bits. If you set a memory_map function, you
+	//  must also set a memory_unmap function or else the default implementation will
 	//  be used for both. This function must be thread safe, it can be called by
 	//  multiple threads simultaneously.
 	void* (*memory_map)(size_t size, size_t* offset);
 	//! Unmap the memory pages starting at address and spanning the given number of bytes.
-	//  If release is m_frameSet to non-zero, the unmap is for an entire span range as returned by
+	//  If release is set to non-zero, the unmap is for an entire span range as returned by
 	//  a previous call to memory_map and that the entire range should be released. The
-	//  release argument holds the size of the entire span range. If release is m_frameSet to 0,
+	//  release argument holds the size of the entire span range. If release is set to 0,
 	//  the unmap is a partial decommit of a subset of the mapped memory range.
-	//  If you m_frameSet a memory_unmap function, you must also m_frameSet a memory_map function or
+	//  If you set a memory_unmap function, you must also set a memory_map function or
 	//  else the default implementation will be used for both. This function must be thread
 	//  safe, it can be called by multiple threads simultaneously.
 	void (*memory_unmap)(void* address, size_t size, size_t offset, size_t release);
 	//! Called when an assert fails, if asserts are enabled. Will use the standard assert()
-	//  if this is not m_frameSet.
+	//  if this is not set.
 	void (*error_callback)(const char* message);
 	//! Called when a call to map memory pages fails (out of memory). If this callback is
-	//  not m_frameSet or returns zero the library will return a null pointer in the allocation
+	//  not set or returns zero the library will return a null pointer in the allocation
 	//  call. If this callback returns non-zero the map call will be retried. The argument
 	//  passed is the number of bytes that was requested in the map call. Only used if
-	//  the default system memory map function is used (memory_map callback is not m_frameSet).
+	//  the default system memory map function is used (memory_map callback is not set).
 	int (*map_fail_callback)(size_t size);
 	//! Size of memory pages. The page size MUST be a power of two. All memory mapping
-	//  requests to memory_map will be made with size m_frameSet to a multiple of the page size.
+	//  requests to memory_map will be made with size set to a multiple of the page size.
 	//  Used if RPMALLOC_CONFIGURABLE is defined to 1, otherwise system page size is used.
 	size_t page_size;
 	//! Size of a span of memory blocks. MUST be a power of two, and in [4096,262144]
-	//  range (unless 0 - m_frameSet to 0 to use the default span size). Used if RPMALLOC_CONFIGURABLE
+	//  range (unless 0 - set to 0 to use the default span size). Used if RPMALLOC_CONFIGURABLE
 	//  is defined to 1.
 	size_t span_size;
 	//! Number of spans to map at each request to map new virtual memory blocks. This can
@@ -178,9 +178,9 @@ typedef struct rpmalloc_config_t {
 	//  committed memory should not be affected in the default implementation. Will be
 	//  aligned to a multiple of spans that match memory page size in case of huge pages.
 	size_t span_map_count;
-	//! Enable use of large/huge pages. If this flag is m_frameSet to non-zero and page size is
+	//! Enable use of large/huge pages. If this flag is set to non-zero and page size is
 	//  zero, the allocator will try to enable huge pages and auto detect the configuration.
-	//  If this is m_frameSet to non-zero and page_size is also non-zero, the allocator will
+	//  If this is set to non-zero and page_size is also non-zero, the allocator will
 	//  assume huge pages have been configured and enabled prior to initializing the
 	//  allocator.
 	//  For Windows, see https://docs.microsoft.com/en-us/windows/desktop/memory/large-page-support

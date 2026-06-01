@@ -13,13 +13,13 @@ namespace RendererDefinitions
 	inline constexpr uint32_t PUSH_SET   = 2u;
 
 	// Shared between global and frame
+	// ALL ssbos come from this table
 	inline constexpr uint32_t ADDRESS_TABLE_BINDING           = 0u;
 
 	// Global bindings
-	inline constexpr uint32_t GLOBAL_BINDING_ENV_INDEX        = 1u;
-	inline constexpr uint32_t GLOBAL_BINDING_DEBUG_INLINE     = 2u;
-	inline constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE     = 3u;
-	inline constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 4u;
+	inline constexpr uint32_t GLOBAL_BINDING_DEBUG_INLINE     = 1u;
+	inline constexpr uint32_t GLOBAL_BINDING_SAMPLER_CUBE     = 2u;
+	inline constexpr uint32_t GLOBAL_BINDING_COMBINED_SAMPLER = 3u;
 
 	// Frame bindings
 	inline constexpr uint32_t FRAME_BINDING_SCENE     = 1u;
@@ -40,10 +40,21 @@ namespace RendererDefinitions
 	inline constexpr uint32_t PUSH_BINDING_WRITE_4 = 10u;
 	inline constexpr uint32_t PUSH_BINDING_WRITE_5 = 11u;
 
+	inline constexpr uint32_t VERTS_LINE_COUNT         = 24u;
+	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES = 16u;
+
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_LIGHTS         = 0u;  // args[0]
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS       = 1u;  // args[1]
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES   = 2u;  // args[2]
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED = 3u;  // args[3]
+
+	// Lights or clusters?
+	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES         = INDIRECT_DISPATCH_SLOT_LIGHTS         * DISPATCH_SLOT_STRIDE_BYTES;
+	// Cluster count info
+	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_CLUSTERS       * DISPATCH_SLOT_STRIDE_BYTES;
+
+	inline constexpr uint64_t DISPATCH_CMAA2_SHAPES_OFFSET_BYTES   = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES   * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CMAA2_DEFERRED_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED * DISPATCH_SLOT_STRIDE_BYTES;
 
 	// -------------------
 	// Renderer constants
@@ -54,42 +65,72 @@ namespace RendererDefinitions
 	inline constexpr uint32_t MAX_FRAMES_IN_FLIGHT          = 3u;
 	inline constexpr uint32_t MAX_LIGHTS                    = 4096u; // standard
 	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 128u;
-	inline constexpr uint32_t LIGHT_FLAG_CASTS_SPOT_SHADOW  = 1u << 0;
-	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT         = 1u << 1;
-	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT_OFF     = 1u << 2;
 
 	// Static lights in global list
 	inline constexpr uint32_t LIGHT_LIST_STATIC_COUNT     = 1u;
 	//inline constexpr uint32_t LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
 	inline constexpr uint32_t LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
 
+	inline constexpr uint32_t LIGHT_FLAG_CASTS_SPOT_SHADOW  = 1u << 0;
+	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT         = 1u << 1;
+	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT_OFF     = 1u << 2;
+	inline constexpr uint32_t CLUSTERS_TILE_SLICE_X         = 32u;
+	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Y         = 32u;
+	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Z         = 24u;
+	//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = RD::MAX_LIGHTS * sizeof(uint32_t);
+	inline constexpr uint32_t MAX_LIGHTS_PER_CLUSTER        = 512u;
+	inline constexpr uint32_t MAX_VISIBLE_LIGHTS            = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
+
 	inline constexpr float ANISOTROPY_LEVEL_16        = 16.0f;
 	inline constexpr float ANISOTROPY_LEVEL_8         = 8.0f;
 	inline constexpr float ANISOTROPY_LEVEL_4         = 4.0f;
 	inline constexpr float ANISOTROPY_LEVEL_2         = 2.0f;
 
+
+	// FPS targets
+	inline constexpr float TARGET_FPS_60       = 60.0f;
+	inline constexpr float TARGET_FPS_90       = 90.0f;
+	inline constexpr float TARGET_FPS_100      = 100.0f;
+	inline constexpr float TARGET_FPS_120      = 120.0f;
+	inline constexpr float TARGET_FPS_144      = 144.0f;
+	inline constexpr float TARGET_FPS_165      = 165.0f;
+	inline constexpr float TARGET_FPS_180      = 180.0f;
+	inline constexpr float TARGET_FPS_200      = 200.0f;
+	inline constexpr float TARGET_FPS_240      = 240.0f;
+	inline constexpr float TARGET_FPS_300      = 300.0f;
+	inline constexpr float TARGET_FPS_360      = 360.0f;
+	inline constexpr float TARGET_FPS_480      = 480.0f;
+
 	// Resource Limits
 	inline constexpr uint32_t MAX_MIP_LEVELS          = 12u;
-	inline constexpr uint32_t MAX_ENV_SETS            = 8u;  // 128 uniform alignment
 	inline constexpr uint32_t MAX_SHADOW_CASCADES     = 4u;
 	inline constexpr uint32_t MAX_LUMINANCE_GROUPS    = 65536u;
 	inline constexpr uint32_t HI_Z_MIP_COUNT          = 5u;
+
+	inline constexpr uint32_t MAX_ENVIRONMENT_SETS            = 8u;  // 128 uniform alignment
+	inline constexpr uint32_t SPECULAR_PREFILTERED_MIP_LEVELS = 9;
+	inline constexpr float DIFFUSE_SAMPLE_DELTA               = 0.025f;
+	inline constexpr uint32_t PREFILTER_SAMPLE_COUNT          = 2048;
 
 	// Image array sizes
 	inline constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES      = 100u;
 	inline constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 10000u;
 
-	inline constexpr uint32_t VERTS_LINE_COUNT         = 24u;
-	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES = 16u;
+	// Shadow settings
+	inline constexpr uint32_t DIRECTIONAL_CSM_ATLAS_X = 4096u;
+	inline constexpr uint32_t DIRECTIONAL_CSM_ATLAS_Y = 4096u;
 
-	// Defined in order of execution in pipeline
+	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_X = 512u;
+	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_Y = 512u;
+
 	enum class Renderer_Pass
 	{
 		Prepass,
 		HiZGeneration,
-		ClusteredLightBuild,
+		LightCulling,
+		ClusteredLights,
 		SSAO,
-		DirectionalCSM,
+		DirectionalCSMAtlas,
 		FlashlightShadow,
 		ScreenSpaceContactShadows,
 		Skybox,
@@ -99,7 +140,7 @@ namespace RendererDefinitions
 		TransparentResolve,
 		VolumetricLighting,
 		TAA,
-		Exposure,
+		LuminanceExposure,
 		LensFlare,
 		FinalComposite,
 		CMAA2,
@@ -107,16 +148,23 @@ namespace RendererDefinitions
 		FXAA,
 		ChromaticAberration,
 
-		None
+		Count
 	};
+
+	struct PassTimestampRange
+	{
+		uint32_t beginQuery = UINT32_MAX;
+		uint32_t endQuery = UINT32_MAX;
+	};
+
+	inline constexpr size_t PASS_COUNT = static_cast<size_t>(Renderer_Pass::Count);
 
 	enum class Renderer_Shader
 	{
 		Opaque_v,
 		Opaque_f,
-		Transparent_v,
 		Transparent_f,
-		TransparentResolve_f,
+		TransparentResolve_c,
 		Skybox_v,
 		Skybox_f,
 
@@ -152,8 +200,8 @@ namespace RendererDefinitions
 		FlareBright_c,
 		FlareGen_c,
 
+		LightCulling_c,
 		ClusterTileSliceRanges_c,
-		VisibleLightList_c,
 		IndirectArgsLight_c,
 		ClusterCount_c,
 		ClusterScanOffsets_c,
@@ -178,6 +226,8 @@ namespace RendererDefinitions
 		Count
 	};
 
+	inline constexpr size_t SHADER_COUNT = static_cast<size_t>(Renderer_Shader::Count);
+
 	enum class Renderer_Pipeline
 	{
 		Opaque,
@@ -197,16 +247,17 @@ namespace RendererDefinitions
 		HDRToCubemap,
 		SpecularPrefilter,
 		DiffuseIrradiance,
+
 		BRDFLUT,
 
 		Prepass,
 		Shadow,
 		HiZGen,
 
+		SSAODepthPrefilter,
 		SSAO,
 		SSAOFilter,
 		SSAODenoise,
-		SSAODepthPrefilter,
 
 		VolumetricLight,
 		VolumetricLightBlur,
@@ -214,8 +265,9 @@ namespace RendererDefinitions
 		FlareBright,
 		FlareGen,
 
+		LightCulling,
+
 		ClusterTileSliceRanges,
-		VisibleLightList,
 		IndirectArgsLight,
 		ClusterCount,
 		ClusterScanOffsets,
@@ -240,6 +292,8 @@ namespace RendererDefinitions
 		Count
 	};
 
+	inline constexpr size_t PIPELINE_COUNT = static_cast<size_t>(Renderer_Pipeline::Count);
+
 	enum class Renderer_RenderTarget
 	{
 		Opaque,
@@ -251,7 +305,7 @@ namespace RendererDefinitions
 		PrevDepthResolved,
 		DepthRaw,
 		HiZ,
-		LinearizedHiZ,
+		LinearizedMinHiZ,
 		AORaw,
 		AOTemp,
 		AoEdgeInfo,
@@ -266,15 +320,17 @@ namespace RendererDefinitions
 		ViewSpaceNormals,
 		VolumetricLight,
 		VolumetricLightBlur,
-		DirectionalCSM,
-		SSContactShadows,
-		FlashlightShadowMap,
 		PostNonAAComposite,
 		CMAA2WorkingEdges,
 		SMAAEdges,
 		SMAAWeights,
+		SSContactShadows,
+		DirectionalCSMAtlas,
+		FlashlightShadowMap,
 		Count
 	};
+
+	inline constexpr size_t RENDER_TARGET_COUNT = static_cast<size_t>(Renderer_RenderTarget::Count);
 
 	enum class Renderer_Texture
 	{
@@ -291,8 +347,11 @@ namespace RendererDefinitions
 		Emissive,
 		Normal,
 		Checkerboard,
+
 		Count
 	};
+
+	inline constexpr size_t STATIC_TEXTURE_COUNT = static_cast<size_t>(Renderer_Texture::Count);
 
 	enum class Renderer_Sampler
 	{
@@ -313,10 +372,12 @@ namespace RendererDefinitions
 		Count
 	};
 
+	inline constexpr size_t SAMPLER_COUNT = static_cast<size_t>(Renderer_Sampler::Count);
 	
 	// ssbo buffers inside the bindless address table
 	enum class Renderer_Buffer
 	{
+	// Frame context owned
 		VisibleInstances,
 		IndirectDraws,
 
@@ -341,6 +402,8 @@ namespace RendererDefinitions
 		Lights,
 		Transforms,
 		PrevTransforms,
+
+	// Global access
 		Material,
 		Mesh,
 		Vertex,
@@ -349,6 +412,8 @@ namespace RendererDefinitions
 
 		Count
 	};
+
+	inline constexpr size_t ADDRESS_TABLE_BUFFER_COUNT = static_cast<size_t>(Renderer_Buffer::Count);
 
 	// Instance drawing counts and transforms
 	enum class InstancingMethod
@@ -422,6 +487,43 @@ namespace RendererDefinitions
 		uint32_t enableSettings            = 0;
 	};
 
+	enum class ImageAccess
+	{
+		Undefined,
+
+		TransferSrc,
+		TransferDst,
+
+		Read,
+		Write,
+
+		GraphicsColorWrite,
+		GraphicsDepthWrite,
+
+		Present,
+
+		DepthRead
+	};
+
+	enum class BufferAccess
+	{
+		Undefined,
+
+		TransferWrite,
+		TransferRead,
+
+		Read,
+		ComputeWrite,
+		ComputeReadWrite,
+
+		VertexRead,
+		IndexRead,
+		IndirectRead,
+
+		FragmentRead,
+		GraphicsRead
+	};
+
 	enum class ResourceAccess
 	{
 		Read,
@@ -444,5 +546,19 @@ namespace RendererDefinitions
 		Frame,
 		Push,
 		Count
+	};
+
+	struct RenderStateInfo
+	{
+		size_t frameNumber = 0u;
+		bool bIsOpaqueVisible      = false;
+		bool bIsTransparentVisible = false;
+		bool bHasVisibles          = bIsOpaqueVisible || bIsTransparentVisible;
+		bool bTemporalValid        = false;
+		bool bStateChanged         = false;
+		bool bFlashlightOn         = false;
+		bool bCopyPostAAImage      = false;
+		bool bShowImgui            = false;
+		uint32_t activeLightCount = 0u;
 	};
 }

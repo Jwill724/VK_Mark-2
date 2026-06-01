@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "Sync.h"
+#include "VulkanTypes.h"
 
 VkFence FencePool::GetFence(VkDevice device)
 {

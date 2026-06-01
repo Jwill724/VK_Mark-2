@@ -25,7 +25,7 @@ vec3 sampleSpecIBL(vec3 V, vec3 N, float roughness, vec3 F0, vec2 brdf, uint spe
 // Specular AA
 // Reduce sparkling/aliasing of specular highlights caused by
 // high-frequency normal variation
-float SpecularAA(float roughness, vec3 N)
+float specularAA(float roughness, vec3 N)
 {
 	vec3 dndx = dFdxFine(N);
 	vec3 dndy = dFdyFine(N);

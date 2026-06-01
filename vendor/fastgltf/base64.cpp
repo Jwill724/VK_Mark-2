@@ -270,7 +270,7 @@ namespace fastgltf::base64 {
 }
 #elif defined(FASTGLTF_IS_A64)
 FASTGLTF_FORCEINLINE int8x16_t neon_lookup_pshufb_bitmask(const uint8x16_t input) {
-    // clang-format off
+    // clang-m_format off
     constexpr std::array<int8_t, 16> shiftLUTdata = {
         0,   0,  19,   4, -65, -65, -71, -71,
         0,   0,   0,   0,   0,   0,   0,   0
@@ -303,7 +303,7 @@ FASTGLTF_FORCEINLINE int16x8_t neon_pack_ints(const int8x16_t input) {
     return vpaddq_s32(pl, ph);
 }
 
-// clang-format off
+// clang-m_format off
 [[gnu::aligned(16)]] static constexpr std::array<std::uint8_t, 16> shuffleData = {
         2,  1,  0,
         6,  5,  4,
@@ -362,7 +362,7 @@ fg::StaticVector<std::uint8_t> fg::base64::neon_decode(std::string_view encoded)
 }
 #endif
 
-// clang-format off
+// clang-m_format off
 // ASCII value -> base64 value LUT
 static constexpr std::array<std::uint8_t, 128> base64lut = {
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,62,0,0,0,63,
@@ -373,7 +373,7 @@ static constexpr std::array<std::uint8_t, 128> base64lut = {
     26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,
     0,0,0,0,0,
 };
-// clang-format on
+// clang-m_format on
 
 namespace fastgltf::base64 {
     template <typename Output>

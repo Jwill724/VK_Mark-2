@@ -3,7 +3,7 @@
 // Copyright (c) 2012 - 2016, Victor Zverovich
 // All rights reserved.
 //
-// For the license information refer to format.h.
+// For the license information refer to m_format.h.
 
 #include "fmt/format-inl.h"
 

@@ -1,9 +1,18 @@
 #pragma once
 
-#include <renderer/backend/VulkanTypes.h>
+#include "VulkanTypes.h"
+#include <span>
 
 struct AllocatedImage;
 struct AllocatedBuffer;
+
+enum class PushLayout : uint8_t
+{
+	Read,
+	Write,
+	DepthRead,
+	None
+};
 
 class DescriptorWriter
 {
@@ -14,7 +23,7 @@ public:
 		VkDescriptorSet set);
 
 	void WriteBindlessImages(
-		const std::vector<VkDescriptorImageInfo>& images,
+		std::span<const VkDescriptorImageInfo> images,
 		uint32_t binding,
 		VkDescriptorSet set,
 		Vulkan_DescriptorType type = Vulkan_DescriptorType::COMBINED_SAMPLER); // No storage for now
@@ -39,11 +48,10 @@ protected:
 		VkDescriptorType type = VK_DESCRIPTOR_TYPE_MAX_ENUM;
 		VkDescriptorSet dstSet = VK_NULL_HANDLE;
 
-		std::vector<VkDescriptorImageInfo> vImageInfos;  // Bindless array
-		VkDescriptorImageInfo imageInfo{};               // Push usage
+		std::vector<VkDescriptorImageInfo> imageInfos;
 	};
 
-	// Per-binding grouped image descriptor writes
+	// Per-binding grouped m_image descriptor writes
 	std::vector<ImageWriteGroup> m_imageWriteGroups;
 
 private:
@@ -73,8 +81,8 @@ public:
 	void WritePushImage(
 		uint32_t binding,
 		const AllocatedImage& image,
+		PushLayout imgLayout,
 		VkSampler sampler = VK_NULL_HANDLE,
-		VkImageLayout overrideLayout = VK_IMAGE_LAYOUT_MAX_ENUM,
 		uint32_t storageViewIndex = UINT32_MAX);
 
 	void UpdatePushLayout(

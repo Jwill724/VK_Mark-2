@@ -2,8 +2,6 @@
 
 #include "PipelineManager.h"
 #include "PipelineBuilder.h"
-#include "Shader.h"
-#include <common/Core.h>
 
 using PM = PipelineManager;
 
@@ -19,6 +17,7 @@ void PM::RegisterPipelines()
 	auto reg = [&](RP id, std::initializer_list<std::pair<RS, SS>> shaders) {
 		auto& p = m_pipelines[static_cast<size_t>(id)];
 		p = Pipeline(id);
+		//p.Handle().debugName = "Generic_Pipeline";
 		for (auto [shader, stage] : shaders)
 			p.AddShader(shader, stage);
 	};
@@ -38,7 +37,7 @@ void PM::RegisterPipelines()
 	reg(RP::Skybox,      {{ RS::Skybox_v,      SS::VERTEX_STAGE   },
 						  { RS::Skybox_f,      SS::FRAGMENT_STAGE }});
 
-	reg(RP::Transparent, {{ RS::Transparent_v, SS::VERTEX_STAGE   },
+	reg(RP::Transparent, {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
 						  { RS::Transparent_f, SS::FRAGMENT_STAGE }});
 
 	reg(RP::OBBLine,     {{ RS::ObbLine_v,     SS::VERTEX_STAGE   },
@@ -49,7 +48,7 @@ void PM::RegisterPipelines()
 		reg(id, {{ shader, SS::COMPUTE_STAGE }});
 	};
 
-	regC(RP::TransparentResolve,        RS::Transparent_f);
+	regC(RP::TransparentResolve,        RS::TransparentResolve_c);
 	regC(RP::ExposureReduce,            RS::ExposureReduce_c);
 	regC(RP::ExposureFinalize,          RS::ExposureFinalize_c);
 	regC(RP::FinalComposite,            RS::FinalComposite_c);
@@ -79,7 +78,7 @@ void PM::RegisterPipelines()
 	regC(RP::ClusterCount,              RS::ClusterCount_c);
 	regC(RP::ClusterScanOffsets,        RS::ClusterScanOffsets_c);
 	regC(RP::ClusterScatterIDs,         RS::ClusterScatterIDs_c);
-	regC(RP::VisibleLightList,          RS::VisibleLightList_c);
+	regC(RP::LightCulling,              RS::LightCulling_c);
 	regC(RP::IndirectArgsLight,         RS::IndirectArgsLight_c);
 	regC(RP::ScreenSpaceContactShadows, RS::ScreenSpaceContactShadows_c);
 	regC(RP::ChromaticAberration,       RS::ChromaticAberration_c);
@@ -163,13 +162,19 @@ void PM::CreatePipelineLayout(
 
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
 
-	m_globalLayout.pipelineLayout = pipelineLayout;
-	m_globalLayout.pushConstantDef = pcDef;
+	m_globalLayout.pipelineLayout = std::move(pipelineLayout);
+	m_globalLayout.pushConstantDef = std::move(pcDef);
 }
 
 void PM::InitPipelines(VkDevice device)
 {
-	// Default image formats
+	ASSERT(m_globalLayout.pipelineLayout != VK_NULL_HANDLE);
+	ASSERT(device != VK_NULL_HANDLE);
+
+	TheBuilder.SetPipelineLayout(m_globalLayout.pipelineLayout);
+	TheBuilder.InitCreateInfoStructs();
+
+	// Default m_image formats
 	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::RGBA16F), static_cast<VkFormat>(Vulkan_Format::D32));
 
 	RegisterPipelines();
@@ -178,6 +183,7 @@ void PM::InitPipelines(VkDevice device)
 	{
 		PipelinePreset& preset = m_pipelinePresets[static_cast<size_t>(pipeline.ID())];
 		PipelineHandle& handle = pipeline.Handle();
+		handle.layout = m_globalLayout;
 
 		if (handle.bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
 		{
@@ -187,7 +193,6 @@ void PM::InitPipelines(VkDevice device)
 			// Only raster pipelines will get topology info
 			handle.topology = preset.topology;
 		}
-		handle.swappable = IsPipelineSwapable(pipeline.ID());
 
 		pipeline.Build(TheBuilder, preset, device);
 	}
@@ -221,10 +226,9 @@ void PM::SetupPipelineConfig(const PipelinePreset& preset)
 	}
 	else // Default builder formats
 	{
-		std::vector<Vulkan_Format> baseColorFormat_v { static_cast<Vulkan_Format>(TheBuilder.GetColorFormat()) };
 		TheBuilder.ColorAndDepthConfig(
-			baseColorFormat_v,
-			(static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat())));
+			{ static_cast<Vulkan_Format>(TheBuilder.GetColorFormat()) },
+			{ static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat()) });
 	}
 
 	TheBuilder.DepthStencilConfig(
@@ -256,6 +260,9 @@ bool PM::Rebuild(RD::Renderer_Pipeline id, VkDevice device)
 	// Snapshot the old pipeline before build overwrites it
 	VkPipeline oldPipeline = m_pipelines[i].Handle().pipeline;
 
+	TheBuilder.SetPipelineLayout(m_globalLayout.pipelineLayout);
+	TheBuilder.InitCreateInfoStructs();
+
 	if (m_pipelines[i].Handle().bindPoint == VK_PIPELINE_BIND_POINT_GRAPHICS)
 	{
 		TheBuilder.InitCreateInfoStructs();
@@ -270,20 +277,6 @@ bool PM::Rebuild(RD::Renderer_Pipeline id, VkDevice device)
 		m_retiredPipelines.push_back({ oldPipeline, m_currentFrame });
 
 	return true;
-}
-
-std::vector<std::pair<RD::Renderer_Shader, PipelineHandle&>> PM::GetSwappablePipelines()
-{
-	std::vector<std::pair<RD::Renderer_Shader, PipelineHandle&>> swappables;
-	for (size_t i = 0; i < static_cast<size_t>(RD::Renderer_Pipeline::Count); ++i)
-	{
-		auto& handle = GetHandle(static_cast<RD::Renderer_Pipeline>(i));
-		if (handle.swappable)
-		{
-			swappables.emplace_back(static_cast<RD::Renderer_Shader>(i), handle);
-		}
-	}
-	return swappables;
 }
 
 void PM::Shutdown(VkDevice device)
@@ -329,7 +322,7 @@ PM::Pipeline& PM::Pipeline::AddShader(RD::Renderer_Shader shader, Vulkan_ShaderS
 
 bool PipelineManager::Pipeline::Build(PipelineBuilder& builder, PipelinePreset& preset, VkDevice device)
 {
-	if (m_shaders.empty()) return false; // Call AddShader() first
+	ASSERT(!m_shaders.empty()); // Call AddShader() first
 
 	// Modules are stack-local and lifetime controlled here
 	std::vector<VkShaderModule> modules;

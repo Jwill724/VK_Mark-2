@@ -20,8 +20,12 @@ layout(location = 7) flat in uint inMaterialID;
 layout(location = 0) out vec4  outAccum;
 layout(location = 1) out float outReveal;
 
-layout(push_constant) uniform ForwardPush {
+layout(push_constant) uniform ForwardPush
+{
 	uint activeLightCount;
+	uint diffuseID;
+	uint specularID;
+	uint brdfID;
 	float oitDepthScale;
 } pc;
 
@@ -82,14 +86,7 @@ void main()
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
 
-	// ENVIRONMENT INDICES
-	const uint             envMapID    = debug.activeEnvMap;
-	const EnvMapIndexArray envMapArray = getEnvIdxArray();
-	const uint             irrIdx      = envMapArray.indices[envMapID].x;
-	const uint             specIdx     = envMapArray.indices[envMapID].y;
-	const uint             brdfIdx     = envMapArray.indices[envMapID].z; // All using the same index
-
-	vec2 brdf = SampleTexture(brdfIdx, vec2(NdotV, rough)).rg;
+	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
 	spec *= MultiScatterEnergyComp(F0, brdf);
 
 	// Sun direct — no shadow for transparents
@@ -140,8 +137,8 @@ void main()
 	}
 
 	// IBL
-	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, specIdx);
-	vec3 iblDiff = sampleIrradiance(N, irrIdx) * albedo;
+	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, pc.specularID);
+	vec3 iblDiff = sampleIrradiance(N, pc.diffuseID) * albedo;
 
 	vec3 ambientDiffuse  = kD * iblDiff;
 	vec3 ambientSpecular = iblSpec;

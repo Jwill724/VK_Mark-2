@@ -3,7 +3,7 @@
 // Copyright (c) 2012 - present, Victor Zverovich
 // All rights reserved.
 //
-// For the license information refer to format.h.
+// For the license information refer to m_format.h.
 
 #ifndef FMT_BASE_H_
 #define FMT_BASE_H_
@@ -510,7 +510,7 @@ FMT_BEGIN_EXPORT
 
 /**
  * An implementation of `std::basic_string_view` for pre-C++17. It provides a
- * subset of the API. `fmt::basic_string_view` is used for format strings even
+ * subset of the API. `fmt::basic_string_view` is used for m_format strings even
  * if `std::basic_string_view` is available to prevent issues when a library is
  * compiled with a different `-std` option than the client code (which is not
  * recommended).
@@ -667,7 +667,7 @@ struct formatter {
   formatter() = delete;
 };
 
-/// Reports a format error at compile time or, via a `format_error` exception,
+/// Reports a m_format error at compile time or, via a `format_error` exception,
 /// at runtime.
 // This function is intentionally not constexpr to give a compile-time error.
 FMT_NORETURN FMT_API void report_error(const char* message);
@@ -699,7 +699,7 @@ enum class align { none, left, right, center, numeric };
 enum class sign { none, minus, plus, space };
 enum class arg_id_kind { none, index, name };
 
-// Basic format specifiers for built-in and string types.
+// Basic m_format specifiers for built-in and string types.
 class basic_specs {
  private:
   // Data is arranged as follows:
@@ -861,7 +861,7 @@ struct format_specs : basic_specs {
 };
 
 /**
- * Parsing context consisting of a format string range being parsed and an
+ * Parsing context consisting of a m_format string range being parsed and an
  * argument counter for automatic indexing.
  */
 template <typename Char = char> class parse_context {
@@ -881,11 +881,11 @@ template <typename Char = char> class parse_context {
                                    int next_arg_id = 0)
       : fmt_(fmt), next_arg_id_(next_arg_id) {}
 
-  /// Returns an iterator to the beginning of the format string range being
+  /// Returns an iterator to the beginning of the m_format string range being
   /// parsed.
   constexpr auto begin() const noexcept -> iterator { return fmt_.begin(); }
 
-  /// Returns an iterator past the end of the format string range being parsed.
+  /// Returns an iterator past the end of the m_format string range being parsed.
   constexpr auto end() const noexcept -> iterator { return fmt_.end(); }
 
   /// Advances the begin iterator to `it`.
@@ -1253,7 +1253,7 @@ template <typename Char> union arg_ref {
 
 // Format specifiers with width and precision resolved at formatting rather
 // than parsing time to allow reusing the same parsed specifiers with
-// different sets of arguments (precompilation of format strings).
+// different sets of arguments (precompilation of m_format strings).
 template <typename Char = char> struct dynamic_format_specs : format_specs {
   arg_ref<Char> width_ref;
   arg_ref<Char> precision_ref;
@@ -1322,13 +1322,13 @@ FMT_CONSTEXPR auto parse_arg_id(const Char* begin, const Char* end,
     else
       ++begin;
     if (begin == end || (*begin != '}' && *begin != ':'))
-      report_error("invalid format string");
+      report_error("invalid m_format string");
     else
       handler.on_index(index);
     return begin;
   }
   if (FMT_OPTIMIZE_SIZE > 1 || !is_name_start(c)) {
-    report_error("invalid format string");
+    report_error("invalid m_format string");
     return begin;
   }
   auto it = begin;
@@ -1391,7 +1391,7 @@ FMT_CONSTEXPR auto parse_dynamic_spec(const Char* begin, const Char* end,
       }
       if (begin != end && *begin == '}') return {++begin, kind};
     }
-    report_error("invalid format string");
+    report_error("invalid m_format string");
   }
   return {begin, kind};
 }
@@ -1423,7 +1423,7 @@ FMT_CONSTEXPR auto parse_precision(const Char* begin, const Char* end,
 
 enum class state { start, align, sign, hash, zero, width, precision, locale };
 
-// Parses standard format specifiers.
+// Parses standard m_format specifiers.
 template <typename Char>
 FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
                                       dynamic_format_specs<Char>& specs,
@@ -1442,7 +1442,7 @@ FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
     state current_state = state::start;
     FMT_CONSTEXPR void operator()(state s, bool valid = true) {
       if (current_state >= s || !valid)
-        report_error("invalid format specifier");
+        report_error("invalid m_format specifier");
       current_state = s;
     }
   } enter_state;
@@ -1455,7 +1455,7 @@ FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
     type arg_type;
 
     FMT_CONSTEXPR auto operator()(pres pres_type, int set) -> const Char* {
-      if (!in(arg_type, set)) report_error("invalid format specifier");
+      if (!in(arg_type, set)) report_error("invalid m_format specifier");
       specs.set_type(pres_type);
       return begin + 1;
     }
@@ -1486,18 +1486,18 @@ FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
     case '0':
       enter_state(state::zero);
       if (!is_arithmetic_type(arg_type))
-        report_error("format specifier requires numeric argument");
+        report_error("m_format specifier requires numeric argument");
       if (specs.align() == align::none) {
-        // Ignore 0 if align is specified for compatibility with std::format.
+        // Ignore 0 if align is specified for compatibility with std::m_format.
         specs.set_align(align::numeric);
         specs.set_fill('0');
       }
       ++begin;
       break;
-      // clang-format off
+      // clang-m_format off
     case '1': case '2': case '3': case '4': case '5':
     case '6': case '7': case '8': case '9': case '{':
-      // clang-format on
+      // clang-m_format on
       enter_state(state::width);
       begin = parse_width(begin, end, specs, specs.width_ref, ctx);
       break;
@@ -1526,7 +1526,7 @@ FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
     case 'A': specs.set_upper(); FMT_FALLTHROUGH;
     case 'a': return parse_presentation_type(pres::hexfloat, float_set);
     case 'c':
-      if (arg_type == type::bool_type) report_error("invalid format specifier");
+      if (arg_type == type::bool_type) report_error("invalid m_format specifier");
       return parse_presentation_type(pres::chr, integral_set);
     case 's':
       return parse_presentation_type(pres::string,
@@ -1542,7 +1542,7 @@ FMT_CONSTEXPR auto parse_format_specs(const Char* begin, const Char* end,
       // Parse fill and alignment.
       auto fill_end = begin + code_point_length(begin);
       if (end - fill_end <= 0) {
-        report_error("invalid format specifier");
+        report_error("invalid m_format specifier");
         return begin;
       }
       if (*begin == '{') {
@@ -1569,7 +1569,7 @@ FMT_CONSTEXPR FMT_INLINE auto parse_replacement_field(const Char* begin,
     -> const Char* {
   ++begin;
   if (begin == end) {
-    handler.on_error("invalid format string");
+    handler.on_error("invalid m_format string");
     return end;
   }
   int arg_id = 0;
@@ -1597,7 +1597,7 @@ FMT_CONSTEXPR FMT_INLINE auto parse_replacement_field(const Char* begin,
       return begin + 1;
     }
     if (c != ':') {
-      handler.on_error("missing '}' in format string");
+      handler.on_error("missing '}' in m_format string");
       return end;
     }
     break;
@@ -1605,7 +1605,7 @@ FMT_CONSTEXPR FMT_INLINE auto parse_replacement_field(const Char* begin,
   }
   begin = handler.on_format_specs(arg_id, begin + 1, end);
   if (begin == end || *begin != '}')
-    return handler.on_error("unknown format specifier"), end;
+    return handler.on_error("unknown m_format specifier"), end;
   return begin + 1;
 }
 
@@ -1621,7 +1621,7 @@ FMT_CONSTEXPR void parse_format_string(basic_string_view<Char> fmt,
       begin = p = parse_replacement_field(p - 1, end, handler);
     } else if (c == '}') {
       if (p == end || *p != '}')
-        return handler.on_error("unmatched '}' in format string");
+        return handler.on_error("unmatched '}' in m_format string");
       handler.on_text(begin, p);
       begin = ++p;
     }
@@ -1638,7 +1638,7 @@ FMT_CONSTEXPR inline auto check_char_specs(const format_specs& specs) -> bool {
   }
   if (specs.align() == align::numeric || specs.sign() != sign::none ||
       specs.alt()) {
-    report_error("invalid format specifier for char");
+    report_error("invalid m_format specifier for char");
   }
   return true;
 }
@@ -2188,7 +2188,7 @@ template <typename Context> class value {
   template <typename T, FMT_ENABLE_IF(std::is_pointer<T>::value ||
                                       std::is_member_pointer<T>::value)>
   value(const T&) {
-    // Formatting of arbitrary pointers is disallowed. If you want to format a
+    // Formatting of arbitrary pointers is disallowed. If you want to m_format a
     // pointer cast it to `void*` or `const void*`. In particular, this forbids
     // formatting of `[const] volatile char*` printed as bool by iostreams.
     static_assert(sizeof(T) == 0,
@@ -2230,7 +2230,7 @@ template <typename Context> class value {
 
   template <typename T, FMT_ENABLE_IF(!has_formatter<T, char_type>())>
   FMT_CONSTEXPR value(const T&, custom_tag) {
-    // Cannot format an argument; to make type T formattable provide a
+    // Cannot m_format an argument; to make type T formattable provide a
     // formatter<T> specialization: https://fmt.dev/latest/api.html#udt.
     type_is_unformattable_for<T, char_type> _;
   }
@@ -2243,7 +2243,7 @@ template <typename Context> class value {
     parse_ctx.advance_to(f.parse(parse_ctx));
     using qualified_type =
         conditional_t<has_formatter<const T, char_type>(), const T, T>;
-    // format must be const for compatibility with std::format and compilation.
+    // m_format must be const for compatibility with std::m_format and compilation.
     const auto& cf = f;
     ctx.advance_to(cf.format(*static_cast<qualified_type*>(arg), ctx));
   }
@@ -2673,16 +2673,16 @@ template <typename Char = char> struct runtime_format_string {
 };
 
 /**
- * Creates a runtime format string.
+ * Creates a runtime m_format string.
  *
  * **Example**:
  *
- *     // Check format string at runtime instead of compile-time.
+ *     // Check m_format string at runtime instead of compile-time.
  *     fmt::print(fmt::runtime("{:d}"), "I am not a number");
  */
 inline auto runtime(string_view s) -> runtime_format_string<> { return {{s}}; }
 
-/// A compile-time format string. Use `format_string` in the public API to
+/// A compile-time m_format string. Use `format_string` in the public API to
 /// prevent type deduction.
 template <typename... T> struct fstring {
  private:
@@ -2699,7 +2699,7 @@ template <typename... T> struct fstring {
   string_view str;
   using t = fstring;
 
-  // Reports a compile-time error if S is not a valid format string for T.
+  // Reports a compile-time error if S is not a valid m_format string for T.
   template <size_t N>
   FMT_CONSTEVAL FMT_ALWAYS_INLINE fstring(const char (&s)[N]) : str(s, N - 1) {
     using namespace detail;
@@ -2710,7 +2710,7 @@ template <typename... T> struct fstring {
 #ifdef FMT_ENFORCE_COMPILE_STRING
     static_assert(
         FMT_USE_CONSTEVAL && sizeof(s) != 0,
-        "FMT_ENFORCE_COMPILE_STRING requires format strings to use FMT_STRING");
+        "FMT_ENFORCE_COMPILE_STRING requires m_format strings to use FMT_STRING");
 #endif
   }
   template <typename S,
@@ -2722,7 +2722,7 @@ template <typename... T> struct fstring {
 #ifdef FMT_ENFORCE_COMPILE_STRING
     static_assert(
         FMT_USE_CONSTEVAL && sizeof(s) != 0,
-        "FMT_ENFORCE_COMPILE_STRING requires format strings to use FMT_STRING");
+        "FMT_ENFORCE_COMPILE_STRING requires m_format strings to use FMT_STRING");
 #endif
   }
   template <typename S,

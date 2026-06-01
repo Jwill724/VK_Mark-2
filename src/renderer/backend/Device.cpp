@@ -1,8 +1,6 @@
 #include "pch.h"
 
 #include "Device.h"
-#include "Core.h"
-#include <set>
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -22,18 +20,21 @@ void Device::IdleDevice() const { vkDeviceWaitIdle(m_context.device); }
 
 void Device::Cleanup()
 {
-	m_graphicsQueue.value().CleanupFencePools();
-	m_presentQueue.value().CleanupFencePools();
-	m_transferQueue.value().CleanupFencePools();
-	m_computeQueue.value().CleanupFencePools();
+	m_graphicsQueue.CleanupFencePools();
+	m_presentQueue.CleanupFencePools();
+	m_transferQueue.CleanupFencePools();
+	m_transferQueue.DestroyTimelineSemaphore();
+	m_computeQueue.CleanupFencePools();
+	//m_computeQueue.DestroyTimelineSemaphore();
 
-	m_threadCmdPoolManager.value().Cleanup(*this);
+	m_threadCmdPoolManager.Cleanup(*this);
 
 	vkDestroySurfaceKHR(m_context.instance, m_surface, nullptr);
 
 	vkDestroyDevice(m_context.device, nullptr);
 
-	if (Debugging.IsValidationLayerEnabled()) {
+	if (Debugging.IsValidationLayerEnabled())
+	{
 		DestroyDebugUtilsMessengerEXT(m_context.instance, nullptr);
 	}
 	vkDestroyInstance(m_context.instance, nullptr);
@@ -86,18 +87,22 @@ void Device::CreateInstance()
 
 				createInfo.pNext = &gpuValidationFeatures;
 			}
-			else {
+			else
+			{
 				createInfo.pNext = &debugCreateInfo;
 			}
 		}
-		else{
+		else
+		{
 			createInfo.enabledLayerCount = 0;
 			createInfo.pNext = nullptr;
-			fmt::print("Validation layers requested, but not available!\n");
+			fmt::println("Validation layers requested, but not available!");
 		}
 	}
 
 	VK_CHECK(vkCreateInstance(&createInfo, nullptr, &m_context.instance));
+
+	SetupDebugMessenger();
 }
 
 // ------------------------
@@ -106,6 +111,7 @@ void Device::CreateSurface(GLFWwindow* windowHandle)
 {
 	VK_CHECK(glfwCreateWindowSurface(m_context.instance, windowHandle, nullptr, &m_surface));
 }
+
 std::vector<const char*> Device::GetRequiredExtensions() const
 {
 	uint32_t glfwExtensionsCount = 0;
@@ -115,7 +121,8 @@ std::vector<const char*> Device::GetRequiredExtensions() const
 
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionsCount);
 
-	if (Debugging.IsValidationLayerEnabled()) {
+	if (Debugging.IsValidationLayerEnabled())
+	{
 		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 		extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
 	}
@@ -127,11 +134,14 @@ std::vector<const char*> Device::GetRequiredExtensions() const
 
 void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 {
-	m_pDeviceName            = candidate.name;
-	m_context.physicalDevice = candidate.pDevice;
-	m_deviceProps            = candidate.properties;
-	m_deviceLimits           = candidate.limits;
-	m_context.queueIndices   = candidate.queueIndices;
+	ASSERT(candidate.pDevice != VK_NULL_HANDLE);
+
+	m_pDeviceName             = candidate.name;
+	m_context.physicalDevice  = candidate.pDevice;
+	m_deviceProps             = candidate.properties;
+	m_deviceLimits            = candidate.limits;
+	m_context.queueIndices    = candidate.queueIndices;
+	m_swapchainSupportDetails = candidate.swapchainSupport;
 
 	// -------------------------
 	// Device queues assignment
@@ -158,39 +168,39 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 		uint32_t gFamilyIndex   = qIndices.graphicsFamily.value();
 		uint32_t gTimestampBits = queueFamilyProps[gFamilyIndex].timestampValidBits;
 		uniqueQueueFamilies.insert(gFamilyIndex);
-		m_graphicsQueue.emplace(gFamilyIndex, gTimestampBits, QueueType::Graphics);
+		m_graphicsQueue.Setup(gFamilyIndex, gTimestampBits, QueueType::Graphics);
 	}
 	if (qIndices.presentFamily.has_value()) // Present
 	{
 		uint32_t pFamilyIndex   = qIndices.presentFamily.value();
 		uint32_t pTimestampBits = queueFamilyProps[pFamilyIndex].timestampValidBits;
 		uniqueQueueFamilies.insert(pFamilyIndex);
-		m_presentQueue.emplace(pFamilyIndex, pTimestampBits, QueueType::Present);
+		m_presentQueue.Setup(pFamilyIndex, pTimestampBits, QueueType::Present);
 	}
 	if (qIndices.transferFamily.has_value()) // Transfer
 	{
 		uint32_t tFamilyIndex   = qIndices.transferFamily.value();
 		uint32_t tTimestampBits = queueFamilyProps[tFamilyIndex].timestampValidBits;
 		uniqueQueueFamilies.insert(tFamilyIndex);
-		m_transferQueue.emplace(tFamilyIndex, tTimestampBits, QueueType::Transfer);
+		m_transferQueue.Setup(tFamilyIndex, tTimestampBits, QueueType::Transfer);
 	}
 	if (qIndices.computeFamily.has_value()) // Compute
 	{
 		uint32_t cFamilyIndex   = qIndices.computeFamily.value();
 		uint32_t cTimestampBits = queueFamilyProps[cFamilyIndex].timestampValidBits;
 		uniqueQueueFamilies.insert(cFamilyIndex);
-		m_computeQueue.emplace(cFamilyIndex, cTimestampBits, QueueType::Compute);
+		m_computeQueue.Setup(cFamilyIndex, cTimestampBits, QueueType::Compute);
 	}
 
-	float queuePriority = 1.0f;
-	for (uint32_t queueFamily : uniqueQueueFamilies)
+	const float queuePriority = 1.0f;
+	for (auto queueFamily : uniqueQueueFamilies)
 	{
-		VkDeviceQueueCreateInfo queueCreateInfo{};
-		queueCreateInfo.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = queueFamily;
-		queueCreateInfo.queueCount       = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
-		queueCreateInfos.push_back(queueCreateInfo);
+		queueCreateInfos.emplace_back(VkDeviceQueueCreateInfo{
+			.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+			.queueFamilyIndex = queueFamily,
+			.queueCount       = 1,
+			.pQueuePriorities = &queuePriority
+		});
 	}
 
 	// ----------------
@@ -279,22 +289,24 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	// Retrieve queues only if they were created
 	if (qIndices.graphicsFamily.has_value())
 	{
-		m_graphicsQueue.value().GetDeviceQueue(m_context);
+		m_graphicsQueue.GetDeviceQueue(m_context);
 	}
 
 	if (qIndices.presentFamily.has_value())
 	{
-		m_presentQueue.value().GetDeviceQueue(m_context);
+		m_presentQueue.GetDeviceQueue(m_context);
 	}
 
 	if (qIndices.transferFamily.has_value())
 	{
-		m_transferQueue.value().GetDeviceQueue(m_context);
+		m_transferQueue.GetDeviceQueue(m_context);
+		m_transferQueue.InitTimelineSemaphore();
 	}
 
 	if (qIndices.computeFamily.has_value())
 	{
-		m_computeQueue.value().GetDeviceQueue(m_context);
+		m_computeQueue.GetDeviceQueue(m_context);
+		//m_computeQueue.InitTimelineSemaphore();
 	}
 }
 
@@ -304,7 +316,7 @@ void Device::InitThreadCommandPool(uint32_t threadCount)
 	// --------------------------------
 	// Mulithreaded command pool setup
 	// --------------------------------
-	m_threadCmdPoolManager.emplace(*this, threadCount);
+	m_threadCmdPoolManager.Init(*this, threadCount);
 }
 
 VkCommandPool Device::CreateCommandPool(QueueType qType)
@@ -313,11 +325,14 @@ VkCommandPool Device::CreateCommandPool(QueueType qType)
 	switch(qType)
 	{
 	case QueueType::Graphics:
-		qFamilyIndex = m_graphicsQueue.value().GetFamilyIndex();
+		qFamilyIndex = m_graphicsQueue.GetFamilyIndex();
+		break;
 	case QueueType::Transfer:
-		qFamilyIndex = m_transferQueue.value().GetFamilyIndex();
+		qFamilyIndex = m_transferQueue.GetFamilyIndex();
+		break;
 	case QueueType::Compute:
-		qFamilyIndex = m_computeQueue.value().GetFamilyIndex();
+		qFamilyIndex = m_computeQueue.GetFamilyIndex();
+		break;
 	}
 	ASSERT(qFamilyIndex != UINT32_MAX);
 
@@ -425,6 +440,32 @@ void Device::RecordDeferredCommand(
 	}
 }
 
+void Device::SubmitDeferredCommands(QueueType qType)
+{
+	bool validQueueType = false;
+	std::vector<VkCommandBuffer> cmds;
+	switch (qType)
+	{
+	case(QueueType::Graphics):
+		cmds = DeferredCmds.CollectGraphics();
+		m_graphicsQueue.SubmitCommand(cmds);
+		validQueueType = true;
+		break;
+	case(QueueType::Transfer):
+		cmds = DeferredCmds.CollectTransfer();
+		m_transferQueue.SubmitCommand(cmds);
+		validQueueType = true;
+		break;
+	case(QueueType::Compute):
+		cmds = DeferredCmds.CollectCompute();
+		m_computeQueue.SubmitCommand(cmds);
+		validQueueType = true;
+		break;
+	default:
+		ASSERT(validQueueType);
+	}
+}
+
 // Thread command pools
 void Device::ThreadCommandPoolManager::Init(Device& device, uint32_t threadCount)
 {
@@ -453,7 +494,6 @@ void Device::ThreadCommandPoolManager::Cleanup(Device& device)
 		}
 	}
 }
-
 
 uint32_t Device::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
 {
@@ -597,4 +637,14 @@ bool Device::CheckValidationLayerSupport()
 	}
 
 	return true;
+}
+
+SwapchainSupportDetails Device::GetSwapchainSupportDetails() const
+{
+	SwapchainSupportDetails details = m_swapchainSupportDetails;
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+		m_context.physicalDevice,
+		m_surface,
+		&details.capabilities);
+	return details;
 }

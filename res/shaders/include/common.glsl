@@ -55,10 +55,9 @@ const uint PUSH_SET   = 2u;
 const uint ADDRESS_TABLE_BINDING            = 0u;
 
 // global set specific
-const uint GLOBAL_BINDING_ENV_INDEX         = 1u;
-const uint GLOBAL_BINDING_DEBUG_INLINE      = 2u;
-const uint GLOBAL_BINDING_SAMPLER_CUBE      = 3u;
-const uint GLOBAL_BINDING_COMBINED_SAMPLER  = 4u;
+const uint GLOBAL_BINDING_DEBUG_INLINE      = 1u;
+const uint GLOBAL_BINDING_SAMPLER_CUBE      = 2u;
+const uint GLOBAL_BINDING_COMBINED_SAMPLER  = 3u;
 
 // Frame set specific UBOs
 const uint FRAME_BINDING_SCENE      = 1u;
@@ -228,17 +227,23 @@ struct Vertex
 	uint16_t  uvY;
 
 	// 4 bytes
-	uint32_t  colorRGBA8;
+	uint colorRGBA8;
 };
 // Total: 18 bytes
 
-vec3 unpackPosition(uint xy, uint z_nx)
+//vec3 unpackPosition(uint xy, uint z_nx)
+//{
+//	vec2 xy16 = unpackHalf2x16(xy);
+//	vec2 zn   = unpackHalf2x16(z_nx); // zn.x = posZ, zn.y = normalX raw (unused here)
+//	return vec3(xy16.x, xy16.y, zn.x);
+//}
+vec3 unpackPosition(Vertex vtx)
 {
-	vec2 xy16 = unpackHalf2x16(xy);
-	vec2 zn   = unpackHalf2x16(z_nx); // zn.x = posZ, zn.y = normalX raw (unused here)
-	return vec3(xy16.x, xy16.y, zn.x);
+	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
+	uint zw = uint(vtx.positionZ);
+	vec3 position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
+	return position;
 }
-
 
 vec2 octEncode(vec3 n) {
 	n /= abs(n.x) + abs(n.y) + abs(n.z);
@@ -389,7 +394,7 @@ struct EnvMapIndexArray {
 };
 
 // inline uniform block
-struct RenderToggles
+struct DebugToggles
 {
 	uint enableOBBs;
 	uint enableLensFlare;
@@ -424,7 +429,6 @@ struct RenderToggles
 };
 
 
-
 // =================================
 // === GLOBAL ssbo address table ===
 // =================================
@@ -436,11 +440,6 @@ uint64_t getABTGlobalAddress(uint id) { return globalAddressTable.addrs[id]; }
 // ===========================
 // === GLOBAL uniform sets ===
 // ===========================
-layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_ENV_INDEX) uniform EnvMapData {
-	EnvMapIndexArray envMapSet;
-};
-
-EnvMapIndexArray getEnvIdxArray() { return envMapSet; }
 
 layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_DEBUG_INLINE, scalar) uniform DebugData {
 	DebugToggles debug;

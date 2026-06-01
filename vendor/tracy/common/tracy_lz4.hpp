@@ -96,7 +96,7 @@
 #endif
 
 /*! LZ4_FREESTANDING :
- *  When this macro is m_frameSet to 1, it enables "freestanding mode" that is
+ *  When this macro is set to 1, it enables "freestanding mode" that is
  *  suitable for typical freestanding environment which doesn't support
  *  standard C library.
  *
@@ -424,7 +424,7 @@ LZ4LIB_API int                 LZ4_freeStreamDecode (LZ4_streamDecode_t* LZ4_str
 /*! LZ4_setStreamDecode() :
  *  An LZ4_streamDecode_t context can be allocated once and re-used multiple times.
  *  Use this function to start decompression of a new stream of blocks.
- *  A dictionary can optionally be m_frameSet. Use NULL or size 0 for a reset order.
+ *  A dictionary can optionally be set. Use NULL or size 0 for a reset order.
  *  Dictionary is presumed stable : it must remain accessible and unmodified during next decompression.
  * @return : 1 if OK, 0 if error
  */
@@ -635,11 +635,11 @@ LZ4_attach_dictionary(LZ4_stream_t* workingStream,
 #define LZ4_DECOMPRESS_INPLACE_BUFFER_SIZE(decompressedSize)   ((decompressedSize) + LZ4_DECOMPRESS_INPLACE_MARGIN(decompressedSize))  /**< note: presumes that compressedSize < decompressedSize. note2: margin is overestimated a bit, since it could use compressedSize instead */
 
 #ifndef LZ4_DISTANCE_MAX   /* history window size; can be user-defined at compile time */
-#  define LZ4_DISTANCE_MAX 65535   /* m_frameSet to maximum value by default */
+#  define LZ4_DISTANCE_MAX 65535   /* set to maximum value by default */
 #endif
 
 #define LZ4_COMPRESS_INPLACE_MARGIN                           (LZ4_DISTANCE_MAX + 32)   /* LZ4_DISTANCE_MAX can be safely replaced by srcSize when it's smaller */
-#define LZ4_COMPRESS_INPLACE_BUFFER_SIZE(maxCompressedSize)   ((maxCompressedSize) + LZ4_COMPRESS_INPLACE_MARGIN)  /**< maxCompressedSize is generally LZ4_COMPRESSBOUND(inputSize), but can be m_frameSet to any lower value, with the risk that compression can fail (return code 0(zero)) */
+#define LZ4_COMPRESS_INPLACE_BUFFER_SIZE(maxCompressedSize)   ((maxCompressedSize) + LZ4_COMPRESS_INPLACE_MARGIN)  /**< maxCompressedSize is generally LZ4_COMPRESSBOUND(inputSize), but can be set to any lower value, with the risk that compression can fail (return code 0(zero)) */
 
 }
 

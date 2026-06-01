@@ -17,7 +17,7 @@ private:
 #else
 	inline static bool m_validationLayerEnabled               = true;  // vulkan validation layers for tracking api errors
 	inline static bool m_gpuAssistedValidationEnabled         = false; // deeper validation layer that detects memory and sync during rendering
-	inline static bool m_consoleLogResourceTrackingEnabled    = true;  // bindless descriptor print info, buffer/image creation and destructions
+	inline static bool m_consoleLogResourceTrackingEnabled    = true;  // bindless descriptor print info, buffer/m_image creation and destructions
 #endif
 
 	inline static bool m_gpuTimingEnabled                     = true;  // tracks and measures gpu pass exeuction for performance analysis (tracy profiler)

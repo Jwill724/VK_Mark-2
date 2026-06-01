@@ -36,7 +36,7 @@
 #define AREATEX_SIZE (AREATEX_HEIGHT * AREATEX_PITCH)
 
 /**
- * Stored in R8G8 format. Load it in the following format:
+ * Stored in R8G8 m_format. Load it in the following m_format:
  *  - DX9:  D3DFMT_A8L8
  *  - DX10: DXGI_FORMAT_R8G8_UNORM
  */

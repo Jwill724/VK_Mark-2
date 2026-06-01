@@ -3843,8 +3843,8 @@ inline char *format_buffer(char *buf, int len, int decimal_exponent,
 } // namespace dtoa_impl
 
 /*!
-The format of the resulting decimal representation is similar to printf's %g
-format. Returns an iterator pointing past-the-end of the decimal representation.
+The m_format of the resulting decimal representation is similar to printf's %g
+m_format. Returns an iterator pointing past-the-end of the decimal representation.
 @note The input number must be finite, i.e. NaN's and Inf's are not supported.
 @note The buffer must be large enough.
 @note The result is NOT null-terminated.
@@ -4401,7 +4401,7 @@ template <typename binary> adjusted_mantissa compute_float(decimal &d) {
     }
     exp2 -= int32_t(shift);
   }
-  // We are now in the range [1/2 ... 1] but the binary format uses [1 ... 2].
+  // We are now in the range [1/2 ... 1] but the binary m_format uses [1 ... 2].
   exp2--;
   constexpr int32_t minimum_exponent = binary::minimum_exponent();
   while ((minimum_exponent + 1) > exp2) {
@@ -6715,7 +6715,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -6815,7 +6815,7 @@ public:
    * When calling this function, you lose
    * all the data.
    *
-   * The memory allocation is strict: you
+   * The memory m_allocation is strict: you
    * can you use this function to increase
    * or lower the amount of allocated memory.
    * Passing zero clears the memory.

@@ -3724,7 +3724,7 @@ namespace simdjson {
 class padded_string_view;
 
 /**
- * String with extra allocation for ease of use with parser::parse()
+ * String with extra m_allocation for ease of use with parser::parse()
  *
  * This is a move-only class, it cannot be copied.
  */
@@ -4167,7 +4167,7 @@ inline padded_string::padded_string(const std::string & str_ ) noexcept
 inline padded_string::padded_string(std::string_view sv_) noexcept
     : viable_size(sv_.size()), data_ptr(internal::allocate_padded_buffer(sv_.size())) {
   if(simdjson_unlikely(!data_ptr)) {
-    //allocation failed or zero size
+    //m_allocation failed or zero size
     viable_size = 0;
     return;
   }
@@ -4313,7 +4313,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -4684,7 +4684,7 @@ public:
    * When calling this function, you lose
    * all the data.
    *
-   * The memory allocation is strict: you
+   * The memory m_allocation is strict: you
    * can you use this function to increase
    * or lower the amount of allocated memory.
    * Passing zero clears the memory.
@@ -4801,7 +4801,7 @@ public:
    *         - IO_ERROR if there was an error opening or reading the file.
    *           Be mindful that on some 32-bit systems,
    *           the file size might be limited to 2 GB.
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails.
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails.
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -4847,7 +4847,7 @@ public:
    *         - IO_ERROR if there was an error opening or reading the file.
    *           Be mindful that on some 32-bit systems,
    *           the file size might be limited to 2 GB.
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails.
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails.
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -4892,7 +4892,7 @@ public:
    * If you m_frameSet realloc_if_needed to false (e.g., parser.parse(json, json_len, false)),
    * you must provide a buffer with at least SIMDJSON_PADDING extra bytes at the end.
    * The benefit of setting realloc_if_needed to false is that you avoid a temporary
-   * memory allocation and a copy.
+   * memory m_allocation and a copy.
    *
    * The padded bytes may be read. It is not important how you initialize
    * these bytes though we recommend a sensible default like null character values or spaces.
@@ -4933,7 +4933,7 @@ public:
    * @param realloc_if_needed Whether to reallocate and enlarge the JSON buffer to add padding.
    * @return An element pointing at the root of the document, or an error:
    *         - MEMALLOC if realloc_if_needed is true or the parser does not have enough capacity,
-   *           and memory allocation fails.
+   *           and memory m_allocation fails.
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -4995,7 +4995,7 @@ public:
    * @param realloc_if_needed Whether to reallocate and enlarge the JSON buffer to add padding.
    * @return An element pointing at the root of document, or an error:
    *         - MEMALLOC if realloc_if_needed is true or the parser does not have enough capacity,
-   *           and memory allocation fails.
+   *           and memory m_allocation fails.
    *         - CAPACITY if the parser does not have enough capacity and len > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -5049,7 +5049,7 @@ public:
    *
    * ### Error Handling
    *
-   * All errors are returned during iteration: if there is a global error such as memory allocation,
+   * All errors are returned during iteration: if there is a global error such as memory m_allocation,
    * it will be yielded as the first result. Iteration always stops after the first error.
    *
    * As with all other simdjson methods, non-exception error handling is readily available through
@@ -5085,7 +5085,7 @@ public:
    *                   (currently 32B), it will be replaced by simdjson::dom::MINIMAL_BATCH_SIZE.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
    *         - IO_ERROR if there was an error opening or reading the file.
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails.
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails.
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -5143,7 +5143,7 @@ public:
    *
    * ### Error Handling
    *
-   * All errors are returned during iteration: if there is a global error such as memory allocation,
+   * All errors are returned during iteration: if there is a global error such as memory m_allocation,
    * it will be yielded as the first result. Iteration always stops after the first error.
    *
    * As with all other simdjson methods, non-exception error handling is readily available through
@@ -5183,7 +5183,7 @@ public:
    *                   parse as many documents as possible in one tight loop.
    *                   Defaults to 10MB, which has been a reasonable sweet spot in our tests.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -5221,7 +5221,7 @@ public:
    *
    * @param capacity The new capacity.
    * @param max_depth The new max_depth. Defaults to DEFAULT_MAX_DEPTH.
-   * @return true if successful, false if allocation failed.
+   * @return true if successful, false if m_allocation failed.
    */
   [[deprecated("Use allocate() instead.")]]
   simdjson_warn_unused inline bool allocate_capacity(size_t capacity, size_t max_depth = DEFAULT_MAX_DEPTH) noexcept;
@@ -5586,7 +5586,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -8244,7 +8244,7 @@ inline error_code parser::ensure_capacity(document& target_document, size_t desi
   // 2. If we allow desired_capacity = 0 then it is possible to exit this function with implementation == nullptr.
   if(desired_capacity < MINIMAL_DOCUMENT_CAPACITY) { desired_capacity = MINIMAL_DOCUMENT_CAPACITY; }
   // If we don't have enough capacity, (try to) automatically bump it.
-  // If the document needs allocation, do it too.
+  // If the document needs m_allocation, do it too.
   // Both in one if statement to minimize unlikely branching.
   //
   // Note: we must make sure that this function is called if capacity() == 0. We do so because we
@@ -33417,7 +33417,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -34347,7 +34347,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -34430,7 +34430,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -34491,7 +34491,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -34565,7 +34565,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -36323,7 +36323,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -44464,7 +44464,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -45394,7 +45394,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -45477,7 +45477,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -45538,7 +45538,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -45612,7 +45612,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -47370,7 +47370,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -56003,7 +56003,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -56933,7 +56933,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -57016,7 +57016,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -57077,7 +57077,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -57151,7 +57151,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -58909,7 +58909,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -67539,7 +67539,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -68469,7 +68469,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -68552,7 +68552,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -68613,7 +68613,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -68687,7 +68687,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -70445,7 +70445,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -79192,7 +79192,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -80122,7 +80122,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -80205,7 +80205,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -80266,7 +80266,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -80340,7 +80340,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -82098,7 +82098,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -91162,7 +91162,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -92092,7 +92092,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -92175,7 +92175,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -92236,7 +92236,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -92310,7 +92310,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -94068,7 +94068,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -102609,7 +102609,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -103539,7 +103539,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -103622,7 +103622,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -103683,7 +103683,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -103757,7 +103757,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -105515,7 +105515,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;
@@ -114069,7 +114069,7 @@ enum class log_level : int32_t {
 // for performance purposes and if you are using the loggers, you do not care about
 // performance (or should not).
 static inline void log_headers() noexcept;
-// If args are provided, title will be treated as format string
+// If args are provided, title will be treated as m_format string
 template <typename... Args>
 static inline void log_line(const json_iterator &iter, token_position index, depth_t depth, const char *title_prefix, const char *title, std::string_view detail, logger::log_level level, Args&&... args) noexcept;
 template <typename... Args>
@@ -114999,7 +114999,7 @@ static constexpr size_t DEFAULT_BATCH_SIZE = 1000000;
  * most users will want a much larger batch size.
  *
  * All non-negative MINIMAL_BATCH_SIZE values should be 'safe' except that, obviously, no JSON
- * document can ever span 0 or 1 byte and that very large values would create memory allocation issues.
+ * document can ever span 0 or 1 byte and that very large values would create memory m_allocation issues.
  */
 static constexpr size_t MINIMAL_BATCH_SIZE = 32;
 
@@ -115082,7 +115082,7 @@ public:
    * @return The document, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -115143,7 +115143,7 @@ public:
    * @return The iterator, or an error:
    *         - INSUFFICIENT_PADDING if the input has less than SIMDJSON_PADDING extra bytes.
    *         - MEMALLOC if realloc_if_needed the parser does not have enough capacity, and memory
-   *           allocation fails.
+   *           m_allocation fails.
    *         - EMPTY if the document is all whitespace.
    *         - UTF8_ERROR if the document is not valid UTF-8.
    *         - UNESCAPED_CHARS if a string contains control characters that must be escaped
@@ -115217,7 +115217,7 @@ public:
    *                   less than 4 GB), and there is no multithreading. In this mode, the batch_size parameter
    *                   is effectively ignored, as it is m_frameSet to at least the document size.
    * @return The stream, or an error. An empty input will yield 0 documents rather than an EMPTY error. Errors:
-   *         - MEMALLOC if the parser does not have enough capacity and memory allocation fails
+   *         - MEMALLOC if the parser does not have enough capacity and memory m_allocation fails
    *         - CAPACITY if the parser does not have enough capacity and batch_size > max_capacity.
    *         - other json errors if parsing fails. You should not rely on these errors to always the same for the
    *           same document: they may vary under runtime dispatch (so they may vary depending on your system and hardware).
@@ -116975,7 +116975,7 @@ private:
   ) noexcept;
 
   /**
-   * Parse the first document in the buffer. Used by begin(), to handle allocation and
+   * Parse the first document in the buffer. Used by begin(), to handle m_allocation and
    * initialization.
    */
   inline void start() noexcept;

@@ -8,8 +8,8 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 {
 	{ RD::Renderer_Shader::Opaque_v,                    "core/forwardVS.spv"                        },
 	{ RD::Renderer_Shader::Opaque_f,                    "core/opaque_forward.spv"                   },
-	{ RD::Renderer_Shader::Transparent_v,               "core/transparent_forward.spv"              },
-	{ RD::Renderer_Shader::Transparent_f,               "core/transparent_resolve.spv"              },
+	{ RD::Renderer_Shader::Transparent_f,               "core/transparent_forward.spv"              },
+	{ RD::Renderer_Shader::TransparentResolve_c,        "core/transparent_resolve.spv"              },
 	{ RD::Renderer_Shader::ObbLine_v,                   "debug/obb_lineVS.spv"                      },
 	{ RD::Renderer_Shader::ObbLine_f,                   "debug/obb_lineFS.spv"                      },
 	{ RD::Renderer_Shader::Skybox_v,                    "environment/skyboxVS.spv"                  },
@@ -46,7 +46,7 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::ClusterCount_c,              "clustered/cluster_count.spv"               },
 	{ RD::Renderer_Shader::ClusterScanOffsets_c,        "clustered/cluster_scan_offsets.spv"        },
 	{ RD::Renderer_Shader::ClusterScatterIDs_c,         "clustered/cluster_scatter_ids.spv"         },
-	{ RD::Renderer_Shader::VisibleLightList_c,          "clustered/visible_light_list.spv"          },
+	{ RD::Renderer_Shader::LightCulling_c,              "clustered/light_culling.spv"               },
 	{ RD::Renderer_Shader::IndirectArgsLight_c,         "clustered/lights_indirect_args.spv"        },
 	{ RD::Renderer_Shader::ScreenSpaceContactShadows_c, "shadows/bend_sss.spv"                      },
 	{ RD::Renderer_Shader::ChromaticAberration_c,       "post_process/chromatic_aberration.spv"     }

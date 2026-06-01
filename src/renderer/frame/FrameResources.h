@@ -1,13 +1,18 @@
 #pragma once
 
-#include "Core.h"
 #include "renderer/RendererDefinitions.h"
+#include "Bounds.h"
+#include "../scene/World.h"
 
 namespace RD = RendererDefinitions;
 
-//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = RD::MAX_LIGHTS * sizeof(uint32_t);
-inline constexpr uint32_t MAX_LIGHTS_PER_CLUSTER = 512u;
-inline constexpr uint32_t MAX_VISIBLE_LIGHTS = RD::MAX_LIGHTS - RD::LIGHT_LIST_STATIC_COUNT;
+inline constexpr uint32_t TIMESTAMP_PASS_COUNT       = static_cast<uint32_t>(RD::PASS_COUNT);
+inline constexpr uint32_t PASS_TIMESTAMP_QUERY_COUNT = TIMESTAMP_PASS_COUNT * 2u;
+inline constexpr uint32_t FRAME_BEGIN_QUERY          = PASS_TIMESTAMP_QUERY_COUNT;
+inline constexpr uint32_t FRAME_END_QUERY            = PASS_TIMESTAMP_QUERY_COUNT + 1u;
+inline constexpr uint32_t TIMESTAMP_QUERY_COUNT      = PASS_TIMESTAMP_QUERY_COUNT + 2u;
+
+namespace RD = RendererDefinitions;
 
 // An instance basically = mesh
 struct Instance
@@ -19,9 +24,56 @@ struct Instance
 	uint32_t passType     = UINT32_MAX;  // opaque/transparent material pass
 };
 
+struct CoreSlab
+{
+	uint32_t first = 0u;
+	uint32_t stride = 0u;
+	uint32_t usedCopies = 0u;
+};
+
+struct BVHNode
+{
+	AABB box; // node bounds
+	glm::vec3 extent;
+	glm::vec3 origin;
+	float sphereRadius;
+	int left = -1; // child indices; -1 => leaf
+	int right = -1;
+	uint32_t first = 0; // start index into leafIndex[]
+	uint16_t count = 0; // leaf count (0 for internal)
+};
+
+// Instances in VisibilityState go into one row per cullable unit,
+// that can be drawm = mesh x copy.
+// Built when copies change (multi-static slider), not per-frame.
+
+struct VisibilityState
+{
+	std::vector<Instance> instances;    // per mesh X copy
+	std::vector<AABB> worldAABBs;       // parallel to coreStatic
+	std::vector<uint32_t> transformIDs; // parallel to coreStatic
+	std::unordered_map<ModelID, CoreSlab> slabs;
+
+	std::vector<uint32_t> active;    // live rows (indices into coreStatic)
+	std::vector<uint32_t> leafIndex; // permutation used by BVH build
+	std::vector<BVHNode> bvh;
+
+	void Cleanup()
+	{
+		instances.clear();
+		worldAABBs.clear();
+		transformIDs.clear();
+		slabs.clear();
+
+		active.clear();
+		leafIndex.clear();
+		bvh.clear();
+	}
+};
+
 enum class LightType
 {
-	Directional,
+	//Directional,
 	Point,
 	Spot
 };
@@ -41,13 +93,6 @@ struct LocalLight
 
 	float outerCos = 0.8f;
 	uint32_t flags = 0;
-};
-
-struct ClusterTileSliceRanges
-{
-	uint32_t tileSizeX = 32;
-	uint32_t tileSizeY = 32;
-	uint32_t zSlices   = 24;
 };
 
 struct Cmaa2BufferSizes
@@ -85,14 +130,84 @@ struct ClusterBufferSizes
 	void UpdateClusterBufferSizes(
 		uint32_t screenWidth,
 		uint32_t screenHeight,
-		uint32_t tileSizeX,
-		uint32_t tileSizeY,
-		uint32_t zSlices);
+		uint32_t tileSizeX = RD::CLUSTERS_TILE_SLICE_X,
+		uint32_t tileSizeY = RD::CLUSTERS_TILE_SLICE_Y,
+		uint32_t zSlices   = RD::CLUSTERS_TILE_SLICE_Z);
+};
+
+struct alignas(16) LightClustersData
+{
+	uint32_t tileSizeX = RD::CLUSTERS_TILE_SLICE_X;
+	uint32_t tileSizeY = RD::CLUSTERS_TILE_SLICE_Y;
+	uint32_t zSlices = RD::CLUSTERS_TILE_SLICE_Z;
+	uint32_t maxLightsPerCluster = RD::MAX_LIGHTS_PER_CLUSTER;
+
+	uint32_t tileCountX = 0;
+	uint32_t tileCountY = 0;
+	uint32_t clusterCount = 0;
+	uint32_t maxVisibleLights = RD::MAX_VISIBLE_LIGHTS;
+
+	glm::vec4 pad0[6] = { glm::vec4(0.0f) };
+};
+
+// Indirect draw buffer can fit in lots of different draws
+struct IndirectDrawRange
+{
+	uint32_t firstCommand = 0;   // first indirect command index in frameCtx.indirectDraws
+	uint32_t commandCount = 0;   // number of VkDrawIndexedIndirectCommand entries for this pass
+	uint32_t visibleCount = 0;   // number of visible instances (sum of cmd.instanceCount)
+	uint32_t firstInstance = 0;
+};
+
+// Some chunk of a flat array that needs to go
+struct DirtyRange
+{
+	uint32_t offset = 0;
+	uint32_t count = 0;
+};
+
+// === Per-frame sync ===
+// Compares current VirtualInstance.usedCopies/firstTransform to visState.slabs and decides:
+//  - grow: appendSceneCopies + buildBVH()
+//  - shrink: shrinkSceneCopiesLazy + buildBVH()
+//  - relocate-only: rewriteSceneSlice + refitBVH()
+//  - no change: do nothing
+// Returns whether topology changed or a refit-only is needed, plus any transform upload ranges.
+struct VisibilitySyncResult
+{
+	bool topologyChanged = false;   // grew/shrank -> call buildBVH()
+	bool refitOnly = false;         // only transforms changed -> call refitBVH()
+	std::vector<DirtyRange> dirtyTransformRanges; // for GPU uploads
 };
 
 // === RENDER PASS PUSH CONSTANTS ===
 
-struct alignas(16) SSAOPush {
+
+struct alignas(16) BindlessAccessPush
+{
+	uint32_t id0 = UINT32_MAX;
+	uint32_t id1 = UINT32_MAX;
+	uint32_t id2 = UINT32_MAX;
+	uint32_t id3 = UINT32_MAX;
+};
+
+struct alignas(16) ForwardPush
+{
+	uint32_t activeLightCount = 0;
+	float oitDepthScale = 400.0f;
+
+	uint32_t diffuseID = UINT32_MAX;
+	uint32_t specularID = UINT32_MAX;
+	uint32_t brdfID = UINT32_MAX;
+
+	uint32_t flashlightShadowMapID = UINT32_MAX;
+	uint32_t flashlightCookieTexID = UINT32_MAX;
+	uint32_t pad0;
+	glm::mat4 flashlightVP;
+};
+
+struct alignas(16) SSAOPush
+{
 	glm::vec2 tanHalfFov{0.0f};
 	float effectRadius = 0.5f;
 	float effectFalloffRange = 0.6f;
@@ -119,14 +234,16 @@ struct alignas(16) SSAOPush {
 	uint32_t isFinalPass = 0u;
 };
 
-struct alignas(16) TAAPush {
+struct alignas(16) TAAPush
+{
 	float minBlend = 0.05f;
 	float maxBlend = 0.5f;
 	float depthDisocclusionScale = 200.0f;
 	float pad0;
 };
 
-struct alignas(16) VolumetricPush {
+struct alignas(16) VolumetricPush
+{
 	float density = 0.002f;
 	float scatteringStrength = 15.0f;
 	float extinction = 0.08f;
@@ -146,7 +263,8 @@ struct alignas(16) VolumetricPush {
 	glm::vec2 pad0{ 0.0f };
 };
 
-struct alignas(16) LensFlarePush {
+struct alignas(16) LensFlarePush
+{
 	// Quarter res
 	glm::vec2 outputRes{ 0.0f };
 	glm::vec2 invOutputRes{ 0.0f };
@@ -181,7 +299,8 @@ struct alignas(16) LensFlarePush {
 };
 
 // Active IDs map 1:1 with worldaabbs
-struct alignas(16) VisibilityPush {
+struct alignas(16) VisibilityPush
+{
 	uint64_t activeIDsBufferAddr;
 	uint64_t worldAABBsBufferAddr;
 	uint32_t activeCount;
@@ -191,7 +310,8 @@ struct alignas(16) VisibilityPush {
 };
 
 // Screen space contact shadows usage
-struct alignas(16) SSSPush {
+struct alignas(16) SSSPush
+{
 	glm::vec4 lightCoords{0.0f};
 
 	glm::ivec2 waveOffsets{0};
@@ -203,33 +323,44 @@ struct alignas(16) SSSPush {
 	float pad0;
 };
 
-struct alignas(16) ForwardPush {
-	uint32_t activeLightCount;
-	float oitDepthScale = 400.0f;
-	uint32_t flashlightShadowMapID = UINT32_MAX;
-	uint32_t flashlightCookieTexID = UINT32_MAX;
-	glm::mat4 flashlightVP;
-};
-
-struct alignas(16) CMAA2Push {
+struct alignas(16) CMAA2Push
+{
 	uint32_t halfWidth;
 	uint32_t maxShapeCandidates;
 	uint32_t maxDeferredItems;
 	uint32_t maxDeferredLocations;
-	// x: symmetry correction offset, y: dampening effect, z: simple blurriness
+	// x: symmetry correction offset, y: dampening effect, z: simple blurriness, w: indirect dispatch pass : 0 candidate / 1 deferred loc count
 	glm::vec4 params = glm::vec4(0.22f, 0.15f, 0.1f, 0.0f);
 };
 
-struct alignas(16) BindlessAccessPush {
-	uint32_t id0 = UINT32_MAX;
-	uint32_t id1 = UINT32_MAX;
-	uint32_t id2 = UINT32_MAX;
-	uint32_t id3 = UINT32_MAX;
+struct alignas(16) SkyboxPush
+{
+	glm::mat4 invVp = glm::mat4(0.0f);
+	uint32_t skyboxID = UINT32_MAX;
+	uint32_t pad0[3];
 };
 
-struct ToneMappingSettings {
+struct alignas(16) LightCullingPush
+{
+	uint32_t activeLightCount;
+	uint32_t pad0;
+	uint32_t pad1;
+	uint32_t pad2;
+	glm::vec4 planes[6];
+};
+
+struct ToneMappingSettings
+{
 	float cameraExposure = 0.18f;
 	float maxLuminance = 0.0f;
 	float midLuminance = 0.0f;
 	float minLuminance = 0.0f;
+};
+
+struct alignas(16) LumaExposurePush
+{
+	uint32_t totalLumaTiles = 0;
+	float cameraExposure = 0.0;
+	float adaptationSpeed = 0.0;
+	float deltaTime = 0.0;
 };

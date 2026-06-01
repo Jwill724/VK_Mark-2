@@ -1,45 +1,49 @@
 #pragma once
 
-#include "UserInput.h"
-#include "engine/platform/profiler/Profiler.h"
+#include "Core.h"
+#include <cmath>
 
-constexpr float CAMERA_MIN_FOV = 70.0f;
-constexpr float CAMERA_MAX_FOV = 103.0f;
+struct GLFWwindow;
+class Profiler;
+struct Extents2D;
 
-class Camera {
+class Camera
+{
 public:
-	Camera() = default;
-	~Camera() = default;
+	static constexpr float CAMERA_MIN_FOV = 70.0f;
+	static constexpr float CAMERA_MAX_FOV = 103.0f;
 
-	inline const glm::vec3& getPosition() const { return _position; }
-	inline const glm::vec3& getVelocity() const { return _velocity; }
-	inline const glm::vec3& getView() const { return _currentView; }
+	void SetSpawnPoint(glm::vec3 spawn) { m_defaultSpawn = spawn; }
 
-	inline float getPitch() const { return _pitch; }
-	inline float getYaw() const { return _yaw; }
+	const glm::vec3& GetPosition() const { return m_position; }
+	const glm::vec3& GetVelocity() const { return m_velocity; }
+	const glm::vec3& GetView() const { return m_currentView; }
 
-	inline float getAcceleration() const { return _acceleration; }
-	inline float getDamping() const { return _damping; }
+	float GetPitch() const { return m_pitch; }
+	float GetYaw() const { return m_yaw; }
 
-	inline float getFovY() const { return _fovY; }
-	inline float getNearClip() const { return _nearClip; }
-	inline float getFarClip() const { return _farClip; }
+	float GetAcceleration() const { return m_acceleration; }
+	float GetDamping() const { return m_damping; }
 
-	inline float getSensitivity() const { return _sensitivity; }
-	inline float getMaxSpeed() const { return _maxSpeed; }
-	inline float getMinSpeed() const { return _minSpeed; }
+	float GetFovY() const { return m_fovY; }
+	float GetNearClip() const { return m_nearClip; }
+	float GetFarClip() const { return m_farClip; }
 
-	inline float getAperture() const { return _aperture; }
-	inline float getShutterSpeed() const { return _shutterSpeed; }
-	inline float getISO() const { return _iso; }
+	float GetSensitivity() const { return m_sensitivity; }
+	float GetMaxSpeed() const { return m_maxSpeed; }
+	float GetMinSpeed() const { return m_minSpeed; }
 
-	inline glm::vec2 getDelta() const { return _delta; }
+	float GetAperture() const { return m_aperture; }
+	float GetShutterSpeed() const { return m_shutterSpeed; }
+	float GetISO() const { return m_iso; }
+
+	glm::vec2 GetDelta() const { return m_delta; }
 
 	// https://github.com/PanosK92/SpartanEngine/blob/1621c3e27fe671a029bbd0f9ccf22fd1c6c1fb3c/source/runtime/World/Components/Camera.h#L107
-	inline float getExposure() const {
+	float GetExposure() const {
 		// computed ev (using squared aperture for photometric accuracy)
 		// note: this calculates the exposure scale factor (1/l_avg)
-		float ev100 = std::log2((_aperture * _aperture) / _shutterSpeed * 100.0f / _iso);
+		float ev100 = std::log2((m_aperture * m_aperture) / m_shutterSpeed * 100.0f / m_iso);
 		// standard standard output sensitivity (sos) calculation
 		// 1.2 is a common calibration constant (matches ue5/frostbite)
 		// this maps the average scene luminance to middle grey (0.18)
@@ -48,60 +52,61 @@ public:
 		return base_exposure;
 	}
 
-	inline void setPosition(const glm::vec3& pos) { _position = pos; }
-	inline void setVelocity(const glm::vec3& vel) { _velocity = vel; }
+	void SetPosition(const glm::vec3& pos) { m_position = pos; }
+	void SetVelocity(const glm::vec3& vel) { m_velocity = vel; }
 
-	inline void setPitch(float pitch) { _pitch = pitch; }
-	inline void setYaw(float yaw) { _yaw = yaw; }
+	void SetPitch(float pitch) { m_pitch = pitch; }
+	void SetYaw(float yaw) { m_yaw = yaw; }
 
-	inline void setAcceleration(float accel) { _acceleration = accel; }
-	inline void setDamping(float damping) { _damping = damping; }
+	void SetAcceleration(float accel) { m_acceleration = accel; }
+	void SetDamping(float damping) { m_damping = damping; }
 
-	inline void setFovY(float fov) { _fovY = fov; }
-	inline void setNearClip(float nearClip) { _nearClip = nearClip; }
-	inline void setFarClip(float farClip) { _farClip = farClip; }
+	void SetFovY(float fov) { m_fovY = fov; }
+	void SetNearClip(float nearClip) { m_nearClip = nearClip; }
+	void SetFarClip(float farClip) { m_farClip = farClip; }
 
-	inline void setSensitivity(float s) { _sensitivity = s; }
-	inline void setMaxSpeed(float s) { _maxSpeed = s; }
-	inline void setMinSpeed(float s) { _minSpeed = s; }
+	void SetSensitivity(float s) { m_sensitivity = s; }
+	void SetMaxSpeed(float s) { m_maxSpeed = s; }
+	void SetMinSpeed(float s) { m_minSpeed = s; }
 
-	inline void setAperture(float aperture) { _aperture = aperture; }
-	inline void setShutterSpeed(float shutter) { _shutterSpeed = shutter; }
-	inline void setISO(float iso) { _iso = iso; }
+	void SetAperture(float aperture) { m_aperture = aperture; }
+	void SetShutterSpeed(float shutter) { m_shutterSpeed = shutter; }
+	void SetISO(float iso) { m_iso = iso; }
 
-	inline void setDelta(glm::vec2 delta) { _delta = delta; }
+	void SetDelta(glm::vec2 delta) { m_delta = delta; }
 
+	glm::mat4 GetViewMatrix() const;
+	glm::mat4 GetRotationMatrix() const;
 
-	glm::mat4 getViewMatrix() const;
-	glm::mat4 getRotationMatrix() const;
-
-	void processInput(GLFWwindow* window, Profiler& profiler, bool& isTemporalInvalid);
-	void reset();
+	void ProcessInput(GLFWwindow* window, Profiler& profiler, const Extents2D& drawExtent, bool& isTemporalInvalid);
+	void Reset();
 
 private:
-	glm::vec3 _position{0.0f};
-	glm::vec3 _velocity{0.0f};
+	glm::vec3 m_position{0.0f};
+	glm::vec3 m_velocity{0.0f};
 
-	float _pitch{0.0f}; // vertical
-	float _yaw{0.0f};   // horizontal
+	float m_pitch{0.0f}; // vertical
+	float m_yaw{0.0f};   // horizontal
 
-	float _acceleration{0.0f};
-	float _damping{0.0f};
+	float m_acceleration{0.0f};
+	float m_damping{0.0f};
 
-	glm::vec3 _currentView{0.0f};
+	glm::vec3 m_currentView{0.0f};
 
-	glm::vec2 _delta{0.0f};
+	glm::vec2 m_delta{0.0f};
 
-	float _sensitivity{0.0f};
-	float _maxSpeed{0.0f};
-	float _minSpeed{0.0f};
+	float m_sensitivity{0.0f};
+	float m_maxSpeed{0.0f};
+	float m_minSpeed{0.0f};
 
-	float _fovY{0.0f};
-	float _nearClip{0.1f};
-	float _farClip{10000.0f}; // Good for d32 precision
+	float m_fovY{0.0f};
+	float m_nearClip{0.1f};
+	float m_farClip{10000.0f}; // Good for d32 precision
 
 	// Day time only defaults
-	float _aperture{16.0f};
-	float _shutterSpeed{1.0f / 60.0f};
-	float _iso{100.0f};
+	float m_aperture{16.0f};
+	float m_shutterSpeed{1.0f / 60.0f};
+	float m_iso{100.0f};
+
+	glm::vec3 m_defaultSpawn;
 };

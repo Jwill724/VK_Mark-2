@@ -39,7 +39,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -51,7 +51,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;%(AdditionalIncludeDirectories)
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
       </AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
@@ -76,9 +76,6 @@
     <ClCompile Include="src\core\Engine.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\EngineState.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="src\core\JobSystem.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -88,13 +85,7 @@
     <ClCompile Include="src\core\loader\MeshLoader.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\Environment.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="src\core\AssetManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\ResourceManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\core\Window.cpp">
@@ -115,23 +106,119 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer (root) -->
-    <ClCompile Include="src\renderer\frame\FrameResources.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- renderer / passes -->
-    <ClCompile Include="src\renderer\passes\RenderPasses.cpp">
+    <!-- renderer / rendergraph -->
+    <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\passes\ScopeFunctions.cpp">
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphBuilder.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- renderer / rendergraph / scopes -->
+    <ClCompile Include="src\renderer\rendergraph\scopes\GraphicsScope.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\scopes\ComputeScope.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- renderer / graph / passes / graphics -->
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\DebugOrientedBoundingBoxPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\OpaqueForwardPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\SkyboxPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\TransparentForwardPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- renderer / graph / passes / compute -->
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ChromaticAberrationPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LightCullingPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ConservativeMorphologicalAntiAliasing2Pass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\EnvironmentMapGenerationPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\FastApproximateAntiAliasing.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\FinalCompositePass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\HierarchicalDepthGenerationPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LensFlarePass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LuminanceExposurePass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceAmbientOcclusionPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceContactShadowsPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\SubpixelMorphologicalAntiAliasingPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <!-- renderer / graph / passes / command -->
+    <ClCompile Include="src\renderer\rendergraph\passes\command\ImguiDrawPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\command\SwapchainPresentPass.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\command\TemporalCopyPass.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / frame -->
     <ClCompile Include="src\renderer\frame\FrameContext.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\renderer\frame\FrameResources.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <!-- renderer / scene -->
-    <ClCompile Include="src\renderer\scene\RenderScene.cpp">
+    <ClCompile Include="src\renderer\scene\Scene.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\scene\World.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\scene\DrawPreparation.cpp">
@@ -162,7 +249,7 @@
     <ClCompile Include="src\renderer\backend\Sync.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\Descriptor.cpp">
+    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp">
@@ -171,21 +258,23 @@
     <ClCompile Include="src\renderer\backend\PipelineManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\renderer\backend\ImageUtils.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\renderer\backend\BufferBarriers.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <!-- renderer / backend / memory -->
     <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\memory\Allocator.cpp">
+    <ClCompile Include="src\renderer\backend\memory\ResourceAllocator.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <!-- renderer / backend / utils -->
-    <ClCompile Include="src\renderer\backend\utils\BufferUtils.cpp">
+    <ClCompile Include="src\renderer\backend\memory\BindlessImageTable.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\utils\ImageUtils.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\utils\BarrierUtils.cpp">
+    <ClCompile Include="src\renderer\backend\memory\BindlessBDATable.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- third-party (no PCH) -->
@@ -296,14 +385,12 @@
     <ClInclude Include="src\common\Vertex.h" />
     <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\common\EngineTypes.h" />
-    <ClInclude Include="src\common\EngineConstants.h" />
     <!-- core -->
+    <ClInclude Include="src\core\AssetUploadTypes.h" />
     <ClInclude Include="src\core\Logging.h" />
     <ClInclude Include="src\core\Engine.h" />
-    <ClInclude Include="src\core\EngineState.h" />
     <ClInclude Include="src\core\JobSystem.h" />
     <ClInclude Include="src\core\AssetManager.h" />
-    <ClInclude Include="src\core\ResourceManager.h" />
     <ClInclude Include="src\core\Environment.h" />
     <ClInclude Include="src\core\loader\TextureLoader.h" />
     <ClInclude Include="src\core\loader\MeshLoader.h" />
@@ -322,38 +409,47 @@
     <ClInclude Include="src\renderer\backend\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
-    <ClInclude Include="src\renderer\frame\FrameResources.h" />
     <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <!-- renderer / frame -->
     <ClInclude Include="src\renderer\frame\FrameContext.h" />
-    <!-- renderer / passes -->
-    <ClInclude Include="src\renderer\passes\RenderPasses.h" />
-    <ClInclude Include="src\renderer\passes\ScopeFunctions.h" />
+    <ClInclude Include="src\renderer\frame\FrameResources.h" />
+    <!-- renderer / rendergraph -->
+    <ClInclude Include="src\renderer\rendergraph\RenderGraph.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderPasses.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphResources.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphBuilder.h" />
+    <!-- renderer / scopes -->
+    <ClInclude Include="src\renderer\rendergraph\scopes\GraphicsScope.h" />
+    <ClInclude Include="src\renderer\rendergraph\scopes\ComputeScope.h" />
     <!-- renderer / scene -->
     <ClInclude Include="src\renderer\scene\LightingSystem.h" />
-    <ClInclude Include="src\renderer\scene\RenderScene.h" />
+    <ClInclude Include="src\renderer\scene\Scene.h" />
+    <ClInclude Include="src\renderer\scene\World.h" />
     <ClInclude Include="src\renderer\scene\Visibility.h" />
     <ClInclude Include="src\renderer\scene\DrawPreparation.h" />
     <!-- renderer / backend -->
     <ClInclude Include="src\renderer\backend\Debugging.h" />
-    <ClInclude Include="src\renderer\backend\Descriptor.h" />
+    <ClInclude Include="src\renderer\backend\DescriptorManager.h" />
     <ClInclude Include="src\renderer\backend\DescriptorWriter.h" />
     <ClInclude Include="src\renderer\backend\PipelineManager.h" />
     <ClInclude Include="src\renderer\backend\PipelineBuilder.h" />
+    <ClInclude Include="src\renderer\backend\PipelineBundles.h" />
+    <ClInclude Include="src\renderer\backend\ImageUtils.h" />
+    <ClInclude Include="src\renderer\backend\BufferBarriers.h" />
     <ClInclude Include="src\renderer\backend\VulkanForward.h" />
     <ClInclude Include="src\renderer\backend\VulkanTypes.h" />
-    <!-- renderer / backend / utils -->
-    <ClInclude Include="src\renderer\backend\utils\BufferUtils.h" />
-    <ClInclude Include="src\renderer\backend\utils\ImageUtils.h" />
-    <ClInclude Include="src\renderer\backend\utils\BarrierUtils.h" />
     <!-- renderer / backend / memory -->
     <ClInclude Include="src\renderer\backend\memory\Budgets.h" />
     <ClInclude Include="src\renderer\backend\memory\Staging.h" />
-    <ClInclude Include="src\renderer\backend\memory\Allocator.h" />
+    <ClInclude Include="src\renderer\backend\memory\TextureStaging.h" />
+    <ClInclude Include="src\renderer\backend\memory\ResourceAllocator.h" />
     <ClInclude Include="src\renderer\backend\memory\VmaForward.h" />
+    <ClInclude Include="src\renderer\backend\memory\ImageDescs.h" />
     <ClInclude Include="src\renderer\backend\memory\AllocatedBuffer.h" />
     <ClInclude Include="src\renderer\backend\memory\AllocatedImage.h" />
+    <ClInclude Include="src\renderer\backend\memory\BindlessBDATable.h" />
+    <ClInclude Include="src\renderer\backend\memory\BindlessImageTable.h" />
     <!-- assets -->
     <ClInclude Include="res\assets\AreaTex.h" />
     <ClInclude Include="res\assets\SearchTex.h" />
@@ -369,7 +465,7 @@
     <None Include="res\shaders\clustered\cluster_scatter_ids.comp" />
     <None Include="res\shaders\clustered\cluster_tile_slice_ranges.comp" />
     <None Include="res\shaders\clustered\lights_indirect_args.comp" />
-    <None Include="res\shaders\clustered\visible_light_list.comp" />
+    <None Include="res\shaders\clustered\light_culling.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\core\transparent_forward.frag" />
     <None Include="res\shaders\core\transparent_resolve.comp" />
@@ -416,7 +512,7 @@
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->
-    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\conjure_enum;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(IncludePath)</IncludePath>
     <!-- Library Directories for project-wide usage -->
     <LibraryPath>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>

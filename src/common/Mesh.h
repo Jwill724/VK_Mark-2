@@ -57,6 +57,7 @@ public:
 	}
 
 	const std::vector<Mesh>& GetMeshes() const { return m_meshes; }
+	const std::vector<MeshLODs>& GetLods() const { return m_meshLODs; }
 
 	std::vector<uint32_t> ExtractAllMeshIDs() const
 	{
@@ -74,7 +75,6 @@ public:
 	uint32_t RegisterMesh(const Mesh& data)
 	{
 		uint32_t id = static_cast<uint32_t>(m_meshes.size());
-		if (id == UINT32_MAX) return;
 
 		m_meshes.push_back(data);
 

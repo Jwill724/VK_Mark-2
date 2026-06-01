@@ -1,91 +1,106 @@
 #include "pch.h"
 
 #include "Engine.h"
+#include "Window.h"
+#include "JobSystem.h"
+#include "../profiler/EditorImgui.h"
 #include "renderer/Renderer.h"
-#include "platform/profiler/Profiler.h"
-
-static std::unique_ptr<Window> _window;
-static std::unique_ptr<EngineState> engineState;
+#include "renderer/backend/Device.h"
+#include "renderer/backend/PipelineManager.h"
+#include "renderer/backend/DescriptorManager.h"
 
 namespace Engine
 {
-	GLFWwindow* GetWindow() { return _window ? _window->GetWindowHandle() : nullptr; }
-	// just returns the whole window struct for its use
-	const Window& WindowModMode() { return *_window; }
+	Window _mainWindow;
+	const Window& GetWindow() { return _mainWindow; }
 
-	//VkExtent2D _windowExtent{ 1920, 1080 };
-	VkExtent2D _windowExtent{ 1280, 960 };
-	VkExtent2D& GetWindowExtent() { return _windowExtent; }
+	Renderer _renderer;
+	JobSystem _jobSystem;
+	Editor _editor;
 
-	Profiler _engineProfiler;
-	Profiler& GetProfiler() { return _engineProfiler; }
+	static constexpr uint32_t DEFAULT_WIN_EXTENT_W = 1280;
+	static constexpr uint32_t DEFAULT_WIN_EXTENT_H = 960;
 
 	bool _isInitialized{ false };
 	bool IsInitialized() { return _isInitialized; }
 
-	void ResetState();
-
 	void Cleanup();
+
+	void Run();
 }
 
-EngineState& Engine::GetState() {
-	if (!engineState) engineState = std::make_unique<EngineState>();
-	return *engineState;
-}
-void Engine::ResetState() {
-	engineState = std::make_unique<EngineState>();
-	engineState->Init();
-}
+void Engine::Run()
+{
+	_mainWindow.Init(DEFAULT_WIN_EXTENT_W, DEFAULT_WIN_EXTENT_H, "Mark_2.5");
 
-void Engine::InitWindow() {
-	_window = std::make_unique<Window>();
-	_window->InitWindow(_windowExtent.width, _windowExtent.height);
-}
+	_jobSystem.Init();
 
-void Engine::ResetWindow() {
-	if (_window) {
-		_window->Cleanup();
-	}
-	if (_isInitialized == false) return; // shutdown
+	_renderer.Init(
+		_mainWindow,
+		_jobSystem);
 
-	_window = std::make_unique<Window>();
-	_window->InitWindow(_windowExtent.width, _windowExtent.height);
-}
+	_editor.InitImgui(_renderer, _mainWindow.GetWindowHandle());
 
-void Engine::Run() {
-	InitWindow();
-	Backend::InitVulkanCore();
-
-	GetState().Init();
 	_isInitialized = true;
 
-	GetState().LoadAssets(_engineProfiler);
-	GetState().InitRenderer(_engineProfiler);
+	// Load assets
 
-	while (_window->IsOpen()) {
-		_window->PollEvents();
+	bool hasWindowResized = false;
 
-		if (_window->ThrottleIfWindowUnfocused(0.033)) continue;
+	while (_mainWindow.IsOpen())
+	{
+		_mainWindow.PollEvents();
 
-		_engineProfiler.beginFrame();
+		if (_mainWindow.ThrottleIfWindowUnfocused(0.033)) continue;
 
-		GetState().RenderFrame(_engineProfiler);
+		_renderer.BeingFrameTimer();
 
-		_engineProfiler.endFrame();
+		_renderer.TickVramUsage();
+
+		if (_renderer.ShouldRenderImgui())
+		{
+			_editor.RenderImgui(_renderer);
+		}
+
+		hasWindowResized = _renderer.PrepareFrame();
+		if (hasWindowResized)
+		{
+			_mainWindow.UpdateWindowSize();
+			_renderer.UpdateDrawExtentUsage(_mainWindow.GetExtent());
+			continue; // This condition shouldn't occur, but try again?
+		}
+
+		_renderer.ResetFrameStats();
+		_renderer.StartTimer();
+		_renderer.UpdateRendererContext(_mainWindow.GetWindowHandle());
+		_renderer.EndSceneUpdateTimer();
+
+		_renderer.StartTimer();
+		_renderer.RecordRenderCommand();
+		_renderer.EndDrawTimer();
+
+		hasWindowResized = _renderer.SubmitFrame();
+		if (hasWindowResized)
+		{
+			_mainWindow.UpdateWindowSize();
+			_renderer.UpdateDrawExtentUsage(_mainWindow.GetExtent());
+		}
+
+		_renderer.EndFrameTimer();
 	}
 
 	Cleanup();
 }
 
-void Engine::Cleanup() {
-	if (_isInitialized) {
+void Engine::Cleanup()
+{
+	if (_isInitialized)
+	{
 		_isInitialized = false;
-		Backend::DeviceIdle();
-
-		GetState().Shutdown();
-
-		Backend::CleanupBackend();
-
-		ResetWindow();
+		_renderer.StallDevice();
+		_editor.Shutdown(_renderer);
+		_renderer.Cleanup();
+		_jobSystem.Shutdown();
+		_mainWindow.Cleanup();
 	}
 }

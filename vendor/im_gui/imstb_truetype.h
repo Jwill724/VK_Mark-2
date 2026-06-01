@@ -80,7 +80,7 @@
 //   1.12 (2016-10-25) suppress warnings about casting away const with -Wcast-qual
 //   1.11 (2016-04-02) fix unused-variable warning
 //   1.10 (2016-04-02) user-defined fabs(); rare memory leak; remove duplicate typedef
-//   1.09 (2016-01-16) warning fix; avoid crash on outofmem; use allocation userdata properly
+//   1.09 (2016-01-16) warning fix; avoid crash on outofmem; use m_allocation userdata properly
 //   1.08 (2015-09-13) document stbtt_Rasterize(); fixes for vertical & horizontal edges
 //   1.07 (2015-08-01) allow PackFontRanges to accept arrays of sparse codepoints;
 //                     variant PackFontRanges to pack and render in separate phases;
@@ -179,7 +179,7 @@
 //
 //      Font Size in Pixels or Points
 //         The preferred interface for specifying font sizes in stb_truetype
-//         is to specify how tall the font's vertical extent should be in pixels.
+//         is to specify how tall the font's vertical m_extent should be in pixels.
 //         If that sounds good enough, skip the next paragraph.
 //
 //         Most font APIs instead use "points", which are a common typographic
@@ -725,7 +725,7 @@ struct stbtt_fontinfo
 
    int loca,head,glyf,hhea,hmtx,kern,gpos,svg; // table locations as offset from start of .ttf
    int index_map;                     // a cmap mapping for our chosen character encoding
-   int indexToLocFormat;              // format needed to map from glyph index to glyph
+   int indexToLocFormat;              // m_format needed to map from glyph index to glyph
 
    stbtt__buf cff;                    // cff font data
    stbtt__buf charstrings;            // the charstring index
@@ -1580,7 +1580,7 @@ STBTT_DEF int stbtt_FindGlyphIndex(const stbtt_fontinfo *info, int unicode_codep
             stbtt_uint32 start_glyph = ttULONG(data+index_map+16+mid*12+8);
             if (format == 12)
                return start_glyph + unicode_codepoint-start_char;
-            else // format == 13
+            else // m_format == 13
                return start_glyph;
          }
       }
@@ -1612,7 +1612,7 @@ static int stbtt__GetGlyfOffset(const stbtt_fontinfo *info, int glyph_index)
    STBTT_assert(!info->cff.size);
 
    if (glyph_index >= info->numGlyphs) return -1; // glyph index out of range
-   if (info->indexToLocFormat >= 2)    return -1; // unknown index->glyph map format
+   if (info->indexToLocFormat >= 2)    return -1; // unknown index->glyph map m_format
 
    if (info->indexToLocFormat == 0) {
       g1 = info->glyf + ttUSHORT(info->data + info->loca + glyph_index * 2) * 2;
@@ -1760,7 +1760,7 @@ static int stbtt__GetGlyphShapeTT(const stbtt_fontinfo *info, int glyph_index, s
          vertices[off+i].y = (stbtt_int16) y;
       }
 
-      // now convert them to our format
+      // now convert them to our m_format
       num_vertices=0;
       sx = sy = cx = cy = scx = scy = 0;
       for (i=0; i < n; ++i) {
@@ -2323,12 +2323,12 @@ STBTT_DEF int  stbtt_GetKerningTableLength(const stbtt_fontinfo *info)
 {
    stbtt_uint8 *data = info->data + info->kern;
 
-   // we only look at the first table. it must be 'horizontal' and format 0.
+   // we only look at the first table. it must be 'horizontal' and m_format 0.
    if (!info->kern)
       return 0;
    if (ttUSHORT(data+2) < 1) // number of tables, need at least 1
       return 0;
-   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in format
+   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in m_format
       return 0;
 
    return ttUSHORT(data+10);
@@ -2339,12 +2339,12 @@ STBTT_DEF int stbtt_GetKerningTable(const stbtt_fontinfo *info, stbtt_kerningent
    stbtt_uint8 *data = info->data + info->kern;
    int k, length;
 
-   // we only look at the first table. it must be 'horizontal' and format 0.
+   // we only look at the first table. it must be 'horizontal' and m_format 0.
    if (!info->kern)
       return 0;
    if (ttUSHORT(data+2) < 1) // number of tables, need at least 1
       return 0;
-   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in format
+   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in m_format
       return 0;
 
    length = ttUSHORT(data+10);
@@ -2367,12 +2367,12 @@ static int stbtt__GetGlyphKernInfoAdvance(const stbtt_fontinfo *info, int glyph1
    stbtt_uint32 needle, straw;
    int l, r, m;
 
-   // we only look at the first table. it must be 'horizontal' and format 0.
+   // we only look at the first table. it must be 'horizontal' and m_format 0.
    if (!info->kern)
       return 0;
    if (ttUSHORT(data+2) < 1) // number of tables, need at least 1
       return 0;
-   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in format
+   if (ttUSHORT(data+8) != 1) // horizontal flag must be m_frameSet in m_format
       return 0;
 
    l = 0;
@@ -2604,7 +2604,7 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
             }
 
             default:
-               return 0; // Unsupported position format
+               return 0; // Unsupported position m_format
          }
       }
    }

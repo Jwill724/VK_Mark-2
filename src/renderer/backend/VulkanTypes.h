@@ -1,12 +1,12 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include <vector>
-#include <array>
+#include "EngineTypes.h"
+#include <string>
 #include <optional>
 #include <fmt/base.h>
 
-inline const char* vkResultToString(VkResult result)
+constexpr const char* vkResultToString(VkResult result)
 {
 	switch (result)
 	{
@@ -41,18 +41,39 @@ inline const char* vkResultToString(VkResult result)
 			fmt::println(stderr,                                   \
 				"[VK_CHECK] Vulkan Error: {} in file {} at line {}", \
 				vkResultToString(err), __FILE__, __LINE__);        \
-			abort();                                               \
+			std::abort();                                          \
 		}                                                          \
 	} while (0)
 
-#define INVARIANT(x)                                           \    do {                                                       \        if (!(x)) {                                            \            fmt::println(stderr,                               \                "[FATAL INVARIANT FAILURE] {}:{} - {}",       \                __FILE__, __LINE__, #x);                      \            std::fflush(stderr);                              \            std::abort();                                      \        }                                                      \    } while (0)
+#define REQUIRE_HARDWARE(x, msg)                                             \
+	do {                                                                     \
+		if (!(x)) {                                                          \
+			fmt::println(stderr,                                             \
+				"[HARDWARE REQUIREMENT NOT MET] {} | {}",                   \
+				#x, msg);                                                    \
+			std::fflush(stderr);                                             \
+			std::abort();                                                    \
+		}                                                                    \
+	} while (0)
 
+// For fatal errors involving the gpu, primarly sync or dirty buffer pointers issues.
+// Prevent the gpu from fucking freezing.
+#define INVARIANT(x)                                           \
+	do {                                                       \
+		if (!(x)) {                                            \
+			fmt::println(stderr,                               \
+				"[FATAL INVARIANT FAILURE] {}:{} - {}",       \
+				__FILE__, __LINE__, #x);                      \
+			std::fflush(stderr);                              \
+			std::abort();                                      \
+		}                                                      \
+	} while (0)
 
 // Defines push constants usages
 struct PushConstantDef
 {
-	uint32_t offset;
-	uint32_t size;
+	uint32_t offset = 0;
+	uint32_t size = 0;
 	VkFlags stageFlags;
 };
 
@@ -65,13 +86,69 @@ struct DescriptorInfo
 	void* pNext = nullptr;
 };
 
-enum class QueueType
+// --------------
+// Image formats
+// --------------
+
+enum class Vulkan_Format
 {
-	Graphics,
-	Transfer,
-	Compute,
-	Present,
-	Nothing
+	RGBA16F     = VK_FORMAT_R16G16B16A16_SFLOAT,
+	RGBA32F     = VK_FORMAT_R32G32B32A32_SFLOAT,
+	D32         = VK_FORMAT_D32_SFLOAT,
+	BGRpacked   = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
+	R8unorm     = VK_FORMAT_R8_UNORM,
+	RG8unorm    = VK_FORMAT_R8G8_UNORM,
+	RGBA8unorm  = VK_FORMAT_R8G8B8A8_UNORM,
+	ABGRpacked  = VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+	R16F        = VK_FORMAT_R16_SFLOAT,
+	RG16F       = VK_FORMAT_R16G16_SFLOAT,
+	R16U        = VK_FORMAT_R16_UINT,
+	R32U        = VK_FORMAT_R32_UINT,
+	R32F        = VK_FORMAT_R32_SFLOAT,
+	R8U         = VK_FORMAT_R8_UINT,
+	Undefined   = VK_FORMAT_UNDEFINED
+};
+
+enum class Vulkan_ImageUsage
+{
+	DrawColor =    VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+				 | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+				 | VK_IMAGE_USAGE_STORAGE_BIT
+				 | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+				 | VK_IMAGE_USAGE_SAMPLED_BIT,
+
+	DrawDepth =    VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+				 | VK_IMAGE_USAGE_SAMPLED_BIT
+				 | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+				 | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+
+	ComputeReadWrite = VK_IMAGE_USAGE_STORAGE_BIT
+					 | VK_IMAGE_USAGE_SAMPLED_BIT
+					 | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+					 | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+
+	ComputeOnly = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+
+	MRTColor = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+
+	TextureSampled = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+
+	ShadowMap = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+};
+
+enum class Vulkan_ImageLayout
+{
+	Read               = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	Write              = VK_IMAGE_LAYOUT_GENERAL,
+	ColorAttach        = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	DepthAttach        = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+	DepthStencilAttach = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+	DepthRead          = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+	TransferSrc        = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+	TransferDst        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+	Present            = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+
+	Undefined          = VK_IMAGE_LAYOUT_UNDEFINED,
 };
 
 // ---------------
@@ -87,22 +164,21 @@ enum class Vulkan_ShaderStage
 	ALL_STAGES     = COMPUTE_STAGE | VERTEX_STAGE | FRAGMENT_STAGE
 };
 
-
 // Holds pipeline layout and push constant data
 // All pipelines use the same setup so its globally accessible
 struct PipelineLayoutConst
 {
-	VkPipelineLayout pipelineLayout;
+	VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
 	PushConstantDef pushConstantDef;
 };
 
 struct PipelineHandle
 {
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	bool swappable = false;
 	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 	PipelineLayoutConst layout;
+	//std::string_view debugName = nullptr;  // Conjure enum library use
 };
 
 struct PipelinePreset
@@ -133,10 +209,101 @@ struct PipelinePreset
 	bool IsColorDefined() const noexcept { return !colorFormats.empty(); }
 };
 
+template<typename SlotEnum>
+class PipelineBundle
+{
+public:
+	using Slot = SlotEnum;
+
+	void Set(Slot slot, const PipelineHandle& handle)
+	{
+		m_handles[static_cast<size_t>(slot)] = handle;
+	}
+
+	PipelineHandle& Get(Slot slot)
+	{
+		return m_handles[static_cast<size_t>(slot)];
+	}
+
+	const PipelineHandle& Get(Slot slot) const
+	{
+		return m_handles[static_cast<size_t>(slot)];
+	}
+
+private:
+	std::array<PipelineHandle, static_cast<size_t>(Slot::Count)> m_handles;
+};
+
+constexpr uint64_t TrianglesFromNonIndexed(
+	VkPrimitiveTopology topology,
+	uint64_t vertexCount)
+{
+	switch (topology) {
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+		return vertexCount / 3u;
+
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+		return vertexCount >= 3u ? (vertexCount - 2u) : 0u;
+
+	default:
+		return 0u;
+	}
+}
+
+constexpr uint64_t TrianglesFromIndexed(
+	VkPrimitiveTopology topology,
+	uint32_t indexCount,
+	uint32_t instanceCount)
+{
+	uint64_t baseTriangleCount = 0;
+
+	switch (topology) {
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+		baseTriangleCount = static_cast<uint64_t>(indexCount / 3u);
+		break;
+
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+	case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+		baseTriangleCount = indexCount >= 3u
+			? static_cast<uint64_t>(indexCount - 2u)
+			: 0u;
+		break;
+
+	default:
+		return 0u;
+	}
+
+	return baseTriangleCount * static_cast<uint64_t>(instanceCount);
+}
+
+constexpr uint64_t SumTrianglesIndirectRange(
+	const std::vector<VkDrawIndexedIndirectCommand>& drawCommands,
+	uint32_t firstCommand,
+	uint32_t commandCount,
+	VkPrimitiveTopology topology)
+{
+	uint64_t totalTriangles = 0;
+	const size_t baseIndex = static_cast<size_t>(firstCommand);
+
+	for (uint32_t commandIndex = 0; commandIndex < commandCount; ++commandIndex)
+	{
+		const auto& drawCommand = drawCommands[baseIndex + static_cast<size_t>(commandIndex)];
+
+		totalTriangles += TrianglesFromIndexed(
+			topology,
+			drawCommand.indexCount,
+			drawCommand.instanceCount
+		);
+	}
+
+	return totalTriangles;
+}
+
 struct AttachmentDesc
 {
 	VkImageView imageView = VK_NULL_HANDLE;
-	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImageLayout imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkAttachmentLoadOp loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	VkAttachmentStoreOp storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	VkClearValue clearValue{ 0.0f };
@@ -144,35 +311,14 @@ struct AttachmentDesc
 	AttachmentDesc() = default;
 	AttachmentDesc(
 		VkImageView view,
-		VkImageLayout layout) {}
+		VkImageLayout layout) : imageView(view), imageLayout(layout) {}
 
-	void SetDepth(uint32_t value) { clearValue.depthStencil.depth = value; }
+	void SetDepth(uint32_t value) { clearValue.depthStencil.depth = static_cast<float>(value); }
 	void SetColor(VkClearColorValue value) { clearValue.color = value; }
 
 	VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
 	VkImageView resolveView = VK_NULL_HANDLE;
 	VkImageLayout resolveLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-};
-
-// --------------
-// Image formats
-// --------------
-
-enum class Vulkan_Format
-{
-	RGBA16F     = VK_FORMAT_R16G16B16A16_SFLOAT,
-	D32         = VK_FORMAT_D32_SFLOAT,
-	BGRpacked   = VK_FORMAT_B10G11R11_UFLOAT_PACK32,
-	R8unorm     = VK_FORMAT_R8_UNORM,
-	RG8unorm    = VK_FORMAT_R8G8_UNORM,
-	RGBA8unorm  = VK_FORMAT_R8G8B8A8_UNORM,
-	ABGRpacked  = VK_FORMAT_A2B10G10R10_UNORM_PACK32,
-	R16F        = VK_FORMAT_R16_SFLOAT,
-	RG16F       = VK_FORMAT_R16G16_SFLOAT,
-	R32U        = VK_FORMAT_R32_UINT,
-	R32F        = VK_FORMAT_R32_SFLOAT,
-	R8U         = VK_FORMAT_R8_UINT,
-	Undefined   = VK_FORMAT_UNDEFINED
 };
 
 // ------------
@@ -199,12 +345,33 @@ enum class Vulkan_DescriptorType
 // Buffer enums
 // -------------
 
-enum class BufferUsage
+enum class Vulkan_BufferUsage
 {
-	DEFAULT,
-	ADDRESS_TABLE = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+	BDA_POINTER   = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
 					VK_BUFFER_USAGE_TRANSFER_DST_BIT   |
 					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	INDIRECT      = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	VERTEX        = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT   |
+					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	INDEX         = VK_BUFFER_USAGE_INDEX_BUFFER_BIT    |
+					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	BDA_SRC_COPY  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT    |
+					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	UNIFORM       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 
 	VERTEX_PULL   = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -219,9 +386,25 @@ struct TimelineSync
 	uint64_t signalValue = UINT64_MAX;
 };
 
-// --------
-// Devices
-// --------
+struct ImageBarrierInfo
+{
+	VkPipelineStageFlags2 stageMask;
+	VkAccessFlags2 accessMask;
+	VkImageLayout layout;
+};
+
+// -------------------
+// Devices and queues
+// -------------------
+
+enum class QueueType
+{
+	Graphics,
+	Transfer,
+	Compute,
+	Present,
+	Nothing
+};
 
 struct QueueFamilyIndices
 {
@@ -232,15 +415,12 @@ struct QueueFamilyIndices
 
 	bool IsComplete() const noexcept
 	{
-		return graphicsFamily.has_value() && presentFamily.has_value() && transferFamily.has_value() && computeFamily.has_value();
+		return
+			graphicsFamily.has_value() &&
+			presentFamily.has_value() &&
+			transferFamily.has_value() &&
+			computeFamily.has_value();
 	}
-};
-
-struct SwapchainSupportDetails
-{
-	VkSurfaceCapabilitiesKHR capabilities{};
-	std::vector<VkSurfaceFormatKHR> formats{};
-	std::vector<VkPresentModeKHR> presentModes{};
 };
 
 struct DeviceContext
@@ -249,6 +429,13 @@ struct DeviceContext
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkInstance instance = VK_NULL_HANDLE;
 	QueueFamilyIndices queueIndices;
+};
+
+struct SwapchainSupportDetails
+{
+	VkSurfaceCapabilitiesKHR capabilities{};
+	std::vector<VkSurfaceFormatKHR> formats{};
+	std::vector<VkPresentModeKHR> presentModes{};
 };
 
 struct PhysicalDeviceCandidate
@@ -278,4 +465,39 @@ struct ThreadCommandPool
 	// Allow move
 	ThreadCommandPool(ThreadCommandPool&&) = default;
 	ThreadCommandPool& operator=(ThreadCommandPool&&) = default;
+};
+
+
+// ---------------
+// Resource usage
+// ---------------
+
+enum class HeapType
+{
+	GPU_Local,  // VMA_MEMORY_USAGE_GPU_ONLY
+	Upload,     // CPU->GPU, persistently mapped
+	Readback,   // GPU->CPU
+	Staging,    // Transient upload, pooled internally
+	Count
+};
+
+struct BufferDesc
+{
+	size_t              size          = 0;
+	Vulkan_BufferUsage  usage         = Vulkan_BufferUsage::BDA_POINTER;
+	HeapType            heap          = HeapType::GPU_Local;
+	bool                bIsConcurrent = false;
+	std::string         debugName;
+};
+
+struct ImageDesc
+{
+	Vulkan_Format            format         = Vulkan_Format::Undefined;
+	Extents3D                extent         = { 0, 0, 0 };
+	Vulkan_ImageUsage        usage          = Vulkan_ImageUsage::ComputeOnly;
+	uint32_t                 mipLevels      = 1;   // 0 = auto-calculate
+	uint32_t                 arrayLayers    = 1;
+	bool                     bIsCubemap     = false;
+	bool                     bPerMipStorage = false;
+	std::string              debugName;
 };

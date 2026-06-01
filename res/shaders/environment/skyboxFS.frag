@@ -8,15 +8,19 @@
 layout(location = 0) in vec3 fragPos;
 layout(location = 0) out vec4 outColor;
 
+layout(push_constant) uniform SkyboxPush
+{
+	mat4 viewproj;
+	uint skyboxID;
+} pc;
+
 void main() {
 	vec3 dir = normalize(fragPos);
 	dir.y = -dir.y;
 
-	EnvMapIndexArray envMapArray = getEnvIdxArray();
 	SceneData scene = getSceneData();
 
-	uint skyboxIdx = envMapArray.indices[debug.activeEnvMap].w;
-	vec3 skyColor = SampleCube(skyboxIdx, dir).rgb;
+	vec3 skyColor = SampleCube(pc.skyboxID, dir).rgb;
 
 	vec3 sunDir = normalize(scene.sunlightDirection.xyz);
 	sunDir.y = -sunDir.y;

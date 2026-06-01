@@ -1,6 +1,11 @@
 #pragma once
 
-#include "Core.h"
+#include <vector>
+#include <mutex>
+#include <functional>
+#include <deque>
+#include <array>
+#include <cstdint>
 
 // Very simple function fifo queue
 // Primary use for storing destruction for buffers and images.
@@ -29,6 +34,37 @@ private:
 	std::deque<std::function<void()>> m_deletors;
 };
 
+struct Extents2D
+{
+	std::array<uint32_t, 2> data { 0, 0 };
+
+	uint32_t& Width()        { return data[0]; }
+	uint32_t  Width()  const { return data[0]; }
+	uint32_t& Height()       { return data[1]; }
+	uint32_t  Height() const { return data[1]; }
+
+	bool IsDefined() const noexcept
+	{
+		return (data[0] != 0 && data[1] != 0);
+	}
+};
+
+struct Extents3D
+{
+	std::array<uint32_t, 3> data { 0, 0, 0 };
+
+	uint32_t& Width()         { return data[0]; }
+	uint32_t  Width()  const  { return data[0]; }
+	uint32_t& Height()        { return data[1]; }
+	uint32_t  Height() const  { return data[1]; }
+	uint32_t& Depth()         { return data[2]; }
+	uint32_t  Depth()  const  { return data[2]; }
+
+	bool IsDefined() const noexcept
+	{
+		return (data[0] != 0 && data[1] != 0 && data[2] != 0);
+	}
+};
 
 enum class GLTFJobType
 {
@@ -83,6 +119,7 @@ private:
 template<typename T>
 class TypedWorkQueue : BaseWorkQueue
 {
+public:
 	void Push(const T& item) { m_queue.Push(item); }
 	std::vector<T> Collect() { return m_queue.Collect(); }
 	bool Empty() const { return m_queue.Empty(); }
@@ -98,24 +135,23 @@ struct LinearAllocator
 	size_t   capacity;
 };
 
+enum class ThreadRole
+{
+	Main,
+	Render,
+	Worker
+};
+
 struct ThreadContext
 {
-	uint32_t threadID = 0;
+	uint32_t   threadID   = 0;
+	ThreadRole threadRole = ThreadRole::Worker;
 
-	// Generic per-thread memory
-	LinearAllocator scratchAllocator{};
-
-	// Reusable temp storage
-	std::vector<uint8_t> scratchBuffer{};
-
-	// Job system
-	BaseWorkQueue* workQueueActive = nullptr;
-
-	// Debug / profiling
-	uint32_t jobsExecuted = 0;
-
-	// Optional utilities
-	uint32_t randomState = 0;
+	LinearAllocator       scratchAllocator{};
+	std::vector<uint8_t>  scratchBuffer{};
+	BaseWorkQueue*        workQueueActive = nullptr;
+	uint32_t              jobsExecuted    = 0;
+	uint32_t              randomState     = 0;
 };
 
 // Thread and queue connector struct
@@ -134,16 +170,4 @@ struct ScopedWorkQueue
 	{
 		ctx.workQueueActive = previousQueue;
 	}
-};
-
-struct ShadowControl
-{
-	float splitLambda          = 0.97f;
-	float bias                 = 0.0001f;
-	float softnessFactor;
-	float maxCasterDistance[4] = { 3000.0f, 4000.0f, 5000.0f, 6000.0f };
-	float xyPadding            = 150.0f;
-	float lsEpsilon            = 5.0f;
-	float dirEpsilon           = 20.0f;
-	float shadowRadii[4]       = { 17.0f, 46.0f, 160.0f, 1000.0f };
 };

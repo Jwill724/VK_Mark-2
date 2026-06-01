@@ -1,17 +1,25 @@
 #pragma once
 
-#include "renderer/Renderer.h"
-#include "renderer/scene/RenderScene.h"
+#include "Core.h"
+#include <Vector>
 
-namespace DrawPreparation {
+class FrameContext;
+struct LocalLight;
+class Device;
+class Allocator;
+struct Mesh;
+struct MeshLODs;
+struct AABB;
+struct RenderToggles;
+
+namespace DrawPreparation
+{
 	void uploadGPUBuffersForFrame(
 		FrameContext& frameCtx,
-		GPUResources& gpuResources,
+		Device& device,
+		Allocator& allocator,
 		const std::vector<glm::mat4>& transforms,
-		const std::vector<LocalLight>& lights,
-		GPUQueue& transferQueue,
-		bool isTemporalValid,
-		bool isGPUAccelOn);
+		const std::vector<LocalLight>& lights);
 
 	void buildAndSortIndirectDraws(
 		FrameContext& frameCtx,
@@ -21,10 +29,4 @@ namespace DrawPreparation {
 		const glm::vec4& cameraPos,
 		const glm::mat4& cameraProj,
 		const RenderToggles& dbg);
-
-	bool syncGlobalInstancesAndTransforms(
-		std::unordered_map<SceneID, SceneProfileEntry>& sceneProfiles,
-		std::vector<VirtualInstance>& globalInstances,
-		std::vector<glm::mat4>& globalTransforms,
-		const double deltaTime);
 }

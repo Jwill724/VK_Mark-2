@@ -1,6 +1,14 @@
 #pragma once
 
-#include <Core.h>
+#include <cstdint>
+#include <cmath>
+#include <algorithm>
+
+#include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
 
 struct Vertex
 {
@@ -48,12 +56,6 @@ inline uint32_t ToUnorm8(float value)
 	return static_cast<uint32_t>(std::round(clamped * 255.0f));
 }
 
-inline void EncodePosition(Vertex& vertex, const glm::vec3& v)
-{
-	vertex.positionX = FloatToHalfBits(v.x);
-	vertex.positionY = FloatToHalfBits(v.y);
-	vertex.positionZ = FloatToHalfBits(v.z);
-}
 
 // Store UV as FP16 bits
 inline uint16_t FloatToHalfBits(float value)
@@ -82,6 +84,13 @@ inline uint16_t FloatToHalfBits(float value)
 	uint16_t halfMantissa = static_cast<uint16_t>(mantissa >> 13);
 	return static_cast<uint16_t>((sign << 15) | (halfExp << 10) | halfMantissa);
 };
+
+inline void EncodePosition(Vertex& vertex, const glm::vec3& v)
+{
+	vertex.positionX = FloatToHalfBits(v.x);
+	vertex.positionY = FloatToHalfBits(v.y);
+	vertex.positionZ = FloatToHalfBits(v.z);
+}
 
 inline glm::vec2 EncodeOctahedral(const glm::vec3& n)
 {

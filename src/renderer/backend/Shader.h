@@ -1,14 +1,14 @@
 #pragma once
 
-#include <renderer/backend/VulkanTypes.h>
-#include <renderer/RendererDefinitions.h>
+#include "../backend/VulkanTypes.h"
+#include "../RendererDefinitions.h"
 #include <string>
 
-inline static const std::string baseShaderPath = "res/shaders/";
+inline static const std::string BaseShaderPath = "res/shaders/";
 
 namespace RD = RendererDefinitions;
 
-inline static const std::string& GetShaderPath(RD::Renderer_Shader id);
+const std::string& GetShaderPath(RD::Renderer_Shader id);
 
 class Shader
 {
@@ -17,7 +17,7 @@ public:
 	Shader(RD::Renderer_Shader id, Vulkan_ShaderStage stage)
 		: m_id(id)
 		, m_stage(static_cast<VkShaderStageFlagBits>(stage))
-		, m_path(baseShaderPath + GetShaderPath(id)) {}
+		, m_path(BaseShaderPath + GetShaderPath(id)) {}
 
 	// Returns module + stage info, caller decides when to destroy
 	bool CreateModule(VkDevice device, VkShaderModule& outModule) const;
@@ -33,10 +33,10 @@ public:
 	}
 
 	const std::string& Path() const { return m_path; }
-	RD::Renderer_Shader    ID()   const { return m_id;   }
+	RD::Renderer_Shader ID()   const { return m_id;   }
 
 private:
-	RD::Renderer_Shader       m_id;
+	RD::Renderer_Shader   m_id;
 	VkShaderStageFlagBits m_stage;
 	std::string           m_path;
 };

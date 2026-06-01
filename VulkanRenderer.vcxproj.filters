@@ -16,10 +16,14 @@
     <Filter Include="src\renderer" />
     <Filter Include="src\renderer\backend" />
     <Filter Include="src\renderer\backend\memory" />
-    <Filter Include="src\renderer\backend\utils" />
     <Filter Include="src\renderer\frame" />
-    <Filter Include="src\renderer\passes" />
     <Filter Include="src\renderer\scene" />
+    <Filter Include="src\renderer\rendergraph" />
+    <Filter Include="src\renderer\rendergraph\passes" />
+    <Filter Include="src\renderer\rendergraph\passes\graphics" />
+    <Filter Include="src\renderer\rendergraph\passes\compute" />
+    <Filter Include="src\renderer\rendergraph\passes\command" />
+    <Filter Include="src\renderer\rendergraph\scopes" />
     <!-- resources (shaders and assets) -->
     <Filter Include="res" />
     <Filter Include="res\assets" />
@@ -50,9 +54,6 @@
     <ClCompile Include="src\core\Engine.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\EngineState.cpp">
-      <Filter>src\core</Filter>
-    </ClCompile>
     <ClCompile Include="src\core\JobSystem.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
@@ -62,13 +63,7 @@
     <ClCompile Include="src\core\loader\MeshLoader.cpp">
       <Filter>src\core\loader</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\Environment.cpp">
-      <Filter>src\core</Filter>
-    </ClCompile>
     <ClCompile Include="src\core\AssetManager.cpp">
-      <Filter>src\core</Filter>
-    </ClCompile>
-    <ClCompile Include="src\core\ResourceManager.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
     <ClCompile Include="src\core\Window.cpp">
@@ -92,19 +87,116 @@
     <ClCompile Include="src\renderer\Renderer.cpp">
       <Filter>src\renderer</Filter>
     </ClCompile>
-    <!-- renderer / passes -->
-    <ClCompile Include="src\renderer\passes\RenderPasses.cpp">
-      <Filter>src\renderer\passes</Filter>
+    <!-- renderer / graph -->
+    <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
+      <Filter>src\renderer\rendergraph</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\passes\ScopeFunctions.cpp">
-      <Filter>src\renderer\passes</Filter>
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphBuilder.cpp">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClCompile>
+    <!-- renderer / graph / passes / graphics -->
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\DebugOrientedBoundingBoxPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\OpaqueForwardPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\SkyboxPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\TransparentForwardPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
+    <!-- renderer / graph / passes / compute -->
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ChromaticAberrationPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LightCullingPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ConservativeMorphologicalAntiAliasing2Pass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\EnvironmentMapGenerationPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\FastApproximateAntiAliasing.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\FinalCompositePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\HierarchicalDepthGenerationPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LensFlarePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LuminanceExposurePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceAmbientOcclusionPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceContactShadowsPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\SubpixelMorphologicalAntiAliasingPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <!-- renderer / graph / passes / command -->
+    <ClCompile Include="src\renderer\rendergraph\passes\command\ImguiDrawPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\command</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\command\SwapchainPresentPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\command</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\command\TemporalCopyPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\command</Filter>
+    </ClCompile>
+    <!-- renderer / graph / scopes -->
+    <ClCompile Include="src\renderer\rendergraph\scopes\GraphicsScope.cpp">
+      <Filter>src\renderer\rendergraph\scopes</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\scopes\ComputeScope.cpp">
+      <Filter>src\renderer\rendergraph\scopes</Filter>
     </ClCompile>
     <!-- renderer / frame -->
     <ClCompile Include="src\renderer\frame\FrameContext.cpp">
       <Filter>src\renderer\frame</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\frame\FrameResources.cpp">
+      <Filter>src\renderer\frame</Filter>
+    </ClCompile>
     <!-- renderer / scene -->
-    <ClCompile Include="src\renderer\scene\RenderScene.cpp">
+    <ClCompile Include="src\renderer\scene\Scene.cpp">
+      <Filter>src\renderer\scene</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\scene\World.cpp">
       <Filter>src\renderer\scene</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\scene\DrawPreparation.cpp">
@@ -135,7 +227,7 @@
     <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\Descriptor.cpp">
+    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp">
@@ -144,22 +236,24 @@
     <ClCompile Include="src\renderer\backend\PipelineManager.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\backend\ImageUtils.cpp">
+      <Filter>src\renderer\backend</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\backend\BufferBarriers.cpp">
+      <Filter>src\renderer\backend</Filter>
+    </ClCompile>
     <!-- renderer / backend / memory -->
     <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
       <Filter>src\renderer\backend\memory</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\memory\Allocator.cpp">
+    <ClCompile Include="src\renderer\backend\memory\ResourceAllocator.cpp">
       <Filter>src\renderer\backend\memory</Filter>
     </ClCompile>
-    <!-- renderer / backend / utils -->
-    <ClCompile Include="src\renderer\backend\utils\BufferUtils.cpp">
-      <Filter>src\renderer\backend\utils</Filter>
+    <ClCompile Include="src\renderer\backend\memory\BindlessImageTable.cpp">
+      <Filter>src\renderer\backend\memory</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\utils\ImageUtils.cpp">
-      <Filter>src\renderer\backend\utils</Filter>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\utils\BarrierUtils.cpp">
-      <Filter>src\renderer\backend\utils</Filter>
+    <ClCompile Include="src\renderer\backend\memory\BindlessBDATable.cpp">
+      <Filter>src\renderer\backend\memory</Filter>
     </ClCompile>
     <!-- third-party (no PCH) -->
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
@@ -255,9 +349,6 @@
     <ClCompile Include="vendor\fmt\format.cc">
       <Filter>vendor</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\frame\FrameResources.cpp">
-      <Filter>src\renderer\frame</Filter>
-    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -289,9 +380,6 @@
     <ClInclude Include="src\common\EngineTypes.h">
       <Filter>src\common</Filter>
     </ClInclude>
-    <ClInclude Include="src\common\EngineConstants.h">
-      <Filter>src\common</Filter>
-    </ClInclude>
     <!-- core -->
     <ClInclude Include="src\core\Logging.h">
       <Filter>src\core</Filter>
@@ -299,16 +387,10 @@
     <ClInclude Include="src\core\Engine.h">
       <Filter>src\core</Filter>
     </ClInclude>
-    <ClInclude Include="src\core\EngineState.h">
-      <Filter>src\core</Filter>
-    </ClInclude>
     <ClInclude Include="src\core\JobSystem.h">
       <Filter>src\core</Filter>
     </ClInclude>
     <ClInclude Include="src\core\AssetManager.h">
-      <Filter>src\core</Filter>
-    </ClInclude>
-    <ClInclude Include="src\core\ResourceManager.h">
       <Filter>src\core</Filter>
     </ClInclude>
     <ClInclude Include="src\core\Environment.h">
@@ -351,18 +433,37 @@
     <ClInclude Include="src\renderer\frame\FrameContext.h">
       <Filter>src\renderer\frame</Filter>
     </ClInclude>
-    <!-- renderer / passes -->
-    <ClInclude Include="src\renderer\passes\RenderPasses.h">
-      <Filter>src\renderer\passes</Filter>
+    <ClInclude Include="src\renderer\frame\FrameResources.h">
+      <Filter>src\renderer\frame</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\passes\ScopeFunctions.h">
-      <Filter>src\renderer\passes</Filter>
+    <!-- renderer / rendergraph -->
+    <ClInclude Include="src\renderer\rendergraph\RenderPasses.h">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphResources.h">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\rendergraph\RenderGraph.h">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphBuilder.h">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClInclude>
+    <!-- renderer / rendergraph / scopes -->
+    <ClInclude Include="src\renderer\rendergraph\scopes\GraphicsScope.h">
+      <Filter>src\renderer\rendergraph\scopes</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\rendergraph\scopes\ComputeScope.h">
+      <Filter>src\renderer\rendergraph\scopes</Filter>
     </ClInclude>
     <!-- renderer / scene -->
     <ClInclude Include="src\renderer\scene\LightingSystem.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\scene\RenderScene.h">
+    <ClInclude Include="src\renderer\scene\Scene.h">
+      <Filter>src\renderer\scene</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\scene\World.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\scene\Visibility.h">
@@ -393,13 +494,16 @@
     <ClInclude Include="src\renderer\backend\Debugging.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\Descriptor.h">
+    <ClInclude Include="src\renderer\backend\DescriptorManager.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\DescriptorWriter.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\PipelineManager.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\PipelineBundles.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\PipelineBuilder.h">
@@ -411,14 +515,29 @@
     <ClInclude Include="src\renderer\backend\VulkanTypes.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\backend\ImageUtils.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\BufferBarriers.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
     <!-- renderer / backend / memory -->
-    <ClInclude Include="src\renderer\backend\memory\Allocator.h">
+    <ClInclude Include="src\renderer\backend\memory\ResourceAllocator.h">
+      <Filter>src\renderer\backend\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\memory\TextureStaging.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\memory\AllocatedImage.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\memory\AllocatedBuffer.h">
+      <Filter>src\renderer\backend\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\memory\BindlessImageTable.h">
+      <Filter>src\renderer\backend\memory</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\memory\BindlessBDATable.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\memory\Budgets.h">
@@ -430,15 +549,8 @@
     <ClInclude Include="src\renderer\backend\memory\VmaForward.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
-    <!-- renderer / backend / utils -->
-    <ClInclude Include="src\renderer\backend\utils\BufferUtils.h">
-      <Filter>src\renderer\backend\utils</Filter>
-    </ClInclude>
-    <ClInclude Include="src\renderer\backend\utils\ImageUtils.h">
-      <Filter>src\renderer\backend\utils</Filter>
-    </ClInclude>
-    <ClInclude Include="src\renderer\backend\utils\BarrierUtils.h">
-      <Filter>src\renderer\backend\utils</Filter>
+    <ClInclude Include="src\renderer\backend\memory\ImageDescs.h">
+      <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
     <!-- assets -->
     <ClInclude Include="res\assets\AreaTex.h">
@@ -447,8 +559,8 @@
     <ClInclude Include="res\assets\SearchTex.h">
       <Filter>res\assets</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\frame\FrameResources.h">
-      <Filter>src\renderer\frame</Filter>
+    <ClInclude Include="src\core\AssetUploadTypes.h">
+      <Filter>src\core</Filter>
     </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
@@ -485,7 +597,7 @@
     <None Include="res\shaders\clustered\lights_indirect_args.comp">
       <Filter>res\shaders\clustered</Filter>
     </None>
-    <None Include="res\shaders\clustered\visible_light_list.comp">
+    <None Include="res\shaders\clustered\light_culling.comp">
       <Filter>res\shaders\clustered</Filter>
     </None>
     <!-- core -->

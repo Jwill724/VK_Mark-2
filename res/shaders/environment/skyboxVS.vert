@@ -2,8 +2,10 @@
 
 #extension GL_ARB_separate_shader_objects : require
 
-layout(push_constant) uniform PC {
+layout(push_constant) uniform SkyboxPush
+{
 	mat4 viewproj;
+	uint skyboxID;
 } pc;
 
 layout(location = 0) out vec3 texCoord;

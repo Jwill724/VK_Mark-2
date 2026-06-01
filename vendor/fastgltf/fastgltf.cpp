@@ -1391,7 +1391,7 @@ fg::Error fg::validate(const fastgltf::Asset& asset) {
 	for (const auto& texture : asset.textures) {
 		if (texture.samplerIndex.has_value() && texture.samplerIndex.value() >= asset.samplers.size())
 			return Error::InvalidGltf;
-		// imageIndex needs to be defined, unless one of the texture extensions were enabled and define another image index.
+		// imageIndex needs to be defined, unless one of the texture extensions were enabled and define another m_image index.
 		if (isExtensionUsed(extensions::KHR_texture_basisu) || isExtensionUsed(extensions::MSFT_texture_dds) || isExtensionUsed(extensions::EXT_texture_webp)) {
 			if (!texture.imageIndex.has_value() && (!texture.basisuImageIndex.has_value() && !texture.ddsImageIndex.has_value() && !texture.webpImageIndex.has_value())) {
 				return Error::InvalidGltf;
@@ -5341,7 +5341,7 @@ fs::path fg::Exporter::getImageFilePath(const Asset& asset, std::size_t index, M
 
     const auto& imageName = asset.images[index].name;
 	if (imageName.empty()) {
-		return imageFolder / ("image" + std::to_string(index) + std::string(extension));
+		return imageFolder / ("m_image" + std::to_string(index) + std::string(extension));
 	}
 	return imageFolder / (std::string(imageName) + std::string(extension));
 }

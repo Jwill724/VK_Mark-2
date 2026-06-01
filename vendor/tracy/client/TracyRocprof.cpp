@@ -289,11 +289,11 @@ void dispatch_callback( rocprofiler_dispatch_counting_service_data_t dispatch_da
     if( !data->init ) return;
 
     /**
-     * This simple example uses the same profile counter m_frameSet for all agents.
+     * This simple example uses the same profile counter set for all agents.
      * We store this in a cache to prevent constructing many identical profile counter
      * sets. We first check the cache to see if we have already constructed a counter"
-     * m_frameSet for the agent. If we have, return it. Otherwise, construct a new profile counter
-     * m_frameSet.
+     * set for the agent. If we have, return it. Otherwise, construct a new profile counter
+     * set.
      */
     static std::shared_mutex m_mutex = {};
     static std::unordered_map<uint64_t, rocprofiler_profile_config_id_t> profile_cache = {};

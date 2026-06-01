@@ -1,97 +1,175 @@
 #pragma once
 
-#include "renderer/RendererDefinitions.h"
-#include "renderer/backend/memory/AllocatedBuffer.h"
-#include "renderer/backend/DescriptorWriter.h"
-#include "ResourceTypes.h"
+#include "../backend/VulkanForward.h"
+#include "../RendererDefinitions.h"
+#include "../backend/memory/BindlessBDATable.h"
 #include "EngineTypes.h"
+#include "FrameResources.h"
 
 namespace RD = RendererDefinitions;
 
-inline constexpr uint32_t TIMESTAMP_QUERIES_PER_PASS = 2;
-inline constexpr uint32_t TIMESTAMP_PASS_COUNT = static_cast<uint32_t>(RD::Renderer_Pass::None);
-inline constexpr uint32_t PASS_TIMESTAMP_QUERY_COUNT = TIMESTAMP_PASS_COUNT * TIMESTAMP_QUERIES_PER_PASS;
-
-inline constexpr uint32_t FRAME_BEGIN_QUERY = PASS_TIMESTAMP_QUERY_COUNT + 0;
-inline constexpr uint32_t FRAME_END_QUERY = PASS_TIMESTAMP_QUERY_COUNT + 1;
-inline constexpr uint32_t TIMESTAMP_QUERY_COUNT = PASS_TIMESTAMP_QUERY_COUNT + 2;
-
 class Device;
+struct DeviceContext;
 class DescriptorManager;
+class DescriptorWriter;
 class Allocator;
+struct Cmaa2BufferSizes;
+struct ClusterBufferSizes;
+
+enum class QueueType;
+
+class Renderer;
+class Profiler;
 
 class FrameContext
 {
 	friend class Renderer;
+	friend class Profiler;
 public:
 	void Init(
 		uint32_t frameIndex,
-		VkExtent2D drawExtent,
+		Extents2D drawExtent,
 		Device& device,
 		DescriptorManager& descriptorsManager,
 		Allocator& allocator);
-	void Cleanup(const Allocator& allocator);
+	void Cleanup(const DeviceContext& deviceCtx, Allocator& allocator);
 
 	void CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue);
 	void StashSubmitted(QueueType queue);
-	void FreeStashedCmds();
-
-	void WriteFrameUniforms();
-
-	void UpdateFrameSet();
+	void FreeStashedCmds(const DeviceContext& deviceCtx);
 
 	void ClearDrawData()
 	{
 		m_visibleInstances.clear();
 		m_indirectDraws.clear();
-		m_visibleCount = 0;
 		m_opaqueDrawRange = {};
 		m_transparentDrawRange = {};
 		m_visibleShadowCasters.clear();
-		m_flashlightShadowCasterDrawRange = {};
-		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i) {
-			m_shadowCasterDrawRanges[i] = {};
+		m_flashlightShadowDrawRange = {};
+		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+		{
+			m_csmDrawRange[i] = {};
 			//m_shadowDrawRanges[i] = {};
 		}
 	}
 
-	void ClusterReset()
-	{
-		for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::ClusterCounts);
-			i <= static_cast<size_t>(RD::Renderer_Buffer::ClusterTileSliceRanges);
-			i++)
-		{
-			m_gpuAddressTable.ResetGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i));
-		}
-	}
-	void CreateClusterBuffers(const ClusterBufferSizes& clusterBufSizes, Allocator& allocator);
-
-	void CreateCMAA2Buffers(
-		const uint32_t extentWidth,
-		const uint32_t extentHeight,
+	void ClusterReset(Allocator& allocator);
+	void CreateClusterBuffers(
+		const ClusterBufferSizes& clusterBufSizes,
 		Allocator& allocator);
 
-	void Cmaa2Reset()
-	{
-		for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::Cmaa2Control);
-			i <= static_cast<size_t>(RD::Renderer_Buffer::Cmaa2DeferredHeads);
-			i++)
-		{
-			m_gpuAddressTable.ResetGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i));
-		}
-	}
+	void CreateCMAA2Buffers(
+		const Cmaa2BufferSizes& cmaa2BufSizes,
+		Allocator& allocator);
 
-	const PassTimestampRange& GetTimestampRange(RD::Renderer_Pass pass) const {
+	void Cmaa2Reset(Allocator& allocator);
+
+	const AllocatedBuffer& GetGPUBuffer(RD::Renderer_Buffer buffer) const { return m_gpuAddressTable.GetGPUBuffer(buffer); }
+
+	const RD::PassTimestampRange& GetTimestampRange(RD::Renderer_Pass pass) const
+	{
 		return m_passTimestampRanges[static_cast<uint32_t>(pass)];
 	}
 
-	void UpdateAddressTableIfDirty();
+	bool IsOpaqueVisible() const noexcept
+	{
+		return m_opaqueDrawRange.visibleCount > 0 && m_opaqueDrawRange.commandCount > 0;
+	}
+	bool IsTransparentVisible() const noexcept
+	{
+		return m_transparentDrawRange.visibleCount > 0 && m_transparentDrawRange.commandCount > 0;
+	}
 
+	bool IsTemporalValid() const noexcept { return m_bIsTemporalValid; }
+
+	const IndirectDrawRange& GetOpaqueDrawRange() const { return m_opaqueDrawRange; }
+	const IndirectDrawRange& GetTransparentDrawRange() const { return m_transparentDrawRange; }
+	const IndirectDrawRange& GetDirectionalCSMDrawRange(uint32_t cascade) const;
+	const IndirectDrawRange& GetFlashlightShadowDrawRange() const { return m_flashlightShadowDrawRange; }
+
+	bool DoesCachedExtentNeedUpdate(uint32_t width, uint32_t height) noexcept
+	{
+		if (m_cachedDrawExtent.Width() != width || m_cachedDrawExtent.Height() != height)
+		{
+			m_cachedDrawExtent.Width() = width;
+			m_cachedDrawExtent.Height() = height;
+			return true;
+		}
+		return false;
+	}
+
+	const Extents2D& GetCachedExtent() const { return m_cachedDrawExtent; }
+
+	void AssignSceneUniform(AllocatedBuffer buffer, const Allocator& allocator);
+	void AssignCSMUniform(AllocatedBuffer buffer, const Allocator& allocator);
+
+	void IsFlashlightStateVersionOld(uint32_t version) noexcept
+	{
+		if (m_uploadedFlashlightVersion != version)
+		{
+			m_bLightsBufferUploadNeeded = true;
+			m_uploadedFlashlightVersion = version;
+		}
+	}
+
+	// Requires update when count hasn't changed besides dynamic and static states
+	void EvaluatePossibleLightUpdateStatus() noexcept
+	{
+		if (m_bRecentDynamicLightsTransform && !m_bLightsBufferUploadNeeded)
+		{
+			m_bLightsBufferUploadNeeded = true;
+			m_bRecentDynamicLightsTransform = false;
+		}
+	}
+	void MarkDynamicLightTransforms() { m_bRecentDynamicLightsTransform = true; }
+
+
+	void EvaluateLightListSizeChanges(size_t listSize)
+	{
+		auto lightListSize = static_cast<uint32_t>(listSize);
+		if (m_recentLightListCount != lightListSize)
+		{
+			m_recentLightListCount = lightListSize;
+			m_bLightsBufferUploadNeeded = true;
+		}
+	}
+
+	void IsFirstLightsUpload(bool lightsExist)
+	{
+		if (lightsExist && !m_bLightsInitialized)
+		{
+			m_bLightsInitialized = true;
+		}
+	}
+
+	void MarkLightUpload()
+	{
+		m_bLightsBufferUploadNeeded = true;
+	}
+
+	void EvaluateTransformsStatus(bool uploadNeeded)
+	{
+		if (uploadNeeded || !m_bTransformsInitialized)
+		{
+			m_bTransformsBufferUploadNeeded = true;
+			m_bTransformsInitialized = true;
+		}
+	}
+
+	void SetVisibilityResult(VisibilitySyncResult result) { m_visibilitySyncResult = std::move(result); }
+
+	CMAA2Push& GetCMAA2Push() { return m_cmaa2Push; }
+
+	const LightClustersData& GetClusterData() const { return m_clusterData; }
+
+	const AllocatedBuffer& GetOBBLineDebugBuffer() const { return m_obbLineDebug_GPU; }
+	const std::vector<uint32_t>& GetOBBDrawOffsets() const { return m_obbDrawOffsets; }
+
+	const VisibilitySyncResult& GetVisibilitySyncResult() const { return m_visibilitySyncResult; }
 
 private:
 	uint32_t m_frameIndex = 0u;
 
-	VkResult m_swapchainResult = VK_RESULT_MAX_ENUM;
 	uint32_t m_swapchainImageIndex = 0u;
 
 	VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE; // primary graphics command
@@ -99,6 +177,8 @@ private:
 	std::vector<VkCommandBuffer> m_secondaryCommands;
 
 	uint64_t transferWaitValue = UINT64_MAX;
+	VkCommandPool m_transferPool;
+	std::vector<VkCommandBuffer> m_transferCommands;
 
 	// === async compute ===
 	std::vector<VkCommandBuffer> m_computeCommands;
@@ -116,44 +196,38 @@ private:
 	uint32_t m_recentLightListCount = 0u;
 	uint32_t m_uploadedFlashlightVersion = 0u;
 
-	// Current transforms
-
+	VkQueryPool m_graphicsTimestampPool = VK_NULL_HANDLE;
+	bool m_bHasTimestampResultsPending = false;
+	std::array<RD::PassTimestampRange, TIMESTAMP_PASS_COUNT> m_passTimestampRanges{};
+	std::array<uint64_t, PASS_TIMESTAMP_QUERY_COUNT> m_timestampResults{};
+	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsed{};
 
 	// Visible instances from directional light perspective
 	std::vector<Instance> m_visibleShadowCasters;
-	std::array<IndirectDrawRange, RD::MAX_SHADOW_CASCADES> m_shadowCasterDrawRanges;
+	std::array<IndirectDrawRange, RD::MAX_SHADOW_CASCADES> m_csmDrawRange;
 
 	// Shadow casters for flashlight
-	IndirectDrawRange m_flashlightShadowCasterDrawRange;
+	IndirectDrawRange m_flashlightShadowDrawRange;
 
 	IndirectDrawRange m_opaqueDrawRange;
 	IndirectDrawRange m_transparentDrawRange;
 
 	VisibilitySyncResult m_visibilitySyncResult;
 
-	uint32_t m_cachedDrawExtentW = 0u;
-	uint32_t m_cachedDrawExtentH = 0u;
+	Extents2D m_cachedDrawExtent;
 
-	// Persistent light data buffers
+	// Takes renderer descriptor writer
+	void TickDescriptorWrites(DescriptorWriter& writer);
 
-
-	// Cluster shading buffers and management
-
+	void SetTemporalResult(bool result) { m_bIsTemporalValid = result; }
+	bool m_bIsTemporalValid = false;
 
 	CMAA2Push m_cmaa2Push;
 
-	AttachmentDesc m_graphicsAttachment;
-	size_t m_gpuCopyStagingHead = 0u;
-
-	VkQueryPool m_graphicsTimestampPool = VK_NULL_HANDLE;
-	bool m_bHasTimestampResultsPending = false;
-	std::array<PassTimestampRange, TIMESTAMP_PASS_COUNT> m_passTimestampRanges{};
-	std::array<uint64_t, PASS_TIMESTAMP_QUERY_COUNT> m_timestampResults{};
-	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsed{};
+	LightClustersData m_clusterData;
 
 	// Culling data
-	VisibilityPush m_visibilityPush{};
-	uint32_t m_visibleCount = 0u;
+	//VisibilityPush m_visibilityPush{};
 
 	bool m_bTransformsInitialized = false;
 	bool m_bTransformsBufferUploadNeeded = false;
@@ -166,15 +240,18 @@ private:
 	BindlessBDATable m_gpuAddressTable;
 	uint32_t m_pendingAddressTableVersion = 0u;
 
+	// Vertex buffer, address is pulled via push constant
+	AllocatedBuffer m_obbLineDebug_GPU;
+	std::vector<uint32_t> m_obbDrawOffsets;
+
 	AllocatedBuffer m_directionalCSM_UBO;
 
 	AllocatedBuffer m_sceneInfo_UBO;
 
-	bool m_bClusterWriteNeeded = false;
+	bool m_bClusterUniformWriteNeeded = false;
 	AllocatedBuffer m_clustered_UBO;
 
 	VkDescriptorSet m_frameSet = VK_NULL_HANDLE;
-	PushDescriptorWriter m_descriptorWriter;
 
 	DeletionQueue m_cpuDeletionQueue;
 };

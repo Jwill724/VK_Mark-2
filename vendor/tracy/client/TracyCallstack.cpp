@@ -332,7 +332,7 @@ void DestroyImageCaches()
 }
 
 
-// when "TRACY_SYMBOL_OFFLINE_RESOLVE" is m_frameSet, instead of fully resolving symbols at runtime,
+// when "TRACY_SYMBOL_OFFLINE_RESOLVE" is set, instead of fully resolving symbols at runtime,
 // simply resolve the offset and image name (which will be enough the resolving to be done offline)
 #ifdef TRACY_SYMBOL_OFFLINE_RESOLVE
 constexpr bool s_shouldResolveSymbolsOffline = true;
@@ -627,7 +627,7 @@ ModuleNameAndBaseAddress GetModuleNameAndPrepareSymbols( uint64_t addr )
     if( entry != nullptr ) return ModuleNameAndBaseAddress{ entry->m_name, entry->m_startAddress };
 
     HANDLE proc = GetCurrentProcess();
-    // Do not use FreeLibrary because we m_frameSet the flag GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT
+    // Do not use FreeLibrary because we set the flag GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT
     // see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandleexa to get more information
     constexpr DWORD flag = GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT;
     HMODULE mod = NULL;
@@ -1308,7 +1308,7 @@ void GetSymbolForOfflineResolve(void* address, uint64_t imageBaseAddress, Callst
 {
     // tagged with a string that we can identify as an unresolved symbol
     cbEntry.name = CopyStringFast( "[unresolved]" );
-    // m_frameSet .so relative offset so it can be resolved offline
+    // set .so relative offset so it can be resolved offline
     cbEntry.symAddr = (uint64_t)address - imageBaseAddress;
     cbEntry.symLen = 0x0;
     cbEntry.file = CopyStringFast( "[unknown]" );

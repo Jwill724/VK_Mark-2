@@ -1,22 +1,35 @@
 #pragma once
 
-#include "engine/Engine.h"
+#include "../renderer/backend/VulkanForward.h"
 
-namespace EditorImgui
+class Renderer;
+struct GLFWwindow;
+
+class Editor
 {
-	void InitImgui(DeletionQueue& queue);
-	void renderImgui(Profiler& profiler);
-	void drawImgui(
-		VkCommandBuffer cmd,
-		VkImageView targetImageView,
-		const VkExtent2D swapExtent,
-		bool shouldClear);
+public:
+	static constexpr float SETTINGS_SIZE_X = 500.0f;
+	static constexpr float SETTINGS_SIZE_Y = 450.0f;
 
-	enum class SettingsCategory : uint8_t {
+	static constexpr float PROFILER_SIZE_X = 290.0f;
+	static constexpr float PROFILER_SIZE_Y = 900.0f;
+
+	void InitImgui(
+		Renderer& renderer,
+		GLFWwindow* window);
+	void Shutdown(Renderer& renderer);
+
+	void RenderImgui(Renderer& renderer);
+
+	enum class SettingsCategory
+	{
 		Render,
 		Lighting,
 		PostFX,
 		Pipelines,
 		Count
 	};
-}
+
+private:
+	VkDescriptorPool m_imguiPool = VK_NULL_HANDLE;
+};

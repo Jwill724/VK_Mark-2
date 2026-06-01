@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "PhysicalDeviceSelector.h"
-#include "Core.h"
+#include "VulkanTypes.h"
 #include <set>
 #include <string>
 
@@ -16,6 +16,9 @@ PhysicalDeviceCandidate PhysicalDeviceSelector::PickBest(
 	VkSurfaceKHR surface,
 	const std::vector<const char*> deviceExtensions)
 {
+	ASSERT(instance != VK_NULL_HANDLE);
+	ASSERT(surface != VK_NULL_HANDLE);
+
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 

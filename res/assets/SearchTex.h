@@ -36,7 +36,7 @@
 #define SEARCHTEX_SIZE (SEARCHTEX_HEIGHT * SEARCHTEX_PITCH)
 
 /**
- * Stored in R8 format. Load it in the following format:
+ * Stored in R8 m_format. Load it in the following m_format:
  *  - DX9:  D3DFMT_L8 
  *  - DX10: DXGI_FORMAT_R8_UNORM
  */

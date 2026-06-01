@@ -1,6 +1,9 @@
 #pragma once
 
-#include "VulkanTypes.h"
+#include "VulkanForward.h"
+#include <vector>
+
+struct PhysicalDeviceCandidate;
 
 class PhysicalDeviceSelector
 {

@@ -251,9 +251,9 @@ MESHOPTIMIZER_API size_t meshopt_encodeIndexBuffer(unsigned char* buffer, size_t
 MESHOPTIMIZER_API size_t meshopt_encodeIndexBufferBound(size_t index_count, size_t vertex_count);
 
 /**
- * Set index encoder format version (defaults to 1)
+ * Set index encoder m_format version (defaults to 1)
  *
- * version must specify the data format version to encode; valid values are 0 (decodable by all library versions) and 1 (decodable by 0.14+)
+ * version must specify the data m_format version to encode; valid values are 0 (decodable by all library versions) and 1 (decodable by 0.14+)
  */
 MESHOPTIMIZER_API void meshopt_encodeIndexVersion(int version);
 
@@ -268,8 +268,8 @@ MESHOPTIMIZER_API void meshopt_encodeIndexVersion(int version);
 MESHOPTIMIZER_API int meshopt_decodeIndexBuffer(void* destination, size_t index_count, size_t index_size, const unsigned char* buffer, size_t buffer_size);
 
 /**
- * Get encoded index format version
- * Returns format version of the encoded index buffer/sequence, or -1 if the buffer header is invalid
+ * Get encoded index m_format version
+ * Returns m_format version of the encoded index buffer/sequence, or -1 if the buffer header is invalid
  * Note that a non-negative value doesn't guarantee that the buffer will be decoded correctly if the input is malformed.
  */
 MESHOPTIMIZER_API int meshopt_decodeIndexVersion(const unsigned char* buffer, size_t buffer_size);
@@ -323,9 +323,9 @@ MESHOPTIMIZER_API size_t meshopt_encodeVertexBufferBound(size_t vertex_count, si
 MESHOPTIMIZER_API size_t meshopt_encodeVertexBufferLevel(unsigned char* buffer, size_t buffer_size, const void* vertices, size_t vertex_count, size_t vertex_size, int level, int version);
 
 /**
- * Set vertex encoder format version (defaults to 1)
+ * Set vertex encoder m_format version (defaults to 1)
  *
- * version must specify the data format version to encode; valid values are 0 (decodable by all library versions) and 1 (decodable by 0.23+)
+ * version must specify the data m_format version to encode; valid values are 0 (decodable by all library versions) and 1 (decodable by 0.23+)
  */
 MESHOPTIMIZER_API void meshopt_encodeVertexVersion(int version);
 
@@ -341,8 +341,8 @@ MESHOPTIMIZER_API void meshopt_encodeVertexVersion(int version);
 MESHOPTIMIZER_API int meshopt_decodeVertexBuffer(void* destination, size_t vertex_count, size_t vertex_size, const unsigned char* buffer, size_t buffer_size);
 
 /**
- * Get encoded vertex format version
- * Returns format version of the encoded vertex buffer, or -1 if the buffer header is invalid
+ * Get encoded vertex m_format version
+ * Returns m_format version of the encoded vertex buffer, or -1 if the buffer header is invalid
  * Note that a non-negative value doesn't guarantee that the buffer will be decoded correctly if the input is malformed.
  */
 MESHOPTIMIZER_API int meshopt_decodeVertexVersion(const unsigned char* buffer, size_t buffer_size);
@@ -370,7 +370,7 @@ MESHOPTIMIZER_API void meshopt_decodeFilterColor(void* buffer, size_t count, siz
 
 /**
  * Vertex buffer filter encoders
- * These functions can be used to encode data in a format that meshopt_decodeFilter can decode
+ * These functions can be used to encode data in a m_format that meshopt_decodeFilter can decode
  *
  * meshopt_encodeFilterOct encodes unit vectors with K-bit (2 <= K <= 16) signed X/Y as an output.
  * Each component is stored as an 8-bit or 16-bit normalized integer; stride must be equal to 4 or 8. Z will store 1.0f, W is preserved as is.
@@ -717,7 +717,7 @@ struct meshopt_Bounds
 	float cone_axis[3];
 	float cone_cutoff; /* = cos(angle/2) */
 
-	/* normal cone axis and cutoff, stored in 8-bit SNORM format; decode using x/127.0 */
+	/* normal cone axis and cutoff, stored in 8-bit SNORM m_format; decode using x/127.0 */
 	signed char cone_axis_s8[3];
 	signed char cone_cutoff_s8;
 };
@@ -822,7 +822,7 @@ MESHOPTIMIZER_API float meshopt_quantizeFloat(float v, int N);
 MESHOPTIMIZER_API float meshopt_dequantizeHalf(unsigned short h);
 
 /**
- * Set allocation callbacks
+ * Set m_allocation callbacks
  * These callbacks will be used instead of the default operator new/operator delete for all temporary allocations in the library.
  * Note that all algorithms only allocate memory for temporary use.
  * allocate/deallocate are always called in a stack-like order - last pointer to be allocated is deallocated first.

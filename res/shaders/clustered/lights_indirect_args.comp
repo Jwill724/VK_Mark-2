@@ -19,11 +19,14 @@ void main()
 	const uint visibleCount = getVisibleLightCountBuffer().count;
 	const uint clusterCount = clusteredData.clusterCount;
 
+	// Run next passes over clusters or over lights?
+	// Using during cluster counts to figure out how many lights are in clusters
+	// and final cluster id assignment pass.
 	uint workItemCount = (visibleCount <= LIGHT_THRESHOLD) ? clusterCount : visibleCount;
-
 	uint groupCountX = (workItemCount + 255u) / 256u;
 	dispatchArgs.args[INDIRECT_DISPATCH_SLOT_LIGHTS] = uvec4(groupCountX, 1u, 1u, 0u);
 
+	// Only needed for offset scan pass
 	uint clusterGroups = (clusterCount + 255u) / 256u;
 	dispatchArgs.args[INDIRECT_DISPATCH_SLOT_CLUSTERS] = uvec4(clusterGroups, 1u, 1u, 0u);
 }

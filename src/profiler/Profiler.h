@@ -1,165 +1,157 @@
 #pragma once
 
-#include "engine/platform/profiler/ProfilerTypes.h"
-#include "renderer/frame/FrameContext.h"
+#include "renderer/backend/VulkanForward.h"
+#include "profiler/ProfilerTypes.h"
+#include "renderer/RendererDefinitions.h"
+#include "renderer/frame/FrameResources.h"
 
-class Profiler {
+#include <array>
+#include <mutex>
+#include <string>
+
+#ifdef TRACY_ENABLE
+#include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
+#endif
+
+namespace RD = RendererDefinitions;
+
+class FrameContext;
+
+class Profiler
+{
 public:
-	class ScopedPass {
+	class ScopedPass
+	{
 	public:
 		ScopedPass() = default;
 
 		ScopedPass(
-			Profiler& profiler,
-			FrameContext& frameCtx,
-			VkCommandBuffer cmd,
-			PassID passID
-		);
+			Profiler&                 profiler,
+			FrameContext&             frameCtx,
+			VkCommandBuffer           cmd,
+			RD::Renderer_Pass trackingID,
+			std::string_view          passName);
 
-		ScopedPass(const ScopedPass&) = delete;
+		ScopedPass(const ScopedPass&)            = delete;
 		ScopedPass& operator=(const ScopedPass&) = delete;
 
-		ScopedPass(ScopedPass&& other) noexcept;
-		ScopedPass& operator=(ScopedPass&& other) noexcept;
+		ScopedPass(ScopedPass&&) noexcept;
+		ScopedPass& operator=(ScopedPass&&) noexcept;
 
 		~ScopedPass();
 
 	private:
-		Profiler* _profiler = nullptr;
-		FrameContext* _frameCtx = nullptr;
-		VkCommandBuffer _cmd = VK_NULL_HANDLE;
-		PassID _passID = PassID::None;
-		void* _gpuZone = nullptr;
-		int64_t _cpuStartTicks = 0;
+		Profiler*                 m_profiler      = nullptr;
+		FrameContext*             m_frameCtx      = nullptr;
+		VkCommandBuffer           m_cmd           = VK_NULL_HANDLE;
+		RD::Renderer_Pass m_trackingID    = RD::Renderer_Pass::Count;
+		void*                     m_gpuZone       = nullptr;
+		int64_t                   m_cpuStartTicks = 0;
 	};
 
 	Profiler();
 	~Profiler();
 
-	void beginFrame();
-	void endFrame();
+	void BeginFrame();
+	void EndFrame();
 
-	void startTimer();
-	float endTimerMS() const;
-	float endTimerSec() const;
+	[[nodiscard]] ScopedPass ProfilePass(
+		FrameContext&             frameCtx,
+		VkCommandBuffer           cmd,
+		RD::Renderer_Pass trackingID,
+		std::string_view          passName);
 
-	void resetDrawCalls();
+	void AddGpuPassTime(RD::Renderer_Pass trackingID, float milliseconds);
 
-	void resetPassStats();
-	void markPassActive(PassID passID);
+	void ResetPassStats();
+	void ResetDrawCalls();
 
-	void addCpuPassTime(
-		PassID passID,
-		float milliseconds
-	);
+	const std::array<PassTimingStats, RD::PASS_COUNT>& GetAllPassStats() const { return m_passStats; }
+	const PassTimingStats& GetPassStats(RD::Renderer_Pass trackingID) const;
+	PassTimingStats&       GetPassStats(RD::Renderer_Pass trackingID);
 
-	void addGpuPassTime(
-		PassID passID,
-		float milliseconds
-	);
+	const char* GetPassName(RD::Renderer_Pass trackingID) const
+	{
+		return m_passStats[static_cast<size_t>(trackingID)].name.c_str();
+	}
 
-	const char* getPassName(PassID passID) const;
+	bool IsPassActive(RD::Renderer_Pass trackingID) const noexcept
+	{
+		return m_passStats[static_cast<size_t>(trackingID)].activeThisFrame;
+	}
 
-	ScopedPass profilePass(
-		FrameContext& frameCtx,
-		VkCommandBuffer cmd,
-		PassID passID
-	);
+	void InitTracyGPU(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue queue, VkCommandBuffer cmd);
+	void ShutdownTracyGPU();
+	void CollectTracyGPU(VkCommandBuffer cmd);
+	bool IsTracyGPUActive()  const noexcept;
+	bool IsTracyCompiledIn() const;
 
+	VkCommandBuffer GetTracyGraphicsCmd() const            { return m_tracyGraphicsCmdBuffer; }
+	void            SetTracyGraphicsCmd(VkCommandBuffer c) { m_tracyGraphicsCmdBuffer = c; }
 
-	void initTracyGPU(
-		VkPhysicalDevice physicalDevice,
-		VkDevice device,
-		VkQueue queue,
-		VkCommandBuffer cmd
-	);
+	void  StartTimer();
+	float EndTimerMS()  const;
+	float EndTimerSec() const;
 
-	void shutdownTracyGPU();
-
-	void collectTracyGPU(VkCommandBuffer cmd);
-
-	bool isTracyGPUActive() const;
-
-	bool isTracyCompiledIn() const;
-	const std::array<PassTimingStats, static_cast<size_t>(PassID::Count)>& getAllPassStats() const;
-	bool isPassActive(PassID passID) const;
-
-	FrameStats& getStats();
+	FrameStats&       getStats();
 	const FrameStats& getStats() const;
 
-	const PassTimingStats& getPassStats(PassID passID) const;
-	PassTimingStats& getPassStats(PassID passID);
+	void SetGPUName(std::string name)  { m_stats.gpuName = std::move(name); }
+	void SetVRAMUsage(VRAMStats stats) { m_stats.vramStats = stats; }
 
-	void addDirect(
-		uint32_t calls,
-		uint64_t triangles = 0
-	);
+	void AddDirect(uint32_t calls, uint64_t triangles = 0);
+	void AddOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
+	void AddTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
 
-	void addOpaqueIndirect(
-		uint32_t commands,
-		uint32_t subdraws,
-		uint64_t triangles = 0
-	);
-
-	void addTransparentIndirect(
-		uint32_t commands,
-		uint32_t subdraws,
-		uint64_t triangles = 0
-	);
-
-	void enableGPUAccelUsage();
-	void disableGPUAccelUsage();
-	bool isGPUAccelOn() const;
-
-	VRAMStats getTotalVRAMUsage(
-		VkPhysicalDevice physicalDevice,
-		VmaAllocator allocator
-	);
-
-	void enablePlatformTimerPrecision();
-	void disablePlatformTimerPrecision();
+	void EnablePlatformTimerPrecision();
+	void DisablePlatformTimerPrecision();
 
 	bool rendererWasStalled = false;
 
-	glm::vec3 cameraPos{};
+	glm::vec3  cameraPos{};
 	std::mutex camMutex;
 
-	RenderToggles debugToggles;
-	PipelineOverride pipeOverride;
-
-	SSAOPush ssaoSettings;
-	TAAPush taaSettings;
-	VolumetricPush volLightSettings;
-	LensFlarePush lensFlareSettings;
-	SSSPush contactShadowsSettings;
+	RD::RenderToggles   debugToggles;
+	SSAOPush            ssaoSettings;
+	TAAPush             taaSettings;
+	VolumetricPush      volLightSettings;
+	LensFlarePush       lensFlareSettings;
+	SSSPush             contactShadowsSettings;
 	ToneMappingSettings toneMappingSettings;
-
-	VkCommandBuffer& getTracyGraphicsCmd() { return tracyGraphicsCmdBuffer; }
+	LumaExposurePush    lumaExposureSettings;
+	ForwardPush         forwardPush;
+	SkyboxPush          skyboxPush;
+	LightCullingPush    lightCullingPush;
+	BindlessAccessPush  smaaTexturesIds;
 
 private:
-	static constexpr size_t PassCount = static_cast<size_t>(PassID::Count);
+	void* BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackingID);
+	void  EndTracyGpuZone(void* zone);
 
-	void* beginTracyGpuPass(
-		VkCommandBuffer cmd,
-		PassID passID
-	);
+#ifdef TRACY_ENABLE
+	struct TracyPassEntry
+	{
+		std::string name;
+		std::unique_ptr<tracy::SourceLocationData> srcLoc;
+	};
+	std::array<TracyPassEntry, RD::PASS_COUNT> m_tracySourceLocations{};
+#endif
 
-	void endTracyGpuPass(void* gpuZone);
+	std::array<PassTimingStats, RD::PASS_COUNT> m_passStats{};
 
-	FrameStats _stats{};
-	std::array<PassTimingStats, PassCount> _passStats{};
+	VkCommandBuffer m_tracyGraphicsCmdBuffer = VK_NULL_HANDLE;
 
-	VkCommandBuffer tracyGraphicsCmdBuffer = VK_NULL_HANDLE;
+	int64_t m_qpcFrequency     = 0;
+	int64_t m_framePeriodTicks = 0;
+	int64_t m_nextFrameTick    = 0;
+	int64_t m_startTimerTick   = 0;
 
-	int64_t _qpcFrequency = 0;
-	int64_t _framePeriodTicks = 0;
-	int64_t _nextFrameTick = 0;
-	int64_t _startTimerTick = 0;
+	double m_qpcInverse     = 0.0;
+	double m_frameStartTime = 0.0;
+	double m_lastFrameTime  = 0.0;
 
-	double _qpcInverse = 0.0;
-	double _frameStartTime = 0.0;
-	double _lastFrameTime = 0.0;
+	void* m_tracyGpuContext = nullptr;
 
-	bool _gpuAccelOn = false;
-	void* _tracyGpuContext = nullptr;
+	FrameStats m_stats{};
 };

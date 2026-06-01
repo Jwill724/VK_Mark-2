@@ -1,13 +1,12 @@
 #pragma once
 
+#include "VulkanTypes.h"
 #include "Queue.h"
 #include "Debugging.h"
 #include "string"
 #include "functional"
 
 struct GLFWwindow;
-struct DeviceContext;
-struct PhysicalDeviceCandidate;
 
 class Device final
 {
@@ -21,7 +20,7 @@ public:
 	size_t           GetNonCoherentAtomSize() const { return m_deviceLimits.nonCoherentAtomSize; }
 	uint32_t         GetMaxPushConstantSize() const { return m_deviceLimits.maxPushConstantsSize; }
 	uint32_t         GetMaxMemoryAllocation() const { return m_deviceLimits.maxMemoryAllocationCount; }
-	uint32_t         GetMaxAnisotropy()       const { return m_deviceLimits.maxSamplerAnisotropy; }
+	uint32_t         GetMaxAnisotropy()       const { return static_cast<uint32_t>(m_deviceLimits.maxSamplerAnisotropy); }
 	float            GetTimestampPeriod()     const { return m_deviceLimits.timestampPeriod; }
 
 	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
@@ -34,6 +33,8 @@ public:
 
 	void CreateInstance();
 	void CreateSurface(GLFWwindow* windowHandle);
+
+	const std::vector<const char*>& GetDeviceExtensions() const { return m_deviceExtensions; }
 
 	void InitLogical(const PhysicalDeviceCandidate& candidate);
 
@@ -98,11 +99,49 @@ public:
 		VkCommandPool cmdPool,
 		QueueType qType);
 
+	void SubmitDeferredCommands(QueueType qType);
+
+	// Call after device setup
+	void InitThreadCommandPool(uint32_t threadCount);
+
+	VkCommandPool GetThreadCommandPool(uint32_t threadID, QueueType type)
+	{
+		return m_threadCmdPoolManager.GetPool(threadID, type);
+	}
+
+	SwapchainSupportDetails GetSwapchainSupportDetails() const;
+
+	bool IsTransferQueueSupported() const noexcept { return m_transferQueue.IsValid(); }
+	bool IsComputeQueueSupported() const noexcept { return m_computeQueue.IsValid(); }
+
+	GraphicsQueue& GetGraphicsQueue() { return m_graphicsQueue; }
+	const GraphicsQueue& GetGraphicsQueue() const { return m_graphicsQueue; }
+	PresentQueue&  GetPresentQueue() { return m_presentQueue; }
+	const PresentQueue& GetPresentQueue() const { return m_presentQueue; }
+	TransferQueue& GetTransferQueue() { return m_transferQueue; }
+	const TransferQueue& GetTransferQueue() const { return m_transferQueue; }
+	ComputeQueue&  GetComputeQueue() { return m_computeQueue; }
+	const ComputeQueue& GetComputeQueue() const { return m_computeQueue; }
+
+private:
+	DeviceContext              m_context;
+	VkSurfaceKHR               m_surface        = VK_NULL_HANDLE;
+	std::string                m_pDeviceName;
+
+	VkPhysicalDeviceProperties m_deviceProps{};
+	VkPhysicalDeviceLimits     m_deviceLimits{};
+
+	SwapchainSupportDetails    m_swapchainSupportDetails{};
+
+	VkDebugUtilsMessengerEXT   m_debugMessenger = VK_NULL_HANDLE;
+
+	std::vector<const char*>   m_extensions;
+
 	// Thread pools
 	class ThreadCommandPoolManager
 	{
 		friend class Device;
-	public:
+	private:
 		VkCommandPool GetPool(uint32_t threadID, QueueType type) const noexcept
 		{
 			VkCommandPool selected = (type == QueueType::Graphics)
@@ -110,44 +149,18 @@ public:
 				: m_perThreadPools[threadID].transferPool;
 			return selected;
 		}
-	private:
-		ThreadCommandPoolManager() = default;
-		ThreadCommandPoolManager(Device& device, uint32_t threadCount)
-		{
-			Init(device, threadCount);
-		}
-
 		void Init(Device& device, uint32_t threadCount);
 		void Cleanup(Device& device);
 
 		std::vector<ThreadCommandPool> m_perThreadPools;
 	};
 
-	// Call after device setup
-	void InitThreadCommandPool(uint32_t threadCount);
+	ThreadCommandPoolManager m_threadCmdPoolManager;
 
-	VkCommandPool GetThreadCommandPool(uint32_t threadID, QueueType type)
-	{
-		m_threadCmdPoolManager.value().GetPool(threadID, type);
-	}
-
-private:
-	DeviceContext              m_context;
-	VkSurfaceKHR               m_surface        = VK_NULL_HANDLE;
-	std::string                m_pDeviceName;
-	VkPhysicalDeviceProperties m_deviceProps{};
-	VkPhysicalDeviceLimits     m_deviceLimits{};
-
-	VkDebugUtilsMessengerEXT   m_debugMessenger = VK_NULL_HANDLE;
-
-	std::vector<const char*>   m_extensions;
-
-	std::optional<ThreadCommandPoolManager> m_threadCmdPoolManager;
-
-	std::optional<GraphicsQueue> m_graphicsQueue;
-	std::optional<PresentQueue>  m_presentQueue;
-	std::optional<TransferQueue> m_transferQueue;
-	std::optional<ComputeQueue>  m_computeQueue;
+	GraphicsQueue m_graphicsQueue;
+	PresentQueue  m_presentQueue;
+	TransferQueue m_transferQueue;
+	ComputeQueue  m_computeQueue;
 
 	void PushGraphics(VkCommandBuffer cmd)
 	{
@@ -177,7 +190,6 @@ private:
 	void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
 
 	void SetupDebugMessenger();
-	std::vector<const char*> GetRequiredExtensions() const;
 	bool CheckValidationLayerSupport();
 
 	const std::vector<const char*> m_validationLayers
@@ -197,4 +209,6 @@ private:
 		//VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 		//VK_KHR_RAY_QUERY_EXTENSION_NAME
 	};
+
+	std::vector<const char*> GetRequiredExtensions() const;
 };

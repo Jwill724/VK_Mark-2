@@ -1,0 +1,520 @@
+#include "pch.h"
+
+#include "scene.h"
+#include "../../profiler/Profiler.h"
+#include "EngineTypes.h"
+
+static constexpr uint32_t TAA_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
+
+static glm::vec2 BuildTemporalJitterPixels(uint32_t m_frameIndex);
+static glm::vec2 ConvertJitterPixelsToNDC(
+	const glm::vec2 jitterPixels,
+	const float width,
+	const float height);
+static glm::mat4 ApplyProjectionJitter(
+	glm::mat4 proj,
+	const glm::vec2 jitterNDC);
+static float HaltonSequence(uint32_t index, uint32_t base);
+
+static constexpr glm::vec4 BuildAtlasUV(
+	VkExtent2D atlasExtent,
+	VkExtent2D tileExtent,
+	uint32_t tileX,
+	uint32_t tileY,
+	uint32_t borderPixels);
+
+glm::vec3 Scene::GetLightDir() { return glm::normalize(glm::vec3(m_sceneInfo.sunlightDirection)); }
+
+void Scene::InitScene(glm::vec3 spawn)
+{
+	m_camera.SetSpawnPoint(spawn);
+	m_camera.SetPosition(spawn);
+	m_camera.SetYaw(-90.0f);
+	m_camera.SetFovY(90.0f);
+
+	m_camera.SetSensitivity(50.0f); // Feels good on 1600dpi
+	m_camera.SetMaxSpeed(16.0f);
+	m_camera.SetMinSpeed(4.0f);
+
+	m_camera.SetAcceleration(20.0f);
+	m_camera.SetDamping(8.0f);
+
+	m_sceneInfo.cameraClips = glm::vec4(m_camera.GetNearClip(), m_camera.GetFarClip(), 0.0f, 0.0f);
+
+	m_currentJitterNDC = glm::vec2(0.0f);
+	m_previousJitterNDC = glm::vec2(0.0f);
+
+	m_lastViewProjUnjittered = glm::mat4(1.0f);
+	m_lastViewProjJittered = glm::mat4(1.0f);
+
+	m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 10.0f);    // golden sun
+	// m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 10.0f); // white
+	m_sceneInfo.sunlightDirection = glm::vec4(0.36f, 0.46f, -0.09f, 0.0f);
+}
+
+bool Scene::UpdateCamera(
+	Extents2D drawExtent,
+	Profiler& profiler,
+	GLFWwindow* window)
+{
+	bool isTemporalInvalid = false;
+
+	float width  = static_cast<float>(drawExtent.Width());
+	float height = static_cast<float>(drawExtent.Height());
+	const float aspect = width / height;
+
+	m_camera.ProcessInput(
+		window,
+		profiler,
+		drawExtent,
+		isTemporalInvalid);
+
+	m_curCamView = m_camera.GetViewMatrix();
+
+	m_curCamProjUnjittered = glm::perspectiveRH_ZO(
+		glm::radians(m_camera.GetFovY()),
+		aspect,
+		m_camera.GetFarClip(),
+		m_camera.GetNearClip());
+
+	m_previousJitterNDC = m_currentJitterNDC;
+
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	if (profiler.debugToggles.aaMode == TAA_U32)
+	{
+		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
+		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
+	}
+
+	m_currentJitterNDC = jitterNDC;
+	m_curCamProjJittered = ApplyProjectionJitter(m_curCamProjUnjittered, m_currentJitterNDC);
+
+	// Compute both unjittered and jittered viewprojs up front
+	glm::mat4 currentViewProjUnjittered = m_curCamProjUnjittered * m_curCamView;
+	glm::mat4 currentViewProjJittered = m_curCamProjJittered * m_curCamView;
+
+	m_sceneInfo.view = m_curCamView;
+	m_sceneInfo.invView = glm::inverse(m_curCamView);
+
+	const auto& aaMode = profiler.debugToggles.aaMode;
+	if (aaMode == TAA_U32)
+	{
+		m_sceneInfo.proj = m_curCamProjJittered;
+		m_sceneInfo.invProj = glm::inverse(m_curCamProjJittered);
+		m_sceneInfo.viewProj = currentViewProjJittered;
+
+		m_sceneInfo.temporalJitter = glm::vec4(
+			m_currentJitterNDC.x,
+			m_currentJitterNDC.y,
+			m_previousJitterNDC.x,
+			m_previousJitterNDC.y);
+	}
+	else
+	{
+		m_sceneInfo.proj = m_curCamProjUnjittered;
+		m_sceneInfo.invProj = glm::inverse(m_curCamProjUnjittered);
+		m_sceneInfo.viewProj = currentViewProjUnjittered;
+
+		m_sceneInfo.temporalJitter = glm::vec4(0.0f);
+	}
+	m_sceneInfo.prevViewProj = m_lastViewProjUnjittered;
+
+	m_sceneInfo.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
+
+	m_sceneInfo.cameraPos = glm::vec4(m_camera.GetPosition(), 0.0f);
+
+	UpdateFrustum(currentViewProjUnjittered);
+
+	m_lastViewProjUnjittered = currentViewProjUnjittered;
+	m_lastViewProjJittered = currentViewProjJittered;
+
+	m_sceneInfo.prevView = m_lastView;
+	m_lastView = m_curCamView;
+
+	if (m_sceneInfo.viewportSize.x != width || m_sceneInfo.viewportSize.y != height)
+	{
+		float pixelCount = width * height;
+		m_sceneInfo.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
+
+		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
+
+		VkExtent3D halfExtent = {
+			(drawExtent.Width() + 1u) >> 1,
+			(drawExtent.Height() + 1u) >> 1,
+			1u
+		};
+
+		glm::vec2 halfPixelSize = 1.0f /
+			glm::vec2(
+				static_cast<float>(halfExtent.width),
+				static_cast<float>(halfExtent.height));
+
+		m_sceneInfo.pixelSizes = glm::vec4(
+			fullPixelSize.x,
+			fullPixelSize.y,
+			halfPixelSize.x,
+			halfPixelSize.y);
+
+		isTemporalInvalid = true;
+
+		m_cachedAspectRatio = aspect; // Assign unique aspect
+		m_bShouldSplitsUpdate = true;
+	}
+
+	return isTemporalInvalid;
+}
+
+
+static int bend_min(const int a, const int b) { return a > b ? b : a; }
+static int bend_max(const int a, const int b) { return a > b ? a : b; }
+
+// Dispatch building logic based on Bend Studio's
+// https://www.bendstudio.com/blog/inside-bend-screen-space-shadows/
+void Scene::BuildDispatchList(const int waveSize)
+{
+	const auto lightDir = GetLightDir();
+	const glm::vec2 viewportSize = { m_sceneInfo.viewportSize.x, m_sceneInfo.viewportSize.y };
+
+	glm::vec4 lightProj = m_sceneInfo.viewProj * glm::vec4(lightDir, 0.0f);
+
+	DispatchList result;
+
+	// Floating point division in the shader has a practical limit for precision when the light is *very* far off screen (~1m pixels+)
+	// So when computing the light XY coordinate, use an adjusted w value to handle these extreme values
+	float xy_light_w = lightProj[3];
+	const float FP_limit = 0.000002f * static_cast<float>(waveSize);
+
+	if (xy_light_w >= 0 && xy_light_w < FP_limit) xy_light_w = FP_limit;
+	else if (xy_light_w < 0 && xy_light_w > -FP_limit) xy_light_w = -FP_limit;
+
+	// Need precise XY pixel coordinates of the light
+	result.lightCoords[0] = ((lightProj[0] / xy_light_w) * +0.5f + 0.5f) * viewportSize.x;
+
+	// NOTE: Y flip required for my light projection to work
+	result.lightCoords[1] = (1.0f - ((lightProj[1] / xy_light_w) * -0.5f + 0.5f)) * viewportSize.y;
+	result.lightCoords[2] = lightProj[3] == 0 ? 0 : (lightProj[2] / lightProj[3]);
+	result.lightCoords[3] = lightProj[3] > 0 ? 1.0f : -1.0f;
+
+	int32_t light_xy[2] =
+	{
+		static_cast<int32_t>((result.lightCoords[0] + 0.5f)),
+		static_cast<int32_t>((result.lightCoords[1] + 0.5f))
+	};
+
+	// Make the bounds inclusive, relative to the light
+	const int32_t biased_bounds[4] =
+	{
+		0 - light_xy[0],
+		-(static_cast<int32_t>(viewportSize.y) - light_xy[1]),
+		static_cast<int32_t>(viewportSize.x) - light_xy[0],
+		-(0 - light_xy[1]),
+	};
+
+	// Process 4 quadrants around the light center,
+	// They each form a rectangle with one corner on the light XY coordinate
+	// If the rectangle isn't square, it will need breaking in two on the larger axis
+	// 0 = bottom left, 1 = bottom right, 2 = top left, 2 = top right
+	for (int q = 0; q < 4; q++) {
+		// Quads 0 and 3 needs to be +1 vertically, 1 and 2 need to be +1 horizontally
+		bool vertical = q == 0 || q == 3;
+
+		// Bounds relative to the quadrant
+		const int bounds[4] =
+		{
+			bend_max(0, ((q & 1) ? biased_bounds[0] : -biased_bounds[2])) / waveSize,
+			bend_max(0, ((q & 2) ? biased_bounds[1] : -biased_bounds[3])) / waveSize,
+			bend_max(0, (((q & 1) ? biased_bounds[2] : -biased_bounds[0]) + waveSize * (vertical ? 1 : 2) - 1)) / waveSize,
+			bend_max(0, (((q & 2) ? biased_bounds[3] : -biased_bounds[1]) + waveSize * (vertical ? 2 : 1) - 1)) / waveSize,
+		};
+
+		if ((bounds[2] - bounds[0]) > 0 && (bounds[3] - bounds[1]) > 0) {
+			int bias_x = (q == 2 || q == 3) ? 1 : 0;
+			int bias_y = (q == 1 || q == 3) ? 1 : 0;
+
+			DispatchData& disp = result.dispatch[result.dispatchCount++];
+
+			disp.waveCount[0] = waveSize; // 64
+			disp.waveCount[1] = bounds[2] - bounds[0];
+			disp.waveCount[2] = bounds[3] - bounds[1];
+			disp.waveOffset[0] = ((q & 1) ? bounds[0] : -bounds[2]) + bias_x;
+			disp.waveOffset[1] = ((q & 2) ? -bounds[3] : bounds[1]) + bias_y;
+
+			// We want the far corner of this quadrant relative to the light,
+			// as we need to know where the diagonal light ray intersects with the edge of the bounds
+			int axis_delta = +biased_bounds[0] - biased_bounds[1];
+			if (q == 1) axis_delta = +biased_bounds[2] + biased_bounds[1];
+			if (q == 2) axis_delta = -biased_bounds[0] - biased_bounds[3];
+			if (q == 3) axis_delta = -biased_bounds[2] + biased_bounds[3];
+
+			axis_delta = (axis_delta + waveSize - 1) / waveSize;
+
+			if (axis_delta > 0)
+			{
+				DispatchData& disp2 = result.dispatch[result.dispatchCount++];
+
+				// Take copy of current volume
+				disp2 = disp;
+
+				if (q == 0)
+				{
+					// Split on Y, split becomes -1 larger on x
+					disp2.waveCount[2] = bend_min(disp.waveCount[2], axis_delta);
+					disp.waveCount[2] -= disp2.waveCount[2];
+					disp2.waveOffset[1] = disp.waveOffset[1] + disp.waveCount[2];
+					disp2.waveOffset[0]--;
+					disp2.waveCount[1]++;
+				}
+				if (q == 1)
+				{
+					// Split on X, split becomes +1 larger on y
+					disp2.waveCount[1] = bend_min(disp.waveCount[1], axis_delta);
+					disp.waveCount[1] -= disp2.waveCount[1];
+					disp2.waveOffset[0] = disp.waveOffset[0] + disp.waveCount[1];
+					disp2.waveCount[2]++;
+				}
+				if (q == 2)
+				{
+					// Split on X, split becomes -1 larger on y
+					disp2.waveCount[1] = bend_min(disp.waveCount[1], axis_delta);
+					disp.waveCount[1] -= disp2.waveCount[1];
+					disp.waveOffset[0] += disp2.waveCount[1];
+					disp2.waveCount[2]++;
+					disp2.waveOffset[1]--;
+				}
+				if (q == 3)
+				{
+					// Split on Y, split becomes +1 larger on x
+					disp2.waveCount[2] = bend_min(disp.waveCount[2], axis_delta);
+					disp.waveCount[2] -= disp2.waveCount[2];
+					disp.waveOffset[1] += disp2.waveCount[2];
+					disp2.waveCount[1]++;
+				}
+
+				// Remove if too small
+				if (disp2.waveCount[1] <= 0 || disp2.waveCount[2] <= 0)
+				{
+					disp2 = result.dispatch[--result.dispatchCount];
+				}
+				if (disp.waveCount[1] <= 0 || disp.waveCount[2] <= 0)
+				{
+					disp = result.dispatch[--result.dispatchCount];
+				}
+			}
+		}
+	}
+
+	// Scale the shader values by the wave count, the shader expects this
+	for (int i = 0; i < result.dispatchCount; i++) {
+		result.dispatch[i].waveOffset[0] *= waveSize;
+		result.dispatch[i].waveOffset[1] *= waveSize;
+	}
+
+	m_dispatchList = std::move(result);
+}
+
+
+static constexpr glm::vec4 BuildAtlasUV(
+	VkExtent2D atlasExtent,
+	VkExtent2D tileExtent,
+	uint32_t tileX,
+	uint32_t tileY,
+	uint32_t borderPixels)
+{
+	const float atlasW = static_cast<float>(atlasExtent.width);
+	const float atlasH = static_cast<float>(atlasExtent.height);
+
+	const float tileW  = static_cast<float>(tileExtent.width);
+	const float tileH  = static_cast<float>(tileExtent.height);
+
+	const float borderU = static_cast<float>(borderPixels) / atlasW;
+	const float borderV = static_cast<float>(borderPixels) / atlasH;
+
+	const float offsetX = static_cast<float>(tileX) * tileW;
+	const float offsetY = static_cast<float>(tileY) * tileH;
+
+	const float offsetU = (offsetX / atlasW) + borderU;
+	const float offsetV = (offsetY / atlasH) + borderV;
+
+	const float scaleU  = (tileW / atlasW) - 2.0f * borderU;
+	const float scaleV  = (tileH / atlasH) - 2.0f * borderV;
+
+	return glm::vec4(scaleU, scaleV, offsetU, offsetV);
+}
+
+void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bindlessID)
+{
+	const VkExtent2D atlasExtent = {
+		atlasWidth,
+		atlasHeight
+	};
+
+	// For a 2x2 grid:
+	const uint32_t tilesPerRow = 2u;
+	const VkExtent2D tileExtent = {
+		atlasWidth / tilesPerRow,
+		atlasHeight / tilesPerRow
+	};
+
+	const uint32_t borderPixels = 2;
+
+	for (uint32_t cascadeIndex = 0; cascadeIndex < RD::MAX_SHADOW_CASCADES; ++cascadeIndex) {
+		const uint32_t tileX = cascadeIndex % tilesPerRow;
+		const uint32_t tileY = cascadeIndex / tilesPerRow;
+
+		m_csmInfo.atlasUV[cascadeIndex] = BuildAtlasUV(atlasExtent, tileExtent, tileX, tileY, borderPixels);
+	}
+
+	m_csmAtlasTileRes = static_cast<float>(atlasWidth / 2u);
+
+	m_shadowControl.splitLambda = 0.97f;
+	m_csmInfo.params.x = 0.0001f;
+	m_csmInfo.params.z = static_cast<float>(RD::MAX_SHADOW_CASCADES);
+	m_csmInfo.params.y = static_cast<float>(bindlessID);
+	m_csmInfo.params.w = 1.0f / m_csmAtlasTileRes;
+	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+}
+
+// Two great starting points to learn cascade shadow maps
+// https://learnopengl.com/Guest-Articles/2021/CSM
+// https://www.youtube.com/watch?v=3FMONJ1O39U&list=LL&index=157
+// Both GLM_FORCE are enabled globally in hpp within pch
+// #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+// #define GLM_FORCE_RIGHT_HANDED
+// Pipeline depth compare LESS
+// CULL MODE: FRONT BIT
+void Scene::UpdateCSMInfo()
+{
+	constexpr float CASCADE_RADIUS[RD::MAX_SHADOW_CASCADES] = {
+		17.0f,
+		46.0f,
+		160.0f,
+		500.0f // sss carries last cascade
+	};
+
+	const auto lightDir = GetLightDir();
+
+	if (m_bShouldSplitsUpdate)
+	{
+		m_bShouldSplitsUpdate = false;
+
+		const float nearClip = m_camera.GetNearClip();
+		const float clipRange = m_shadowFar - nearClip;
+		const float ratio = m_shadowFar / nearClip;
+
+		// Compute split distances in view space (absolute units)
+		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+		{
+			const float p              = (static_cast<float>(i) + 1.0f) / static_cast<float>(RD::MAX_SHADOW_CASCADES);
+			const float log            = nearClip * std::pow(ratio, p);
+			const float uni            = nearClip + (clipRange * p);
+			m_csmInfo.cascadeSplits[i] = (m_shadowControl.splitLambda * log) + ((1.0f - m_shadowControl.splitLambda) * uni);
+		}
+	}
+
+	float lastSplitDist = m_camera.GetNearClip();
+	for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+	{
+		const float curSplit = m_csmInfo.cascadeSplits[i];
+
+		const float splitMid = (lastSplitDist + curSplit) * 0.5f;
+
+		const glm::vec3 camPos = m_camera.GetPosition();
+		const glm::vec3 camForward = m_camera.GetView();
+
+		const glm::vec3 frustumCenter = camPos + camForward * splitMid;
+
+		// Light view
+		const glm::vec3 lightPos = frustumCenter + lightDir;
+		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		m_cascadeLightViews[i] = lightView;
+
+		float radius = CASCADE_RADIUS[i];
+
+		const float worldUnitsPerTexel = (radius * 2.0f) / m_csmAtlasTileRes;
+		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+		//m_csmInfo.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
+
+		glm::vec3 max = glm::vec3(radius);
+		glm::vec3 min = -max;
+
+		// Extend depth range to keep shadow visuals consistent
+		const float depthRange = max.z - min.z;
+		min.z -= depthRange;
+
+		// Scale factor hack that fixes issues with large assets
+		//min.z *= 5.0f;
+
+		m_csmInfo.cascadeBias[i] = (worldUnitsPerTexel / depthRange) * 0.5f;
+
+		// Orthographic projection
+		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
+
+		glm::mat4 shadowMatrix = lightProj * lightView;
+
+		// This works beautifully, it keeps the shadows 100% stable during movement
+		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
+		// scale origin by shadow map size
+		// round it (nearest texel)
+		// get the offset
+		// scale it back down, only use x,y and apply it to vp matrix
+		glm::vec3 shadowOrigin  = shadowMatrix * glm::vec4(glm::vec3(0.0f), 1.0f);
+		shadowOrigin            = shadowOrigin * m_csmAtlasTileRes / 2.0f;
+		glm::vec3 roundedOrigin = glm::round(shadowOrigin);
+		glm::vec3 roundOffset   = roundedOrigin - shadowOrigin;
+		roundOffset             = roundOffset * 2.0f / m_csmAtlasTileRes;
+		roundOffset.z           = 0.0f;
+		shadowMatrix[3]        += glm::vec4(roundOffset, 0.0f);
+		m_csmInfo.cascadeVP[i]  = shadowMatrix;
+
+		lastSplitDist = curSplit;
+
+		m_cascadeFrustums[i].ExtractNew(m_csmInfo.cascadeVP[i]);
+	}
+}
+
+static float HaltonSequence(uint32_t index, uint32_t base)
+{
+	float f = 1.0, r = 0.0;
+	while (index > 0) {
+		f /= static_cast<float>(base);
+		r += f * float(index % base);
+		index /= base;
+	}
+	return r;
+}
+
+static glm::vec2 BuildTemporalJitterPixels(uint32_t m_frameIndex)
+{
+	const uint32_t sequenceLength = 16u;
+	uint32_t index = (m_frameIndex % sequenceLength) + 1u;
+
+	glm::vec2 jitter;
+	jitter.x = HaltonSequence(index, 2u);
+	jitter.y = HaltonSequence(index, 3u);
+	jitter -= glm::vec2(0.5f);
+	return jitter;
+}
+
+static glm::vec2 ConvertJitterPixelsToNDC(
+	const glm::vec2 jitterPixels,
+	const float width,
+	const float height)
+{
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	jitterNDC.x = (2.0f * jitterPixels.x) / width;
+	jitterNDC.y = (2.0f * jitterPixels.y) / height;
+
+	return jitterNDC;
+}
+
+static glm::mat4 ApplyProjectionJitter(
+	glm::mat4 proj,
+	const glm::vec2 jitterNDC)
+{
+	proj[2][0] += jitterNDC.x;
+	proj[2][1] += jitterNDC.y;
+	return proj;
+}

@@ -2,24 +2,18 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 struct GLFWwindow;
+struct Extents2D;
 
 class Window final
 {
 public:
-	Window() = default;
-	Window(uint32_t width, uint32_t height, const char* name)
-		: m_extentWidth(width)
-		, m_extentHeight(height)
-		, m_windowName(name)
-	{
-		InitWindow();
-	}
+	void Init(uint32_t width, uint32_t height, std::string name);
+	void Cleanup() const;
 
-	~Window() { Cleanup(); }
-
-	void UpdateDynamicWindowSize() const;
+	void UpdateWindowSize() const;
 
 	bool ThrottleIfWindowUnfocused(double sleepMs) const;
 
@@ -35,13 +29,11 @@ public:
 		m_extentHeight = height;
 	};
 
-	std::array<uint32_t, 2> GetExtent() const;
+	const Extents2D& GetExtent() const;
 private:
-	void InitWindow();
-	void Cleanup() const;
 
 	GLFWwindow* m_windowHandle = nullptr;
-	const char* m_windowName = nullptr;
+	std::string m_windowName;
 
 	mutable uint32_t m_extentWidth = 0u;
 	mutable uint32_t m_extentHeight = 0u;

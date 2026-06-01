@@ -36,7 +36,7 @@
 
 #if defined(__GNUC__)
 // Disable -Wconversion warnings (spuriously triggered when Traits::size_t and
-// Traits::index_t are m_frameSet to < 32 bits, causing integer promotion, causing warnings
+// Traits::index_t are set to < 32 bits, causing integer promotion, causing warnings
 // upon assigning any computed values)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -104,7 +104,7 @@ namespace details {
 	typedef std::max_align_t std_max_align_t;   // Others (e.g. MSVC) insist it can *only* be accessed via std::
 #endif
 
-	// Some platforms have incorrectly m_frameSet max_align_t to a type with <8 bytes alignment even while supporting
+	// Some platforms have incorrectly set max_align_t to a type with <8 bytes alignment even while supporting
 	// 8-byte aligned scalar values (*cough* 32-bit iOS). Work around this with our own union. See issue #64.
 	typedef union {
 		std_max_align_t x;
@@ -666,7 +666,7 @@ private:
 		inline void add(N* node)
 		{
 			// We know that the should-be-on-freelist bit is 0 at this point, so it's safe to
-			// m_frameSet it using a fetch_add
+			// set it using a fetch_add
 			if (node->freeListRefs.fetch_add(SHOULD_BE_ON_FREELIST, std::memory_order_acq_rel) == 0) {
 				// Oh look! We were the last ones referencing this node, and we know
 				// we want to add it to the free list, so let's do it!
@@ -768,7 +768,7 @@ private:
 					}
 				}
 
-				// Aha, empty; make sure we have all other memory effects that happened before the empty flags were m_frameSet
+				// Aha, empty; make sure we have all other memory effects that happened before the empty flags were set
 				std::atomic_thread_fence(std::memory_order_acquire);
 				return true;
 			}

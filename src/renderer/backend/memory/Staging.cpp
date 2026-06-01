@@ -1,8 +1,9 @@
 #include "pch.h"
 
 #include "Staging.h"
-#include "Core.h"
-#include <renderer/backend/memory/AllocatedImage.h>
+#include "AllocatedImage.h"
+#include "TextureStaging.h"
+#include "../ImageUtils.h"
 
 void StagingBuffer::Init(size_t size, VmaAllocator vma, VkDevice device, size_t nonCoherentAtomSize)
 {
@@ -12,7 +13,6 @@ void StagingBuffer::Init(size_t size, VmaAllocator vma, VkDevice device, size_t 
 	ASSERT(!m_staging.IsValid());
 
 	m_staging.Reset();
-
 	m_atomSize = nonCoherentAtomSize > 0 ? nonCoherentAtomSize : 1;
 	m_vma      = vma;
 	m_device   = device;
@@ -36,9 +36,10 @@ void StagingBuffer::Init(size_t size, VmaAllocator vma, VkDevice device, size_t 
 	m_staging.m_mappedPtr = allocInfo.pMappedData;
 	m_staging.m_bytesSize = allocInfo.size;
 	m_capacity            = allocInfo.size;
-	m_head                = 0;
 
-	ASSERT(m_staging.m_mappedPtr != nullptr && "Staging buffer must be persistently mapped");
+	m_head.store(0, std::memory_order_relaxed);
+
+	ASSERT(m_staging.m_mappedPtr != nullptr);
 }
 
 void StagingBuffer::Shutdown()
@@ -51,31 +52,36 @@ void StagingBuffer::Shutdown()
 	m_head     = 0;
 }
 
+bool StagingBuffer::CanFit(size_t bytes, size_t alignment) const noexcept
+{
+	const size_t alignedSize = std::max(m_atomSize, alignment);
+	const size_t current     = m_head.load(std::memory_order_relaxed);
+	const size_t offset      = AllocatedBuffer::AlignUp(current, alignedSize);
+	return (offset + bytes) <= m_capacity;
+}
+
 size_t StagingBuffer::Suballocate(size_t bytes, size_t alignment)
 {
-	const size_t offset = AllocatedBuffer::AlignUp(m_head, alignment);
+	const size_t alignedSize = std::max(m_atomSize, alignment);
+	// Pad bytes up to alignment so the next allocation is also aligned
+	const size_t paddedBytes = AllocatedBuffer::AlignUp(bytes, alignedSize);
 
-	ASSERT(offset + bytes <= m_capacity);
+	const size_t offset = m_head.fetch_add(paddedBytes, std::memory_order_acq_rel);
+	const size_t end    = offset + bytes;
 
-	m_head = offset + bytes;
+	ASSERT(end <= m_capacity);
 	return offset;
 }
 
-// --------
-// BUFFERS
-// --------
-
-StagedWrite StagingBuffer::Stage(const void*  data,
-								 size_t       bytes,
-								 VkBuffer     dst,
-								 VkDeviceSize dstOffset)
+StagedWrite StagingBuffer::Stage(const void* data, size_t bytes, VkBuffer dst, VkDeviceSize dstOffset)
 {
 	ASSERT(data != nullptr);
+	ASSERT(dst != VK_NULL_HANDLE);
 
-	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(16));
+	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(16u));
 	const size_t offset    = Suballocate(bytes, alignment);
 
-	memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, bytes);
+	std::memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, bytes);
 
 	StagedWrite write{};
 	write.srcBuffer = m_staging.m_buffer;
@@ -88,131 +94,122 @@ StagedWrite StagingBuffer::Stage(const void*  data,
 
 void StagingBuffer::CopyCommand(VkCommandBuffer cmd, StagedWrite write) noexcept
 {
-	VkBufferCopy copyBuffer = write.ToBufferCopy();
-	vkCmdCopyBuffer(cmd, write.srcBuffer, write.dstBuffer, 1, &copyBuffer);
+	VkBufferCopy copy = write.ToBufferCopy();
+	vkCmdCopyBuffer(cmd, write.srcBuffer, write.dstBuffer, 1, &copy);
 }
-
-
-// ---------
-// TEXTURES
-// ---------
 
 PendingTextureUpload StagingBuffer::StageTexture(const void* data, size_t pixelBytes, AllocatedImage& image)
 {
 	ASSERT(data != nullptr);
 
-	const size_t width  = image.extent.width;
-	const size_t height = image.extent.height;
-	const size_t depth  = std::max(static_cast<uint32_t>(image.extent.depth), 1u);
-	const size_t layers = image.bIsCubemap ? 6u : std::max(image.arrayLayers, 1u);
+	const size_t width  = image.Width();
+	const size_t height = image.Height();
+	const size_t depth  = std::max(static_cast<uint32_t>(image.Depth()), 1u);
+	const size_t layers = image.m_bIsCubemap ? 6u : std::max(image.m_arrayLayers, 1u);
 	const size_t bytes  = width * height * depth * layers * pixelBytes;
 
-	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(4));
+	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(4u));
 	const size_t offset    = Suballocate(bytes, alignment);
 
-	memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, bytes);
+	std::memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, bytes);
 
 	PendingTextureUpload pending{};
 	pending.image = &image;
 	pending.writes.emplace_back(StagedTextureWrite{
 		.srcBuffer  = m_staging.m_buffer,
-		.dstImage   = image.image,
+		.dstImage   = image.m_image,
 		.srcOffset  = static_cast<VkDeviceSize>(offset),
-		.extent     = image.extent,
+		.extent     = { image.m_extent.Width(), image.m_extent.Height(), image.m_extent.Depth() },
 		.mipLevel   = 0,
 		.baseLayer  = 0,
 		.layerCount = static_cast<uint32_t>(layers)
 	});
-	return pending;
-}
-
-PendingTextureUpload StagingBuffer::StageTextureMips(
-	const std::vector<const void*>& mipDatas,
-	const std::vector<VkExtent3D>&  mipExtents,
-	size_t                          pixelBytes,
-	AllocatedImage&                 image)
-{
-	ASSERT(!mipDatas.empty());
-	ASSERT(mipDatas.size() == mipExtents.size());
-	ASSERT(image.image != VK_NULL_HANDLE);
-
-	const size_t layers    = image.bIsCubemap ? 6u : std::max(image.arrayLayers, 1u);
-	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(4));
-
-	PendingTextureUpload pending{};
-	pending.image = &image;
-	pending.writes.reserve(mipDatas.size());
-
-	for (uint32_t mip = 0; mip < static_cast<uint32_t>(mipDatas.size()); ++mip)
-	{
-		const VkExtent3D& ext   = mipExtents[mip];
-		const size_t      bytes = static_cast<size_t>(ext.width)  *
-								  static_cast<size_t>(ext.height) *
-								  std::max(static_cast<size_t>(ext.depth), static_cast<size_t>(1)) *
-								  layers * pixelBytes;
-
-		ASSERT(mipDatas[mip] != nullptr);
-
-		const size_t offset = Suballocate(bytes, alignment);
-		memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, mipDatas[mip], bytes);
-
-		pending.writes.emplace_back(StagedTextureWrite{
-			.srcBuffer  = m_staging.m_buffer,
-			.dstImage   = image.image,
-			.srcOffset  = static_cast<VkDeviceSize>(offset),
-			.extent     = ext,
-			.mipLevel   = mip,
-			.baseLayer  = 0,
-			.layerCount = static_cast<uint32_t>(layers)
-		});
-	}
 
 	return pending;
 }
 
-void StagingBuffer::TextureCopyCommand(
-	VkCommandBuffer cmd,
-	const PendingTextureUpload& upload) const noexcept
+void StagingBuffer::TextureCopyCommand(VkCommandBuffer cmd, const PendingTextureUpload& upload) const noexcept
 {
 	for (const auto& w : upload.writes)
 	{
 		VkBufferImageCopy copy = w.ToBufferImageCopy();
-		vkCmdCopyBufferToImage(
-			cmd,
-			w.srcBuffer,
-			w.dstImage,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1,
-			&copy);
+		vkCmdCopyBufferToImage(cmd, w.srcBuffer, w.dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 	}
 }
 
-void StagingBuffer::TextureCopyBatch(
-	VkCommandBuffer cmd,
-	const std::vector<PendingTextureUpload>& batch) const noexcept
+void StagingBuffer::TextureCopyBatch(VkCommandBuffer cmd, const std::vector<PendingTextureUpload>& batch) const noexcept
 {
 	for (const auto& upload : batch)
 		TextureCopyCommand(cmd, upload);
 }
 
+void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUploadDesc> descs)
+{
+	ASSERT(!descs.empty());
 
-// ------
-// FLUSH
-// ------
+	std::vector<PendingTextureUpload> uploads;
+	uploads.reserve(descs.size());
+
+	for (auto& desc : descs)
+	{
+		ASSERT(desc.IsValid());
+		auto upload     = StageTexture(desc.pixelData, desc.pixelBytes, *desc.image);
+		upload.strategy = desc.strategy;
+		uploads.emplace_back(std::move(upload));
+	}
+
+	Flush();
+
+	std::vector<VkImageMemoryBarrier2> barriers;
+	barriers.reserve(uploads.size());
+
+	for (const auto& upload : uploads)
+	{
+		barriers.emplace_back(VkImageMemoryBarrier2{
+			.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask     = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			.srcAccessMask    = VK_ACCESS_2_NONE,
+			.dstStageMask     = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			.dstAccessMask    = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image            = upload.image->m_image,
+			.subresourceRange = {
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0, VK_REMAINING_MIP_LEVELS,
+				0, VK_REMAINING_ARRAY_LAYERS
+			}
+		});
+	}
+
+	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
+	dep.pImageMemoryBarriers    = barriers.data();
+	vkCmdPipelineBarrier2(cmd, &dep);
+
+	TextureCopyBatch(cmd, uploads);
+
+	for (const auto& upload : uploads)
+	{
+		if (upload.strategy == MipStrategy::GenerateOnGPU)
+			ImageUtils::GenerateMipLevels(cmd, *upload.image);
+		else
+			ImageUtils::TransitionLayout(cmd, *upload.image, RD::ImageAccess::TransferDst, RD::ImageAccess::Read);
+	}
+}
 
 void StagingBuffer::Flush() const
 {
-	if (m_head == 0) return;
+	const size_t used = m_head.load(std::memory_order_acquire);
+	if (used == 0) return;
 
-	const size_t begin = 0;
-	const size_t end   = AllocatedBuffer::AlignUp(m_head, m_atomSize);
-	vmaFlushAllocation(m_vma, m_staging.m_allocation, begin, end);
+	const size_t end = AllocatedBuffer::AlignUp(used, m_atomSize);
+	vmaFlushAllocation(m_vma, m_staging.m_allocation, 0, end);
 }
 
 void StagingBuffer::FlushRange(size_t offset, size_t bytes) const
 {
 	ASSERT(offset + bytes <= m_capacity);
-
 	const size_t begin = offset & ~(m_atomSize - 1);
 	const size_t end   = AllocatedBuffer::AlignUp(offset + bytes, m_atomSize);
 	vmaFlushAllocation(m_vma, m_staging.m_allocation, begin, end - begin);

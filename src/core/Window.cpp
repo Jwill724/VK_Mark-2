@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "Window.h"
-#include "Core.h"
+#include "EngineTypes.h"
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
@@ -23,7 +23,7 @@ bool Window::ThrottleIfWindowUnfocused(double sleepMs) const
 	return false;
 }
 
-void Window::UpdateDynamicWindowSize() const
+void Window::UpdateWindowSize() const
 {
 	int width = 0, height = 0;
 	glfwGetFramebufferSize(m_windowHandle, &width, &height);
@@ -36,15 +36,19 @@ void Window::UpdateDynamicWindowSize() const
 	SetExtent(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 }
 
-void Window::InitWindow()
+void Window::Init(uint32_t width, uint32_t height, std::string name)
 {
+	m_extentWidth = width;
+	m_extentHeight = height;
+	m_windowName = name;
+
 	int glfwResult = glfwInit();
 	if (!glfwResult) { ASSERT(glfwResult && "Failed to initialize GLFW!"); }
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-	m_windowHandle = glfwCreateWindow(m_extentWidth, m_extentHeight, m_windowName, nullptr, nullptr);
+	m_windowHandle = glfwCreateWindow(m_extentWidth, m_extentHeight, m_windowName.data(), nullptr, nullptr);
 	if (!m_windowHandle) { ASSERT(m_windowHandle && "Failed to initialize GLFW window!"); }
 
 	GLFWmonitor* mon = glfwGetPrimaryMonitor();
@@ -59,7 +63,7 @@ void Window::InitWindow()
 	glfwSetFramebufferSizeCallback(m_windowHandle, framebufferResizeCallback);
 }
 
-std::array<uint32_t, 2> Window::GetExtent() const
+const Extents2D& Window::GetExtent() const
 {
 	int width, height;
 	glfwGetWindowSize(m_windowHandle, &width, &height);

@@ -2,7 +2,7 @@
 
 #include "Queue.h"
 #include "Sync.h"
-#include "Core.h"
+#include "../frame/FrameResources.h"
 
 void GPUQueue::WaitIdle() const
 {
@@ -28,9 +28,9 @@ uint64_t GPUQueue::SubmitWithTimelineSync(
 	const std::vector<VkCommandBuffer>& cmdBuffers,
 	VkSemaphore timelineSemaphore,
 	uint64_t signalValue,
-	VkSemaphore waitSemaphore                = VK_NULL_HANDLE,
-	uint64_t waitValue                       = 0,
-	VkPipelineStageFlags2 waitStages         = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+	VkSemaphore waitSemaphore,
+	uint64_t waitValue,
+	VkPipelineStageFlags2 waitStages)
 {
 	std::lock_guard lock(m_mutex);
 
@@ -227,9 +227,9 @@ void GPUQueue::DestroySemaphore(VkDevice device, VkSemaphore semaphore)
 // Graphics queue
 void GraphicsQueue::SubmitFrame(
 	const std::vector<VkSemaphoreSubmitInfo>& waitInfos,
-	VkCommandBuffer                            cmdBuffer,
-	VkSemaphore                                signalSemaphore,
-	VkFence                                    fence)
+	VkCommandBuffer                           cmdBuffer,
+	VkSemaphore                               signalSemaphore,
+	VkFence                                   fence)
 {
 	std::lock_guard lock(m_mutex);
 
@@ -252,42 +252,89 @@ void GraphicsQueue::SubmitFrame(
 	VK_CHECK(vkQueueSubmit2(m_queue, 1, &submitInfo, fence));
 }
 
-bool GraphicsQueue::ReadTimestamps(
-	VkQueryPool                         pool,
-	std::span<const PassTimestampRange> ranges,
-	std::span<const bool>               passUsed,
-	float                               timestampPeriod,
-	std::span<TimestampResult>          outResults)
+GraphicsQueue::TimestampReadback GraphicsQueue::ReadTimestamps(
+	VkQueryPool                             pool,
+	std::span<const RD::PassTimestampRange> ranges,
+	std::span<const bool>                   passUsed,
+	float                                   timestampPeriod)
 {
 	ASSERT(pool != VK_NULL_HANDLE);
-	ASSERT(ranges.size() == outResults.size());
 
-	bool allReady = true;
+	TimestampReadback result{};
+	result.passResults = std::span<TimestampResult>(
+		new TimestampResult[ranges.size()],
+		ranges.size());
 
 	for (size_t i = 0; i < ranges.size(); ++i)
 	{
-		outResults[i] = {};
+		result.passResults[i] = {};
+
 		if (!passUsed[i]) continue;
 
 		uint64_t queryPair[2]{};
-		VkResult res = vkGetQueryPoolResults(
-			m_logicalDeviceCopy, pool,
-			ranges[i].beginQuery, 2,
-			sizeof(queryPair), queryPair,
-			sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
 
-		if (res == VK_NOT_READY) { allReady = false; continue; }
+		VkResult res = vkGetQueryPoolResults(
+			m_logicalDeviceCopy,
+			pool,
+			ranges[i].beginQuery,
+			2,
+			sizeof(queryPair),
+			queryPair,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT);
+
+		if (res == VK_NOT_READY)
+		{
+			result.allReady = false;
+			continue;
+		}
+
 		VK_CHECK(res);
 
 		if (queryPair[1] > queryPair[0])
 		{
-			outResults[i].gpuMs = static_cast<float>(
-				double(queryPair[1] - queryPair[0]) * double(timestampPeriod) / 1'000'000.0);
-			outResults[i].valid = true;
+			result.passResults[i].gpuMs = static_cast<float>(
+				double(queryPair[1] - queryPair[0]) *
+				double(timestampPeriod) / 1'000'000.0);
+
+			result.passResults[i].valid = true;
 		}
 	}
 
-	return allReady;
+	// Frame timing
+	{
+		uint64_t queryPair[2]{};
+
+		VkResult res = vkGetQueryPoolResults(
+			m_logicalDeviceCopy,
+			pool,
+			FRAME_BEGIN_QUERY,
+			2,
+			sizeof(queryPair),
+			queryPair,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT);
+
+		if (res == VK_NOT_READY)
+		{
+			result.allReady = false;
+		}
+		else
+		{
+			VK_CHECK(res);
+
+			if (queryPair[1] > queryPair[0])
+			{
+				result.frameResult.gpuMs = static_cast<float>(
+					double(queryPair[1] - queryPair[0]) *
+					double(timestampPeriod) / 1'000'000.0);
+
+				result.frameResult.valid = true;
+			}
+		}
+	}
+
+	return result;
 }
 
 

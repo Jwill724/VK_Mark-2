@@ -1,6 +1,7 @@
 #ifndef PBR_GLSL
 #define PBR_GLSL
 
+float saturatePBR(float x) { return clamp(x, 0.0, 1.0); }
 float linearRough(float r) { return max(r * r, 0.001); }
 
 // GGX (Trowbridge-Reitz) NDF
@@ -32,7 +33,8 @@ float FRESNEL_POWER_UNREAL(vec3 V, vec3 H) {
 }
 vec3 F_SCHLICK(vec3 V, vec3 H, vec3 F0)
 {
-	return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
+	//return F0 + (1.0 - F0) * pow(2.0, FRESNEL_POWER_UNREAL(V,H));
+	return F0 + (1.0 - F0) * pow(1.0 - saturatePBR(dot(V,H)), 5.0);
 }
 
 // Disney/Burley diffuse (what frostbite uses)
@@ -73,7 +75,7 @@ float SpecAO_Conservative(float ao, float NdotV, float rough)
 	float p = mix(4.0, 1.5, rough);
 	float v = max(NdotV, 0.1);
 	// never < ao and =1 when ao=1
-	float t = pow(clamp((ao + v - 1.0 + ao), p);
+	float t = pow(saturatePBR(ao + v - 1.0 + ao), p);
 	return clamp(max(t, ao), 0.0, 1.0);
 }
 

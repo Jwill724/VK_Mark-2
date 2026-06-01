@@ -1,90 +1,422 @@
 #include "pch.h"
 
-#include "engine/platform/profiler/Profiler.h"
-#include "renderer/backend/Backend.h"
+#include "Profiler.h"
+#include "renderer/Frame/FrameContext.h"
 
-namespace {
-	struct PassInfo {
-		const char* displayName = "";
-	};
-
-	static constexpr std::array<PassInfo, static_cast<size_t>(PassID::Count)> PassInfoTable = {{
-		{ "None" },
-		{ "Pre-Pass" },
-		{ "Hi-Z Generation" },
-		{ "Clustered Light Build" },
-		{ "GTAO" },
-		{ "Directional CSM" },
-		{ "Flashlight Shadow Map" },
-		{ "SS Contact Shadows" },
-		{ "Skybox" },
-		{ "Opaque Forward" },
-		{ "OBB Line View" },
-		{ "Transparent Forward" },
-		{ "Transparent Resolve" },
-		{ "Volumetric Lighting" },
-		{ "TAA" },
-		{ "Luminance Exposure" },
-		{ "Lens Flare" },
-		{ "Final Composite" },
-		{ "CMAA2" },
-		{ "SMAA" },
-		{ "FXAA" },
-		{ "Chromatic Aberration" },
-	}};
-
-	static int64_t queryPerformanceCounterTicks() {
+// -----------------------------------------------------------------------------
+// Internal helpers
+// -----------------------------------------------------------------------------
+namespace
+{
+	static int64_t queryPerformanceCounterTicks()
+	{
 		LARGE_INTEGER counter{};
 		QueryPerformanceCounter(&counter);
 		return counter.QuadPart;
 	}
 
-	static int64_t queryPerformanceFrequencyTicks() {
+	static int64_t queryPerformanceFrequencyTicks()
+	{
 		LARGE_INTEGER frequency{};
 		QueryPerformanceFrequency(&frequency);
 		return frequency.QuadPart;
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Profiler lifetime
+// -----------------------------------------------------------------------------
+Profiler::Profiler()
+{
+	EnablePlatformTimerPrecision();
+	ResetPassStats();
+}
+
+Profiler::~Profiler()
+{
+	ShutdownTracyGPU();
+	DisablePlatformTimerPrecision();
+}
+
+void Profiler::EnablePlatformTimerPrecision()
+{
+	timeBeginPeriod(1);
+	m_qpcFrequency = queryPerformanceFrequencyTicks();
+	m_qpcInverse   = 1.0 / static_cast<double>(m_qpcFrequency);
+}
+
+void Profiler::DisablePlatformTimerPrecision()
+{
+	timeEndPeriod(1);
+}
+
+// -----------------------------------------------------------------------------
+// Frame lifecycle
+// -----------------------------------------------------------------------------
+void Profiler::BeginFrame()
+{
+	ResetPassStats();
 
 #ifdef TRACY_ENABLE
-	static constexpr tracy::SourceLocationData makePassSourceLocation(const char* name) {
-		return tracy::SourceLocationData{
-			name,
-			"RenderPass",
-			__FILE__,
-			0,
-			0
-		};
+	FrameMarkStart("Renderer Frame");
+#endif
+
+	if (m_stats.capFramerate && m_stats.targetFrameRate > 0.0f)
+	{
+		m_framePeriodTicks = llround(
+			static_cast<double>(m_qpcFrequency) / static_cast<double>(m_stats.targetFrameRate)
+		);
+
+		if (m_nextFrameTick == 0)
+		{
+			m_nextFrameTick = queryPerformanceCounterTicks() + m_framePeriodTicks;
+		}
 	}
 
-	// Order of execution
-	static constexpr std::array<tracy::SourceLocationData, static_cast<size_t>(PassID::Count)> TracyPassSourceLocations = {{
-		makePassSourceLocation("None"),
-		makePassSourceLocation("Pre-Pass"),
-		makePassSourceLocation("Hi-Z Generation"),
-		makePassSourceLocation("Clustered Light Build"),
-		makePassSourceLocation("GTAO"),
-		makePassSourceLocation("Directional CSM"),
-		makePassSourceLocation("Flashlight Shadow Map"),
-		makePassSourceLocation("SS Contact Shadows"),
-		makePassSourceLocation("Skybox"),
-		makePassSourceLocation("Opaque Forward"),
-		makePassSourceLocation("OBB Line View"),
-		makePassSourceLocation("Transparent Forward"),
-		makePassSourceLocation("Transparent Resolve"),
-		makePassSourceLocation("Volumetric Lighting"),
-		makePassSourceLocation("TAA"),
-		makePassSourceLocation("Luminance Exposure"),
-		makePassSourceLocation("Lens Flare"),
-		makePassSourceLocation("Final Composite"),
-		makePassSourceLocation("CMAA2"),
-		makePassSourceLocation("SMAA"),
-		makePassSourceLocation("FXAA"),
-		makePassSourceLocation("Chromatic Aberration")
-	}};
+	const int64_t nowTicks  = queryPerformanceCounterTicks();
+	m_frameStartTime        = static_cast<double>(nowTicks) * m_qpcInverse;
+
+	const double deltaSeconds       = m_frameStartTime - m_lastFrameTime;
+	m_lastFrameTime                 = m_frameStartTime;
+
+	const double clampedDelta       = std::min(deltaSeconds, 0.1);
+	m_stats.deltaSecondsRaw         = static_cast<float>(std::max(clampedDelta, 0.0));
+
+	m_stats.deltaTime.Add(m_stats.deltaSecondsRaw);
+	m_stats.vramQueryTimerSeconds  += m_stats.deltaSecondsRaw;
+
+	rendererWasStalled = (deltaSeconds > 0.05);
+}
+
+void Profiler::EndFrame()
+{
+	const int64_t renderEndTicks  = queryPerformanceCounterTicks();
+	const double  renderEndTime   = static_cast<double>(renderEndTicks) * m_qpcInverse;
+
+	m_stats.frameTimeRawMs = static_cast<float>(renderEndTime - m_frameStartTime) * 1000.0f;
+	m_stats.frameTimeRaw.Add(m_stats.frameTimeRawMs);
+
+	const bool capEnabled = (m_stats.capFramerate && m_stats.targetFrameRate > 0.0f);
+
+	if (capEnabled)
+	{
+		int64_t nowTicks = renderEndTicks;
+
+		const int64_t twoMsTicks = m_qpcFrequency / 500;
+		const int64_t oneMsTicks = m_qpcFrequency / 1000;
+
+		const int64_t earlyTicks = m_nextFrameTick - nowTicks;
+
+		if (earlyTicks > twoMsTicks)
+		{
+			const int64_t sleepTicks = earlyTicks - oneMsTicks;
+
+			if (sleepTicks > 0)
+			{
+				const DWORD sleepMs = static_cast<DWORD>((sleepTicks * 1000) / m_qpcFrequency);
+				if (sleepMs > 0)
+					Sleep(sleepMs);
+
+				nowTicks = queryPerformanceCounterTicks();
+			}
+		}
+
+		if (nowTicks >= m_nextFrameTick)
+		{
+			m_nextFrameTick = nowTicks + m_framePeriodTicks;
+		}
+		else
+		{
+			do {
+				_mm_pause();
+				nowTicks = queryPerformanceCounterTicks();
+			} while (nowTicks < m_nextFrameTick);
+
+			m_nextFrameTick += m_framePeriodTicks;
+		}
+	}
+
+	const int64_t presentedTicks = queryPerformanceCounterTicks();
+	const double  presentedTime  = static_cast<double>(presentedTicks) * m_qpcInverse;
+
+	float displayedSeconds = static_cast<float>(presentedTime - m_frameStartTime);
+
+	if (capEnabled)
+	{
+		const float targetSeconds = 1.0f / m_stats.targetFrameRate;
+		if (displayedSeconds < targetSeconds * 0.999f)
+			displayedSeconds = targetSeconds;
+	}
+
+	m_stats.frameTime.Add(displayedSeconds * 1000.0f);
+	m_stats.fps.Add(1.0f / std::max(displayedSeconds, 0.00001f));
+
+#ifdef TRACY_ENABLE
+	FrameMarkEnd("Renderer Frame");
 #endif
 }
 
-bool Profiler::isTracyCompiledIn() const
+Profiler::ScopedPass::ScopedPass(
+	Profiler&                 profiler,
+	FrameContext&             frameCtx,
+	VkCommandBuffer           cmd,
+	RD::Renderer_Pass         ID,
+	std::string_view          passName)
+	: m_profiler(&profiler)
+	, m_frameCtx(&frameCtx)
+	, m_cmd(cmd)
+	, m_trackingID(ID)
+{
+	auto& stats           = m_profiler->m_passStats[static_cast<size_t>(ID)];
+	stats.activeThisFrame = true;
+	stats.name            = passName;
+
+	m_cpuStartTicks = queryPerformanceCounterTicks();
+	m_gpuZone       = m_profiler->BeginTracyGpuZone(cmd, ID);
+
+	if (m_frameCtx && m_cmd != VK_NULL_HANDLE)
+	{
+		const size_t idx   = static_cast<size_t>(ID);
+		const auto&  range = m_frameCtx->m_passTimestampRanges[idx];
+
+		ASSERT(range.beginQuery < range.endQuery);
+
+		m_frameCtx->m_timestampPassUsed[idx]     = true;
+		m_frameCtx->m_bHasTimestampResultsPending = true;
+
+		vkCmdWriteTimestamp2(
+			m_cmd,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			m_frameCtx->m_graphicsTimestampPool,
+			range.beginQuery);
+	}
+}
+
+Profiler::ScopedPass::~ScopedPass()
+{
+	if (m_profiler == nullptr) return;
+
+	if (m_frameCtx != nullptr && m_cmd != VK_NULL_HANDLE)
+	{
+		const size_t idx   = static_cast<size_t>(m_trackingID);
+		const auto&  range = m_frameCtx->m_passTimestampRanges[idx];
+
+		ASSERT(range.beginQuery < range.endQuery);
+
+		vkCmdWriteTimestamp2(
+			m_cmd,
+			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
+			m_frameCtx->m_graphicsTimestampPool,
+			range.endQuery);
+	}
+
+	if (m_cpuStartTicks != 0)
+	{
+		const int64_t endTicks = queryPerformanceCounterTicks();
+		const float   cpuMs    =
+			(static_cast<float>(endTicks - m_cpuStartTicks) * 1000.0f) /
+			static_cast<float>(m_profiler->m_qpcFrequency);
+
+		auto& stats    = m_profiler->m_passStats[static_cast<size_t>(m_trackingID)];
+		stats.cpuMsRaw = cpuMs;
+		stats.cpuMsAverage.Add(cpuMs);
+	}
+
+	m_profiler->EndTracyGpuZone(m_gpuZone);
+}
+
+Profiler::ScopedPass::ScopedPass(ScopedPass&& other) noexcept
+	: m_profiler(other.m_profiler)
+	, m_frameCtx(other.m_frameCtx)
+	, m_cmd(other.m_cmd)
+	, m_trackingID(other.m_trackingID)
+	, m_gpuZone(other.m_gpuZone)
+	, m_cpuStartTicks(other.m_cpuStartTicks)
+{
+	other.m_profiler      = nullptr;
+	other.m_frameCtx      = nullptr;
+	other.m_cmd           = VK_NULL_HANDLE;
+	other.m_trackingID    = RD::Renderer_Pass::Count;
+	other.m_gpuZone       = nullptr;
+	other.m_cpuStartTicks = 0;
+}
+
+Profiler::ScopedPass& Profiler::ScopedPass::operator=(ScopedPass&& other) noexcept
+{
+	if (this == &other) return *this;
+
+	this->~ScopedPass();
+
+	m_profiler      = other.m_profiler;
+	m_frameCtx      = other.m_frameCtx;
+	m_cmd           = other.m_cmd;
+	m_trackingID    = other.m_trackingID;
+	m_gpuZone       = other.m_gpuZone;
+	m_cpuStartTicks = other.m_cpuStartTicks;
+
+	other.m_profiler      = nullptr;
+	other.m_frameCtx      = nullptr;
+	other.m_cmd           = VK_NULL_HANDLE;
+	other.m_trackingID    = RD::Renderer_Pass::Count;
+	other.m_gpuZone       = nullptr;
+	other.m_cpuStartTicks = 0;
+
+	return *this;
+}
+
+Profiler::ScopedPass Profiler::ProfilePass(
+	FrameContext&             frameCtx,
+	VkCommandBuffer           cmd,
+	RD::Renderer_Pass trackingID,
+	std::string_view          passName)
+{
+	return ScopedPass(*this, frameCtx, cmd, trackingID, passName);
+}
+
+// -----------------------------------------------------------------------------
+// Tracy GPU zone — indexed by Renderer_PassTracking
+// -----------------------------------------------------------------------------
+void* Profiler::BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackingID)
+{
+#ifdef TRACY_ENABLE
+	if (m_tracyGpuContext == nullptr || cmd == VK_NULL_HANDLE) return nullptr;
+
+	const size_t   idx   = static_cast<size_t>(trackingID);
+	TracyPassEntry& entry = m_tracySourceLocations[idx];
+
+	if (!entry.srcLoc)
+	{
+		entry.name   = m_passStats[idx].name;
+		entry.srcLoc = std::make_unique<tracy::SourceLocationData>(
+			tracy::SourceLocationData{ entry.name.c_str(), "RenderPass", __FILE__, 0, 0 }
+		);
+	}
+
+	return new tracy::VkCtxScope(
+		static_cast<TracyVkCtx>(m_tracyGpuContext),
+		entry.srcLoc.get(),
+		cmd,
+		true
+	);
+#else
+	(void)cmd; (void)trackingID;
+	return nullptr;
+#endif
+}
+
+void Profiler::EndTracyGpuZone(void* zone)
+{
+#ifdef TRACY_ENABLE
+	if (zone == nullptr) return;
+	delete static_cast<tracy::VkCtxScope*>(zone);
+#else
+	(void)zone;
+#endif
+}
+
+// -----------------------------------------------------------------------------
+// GPU timestamp accumulation — called from FrameContext timestamp resolve
+// -----------------------------------------------------------------------------
+void Profiler::AddGpuPassTime(RD::Renderer_Pass trackingID, float milliseconds)
+{
+	auto& stats    = m_passStats[static_cast<size_t>(trackingID)];
+	stats.gpuMsRaw += milliseconds;
+	stats.gpuMsAverage.Add(milliseconds);
+}
+
+// -----------------------------------------------------------------------------
+// Stats reset
+// -----------------------------------------------------------------------------
+void Profiler::ResetPassStats()
+{
+	for (auto& stats : m_passStats)
+	{
+		stats.activeLastFrame = stats.activeThisFrame;
+		stats.activeThisFrame = false;
+		stats.cpuMsRaw        = 0.0f;
+		stats.gpuMsRaw        = 0.0f;
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Stats accessors
+// -----------------------------------------------------------------------------
+const PassTimingStats& Profiler::GetPassStats(RD::Renderer_Pass trackingID) const
+{
+	return m_passStats[static_cast<size_t>(trackingID)];
+}
+
+PassTimingStats& Profiler::GetPassStats(RD::Renderer_Pass trackingID)
+{
+	return m_passStats[static_cast<size_t>(trackingID)];
+}
+
+// -----------------------------------------------------------------------------
+// General-purpose CPU timer
+// -----------------------------------------------------------------------------
+void Profiler::StartTimer()
+{
+	m_startTimerTick = queryPerformanceCounterTicks();
+}
+
+float Profiler::EndTimerMS() const
+{
+	const int64_t elapsed = queryPerformanceCounterTicks() - m_startTimerTick;
+	return (static_cast<float>(elapsed) * 1000.0f) / static_cast<float>(m_qpcFrequency);
+}
+
+float Profiler::EndTimerSec() const
+{
+	return EndTimerMS() / 1000.0f;
+}
+
+// -----------------------------------------------------------------------------
+// Draw call counters
+// -----------------------------------------------------------------------------
+void Profiler::ResetDrawCalls()
+{
+	m_stats.triangleCount                    = 0;
+	m_stats.directDraws                      = 0;
+	m_stats.opaqueIndirect.commands          = 0;
+	m_stats.opaqueIndirect.subdraws          = 0;
+	m_stats.transparentIndirect.commands     = 0;
+	m_stats.transparentIndirect.subdraws     = 0;
+	m_stats.directionalCSMIndirect.commands  = 0;
+	m_stats.directionalCSMIndirect.subdraws  = 0;
+	m_stats.flashlightShadowIndirect.commands = 0;
+	m_stats.flashlightShadowIndirect.subdraws = 0;
+}
+
+void Profiler::AddDirect(uint32_t calls, uint64_t triangles)
+{
+	m_stats.directDraws  += calls;
+	m_stats.triangleCount += triangles;
+}
+
+void Profiler::AddOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles)
+{
+	m_stats.opaqueIndirect.commands += commands;
+	m_stats.opaqueIndirect.subdraws += subdraws;
+	m_stats.triangleCount           += triangles;
+}
+
+void Profiler::AddTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles)
+{
+	m_stats.transparentIndirect.commands += commands;
+	m_stats.transparentIndirect.subdraws += subdraws;
+	m_stats.triangleCount                += triangles;
+}
+
+// -----------------------------------------------------------------------------
+// Frame stats accessors
+// -----------------------------------------------------------------------------
+FrameStats& Profiler::getStats()             { return m_stats; }
+const FrameStats& Profiler::getStats() const { return m_stats; }
+
+// -----------------------------------------------------------------------------
+// Tracy GPU context
+// -----------------------------------------------------------------------------
+bool Profiler::IsTracyCompiledIn() const
 {
 #ifdef TRACY_ENABLE
 	return true;
@@ -93,522 +425,44 @@ bool Profiler::isTracyCompiledIn() const
 #endif
 }
 
-Profiler::ScopedPass::ScopedPass(
-	Profiler& profiler,
-	FrameContext& frameCtx,
-	VkCommandBuffer cmd,
-	PassID passID)
-	: _profiler(&profiler)
-	, _frameCtx(&frameCtx)
-	, _cmd(cmd)
-	, _passID(passID)
-{
-	_profiler->markPassActive(_passID);
-	_cpuStartTicks = queryPerformanceCounterTicks();
-	_gpuZone = _profiler->beginTracyGpuPass(cmd, _passID);
-
-	if (Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue()) &&
-		_frameCtx->m_graphicsTimestampPool != VK_NULL_HANDLE)
-	{
-		const auto& range = _frameCtx->m_passTimestampRanges[static_cast<size_t>(_passID)];
-		_frameCtx->m_timestampPassUsed[static_cast<size_t>(_passID)] = true;
-		_frameCtx->m_bHasTimestampResultsPending = true;
-		vkCmdWriteTimestamp2(
-			_cmd,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			_frameCtx->m_graphicsTimestampPool,
-			range.beginQuery
-		);
-	}
-}
-
-Profiler::ScopedPass::ScopedPass(ScopedPass&& other) noexcept
-{
-	_profiler = other._profiler;
-	_passID = other._passID;
-	_gpuZone = other._gpuZone;
-	_cpuStartTicks = other._cpuStartTicks;
-
-	other._profiler = nullptr;
-	other._passID = PassID::None;
-	other._gpuZone = nullptr;
-	other._cpuStartTicks = 0;
-}
-
-Profiler::ScopedPass& Profiler::ScopedPass::operator=(ScopedPass&& other) noexcept
-{
-	if (this == &other) {
-		return *this;
-	}
-
-	if (_profiler != nullptr) {
-		if (_cpuStartTicks != 0) {
-			const int64_t endTicks = queryPerformanceCounterTicks();
-			const int64_t elapsedTicks = endTicks - _cpuStartTicks;
-
-			const float cpuMs =
-				(static_cast<float>(elapsedTicks) * 1000.0f) /
-				static_cast<float>(_profiler->_qpcFrequency);
-
-			_profiler->addCpuPassTime(_passID, cpuMs);
-		}
-
-		if (_gpuZone != nullptr) {
-			_profiler->endTracyGpuPass(_gpuZone);
-		}
-	}
-
-	_profiler = other._profiler;
-	_passID = other._passID;
-	_gpuZone = other._gpuZone;
-	_cpuStartTicks = other._cpuStartTicks;
-
-	other._profiler = nullptr;
-	other._passID = PassID::None;
-	other._gpuZone = nullptr;
-	other._cpuStartTicks = 0;
-
-	return *this;
-}
-
-Profiler::ScopedPass::~ScopedPass()
-{
-	if (_profiler != nullptr) {
-		if (_frameCtx != nullptr &&
-			_cmd != VK_NULL_HANDLE &&
-			Backend::QueueSupportsTimestamps(Backend::GetGraphicsQueue()) &&
-			_frameCtx->m_graphicsTimestampPool != VK_NULL_HANDLE)
-		{
-			const auto& range = _frameCtx->m_passTimestampRanges[static_cast<size_t>(_passID)];
-
-			vkCmdWriteTimestamp2(
-				_cmd,
-				VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-				_frameCtx->m_graphicsTimestampPool,
-				range.endQuery
-			);
-		}
-
-		if (_cpuStartTicks != 0) {
-			const int64_t endTicks = queryPerformanceCounterTicks();
-			const int64_t elapsedTicks = endTicks - _cpuStartTicks;
-
-			const float cpuMs =
-				(static_cast<float>(elapsedTicks) * 1000.0f) /
-				static_cast<float>(_profiler->_qpcFrequency);
-
-			_profiler->addCpuPassTime(_passID, cpuMs);
-		}
-
-		if (_gpuZone != nullptr) {
-			_profiler->endTracyGpuPass(_gpuZone);
-		}
-	}
-}
-
-Profiler::Profiler()
-{
-	enablePlatformTimerPrecision();
-	resetPassStats();
-}
-
-Profiler::~Profiler()
-{
-	shutdownTracyGPU();
-	disablePlatformTimerPrecision();
-}
-
-void Profiler::enablePlatformTimerPrecision()
-{
-	timeBeginPeriod(1);
-
-	_qpcFrequency = queryPerformanceFrequencyTicks();
-	_qpcInverse = 1.0 / static_cast<double>(_qpcFrequency);
-}
-
-void Profiler::disablePlatformTimerPrecision()
-{
-	timeEndPeriod(1);
-}
-
-void Profiler::beginFrame()
-{
-	resetPassStats();
-
-#ifdef TRACY_ENABLE
-	FrameMarkStart("Renderer Frame");
-#endif
-
-	if (_stats.capFramerate && _stats.targetFrameRate > 0.0f) {
-		_framePeriodTicks = llround(
-			static_cast<double>(_qpcFrequency) / static_cast<double>(_stats.targetFrameRate)
-		);
-
-		if (_nextFrameTick == 0) {
-			const int64_t nowTicks = queryPerformanceCounterTicks();
-			_nextFrameTick = nowTicks + _framePeriodTicks;
-		}
-	}
-
-	const int64_t nowTicks = queryPerformanceCounterTicks();
-	_frameStartTime = static_cast<double>(nowTicks) * _qpcInverse;
-
-	const double deltaSeconds = _frameStartTime - _lastFrameTime;
-	_lastFrameTime = _frameStartTime;
-
-	const double clampedDeltaSeconds = std::min(deltaSeconds, 0.1);
-	_stats.deltaSecondsRaw = static_cast<float>(std::max(clampedDeltaSeconds, 0.0));
-
-	_stats.deltaTime.add(_stats.deltaSecondsRaw);
-	_stats.vramQueryTimerSeconds += _stats.deltaSecondsRaw;
-
-	rendererWasStalled = (deltaSeconds > 0.05);
-}
-
-void Profiler::endFrame()
-{
-	const int64_t renderEndTicks = queryPerformanceCounterTicks();
-	const double renderEndTime = static_cast<double>(renderEndTicks) * _qpcInverse;
-
-	const float uncappedElapsedSeconds = static_cast<float>(renderEndTime - _frameStartTime);
-	_stats.frameTimeRawMs = uncappedElapsedSeconds * 1000.0f;
-	_stats.frameTimeRaw.add(_stats.frameTimeRawMs);
-
-	const bool capEnabled = (_stats.capFramerate && _stats.targetFrameRate > 0.0f);
-
-	if (capEnabled) {
-		int64_t nowTicks = renderEndTicks;
-
-		const int64_t twoMillisecondsTicks = _qpcFrequency / 500;
-		const int64_t oneMillisecondTicks = _qpcFrequency / 1000;
-
-		int64_t earlyTicks = _nextFrameTick - nowTicks;
-
-		if (earlyTicks > twoMillisecondsTicks) {
-			const int64_t sleepTicks = earlyTicks - oneMillisecondTicks;
-
-			if (sleepTicks > 0) {
-				const DWORD sleepMilliseconds = static_cast<DWORD>(
-					(sleepTicks * 1000) / _qpcFrequency
-				);
-
-				if (sleepMilliseconds > 0) {
-					Sleep(sleepMilliseconds);
-				}
-
-				nowTicks = queryPerformanceCounterTicks();
-			}
-		}
-
-		if (nowTicks >= _nextFrameTick) {
-			_nextFrameTick = nowTicks + _framePeriodTicks;
-		}
-		else {
-			do {
-				_mm_pause();
-				nowTicks = queryPerformanceCounterTicks();
-			} while (nowTicks < _nextFrameTick);
-
-			_nextFrameTick += _framePeriodTicks;
-		}
-	}
-
-	const int64_t presentedEndTicks = queryPerformanceCounterTicks();
-	const double presentedEndTime = static_cast<double>(presentedEndTicks) * _qpcInverse;
-
-	float displayedElapsedSeconds = static_cast<float>(presentedEndTime - _frameStartTime);
-
-	if (capEnabled) {
-		const double targetDeltaSeconds = 1.0 / static_cast<double>(_stats.targetFrameRate);
-
-		if (displayedElapsedSeconds < static_cast<float>(targetDeltaSeconds * 0.999)) {
-			displayedElapsedSeconds = static_cast<float>(targetDeltaSeconds);
-		}
-	}
-
-	const float frameMilliseconds = displayedElapsedSeconds * 1000.0f;
-	const float framesPerSecond = 1.0f / std::max(displayedElapsedSeconds, 0.00001f);
-
-	_stats.frameTime.add(frameMilliseconds);
-	_stats.fps.add(framesPerSecond);
-
-#ifdef TRACY_ENABLE
-	FrameMarkEnd("Renderer Frame");
-#endif
-}
-
-void Profiler::startTimer()
-{
-	_startTimerTick = queryPerformanceCounterTicks();
-}
-
-float Profiler::endTimerMS() const
-{
-	const int64_t nowTicks = queryPerformanceCounterTicks();
-	const int64_t elapsedTicks = nowTicks - _startTimerTick;
-
-	return (static_cast<float>(elapsedTicks) * 1000.0f) / static_cast<float>(_qpcFrequency);
-}
-
-float Profiler::endTimerSec() const
-{
-	return endTimerMS() / 1000.0f;
-}
-
-void Profiler::resetDrawCalls()
-{
-	_stats.triangleCount = 0;
-	_stats.directDraws = 0;
-
-	_stats.opaqueIndirect.commands = 0;
-	_stats.opaqueIndirect.subdraws = 0;
-
-	_stats.transparentIndirect.commands = 0;
-	_stats.transparentIndirect.subdraws = 0;
-
-	_stats.directionalCSMIndirect.commands = 0;
-	_stats.directionalCSMIndirect.subdraws = 0;
-
-	_stats.flashlightShadowIndirect.commands = 0;
-	_stats.flashlightShadowIndirect.subdraws = 0;
-}
-
-void Profiler::resetPassStats()
-{
-	for (PassTimingStats& passStats : _passStats) {
-		passStats.activeLastFrame = passStats.activeThisFrame;
-		passStats.activeThisFrame = false;
-		passStats.cpuMsRaw = 0.0f;
-		passStats.gpuMsRaw = 0.0f;
-	}
-}
-
-void Profiler::markPassActive(PassID passID)
-{
-	auto& passStats = _passStats[static_cast<size_t>(passID)];
-	passStats.activeThisFrame = true;
-}
-
-void Profiler::addCpuPassTime(
-	PassID passID,
-	float milliseconds)
-{
-	auto& passStats = _passStats[static_cast<size_t>(passID)];
-
-	passStats.activeThisFrame = true;
-	passStats.cpuMsRaw = milliseconds;
-	passStats.cpuMsAverage.add(milliseconds);
-}
-
-void Profiler::addGpuPassTime(
-	PassID passID,
-	float milliseconds)
-{
-	auto& passStats = _passStats[static_cast<size_t>(passID)];
-
-	passStats.activeThisFrame = true;
-	passStats.gpuMsRaw = milliseconds;
-	passStats.gpuMsAverage.add(milliseconds);
-}
-
-const char* Profiler::getPassName(PassID passID) const
-{
-	return PassInfoTable[static_cast<size_t>(passID)].displayName;
-}
-
-const std::array<PassTimingStats, Profiler::PassCount>& Profiler::getAllPassStats() const
-{
-	return _passStats;
-}
-
-bool Profiler::isPassActive(PassID passID) const
-{
-	return _passStats[static_cast<size_t>(passID)].activeThisFrame;
-}
-
-Profiler::ScopedPass Profiler::profilePass(
-	FrameContext& frameCtx,
-	VkCommandBuffer cmd,
-	PassID passID)
-{
-	return ScopedPass(*this, frameCtx, cmd, passID);
-}
-
-void Profiler::initTracyGPU(
+void Profiler::InitTracyGPU(
 	VkPhysicalDevice physicalDevice,
-	VkDevice device,
-	VkQueue queue,
-	VkCommandBuffer cmd)
+	VkDevice         device,
+	VkQueue          queue,
+	VkCommandBuffer  cmd)
 {
 #ifdef TRACY_ENABLE
-	if (_tracyGpuContext != nullptr) return;
-
-	TracyVkCtx tracyContext = TracyVkContext(
-		physicalDevice,
-		device,
-		queue,
-		cmd
-	);
-
-	_tracyGpuContext = tracyContext;
+	if (m_tracyGpuContext != nullptr) return;
+	m_tracyGpuContext = TracyVkContext(physicalDevice, device, queue, cmd);
 #else
-	(void)physicalDevice;
-	(void)device;
-	(void)queue;
-	(void)cmd;
+	(void)physicalDevice; (void)device; (void)queue; (void)cmd;
 #endif
 }
 
-void Profiler::shutdownTracyGPU()
+void Profiler::ShutdownTracyGPU()
 {
 #ifdef TRACY_ENABLE
-	if (_tracyGpuContext == nullptr) return;
-
-	TracyVkDestroy(static_cast<TracyVkCtx>(_tracyGpuContext));
-	_tracyGpuContext = nullptr;
+	if (m_tracyGpuContext == nullptr) return;
+	TracyVkDestroy(static_cast<TracyVkCtx>(m_tracyGpuContext));
+	m_tracyGpuContext = nullptr;
 #endif
 }
 
-void Profiler::collectTracyGPU(VkCommandBuffer cmd)
+void Profiler::CollectTracyGPU(VkCommandBuffer cmd)
 {
 #ifdef TRACY_ENABLE
-	if (_tracyGpuContext == nullptr) return;
-
-	TracyVkCollect(static_cast<TracyVkCtx>(_tracyGpuContext), cmd);
+	if (m_tracyGpuContext == nullptr) return;
+	TracyVkCollect(static_cast<TracyVkCtx>(m_tracyGpuContext), cmd);
 #else
 	(void)cmd;
 #endif
 }
 
-bool Profiler::isTracyGPUActive() const
+bool Profiler::IsTracyGPUActive() const noexcept
 {
 #ifdef TRACY_ENABLE
-	return _tracyGpuContext != nullptr;
+	return m_tracyGpuContext != nullptr;
 #else
 	return false;
 #endif
-}
-
-void* Profiler::beginTracyGpuPass(
-	VkCommandBuffer cmd,
-	PassID passID)
-{
-#ifdef TRACY_ENABLE
-	if (_tracyGpuContext == nullptr || cmd == VK_NULL_HANDLE) return nullptr;
-
-	TracyVkCtx tracyContext = static_cast<TracyVkCtx>(_tracyGpuContext);
-	const auto& srcLoc = TracyPassSourceLocations[static_cast<size_t>(passID)];
-
-	return new tracy::VkCtxScope(
-		tracyContext,
-		&srcLoc,
-		cmd,
-		true
-	);
-#else
-	(void)cmd;
-	(void)passID;
-	return nullptr;
-#endif
-}
-
-void Profiler::endTracyGpuPass(void* gpuZone)
-{
-#ifdef TRACY_ENABLE
-	if (gpuZone == nullptr) return;
-
-	delete static_cast<tracy::VkCtxScope*>(gpuZone);
-#else
-	(void)gpuZone;
-#endif
-}
-
-FrameStats& Profiler::getStats()
-{
-	return _stats;
-}
-
-const FrameStats& Profiler::getStats() const
-{
-	return _stats;
-}
-
-const PassTimingStats& Profiler::getPassStats(PassID passID) const
-{
-	return _passStats[static_cast<size_t>(passID)];
-}
-
-PassTimingStats& Profiler::getPassStats(PassID passID)
-{
-	return _passStats[static_cast<size_t>(passID)];
-}
-
-void Profiler::addDirect(
-	uint32_t calls,
-	uint64_t triangles)
-{
-	_stats.directDraws += calls;
-	_stats.triangleCount += triangles;
-}
-
-void Profiler::addOpaqueIndirect(
-	uint32_t commands,
-	uint32_t subdraws,
-	uint64_t triangles)
-{
-	_stats.opaqueIndirect.commands += commands;
-	_stats.opaqueIndirect.subdraws += subdraws;
-	_stats.triangleCount += triangles;
-}
-
-void Profiler::addTransparentIndirect(
-	uint32_t commands,
-	uint32_t subdraws,
-	uint64_t triangles)
-{
-	_stats.transparentIndirect.commands += commands;
-	_stats.transparentIndirect.subdraws += subdraws;
-	_stats.triangleCount += triangles;
-}
-
-void Profiler::enableGPUAccelUsage()
-{
-	_gpuAccelOn = true;
-}
-
-void Profiler::disableGPUAccelUsage()
-{
-	_gpuAccelOn = false;
-}
-
-bool Profiler::isGPUAccelOn() const
-{
-	return _gpuAccelOn && Backend::IsComputeAvailable();
-}
-
-VRAMStats Profiler::getTotalVRAMUsage(
-	VkPhysicalDevice physicalDevice,
-	VmaAllocator allocator)
-{
-	VmaBudget budgets[VK_MAX_MEMORY_HEAPS];
-	vmaGetHeapBudgets(allocator, budgets);
-
-	VkPhysicalDeviceMemoryProperties memoryProperties{};
-	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-
-	VRAMStats stats{};
-
-	for (uint32_t heapIndex = 0; heapIndex < memoryProperties.memoryHeapCount; ++heapIndex) {
-		const bool isDeviceLocal =
-			(memoryProperties.memoryHeaps[heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
-
-		if (!isDeviceLocal) {
-			continue;
-		}
-
-		stats.used += budgets[heapIndex].usage;
-		stats.budget += budgets[heapIndex].budget;
-	}
-
-	return stats;
 }

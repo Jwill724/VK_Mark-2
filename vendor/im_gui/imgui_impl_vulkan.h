@@ -121,7 +121,7 @@ struct ImGui_ImplVulkan_InitInfo
     // (Optional) Allocation, Debugging
     const VkAllocationCallbacks*    Allocator;
     void                            (*CheckVkResultFn)(VkResult err);
-    VkDeviceSize                    MinAllocationSize;          // Minimum allocation size. Set to 1024*1024 to satisfy zealous best practices validation layer and waste a little memory.
+    VkDeviceSize                    MinAllocationSize;          // Minimum m_allocation size. Set to 1024*1024 to satisfy zealous best practices validation layer and waste a little memory.
 
     // (Optional) Customize default vertex/fragment shaders.
     // - if .sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO we use specified structs, otherwise we use defaults.
@@ -250,7 +250,7 @@ struct ImGui_ImplVulkanH_Window
         PresentMode = (VkPresentModeKHR)~0;             // Ensure we get an error if user doesn't m_frameSet this.
 
         // Parameters to create RenderPass
-        AttachmentDesc.format = VK_FORMAT_UNDEFINED;    // Will automatically use wd->SurfaceFormat.format.
+        AttachmentDesc.format = VK_FORMAT_UNDEFINED;    // Will automatically use wd->SurfaceFormat.m_format.
         AttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
         AttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         AttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;

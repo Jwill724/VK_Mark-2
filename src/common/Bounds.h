@@ -1,9 +1,7 @@
 #pragma once
 
 #include <vector>
-#include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
-#include <glm/mat4x4.hpp>
+#include "Core.h"
 
 struct Frustum
 {
@@ -30,7 +28,7 @@ struct Frustum
 struct AABB
 {
 	glm::vec3 vmin; // origin: 0.5f * (vmin + vmax)
-	glm::vec3 vmax; // extent: 0.5f * (vmax - vmin)
+	glm::vec3 vmax; // m_extent: 0.5f * (vmax - vmin)
 };
 
 // AABB transform methods https://ktstephano.github.io/rendering/stratusgfx/aabbs

@@ -2,7 +2,8 @@
 
 #include "Swapchain.h"
 #include "Queue.h"
-#include "utils/ImageUtils.h"
+#include "ImageUtils.h"
+#include "EngineTypes.h"
 
 static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, VkExtent2D winExtent);
 static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
@@ -11,21 +12,23 @@ static VkPresentModeKHR ChooseSwapSurfacePresentMode(const std::vector<VkPresent
 void Swapchain::Create(
 	const DeviceContext& deviceCtx,
 	VkSurfaceKHR surface,
-	const QueueFamilyIndices& queueFamilyIndices,
 	const SwapchainSupportDetails& swapchainSupport,
-	const std::array<uint32_t, 2>& windowExtent)
+	Extents2D windowExtent)
 {
+	ASSERT(deviceCtx.device != VK_NULL_HANDLE);
+
 	m_logicalDeviceCopy = deviceCtx.device;
 
 	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapchainSupport.formats);
 	VkPresentModeKHR presentMode = ChooseSwapSurfacePresentMode(swapchainSupport.presentModes);
 
-	VkExtent2D extent = { windowExtent[0], windowExtent[1] };
+	VkExtent2D extent = { windowExtent.Width(), windowExtent.Height() };
 	VkExtent2D choosenSwapExtent = ChooseSwapExtent(swapchainSupport.capabilities, extent);
 
 	uint32_t imageCount = imageCount = swapchainSupport.capabilities.minImageCount + 1;
 	if (swapchainSupport.capabilities.maxImageCount > 0 &&
-		imageCount > swapchainSupport.capabilities.maxImageCount) {
+		imageCount > swapchainSupport.capabilities.maxImageCount)
+	{
 		imageCount = swapchainSupport.capabilities.maxImageCount;
 	}
 
@@ -37,7 +40,7 @@ void Swapchain::Create(
 	createInfo.minImageCount = imageCount;
 	createInfo.format = surfaceFormat.format;
 	createInfo.imageColorSpace = surfaceFormat.colorSpace;
-	createInfo.imageExtent = choosenSwapExtent ;
+	createInfo.imageExtent = choosenSwapExtent;
 	createInfo.imageArrayLayers = 1;
 	createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	createInfo.preTransform = swapchainSupport.capabilities.currentTransform;
@@ -47,11 +50,11 @@ void Swapchain::Create(
 
 
 	uint32_t qFamIndices[] {
-		queueFamilyIndices.graphicsFamily.value(),
-		queueFamilyIndices.presentFamily.value()
+		deviceCtx.queueIndices.graphicsFamily.value(),
+		deviceCtx.queueIndices.presentFamily.value()
 	};
 
-	if (queueFamilyIndices.graphicsFamily != queueFamilyIndices.presentFamily)
+	if (deviceCtx.queueIndices.graphicsFamily != deviceCtx.queueIndices.presentFamily)
 	{
 		// Images can be used across multiple queue families without explicit ownership transfer
 		createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -60,7 +63,7 @@ void Swapchain::Create(
 	}
 	else
 	{
-		// An image is owned by one queue family, ownership transfer ship is explicit
+		// An m_image is owned by one queue family, ownership transfer ship is explicit
 		// best performance
 		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		createInfo.queueFamilyIndexCount = 0;
@@ -71,7 +74,8 @@ void Swapchain::Create(
 
 	VK_CHECK(vkCreateSwapchainKHR(m_logicalDeviceCopy, &createInfo, nullptr, &m_swapchain));
 
-	if (createInfo.oldSwapchain != VK_NULL_HANDLE) {
+	if (createInfo.oldSwapchain != VK_NULL_HANDLE)
+	{
 		vkDestroySwapchainKHR(m_logicalDeviceCopy, createInfo.oldSwapchain, nullptr);
 	}
 
@@ -81,27 +85,26 @@ void Swapchain::Create(
 		m_logicalDeviceCopy,
 		m_swapchain,
 		&imageCount,
-		rawSwapchainImages.data()
-	);
+		rawSwapchainImages.data());
 
-	m_images.clear();
 	m_images.resize(imageCount);
+	m_views.resize(imageCount);
+	m_layouts.resize(imageCount);
 	m_imageCount = imageCount;
+	m_extent = choosenSwapExtent;
+	m_format = surfaceFormat.format;
 
-	for (uint32_t imageIndex = 0; imageIndex < imageCount; ++imageIndex) {
-		auto& swapchainImage = m_images[imageIndex];
+	for (uint32_t imageIndex = 0; imageIndex < imageCount; ++imageIndex)
+	{
+		m_images[imageIndex] = std::move(rawSwapchainImages[imageIndex]);
+		auto& img = m_images[imageIndex];
 
-		swapchainImage.image = rawSwapchainImages[imageIndex];
-		swapchainImage.format = surfaceFormat.format;
-		swapchainImage.extent = { extent.width, extent.height, 1 };
-
-		swapchainImage.imageView = ImageUtils::CreateImageView(
+		m_views[imageIndex] = ImageUtils::CreateImageView(
 			m_logicalDeviceCopy,
-			swapchainImage.image,
-			swapchainImage.format,
+			img,
+			static_cast<VkFormat>(m_format),
 			VK_IMAGE_ASPECT_COLOR_BIT,
-			1
-		);
+			1);
 	}
 
 	m_imageAvailableSemaphores.resize(imageCount);
@@ -113,22 +116,18 @@ void Swapchain::Create(
 	{
 		m_imageAvailableSemaphores[imgIdx] = GPUQueue::CreateNewSemaphore(m_logicalDeviceCopy);
 		m_renderFinishedSemaphores[imgIdx] = GPUQueue::CreateNewSemaphore(m_logicalDeviceCopy);
-		m_inFlightFences[imgIdx] = GPUQueue::CreateNewFence(m_logicalDeviceCopy);
+		m_inFlightFences[imgIdx]           = GPUQueue::CreateNewFence(m_logicalDeviceCopy);
 	}
-
-	m_extent = extent;
-	m_format = surfaceFormat.format;
 }
 
 void Swapchain::ResizeSwapchain(
 	const DeviceContext& deviceCtx,
 	VkSurfaceKHR surface,
-	const QueueFamilyIndices& queueFamilyIndices,
 	const SwapchainSupportDetails& swapchainSupport,
-	const std::array<uint32_t, 2>& windowExtent)
+	Extents2D windowExtent)
 {
 	Cleanup();
-	Create(deviceCtx, surface, queueFamilyIndices, swapchainSupport, windowExtent);
+	Create(deviceCtx, surface, swapchainSupport, windowExtent);
 }
 
 void Swapchain::Cleanup()
@@ -141,16 +140,15 @@ void Swapchain::Cleanup()
 
 	for (uint32_t i = 0; i < m_imageCount; ++i)
 	{
-		auto& img = m_images[i];
-		if (img.imageView != VK_NULL_HANDLE)
-			vkDestroyImageView(m_logicalDeviceCopy, img.imageView, nullptr);
+		auto& view = m_views[i];
+		ImageUtils::DestroyImageView(m_logicalDeviceCopy, view);
 
 		GPUQueue::DestroyFence(m_logicalDeviceCopy, m_inFlightFences[i]);
 		GPUQueue::DestroySemaphore(m_logicalDeviceCopy, m_imageAvailableSemaphores[i]);
 		GPUQueue::DestroySemaphore(m_logicalDeviceCopy, m_renderFinishedSemaphores[i]);
 	}
 
-	m_imageInFlightFrame.clear();
+	Reset();
 }
 
 // ---------------------
@@ -176,6 +174,8 @@ VkResult Swapchain::AcquireNextImage(uint32_t frameIndex) const
 		&imageIndex);
 
 	m_currentSwapchainImageIndex = imageIndex;
+
+	return result;
 }
 
 void Swapchain::MarkInFlightFrameIndex(uint32_t frameIndex)

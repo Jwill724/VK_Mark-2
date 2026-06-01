@@ -1103,7 +1103,7 @@ LZ4_FORCE_INLINE int LZ4_compress_generic_validated(
         }
 
 _next_match:
-        /* at this stage, the following variables must be correctly m_frameSet :
+        /* at this stage, the following variables must be correctly set :
          * - ip : at start of LZ operation
          * - match : at start of previous pattern occurrence; can be within current prefix, or within extDict
          * - offset : if maybe_ext_memSegment==1 (constant)
@@ -1892,7 +1892,7 @@ LZ4_decompress_unsafe_generic(
  * @ip : input pointer
  * @ilimit : position after which if length is not decoded, the input is necessarily corrupted.
  * @initial_check - check ip >= ipmax before start of loop.  Returns initial_error if so.
- * @error (output) - error code.  Must be m_frameSet to 0 before call.
+ * @error (output) - error code.  Must be set to 0 before call.
 **/
 typedef size_t Rvl_t;
 static const Rvl_t rvl_error = (Rvl_t)(-1);

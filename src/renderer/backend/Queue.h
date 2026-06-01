@@ -1,13 +1,12 @@
 #pragma once
 
 #include "VulkanTypes.h"
-#include "ResourceTypes.h"
 #include <mutex>
 #include <span>
 #include "Sync.h"
+#include "../RendererDefinitions.h"
 
-class FencePool;
-struct DeviceContext;
+namespace RD = RendererDefinitions;
 
 // GPUQueue is like the arbitar of sync tooling.
 // Semaphore and fence management.
@@ -17,11 +16,12 @@ public:
 	uint32_t GetFamilyIndex() const { return m_familyIndex; }
 	VkQueue  GetQueue() const { return m_queue; }
 
-	GPUQueue() = default;
-	GPUQueue(uint32_t familyIndex, uint32_t timestampBits, QueueType qType)
-		: m_familyIndex(familyIndex)
-		, m_timestampValidBits(timestampBits)
-		, m_qType(qType) {}
+	void Setup(uint32_t familyIndex, uint32_t timestampBits, QueueType qType)
+	{
+		m_familyIndex = familyIndex;
+		m_timestampValidBits = timestampBits;
+		m_qType = qType;
+	}
 
 	void GetDeviceQueue(const DeviceContext& deviceCtx);
 
@@ -70,7 +70,7 @@ class GraphicsQueue final : public GPUQueue
 public:
 	bool SupportsTimestamps() const noexcept { return m_timestampValidBits > 0; }
 
-	// Caller builds waitInfos (image-available + any timeline waits),
+	// Caller builds waitInfos (m_image-available + any timeline waits),
 	// queue owns the vkQueueSubmit2 call.
 	void SubmitFrame(
 		const std::vector<VkSemaphoreSubmitInfo>& waitInfos,
@@ -81,12 +81,20 @@ public:
 	// Returns false if any query was VK_NOT_READY — caller retries next frame.
 	struct TimestampResult { float gpuMs = 0.f; bool valid = false; };
 
-	bool ReadTimestamps(
-		VkQueryPool                         pool,
-		std::span<const PassTimestampRange> ranges,
-		std::span<const bool>               passUsed,
-		float                               timestampPeriod,
-		std::span<TimestampResult>          outResults);
+	struct TimestampReadback
+	{
+		bool allReady = true;
+
+		std::span<TimestampResult> passResults;
+
+		TimestampResult frameResult;
+	};
+
+	TimestampReadback ReadTimestamps(
+		VkQueryPool                             pool,
+		std::span<const RD::PassTimestampRange> ranges,
+		std::span<const bool>                   passUsed,
+		float                                   timestampPeriod);
 };
 
 
@@ -122,6 +130,11 @@ public:
 	// Current signal value — compare against your stored waitValue to guard submits.
 	uint64_t GetCurrentSignalValue() const { return m_sync.signalValue; }
 
+	bool IsValid() const noexcept
+	{
+		return m_familyIndex != UINT32_MAX && m_queue != VK_NULL_HANDLE;
+	}
+
 private:
 	TimelineSync m_sync;
 };
@@ -140,6 +153,11 @@ public:
 
 	VkSemaphore GetTimelineSemaphore() const { return m_sync.semaphore; }
 	uint64_t    GetCurrentSignalValue() const { return m_sync.signalValue; }
+
+	bool IsValid() const noexcept
+	{
+		return m_familyIndex != UINT32_MAX && m_queue != VK_NULL_HANDLE;
+	}
 
 private:
 	TimelineSync m_sync;

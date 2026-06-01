@@ -1,1 +1,25 @@
-#pragma once#include <glm/vec3.hpp>#include <glm/vec4.hpp>#include <glm/detail/func_common.inl>#include <glm/mat4x4.hpp>#include <functional>#include <deque>#include <queue>#include <optional>#include <unordered_set>#include <unordered_map>#include <span>#include <string>#include <vector>#include <array>#include <memory>#include <mutex>#include <atomic>#include <algorithm>#include <cmath>#include <cstdint>#include <fmt/base.h>#include <fmt/format.h>#ifdef NDEBUG#define ASSERT(x) ((void)0)#else#define ASSERT(x) assert(x)#endif
+#pragma once
+
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+#include <glm/mat4x4.hpp>
+
+#include <glm/common.hpp>
+#include <glm/geometric.hpp>
+
+#include <fmt/base.h>
+#include <fmt/format.h>
+
+#include <cstdint>
+
+template<typename T>
+inline void PrintVec3(const glm::vec<3, T>& v) {
+	fmt::println("[{}, {}, {}]", v.x, v.y, v.z);
+}
+
+template<typename T>
+inline void PrintMat4(const glm::mat<4, 4, T>& m) {
+	for (int i = 0; i < 4; ++i) {
+		fmt::println("[{}, {}, {}, {}]", m[i].x, m[i].y, m[i].z, m[i].w);
+	}
+}

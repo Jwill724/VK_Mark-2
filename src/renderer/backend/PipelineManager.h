@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Shader.h"
-#include <renderer/RendererDefinitions.h>
+#include "../RendererDefinitions.h"
+#include "PipelineBundles.h"
+#include <vector>
 
 namespace RD = RendererDefinitions;
 
@@ -16,10 +18,16 @@ public:
 		const std::vector<VkDescriptorSetLayout>& descriptorLayouts);
 	void InitPipelines(VkDevice device);
 
-	//const PipelineLayoutConst& GetGlobalLayout() noexcept { return m_globalLayout; }
-	const PipelineHandle& GetHandle(RD::Renderer_Pipeline id) noexcept { return m_pipelines[static_cast<size_t>(id)].Handle(); }
-
-	std::vector<std::pair<RD::Renderer_Shader, PipelineHandle&>> GetSwappablePipelines();
+	template<typename SlotEnum>
+	std::vector<PipelineHandle> GetBundle() // Called for render pass registerations
+	{
+		constexpr auto& mappings = PipelineBundleTraits<SlotEnum>::mappings;
+		std::vector<PipelineHandle> handles;
+		handles.reserve(mappings.size());
+		for (auto pipelineID : mappings)
+			handles.push_back(GetHandle(pipelineID));
+		return handles;
+	}
 
 	// Called once per frame before submitting work
 	// completedFrame = last frame the GPU has fully finished
@@ -32,16 +40,8 @@ public:
 	// Full shutdown — GPU must be idle before calling this
 	void Shutdown(VkDevice device);
 
-	static bool IsPipelineSwapable(RD::Renderer_Pipeline id)
-	{
-		switch(id)
-		{
-			case RD::Renderer_Pipeline::Wireframe:
-				return true;
-			default:
-				return false;
-		}
-	}
+	const PipelineLayoutConst& GetGlobalLayout() { return m_globalLayout; }
+	const PipelineHandle& GetHandle(RD::Renderer_Pipeline id) { return m_pipelines[static_cast<size_t>(id)].Handle(); }
 
 private:
 	class Pipeline
@@ -57,26 +57,19 @@ private:
 		RD::Renderer_Pipeline ID() const { return m_id; }
 
 	private:
-		RD::Renderer_Pipeline   m_id;
-		std::vector<Shader> m_shaders;  // {shader stages, shader path}
-		PipelineHandle      m_handle;   // pipeline meta data
+		RD::Renderer_Pipeline m_id = RD::Renderer_Pipeline::Count;
+		std::vector<Shader>   m_shaders;  // {shader stages, shader path}
+		PipelineHandle        m_handle{}; // pipeline meta data
 	};
 
 	// Core pipeline meta data and building
-	std::array<Pipeline, static_cast<size_t>(RD::Renderer_Pipeline::Count)> m_pipelines;
+	std::array<Pipeline, RD::PIPELINE_COUNT> m_pipelines;
 
 	// Pipeline settings and configurations
-	std::array<PipelinePreset, static_cast<size_t>(RD::Renderer_Pipeline::Count)> m_pipelinePresets;
-
-	// Runtime needed pipeline data
-	const PipelineHandle& GetHandle(RD::Renderer_Pipeline id)
-	{
-		return m_pipelines[static_cast<size_t>(id)].Handle();
-	}
+	std::array<PipelinePreset, RD::PIPELINE_COUNT> m_pipelinePresets;
 
 	// All pipelines shared the same layouts and push constant settings
 	PipelineLayoutConst m_globalLayout;
-	const PipelineLayoutConst& GetGlobalLayout() { return m_globalLayout; }
 
 	void SetupPipelineConfig(const PipelinePreset& preset);
 

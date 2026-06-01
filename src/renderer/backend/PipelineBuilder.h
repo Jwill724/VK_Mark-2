@@ -1,18 +1,17 @@
 #pragma once
 
-#include <renderer/backend/VulkanTypes.h>
+#include "VulkanTypes.h"
 
 class PipelineBuilder final
 {
 public:
 	void InitCreateInfoStructs() noexcept
 	{
-		// clear all of the structs we need back to 0 with their correct stype
-		m_inputAssembly = {};
-		m_rasterizer    = {};
-		m_multisampling = {};
-		m_depthStencil  = {};
-		m_renderInfo    = {};
+		m_inputAssembly  = { .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+		m_rasterizer     = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+		m_multisampling  = { .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+		m_depthStencil   = { .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+		m_renderInfo     = { .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
 		m_colorBlendAttachment = {};
 		m_colorBlendAttachments.clear();
 	}
@@ -31,15 +30,13 @@ public:
 	VkFormat GetColorFormat() const { return m_colorFormat; }
 	VkFormat GetDepthFormat() const { return m_depthFormat; }
 
-	PipelineBuilder() { InitCreateInfoStructs(); }
-
 	void InputAssemblyConfig(VkPrimitiveTopology topology) noexcept
 	{
 		m_inputAssembly.topology               = topology;
 		m_inputAssembly.primitiveRestartEnable = VK_FALSE;
 	}
 
-	void DepthBiasConfig(uint32_t constantFactor, uint32_t slopeFactor) noexcept
+	void DepthBiasConfig(float constantFactor, float slopeFactor) noexcept
 	{
 		m_rasterizer.depthBiasEnable         = VK_TRUE;
 		m_rasterizer.depthBiasConstantFactor = constantFactor;
@@ -101,14 +98,14 @@ public:
 	{
 		if (!colorFormats.empty())
 		{
-			std::vector<VkFormat> vkformats;
-			vkformats.reserve(colorFormats.size());
+			m_colorAttachmentFormats.clear();
+			m_colorAttachmentFormats.reserve(colorFormats.size());
 			for (const auto& format : colorFormats)
 			{
-				vkformats.push_back(static_cast<VkFormat>(format));
+				m_colorAttachmentFormats.push_back(static_cast<VkFormat>(format));
 			}
 			m_renderInfo.colorAttachmentCount    = static_cast<uint32_t>(colorFormats.size());
-			m_renderInfo.pColorAttachmentFormats = vkformats.data();
+			m_renderInfo.pColorAttachmentFormats = m_colorAttachmentFormats.data();
 		}
 		else
 		{
@@ -208,21 +205,19 @@ public:
 
 			return true;
 		}
-
-		return false;
 	}
 
 private:
 	VkPipelineLayout                                 m_pipelineLayout = VK_NULL_HANDLE;
 
-	VkPipelineInputAssemblyStateCreateInfo           m_inputAssembly;
-	VkPipelineRasterizationStateCreateInfo           m_rasterizer;
-	VkPipelineColorBlendAttachmentState              m_colorBlendAttachment;
+	VkPipelineInputAssemblyStateCreateInfo           m_inputAssembly{};
+	VkPipelineRasterizationStateCreateInfo           m_rasterizer{};
+	VkPipelineColorBlendAttachmentState              m_colorBlendAttachment{};
 	std::vector<VkPipelineColorBlendAttachmentState> m_colorBlendAttachments;
-	VkPipelineMultisampleStateCreateInfo             m_multisampling;
-	VkPipelineDepthStencilStateCreateInfo            m_depthStencil;
-	VkPipelineRenderingCreateInfo                    m_renderInfo;
-
+	VkPipelineMultisampleStateCreateInfo             m_multisampling{};
+	VkPipelineDepthStencilStateCreateInfo            m_depthStencil{};
+	VkPipelineRenderingCreateInfo                    m_renderInfo{};
+	std::vector<VkFormat>                            m_colorAttachmentFormats;
 	VkFormat                                         m_colorFormat     = VK_FORMAT_UNDEFINED;
 	VkFormat                                         m_depthFormat     = VK_FORMAT_UNDEFINED;
 };

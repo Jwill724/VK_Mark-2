@@ -11,7 +11,11 @@ layout(local_size_x = 1) in;
 // https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
 
 layout(push_constant) uniform CMAA2Push {
-	uint pass; // 0 candidate / 1 deferred loc count
+	uint halfWidth;
+	uint maxShapeCandidates;
+	uint maxDeferredItems;
+	uint maxDeferredLocations;
+	vec4 params; // w. 0 candidate / 1 deferred loc count
 } pc;
 
 void main()
@@ -22,7 +26,10 @@ void main()
 
 	Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
 
-	if (pc.pass == 0) {
+	bool pass = bool(pc.params.w);
+
+	if (!pass)
+	{
 		uint candidateCount = control.control[CMAA2_CTRL_SHAPE_CANDIDATE_COUNT];
 
 		uint processGroupCountX =
@@ -31,7 +38,8 @@ void main()
 
 		dispatchArgs.args[INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES] = uvec4(processGroupCountX, 1u, 1u, 0u);
 	}
-	else if (pc.pass == 1) {
+	else
+	{
 		uint deferredLocCount = control.control[CMAA2_CTRL_DEFERRED_LOCATION_COUNT];
 
 		uint deferredGroupCountX =

@@ -4,20 +4,12 @@
 
 namespace LightingSystem
 {
-	FlashLight _mainFlashLight;
+	Flashlight _mainFlashLight;
 	bool _dynamicLightsEnabled = false;
 
 	std::vector<LocalLight> _globalLightList;
 	uint32_t _activeLightCount = 0u;
 	const uint32_t& GetActiveLightCount() { return _activeLightCount; }
-
-	static uint32_t getDynamicLightBeginIndex() {
-		return LIGHT_LIST_STATIC_COUNT;
-	}
-
-	static bool isDynamicLightID(uint32_t lightID) {
-		return lightID >= LIGHT_LIST_STATIC_COUNT;
-	}
 
 	static bool isLightIDAlive(uint32_t lightID) {
 		if (lightID >= _lightIDTable.alive.size()) return false;
@@ -99,7 +91,7 @@ namespace LightingSystem
 		const float rand01 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand02 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand03 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
-		const float rand04 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+		//const float rand04 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand06 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand07 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand08 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
@@ -136,7 +128,7 @@ namespace LightingSystem
 		uint32_t removedDenseIndex = _lightIDTable.idToIndex[lightID];
 		if (removedDenseIndex == UINT32_MAX) return;
 
-		ASSERT(removedDenseIndex >= LIGHT_LIST_STATIC_COUNT);
+		ASSERT(removedDenseIndex >= RD::LIGHT_LIST_STATIC_COUNT);
 		ASSERT(removedDenseIndex < _globalLightList.size());
 
 		uint32_t lastDenseIndex = static_cast<uint32_t>(_globalLightList.size() - 1u);
@@ -175,89 +167,15 @@ namespace LightingSystem
 	}
 }
 
-void LightingSystem::createClusteredUBO(AllocatedBuffer& clusteredUBO, const VmaAllocator alloc) {
-	if (clusteredUBO.m_buffer != VK_NULL_HANDLE) {
-		BufferUtils::DestroyAllocatedBuffer(clusteredUBO, alloc);
-	}
-	clusteredUBO = BufferUtils::CreateUniformBuffer(_clusteredData, alloc);
-}
 
-
-ClusterBufferSizes LightingSystem::ComputeClusterBufferSizes(
-	uint32_t screenWidth,
-	uint32_t screenHeight,
-	AllocatedBuffer& clusteredUBO,
-	const VmaAllocator alloc)
+void LightingSystem::Init()
 {
-	ClusterBufferSizes sizes{};
-	sizes.tileCountX = (screenWidth + _clusteredSettings.tileSizeX - 1u) / _clusteredSettings.tileSizeX;
-	sizes.tileCountY = (screenHeight + _clusteredSettings.tileSizeY - 1u) / _clusteredSettings.tileSizeY;
-	sizes.tileCount = sizes.tileCountX * sizes.tileCountY;
-	sizes.clusterCount = sizes.tileCount * _clusteredSettings.zSlices;
-
-	_clusteredData.tileCountX = sizes.tileCountX;
-	_clusteredData.tileSizeX = _clusteredSettings.tileSizeX;
-	_clusteredData.tileCountY = sizes.tileCountY;
-	_clusteredData.tileSizeY = _clusteredSettings.tileSizeY;
-	_clusteredData.zSlices = _clusteredSettings.zSlices;
-	_clusteredData.clusterCount = sizes.clusterCount;
-
-	//createClusteredUBO(clusteredUBO, alloc);
-
-	// Packed clustered buffers (per-frame)
-	sizes.clusterCountsBytes = static_cast<size_t>(sizes.clusterCount) * sizeof(uint32_t);
-	sizes.clusterOffsetsBytes = static_cast<size_t>(sizes.clusterCount) * sizeof(uint32_t);
-	sizes.clusterCursorsBytes = static_cast<size_t>(sizes.clusterCount) * sizeof(uint32_t);
-
-	// Packed flat list of light indices
-	sizes.clusterLightIDsBytes =
-		static_cast<size_t>(sizes.clusterCount) *
-		static_cast<size_t>(MAX_LIGHTS_PER_CLUSTER) *
-		sizeof(uint32_t);
-
-	// Hi-Z tile slice ranges: uvec2 per tile (minSlice, maxSlice) = 8 bytes
-	sizes.clusterTileSliceRangesBytes = static_cast<size_t>(sizes.tileCount) * 8u;
-
-	// Scan scratch sizing
-	const uint32_t elementsPerBlock = 256u;
-	const uint32_t blockCount = (sizes.clusterCount + elementsPerBlock - 1u) / elementsPerBlock;
-
-	sizes.clusterScanScratchBytes = 4u;
-
-	//sizes.clusterDebugStatsBytes = 256u;
-
-	sizes.clusterCountsBytes = BufferUtils::AlignUp(sizes.clusterCountsBytes, 256u);
-	sizes.clusterOffsetsBytes = BufferUtils::AlignUp(sizes.clusterOffsetsBytes, 256u);
-	sizes.clusterCursorsBytes = BufferUtils::AlignUp(sizes.clusterCursorsBytes, 256u);
-	sizes.clusterLightIDsBytes = BufferUtils::AlignUp(sizes.clusterLightIDsBytes, 256u);
-
-	sizes.clusterTileSliceRangesBytes = BufferUtils::AlignUp(sizes.clusterTileSliceRangesBytes, 256u);
-	sizes.clusterScanScratchBytes = BufferUtils::AlignUp(sizes.clusterScanScratchBytes, 256u);
-
-	return sizes;
-}
-
-
-void LightingSystem::init(GPUResources& resources) {
-	const auto alloc = resources.GetAllocator();
-	auto& lightListStaging = resources.GetLightListStagingBuffer();
-
-	if (lightListStaging.m_buffer == VK_NULL_HANDLE) {
-		lightListStaging = BufferUtils::CreateBuffer(
-			MAX_GPU_LIGHTS_SIZE_BYTES,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-			alloc
-		);
-		ASSERT(lightListStaging.m_allocInfo.pMappedData);
-	}
-
 	_globalLightList.clear();
-	_globalLightList.reserve(MAX_LIGHTS);
-	_globalLightList.resize(LIGHT_LIST_STATIC_COUNT);
+	_globalLightList.reserve(RD::MAX_LIGHTS);
+	_globalLightList.resize(RD::LIGHT_LIST_STATIC_COUNT);
 
 	_mainFlashLight.InitFlags();
-	_globalLightList[LIGHT_LIST_SLOT_FLASHLIGHT] = _mainFlashLight;
+	_globalLightList[RD::LIGHT_LIST_SLOT_FLASHLIGHT] = _mainFlashLight;
 
 	_lightIDTable.activeLightIDs.clear();
 	_lightIDTable.freeIDs.clear();
@@ -268,20 +186,20 @@ void LightingSystem::init(GPUResources& resources) {
 	_lightIDTable.cleanupIDs.clear();
 	_lightIDTable.newCopiedIDs.clear();
 
-	_lightIDTable.activeLightIDs.reserve(MAX_LIGHTS);
-	_lightIDTable.freeIDs.reserve(MAX_LIGHTS);
-	_lightIDTable.alive.reserve(MAX_LIGHTS);
-	_lightIDTable.idToIndex.reserve(MAX_LIGHTS);
+	_lightIDTable.activeLightIDs.reserve(RD::MAX_LIGHTS);
+	_lightIDTable.freeIDs.reserve(RD::MAX_LIGHTS);
+	_lightIDTable.alive.reserve(RD::MAX_LIGHTS);
+	_lightIDTable.idToIndex.reserve(RD::MAX_LIGHTS);
 
-	_lightIDTable.highlightedIDs.reserve(MAX_LIGHTS);
-	_lightIDTable.cleanupIDs.reserve(MAX_LIGHTS);
-	_lightIDTable.newCopiedIDs.reserve(MAX_LIGHTS);
+	_lightIDTable.highlightedIDs.reserve(RD::MAX_LIGHTS);
+	_lightIDTable.cleanupIDs.reserve(RD::MAX_LIGHTS);
+	_lightIDTable.newCopiedIDs.reserve(RD::MAX_LIGHTS);
 
 	// Static slots are always "alive" and mapped to themselves.
-	_lightIDTable.alive.resize(LIGHT_LIST_STATIC_COUNT, 1u);
-	_lightIDTable.idToIndex.resize(LIGHT_LIST_STATIC_COUNT);
+	_lightIDTable.alive.resize(RD::LIGHT_LIST_STATIC_COUNT, 1u);
+	_lightIDTable.idToIndex.resize(RD::LIGHT_LIST_STATIC_COUNT);
 
-	for (uint32_t staticIndex = 0; staticIndex < LIGHT_LIST_STATIC_COUNT; ++staticIndex) {
+	for (uint32_t staticIndex = 0; staticIndex < RD::LIGHT_LIST_STATIC_COUNT; ++staticIndex) {
 		_lightIDTable.idToIndex[staticIndex] = staticIndex;
 	}
 }
@@ -305,33 +223,15 @@ void LightingSystem::SetTargetActiveLightCount(uint32_t targetCount) {
 	}
 }
 
-bool FlashLight::UpdateFlashLight(
+bool Flashlight::UpdateFlashLight(
 	std::vector<LocalLight>& globalLightList,
-	const uint32_t shadowMapID,
-	const uint32_t cookieTexID,
 	const glm::vec3& pos,
 	const glm::vec3& dir,
 	const float dt,
 	const glm::vec2 mouseDelta,
 	const glm::vec3 camForward)
 {
-	bool lightStateUpdated = false;
-
-	// Static setup
-	if (shadowMapID != spotLight.shadowMapID || cookieTexID != spotLight.cookieTexID) {
-		spotLight.cookieTexID = cookieTexID;
-		spotLight.shadowMapID = shadowMapID;
-		spotLight.type = LightType::Spot;
-		spotLight.intensity = LightingSystem::_flashLightSettings.intensity;
-		spotLight.radius = LightingSystem::_flashLightSettings.radius;
-
-		const float outerDeg = LightingSystem::_flashLightSettings.outerDeg;
-		const float innerDeg = LightingSystem::_flashLightSettings.innerDeg;
-		spotLight.outerCos = std::cos(glm::radians(outerDeg));
-		spotLight.innerCos = std::cos(glm::radians(innerDeg));
-
-		lightStateUpdated = true;
-	}
+	ASSERT(m_bTextureIDsInitialized && "Assign Bindless texture Ids to flashlight.");
 
 	glm::vec3 flatForward = glm::normalize(glm::vec3(camForward.x, 0.0f, camForward.z));
 	const glm::vec3 upWorld = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -349,8 +249,8 @@ bool FlashLight::UpdateFlashLight(
 	verticalFactor = glm::smoothstep(0.0f, 1.0f, verticalFactor);
 
 	glm::vec3 swayOffset =
-		stableRight * (-mouseDelta.x * swayStrength) +
-		stableUp    * (-mouseDelta.y * swayStrength);
+		stableRight * (-mouseDelta.x * m_swayStrength) +
+		stableUp    * (-mouseDelta.y * m_swayStrength);
 
 	swayOffset *= verticalFactor;
 
@@ -358,31 +258,32 @@ bool FlashLight::UpdateFlashLight(
 	glm::vec3 targetPos = pos;
 
 	// smoothing (exponential)
-	float response = 1.0f - std::exp(-lagStrength * dt);
+	float response = 1.0f - std::exp(-m_lagStrength * dt);
 
-	smoothedDir = glm::normalize(glm::mix(smoothedDir, targetDir, response));
-	smoothedPos = glm::mix(smoothedPos, targetPos, response);
+	m_smoothedDir = glm::normalize(glm::mix(m_smoothedDir, targetDir, response));
+	m_smoothedPos = glm::mix(m_smoothedPos, targetPos, response);
 
-	if (spotLight.direction != smoothedDir || spotLight.position != smoothedPos) {
-		spotLight.direction = smoothedDir;
-		spotLight.position = smoothedPos;
-		lightStateUpdated = true;
+	if (direction != m_smoothedDir || position != m_smoothedPos) {
+		direction = m_smoothedDir;
+		position = m_smoothedPos;
+		m_bLightStateUpdated = true;
 	}
 
-	spotLight.intensity = LightingSystem::_flashLightSettings.intensity;
+	intensity = LightingSystem::_flashlightSettings.intensity;
 
 	// Matrix update
-	if (lightStateUpdated) {
-		glm::vec3 fwd = glm::normalize(spotLight.direction);
+	if (m_bLightStateUpdated)
+	{
+		glm::vec3 fwd = glm::normalize(direction);
 		glm::vec3 right = glm::normalize(glm::cross(fwd, upWorld));
 		glm::vec3 up = glm::normalize(glm::cross(right, fwd));
 
-		const float offsetRight = LightingSystem::_flashLightSettings.offsetRight;
-		const float offsetDown = LightingSystem::_flashLightSettings.offsetDown;
-		const float offsetFwd = LightingSystem::_flashLightSettings.offsetFwd;
+		const float offsetRight = LightingSystem::_flashlightSettings.offsetRight;
+		const float offsetDown = LightingSystem::_flashlightSettings.offsetDown;
+		const float offsetFwd = LightingSystem::_flashlightSettings.offsetFwd;
 
 		glm::vec3 lightPos =
-			spotLight.position +
+			position +
 			right * offsetRight +
 			up * offsetDown +
 			fwd * offsetFwd;
@@ -393,30 +294,33 @@ bool FlashLight::UpdateFlashLight(
 			up
 		);
 
-		const float fovY = LightingSystem::_flashLightSettings.fovYScale;
+		const float fovY = LightingSystem::_flashlightSettings.fovYScale;
 
 		glm::mat4 proj = glm::perspective(
 			fovY,
 			1.0f,
 			0.1f,
-			spotLight.radius
+			radius
 		);
 
-		viewProj = proj * view;
-		frustum = ExtractNew(viewProj);
+		ViewProj = proj * view;
+		Frustum.ExtractNew(ViewProj);
 	}
  
 	// Push to global list
-	const bool lightDirty = lightStateUpdated || flashLightFlagsChanged;
+	const bool lightDirty = m_bLightStateUpdated || m_flashlightFlagsChanged;
 	if (lightDirty) {
-		flashLightFlagsChanged = false;
-		globalLightList[LIGHT_LIST_SLOT_FLASHLIGHT] = spotLight;
+		m_flashlightFlagsChanged = false;
+		globalLightList[RD::LIGHT_LIST_SLOT_FLASHLIGHT] = *this;
 	}
+
+	m_bLightStateUpdated = false; // Clean slate
 
 	return lightDirty;
 }
 
-bool LightingSystem::UpdateLightList() {
+bool LightingSystem::UpdateLightList()
+{
 	bool listChanged = false;
 
 	for (uint32_t lightID : _lightIDTable.cleanupIDs) {
@@ -428,28 +332,28 @@ bool LightingSystem::UpdateLightList() {
 	uint32_t activeCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
 
 	for (uint32_t sourceID : _lightIDTable.newCopiedIDs) {
-		if (activeCount >= MAX_LIGHTS) {
-			fmt::print("[LightingSystem::UpdateLightList] copy break: activeCount={} max={}\n",
+		if (activeCount >= RD::MAX_LIGHTS) {
+			fmt::println("[LightingSystem::UpdateLightList] copy break: activeCount={} max={}",
 				activeCount,
-				MAX_LIGHTS
+				RD::MAX_LIGHTS
 			);
 			break;
 		}
 
 		if (!isLightIDAlive(sourceID)) {
-			fmt::print("[LightingSystem::UpdateLightList] copy skip: sourceID={} not alive\n", sourceID);
+			fmt::println("[LightingSystem::UpdateLightList] copy skip: sourceID={} not alive", sourceID);
 			continue;
 		}
 
 		LocalLight* sourceLight = getDynamicLightByID(sourceID);
 		if (sourceLight == nullptr) {
-			fmt::print("[LightingSystem::UpdateLightList] copy skip: sourceID={} has no mapped dense light\n", sourceID);
+			fmt::println("[LightingSystem::UpdateLightList] copy skip: sourceID={} has no mapped dense light", sourceID);
 			continue;
 		}
 
 		uint32_t newID = allocateLightID();
 
-		fmt::print("[LightingSystem::UpdateLightList] copy: sourceID={} -> newID={} (activeBefore={})\n",
+		fmt::println("[LightingSystem::UpdateLightList] copy: sourceID={} -> newID={} (activeBefore={})",
 			sourceID,
 			newID,
 			activeCount
@@ -465,7 +369,7 @@ bool LightingSystem::UpdateLightList() {
 
 	uint32_t createCount = _lightIDTable.newIDCount;
 
-	while (createCount > 0 && activeCount < MAX_LIGHTS) {
+	while (createCount > 0 && activeCount < RD::MAX_LIGHTS) {
 		createRandomLight();
 		--createCount;
 		++activeCount;
@@ -481,7 +385,7 @@ bool LightingSystem::UpdateLightList() {
 		_activeLightCount++;
 	}
 
-	ASSERT(_activeLightCount <= MAX_LIGHTS);
+	ASSERT(_activeLightCount <= RD::MAX_LIGHTS);
 
 	return listChanged;
 }
@@ -534,7 +438,22 @@ bool LightingSystem::UpdateDynamicLightsOrbit(float deltaTime) {
 }
 
 void LightingSystem::Cleanup() {
-	_lightIDTable.clear();
+	_lightIDTable.Clear();
 	_activeLightCount = 0u;
 	_globalLightList.clear();
+}
+
+void Flashlight::Init(uint32_t shadowMapID, uint32_t cookieGoboID)
+{
+	m_shadowMapID = shadowMapID;
+	m_cookieGoboID = cookieGoboID;
+	type = LightType::Spot;
+	intensity = LightingSystem::_flashlightSettings.intensity;
+	radius = LightingSystem::_flashlightSettings.radius;
+
+	outerCos = std::cos(glm::radians(LightingSystem::_flashlightSettings.outerDeg));
+	innerCos = std::cos(glm::radians(LightingSystem::_flashlightSettings.innerDeg));
+
+	m_bTextureIDsInitialized = true;
+	m_bLightStateUpdated = true;
 }

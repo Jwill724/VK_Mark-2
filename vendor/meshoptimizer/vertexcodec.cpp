@@ -140,7 +140,7 @@ const int kEncodeDefaultLevel = 2;
 static size_t getVertexBlockSize(size_t vertex_size)
 {
 	// make sure the entire block fits into the scratch buffer and is aligned to byte group size
-	// note: the block size is implicitly part of the format, so we can't change it without breaking compatibility
+	// note: the block size is implicitly part of the m_format, so we can't change it without breaking compatibility
 	size_t result = (kVertexBlockSizeBytes / vertex_size) & ~(kByteGroupSize - 1);
 
 	return (result < kVertexBlockMaxSize) ? result : kVertexBlockMaxSize;

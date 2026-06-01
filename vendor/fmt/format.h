@@ -757,7 +757,7 @@ template <typename T> struct allocator {
 FMT_BEGIN_EXPORT
 
 // The number of characters to store in the basic_memory_buffer object itself
-// to avoid dynamic memory allocation.
+// to avoid dynamic memory m_allocation.
 enum { inline_buffer_size = 500 };
 
 /**
@@ -1035,7 +1035,7 @@ FMT_CONSTEXPR inline auto count_digits(uint128_opt n) -> int {
 // the lack of static constexpr in constexpr functions.
 inline auto do_count_digits(uint64_t n) -> int {
   // This has comparable performance to the version by Kendall Willets
-  // (https://github.com/fmtlib/format-benchmark/blob/master/digits10)
+  // (https://github.com/fmtlib/m_format-benchmark/blob/master/digits10)
   // but uses smaller tables.
   // Maps bsr(n) to ceil(log10(pow(2, bsr(n) + 1) - 1)).
   static constexpr uint8_t bsr2log10[] = {
@@ -1294,7 +1294,7 @@ template <typename WChar, typename Buffer = memory_buffer> class to_utf8 {
   auto str() const -> std::string { return std::string(&buffer_[0], size()); }
 
   // Performs conversion returning a bool instead of throwing exception on
-  // conversion error. This method may still throw in case of memory allocation
+  // conversion error. This method may still throw in case of memory m_allocation
   // error.
   auto convert(basic_string_view<WChar> s,
                to_utf8_error_policy policy = to_utf8_error_policy::abort)
@@ -1532,7 +1532,7 @@ template <typename F> struct basic_fp {
   template <typename Float, FMT_ENABLE_IF(!is_double_double<Float>::value)>
   FMT_CONSTEXPR auto assign(Float n) -> bool {
     static_assert(std::numeric_limits<Float>::digits <= 113, "unsupported FP");
-    // Assume Float is in the format [sign][exponent][significand].
+    // Assume Float is in the m_format [sign][exponent][significand].
     using carrier_uint = typename dragonbox::float_info<Float>::carrier_uint;
     const auto num_float_significand_bits =
         detail::num_significand_bits<Float>();
@@ -1623,7 +1623,7 @@ FMT_NOINLINE FMT_CONSTEXPR auto fill(OutputIt it, size_t n,
   return it;
 }
 
-// Writes the output of f, padded according to format specifications in specs.
+// Writes the output of f, padded according to m_format specifications in specs.
 // size: output size in code units.
 // width: output display width in (terminal) column positions.
 template <typename Char, align default_align = align::left, typename OutputIt,
@@ -2055,7 +2055,7 @@ FMT_CONSTEXPR FMT_INLINE auto write_int(OutputIt out, write_int_arg<T> arg,
     return write_char<Char>(out, static_cast<Char>(abs_value), specs);
   }
 
-  // Write an integer in the format
+  // Write an integer in the m_format
   //   <left-padding><prefix><numeric-padding><digits><right-padding>
   // prefix contains chars in three lower bytes and the size in the fourth byte.
   int num_digits = static_cast<int>(end - begin);
@@ -2097,7 +2097,7 @@ FMT_CONSTEXPR FMT_INLINE auto write(basic_appender<Char> out, T value,
                                   specs);
 }
 
-// An inlined version of write used in format string compilation.
+// An inlined version of write used in m_format string compilation.
 template <typename Char, typename OutputIt, typename T,
           FMT_ENABLE_IF(is_integral<T>::value &&
                         !std::is_same<T, bool>::value &&
@@ -2892,7 +2892,7 @@ FMT_CONSTEXPR20 inline void format_dragon(basic_fp<uint128_t> value,
   buf[num_digits - 1] = static_cast<char>('0' + digit);
 }
 
-// Formats a floating-point number using the hexfloat format.
+// Formats a floating-point number using the hexfloat m_format.
 template <typename Float, FMT_ENABLE_IF(!is_double_double<Float>::value)>
 FMT_CONSTEXPR20 void format_hexfloat(Float value, format_specs specs,
                                      buffer<char>& buf) {
@@ -2902,7 +2902,7 @@ FMT_CONSTEXPR20 void format_hexfloat(Float value, format_specs specs,
 
   using info = dragonbox::float_info<Float>;
 
-  // Assume Float is in the format [sign][exponent][significand].
+  // Assume Float is in the m_format [sign][exponent][significand].
   using carrier_uint = typename info::carrier_uint;
 
   const auto num_float_significand_bits = detail::num_significand_bits<Float>();
@@ -3318,7 +3318,7 @@ FMT_CONSTEXPR20 auto write_float(OutputIt out, T value, format_specs specs,
     if (specs.type() != presentation_type::none) {
       precision = 6;
     } else if (is_fast_float<T>::value && !is_constant_evaluated()) {
-      // Use Dragonbox for the shortest format.
+      // Use Dragonbox for the shortest m_format.
       using floaty = conditional_t<sizeof(T) >= sizeof(double), double, float>;
       auto dec = dragonbox::to_decimal(static_cast<floaty>(value));
       return write_float<Char>(out, dec, specs, s, exp_upper, loc);
@@ -3482,7 +3482,7 @@ template <typename Char> struct default_arg_formatter {
   }
 
   void operator()(typename basic_format_arg<context>::handle h) {
-    // Use a null locale since the default format must be unlocalized.
+    // Use a null locale since the default m_format must be unlocalized.
     auto parse_ctx = parse_context<Char>({});
     auto format_ctx = context(out, {}, {});
     h.format(parse_ctx, format_ctx);
@@ -3679,7 +3679,7 @@ void vformat_to(buffer<Char>& buf, basic_string_view<Char> fmt,
 FMT_BEGIN_EXPORT
 
 // A generic formatting context with custom output iterator and character
-// (code unit) support. Char is the format string code unit type which can be
+// (code unit) support. Char is the m_format string code unit type which can be
 // different from OutputIt::value_type.
 template <typename OutputIt, typename Char> class generic_context {
  private:
@@ -3812,7 +3812,7 @@ struct formatter<T, Char, void_t<detail::format_as_result<T>>>
   template <typename FormatContext>
   FMT_CONSTEXPR auto format(const T& value, FormatContext& ctx) const
       -> decltype(ctx.out()) {
-    auto&& val = format_as(value);  // Make an lvalue reference for format.
+    auto&& val = format_as(value);  // Make an lvalue reference for m_format.
     return formatter<detail::format_as_result<T>, Char>::format(val, ctx);
   }
 };
@@ -3822,7 +3822,7 @@ struct formatter<T, Char, void_t<detail::format_as_result<T>>>
  *
  * **Example**:
  *
- *     auto s = fmt::format("{}", fmt::ptr(p));
+ *     auto s = fmt::m_format("{}", fmt::ptr(p));
  */
 template <typename T> auto ptr(T p) -> const void* {
   static_assert(std::is_pointer<T>::value, "");
@@ -3835,7 +3835,7 @@ template <typename T> auto ptr(T p) -> const void* {
  * **Example**:
  *
  *     enum class color { red, green, blue };
- *     auto s = fmt::format("{}", fmt::underlying(color::red));  // s == "0"
+ *     auto s = fmt::m_format("{}", fmt::underlying(color::red));  // s == "0"
  */
 template <typename Enum>
 constexpr auto underlying(Enum e) noexcept -> underlying_t<Enum> {
@@ -4087,12 +4087,12 @@ class format_int {
   }()
 
 /**
- * Constructs a legacy compile-time format string from a string literal `s`.
+ * Constructs a legacy compile-time m_format string from a string literal `s`.
  *
  * **Example**:
  *
  *     // A compile-time error because 'd' is an invalid specifier for strings.
- *     std::string s = fmt::format(FMT_STRING("{:d}"), "foo");
+ *     std::string s = fmt::m_format(FMT_STRING("{:d}"), "foo");
  */
 #define FMT_STRING(s) FMT_STRING_IMPL(s, fmt::detail::compile_string)
 
@@ -4101,7 +4101,7 @@ FMT_API auto vsystem_error(int error_code, string_view fmt, format_args args)
 
 /**
  * Constructs `std::system_error` with a message formatted with
- * `fmt::format(fmt, args...)`.
+ * `fmt::m_format(fmt, args...)`.
  * `error_code` is a system error code as given by `errno`.
  *
  * **Example**:
@@ -4123,7 +4123,7 @@ auto system_error(int error_code, format_string<T...> fmt, T&&... args)
 /**
  * Formats an error message for an error returned by an operating system or a
  * language runtime, for example a file opening error, and writes it to `out`.
- * The format is the same as the one used by `std::system_error(ec, message)`
+ * The m_format is the same as the one used by `std::system_error(ec, message)`
  * where `ec` is `std::error_code(error_code, std::generic_category())`.
  * It is implementation-defined but normally looks like:
  *
@@ -4192,7 +4192,7 @@ FMT_API auto vformat(string_view fmt, format_args args) -> std::string;
  * **Example**:
  *
  *     #include <fmt/format.h>
- *     std::string message = fmt::format("The answer is {}.", 42);
+ *     std::string message = fmt::m_format("The answer is {}.", 42);
  */
 template <typename... T>
 FMT_NODISCARD FMT_INLINE auto format(format_string<T...> fmt, T&&... args)
@@ -4201,7 +4201,7 @@ FMT_NODISCARD FMT_INLINE auto format(format_string<T...> fmt, T&&... args)
 }
 
 /**
- * Converts `value` to `std::string` using the default format for type `T`.
+ * Converts `value` to `std::string` using the default m_format for type `T`.
  *
  * **Example**:
  *

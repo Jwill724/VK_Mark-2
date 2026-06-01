@@ -70,8 +70,8 @@ Index of this file:
 #pragma clang diagnostic ignored "-Wunknown-pragmas"                // warning: unknown warning group 'xxx'
 #pragma clang diagnostic ignored "-Wold-style-cast"                 // warning: use of old-style cast                            // yes, they are more terse.
 #pragma clang diagnostic ignored "-Wfloat-equal"                    // warning: comparing floating point with == or != is unsafe // storing and comparing against same constants (typically 0.0f) is ok.
-#pragma clang diagnostic ignored "-Wformat"                         // warning: format specifies type 'int' but the argument has type 'unsigned int'
-#pragma clang diagnostic ignored "-Wformat-nonliteral"              // warning: format string is not a string literal            // passing non-literal to vsnformat(). yes, user passing incorrect format strings can crash the code.
+#pragma clang diagnostic ignored "-Wformat"                         // warning: m_format specifies type 'int' but the argument has type 'unsigned int'
+#pragma clang diagnostic ignored "-Wformat-nonliteral"              // warning: m_format string is not a string literal            // passing non-literal to vsnformat(). yes, user passing incorrect m_format strings can crash the code.
 #pragma clang diagnostic ignored "-Wsign-conversion"                // warning: implicit conversion changes signedness
 #pragma clang diagnostic ignored "-Wunused-macros"                  // warning: macro is not used                                // we define snprintf/vsnprintf on Windows so they are available, but not always used.
 #pragma clang diagnostic ignored "-Wzero-as-null-pointer-constant"  // warning: zero as null pointer constant                    // some standard header variations use #define NULL 0
@@ -85,8 +85,8 @@ Index of this file:
 #elif defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wpragmas"                          // warning: unknown option after '#pragma GCC diagnostic' kind
 #pragma GCC diagnostic ignored "-Wfloat-equal"                      // warning: comparing floating-point with '==' or '!=' is unsafe
-#pragma GCC diagnostic ignored "-Wformat"                           // warning: format '%p' expects argument of type 'int'/'void*', but argument X has type 'unsigned int'/'ImGuiWindow*'
-#pragma GCC diagnostic ignored "-Wformat-nonliteral"                // warning: format not a string literal, format string not checked
+#pragma GCC diagnostic ignored "-Wformat"                           // warning: m_format '%p' expects argument of type 'int'/'void*', but argument X has type 'unsigned int'/'ImGuiWindow*'
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"                // warning: m_format not a string literal, m_format string not checked
 #pragma GCC diagnostic ignored "-Wdeprecated-enum-enum-conversion"  // warning: bitwise operation between different enumeration types ('XXXFlags_' and 'XXXFlagsPrivate_') is deprecated
 #pragma GCC diagnostic ignored "-Wdouble-promotion"                 // warning: implicit conversion from 'float' to 'double' when passing argument to function
 #pragma GCC diagnostic ignored "-Wstrict-overflow"                  // warning: assuming signed overflow does not occur when simplifying division / ..when changing X +- C1 cmp C2 to X cmp C2 -+ C1
@@ -1178,7 +1178,7 @@ bool ImGui::ImageButtonEx(ImGuiID id, ImTextureRef tex_ref, const ImVec2& image_
     return pressed;
 }
 
-// - ImageButton() adds style.FramePadding*2.0f to provided size. This is in order to facilitate fitting an image in a button.
+// - ImageButton() adds style.FramePadding*2.0f to provided size. This is in order to facilitate fitting an m_image in a button.
 // - ImageButton() draws a background based on regular Button() color + optionally an inner background if specified. (#8165) // FIXME: Maybe that's not the best design?
 bool ImGui::ImageButton(const char* str_id, ImTextureRef tex_ref, const ImVec2& image_size, const ImVec2& uv0, const ImVec2& uv1, const ImVec4& bg_col, const ImVec4& tint_col)
 {
@@ -1192,7 +1192,7 @@ bool ImGui::ImageButton(const char* str_id, ImTextureRef tex_ref, const ImVec2& 
 
 #ifndef IMGUI_DISABLE_OBSOLETE_FUNCTIONS
 // Legacy API obsoleted in 1.89. Two differences with new ImageButton()
-// - old ImageButton() used ImTextureID as item id (created issue with multiple buttons with same image, transient texture id values, opaque computation of ID)
+// - old ImageButton() used ImTextureID as item id (created issue with multiple buttons with same m_image, transient texture id values, opaque computation of ID)
 // - new ImageButton() requires an explicit 'const char* str_id'
 // - old ImageButton() had frame_padding' override argument.
 // - new ImageButton() always use style.FramePadding.
@@ -1763,7 +1763,7 @@ void ImGui::SeparatorText(const char* label)
     // - this high-level entry point to allow formatting? (which in turns may require ID separate from formatted string)
     // - because of this we probably can't turn 'const char* label' into 'const char* fmt, ...'
     // Otherwise, we can decide that users wanting to drag this would layout a dedicated drag-item,
-    // and then we can turn this into a format function.
+    // and then we can turn this into a m_format function.
     SeparatorTextEx(0, label, FindRenderedTextEnd(label), 0.0f);
 }
 
@@ -2366,9 +2366,9 @@ bool ImGui::DataTypeApplyFromText(const char* buf, ImGuiDataType data_type, void
         return false;
     }
 
-    // Sanitize format
-    // - For float/double we have to ignore format with precision (e.g. "%.2f") because sscanf doesn't take them in, so force them into %f and %lf
-    // - In theory could treat empty format as using default, but this would only cover rare/bizarre case of using InputScalar() + integer + format string without %.
+    // Sanitize m_format
+    // - For float/double we have to ignore m_format with precision (e.g. "%.2f") because sscanf doesn't take them in, so force them into %f and %lf
+    // - In theory could treat empty m_format as using default, but this would only cover rare/bizarre case of using InputScalar() + integer + m_format string without %.
     char format_sanitized[32];
     if (data_type == ImGuiDataType_Float || data_type == ImGuiDataType_Double)
         format = type_info->ScanFmt;
@@ -2473,10 +2473,10 @@ TYPE ImGui::RoundScalarWithFormatT(const char* format, ImGuiDataType data_type, 
     IM_UNUSED(data_type);
     IM_ASSERT(data_type == ImGuiDataType_Float || data_type == ImGuiDataType_Double);
     const char* fmt_start = ImParseFormatFindStart(format);
-    if (fmt_start[0] != '%' || fmt_start[1] == '%') // Don't apply if the value is not visible in the format string
+    if (fmt_start[0] != '%' || fmt_start[1] == '%') // Don't apply if the value is not visible in the m_format string
         return v;
 
-    // Sanitize format
+    // Sanitize m_format
     char fmt_sanitized[32];
     ImParseFormatSanitizeForPrinting(fmt_start, fmt_sanitized, IM_COUNTOF(fmt_sanitized));
     fmt_start = fmt_sanitized;
@@ -2595,7 +2595,7 @@ bool ImGui::DragBehaviorT(ImGuiDataType data_type, TYPE* v, float v_speed, const
         v_cur += (SIGNEDTYPE)g.DragCurrentAccum;
     }
 
-    // Round to user desired precision based on format string
+    // Round to user desired precision based on m_format string
     if (is_floating_point && !(flags & ImGuiSliderFlags_NoRoundToFormat))
         v_cur = RoundScalarWithFormatT<TYPE>(format, data_type, v_cur);
 
@@ -2703,7 +2703,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
         return false;
 
-    // Default format string when passing NULL
+    // Default m_format string when passing NULL
     if (format == NULL)
         format = DataTypeGetInfo(data_type)->PrintFmt;
 
@@ -2771,7 +2771,7 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     if (value_changed)
         MarkItemEdited(id);
 
-    // Display value using user-provided display format so user can add prefix/suffix/decorations to the value.
+    // Display value using user-provided display m_format so user can add prefix/suffix/decorations to the value.
     char value_buf[64];
     const char* value_buf_end = value_buf + DataTypeFormatString(value_buf, IM_COUNTOF(value_buf), data_type, p_data, format);
     if (g.LogEnabled)
@@ -3218,7 +3218,7 @@ bool ImGui::SliderBehaviorT(const ImRect& bb, ImGuiID id, ImGuiDataType data_typ
         {
             TYPE v_new = ScaleValueFromRatioT<TYPE, SIGNEDTYPE, FLOATTYPE>(data_type, clicked_t, v_min, v_max, is_logarithmic, logarithmic_zero_epsilon, zero_deadzone_halfsize);
 
-            // Round to user desired precision based on format string
+            // Round to user desired precision based on m_format string
             if (is_floating_point && !(flags & ImGuiSliderFlags_NoRoundToFormat))
                 v_new = RoundScalarWithFormatT<TYPE>(format, data_type, v_new);
 
@@ -3313,7 +3313,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     if (!ItemAdd(total_bb, id, &frame_bb, temp_input_allowed ? ImGuiItemFlags_Inputable : 0))
         return false;
 
-    // Default format string when passing NULL
+    // Default m_format string when passing NULL
     if (format == NULL)
         format = DataTypeGetInfo(data_type)->PrintFmt;
 
@@ -3368,7 +3368,7 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     if (grab_bb.Max.x > grab_bb.Min.x)
         window->DrawList->AddRectFilled(grab_bb.Min, grab_bb.Max, GetColorU32(g.ActiveId == id ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), style.GrabRounding);
 
-    // Display value using user-provided display format so user can add prefix/suffix/decorations to the value.
+    // Display value using user-provided display m_format so user can add prefix/suffix/decorations to the value.
     char value_buf[64];
     const char* value_buf_end = value_buf + DataTypeFormatString(value_buf, IM_COUNTOF(value_buf), data_type, p_data, format);
     if (g.LogEnabled)
@@ -3489,7 +3489,7 @@ bool ImGui::VSliderScalar(const char* label, const ImVec2& size, ImGuiDataType d
     if (!ItemAdd(frame_bb, id))
         return false;
 
-    // Default format string when passing NULL
+    // Default m_format string when passing NULL
     if (format == NULL)
         format = DataTypeGetInfo(data_type)->PrintFmt;
 
@@ -3520,7 +3520,7 @@ bool ImGui::VSliderScalar(const char* label, const ImVec2& size, ImGuiDataType d
     if (grab_bb.Max.y > grab_bb.Min.y)
         window->DrawList->AddRectFilled(grab_bb.Min, grab_bb.Max, GetColorU32(g.ActiveId == id ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), style.GrabRounding);
 
-    // Display value using user-provided display format so user can add prefix/suffix/decorations to the value.
+    // Display value using user-provided display m_format so user can add prefix/suffix/decorations to the value.
     // For the vertical slider we allow centered text to overlap the frame padding
     char value_buf[64];
     const char* value_buf_end = value_buf + DataTypeFormatString(value_buf, IM_COUNTOF(value_buf), data_type, p_data, format);
@@ -3580,7 +3580,7 @@ const char* ImParseFormatFindStart(const char* fmt)
 
 const char* ImParseFormatFindEnd(const char* fmt)
 {
-    // Printf/scanf types modifiers: I/L/h/j/l/t/w/z. Other uppercase letters qualify as types aka end of the format.
+    // Printf/scanf types modifiers: I/L/h/j/l/t/w/z. Other uppercase letters qualify as types aka end of the m_format.
     if (fmt[0] != '%')
         return fmt;
     const unsigned int ignored_uppercase_mask = (1 << ('I'-'A')) | (1 << ('L'-'A'));
@@ -3595,7 +3595,7 @@ const char* ImParseFormatFindEnd(const char* fmt)
     return fmt;
 }
 
-// Extract the format out of a format string with leading or trailing decorations
+// Extract the m_format out of a m_format string with leading or trailing decorations
 //  fmt = "blah blah"  -> return ""
 //  fmt = "%.3f"       -> return fmt
 //  fmt = "hello %.3f" -> return fmt + 6
@@ -3612,9 +3612,9 @@ const char* ImParseFormatTrimDecorations(const char* fmt, char* buf, size_t buf_
     return buf;
 }
 
-// Sanitize format
-// - Zero terminate so extra characters after format (e.g. "%f123") don't confuse atof/atoi
-// - stb_sprintf.h supports several new modifiers which format numbers in a way that also makes them incompatible atof/atoi.
+// Sanitize m_format
+// - Zero terminate so extra characters after m_format (e.g. "%f123") don't confuse atof/atoi
+// - stb_sprintf.h supports several new modifiers which m_format numbers in a way that also makes them incompatible atof/atoi.
 void ImParseFormatSanitizeForPrinting(const char* fmt_in, char* fmt_out, size_t fmt_out_size)
 {
     const char* fmt_end = ImParseFormatFindEnd(fmt_in);
@@ -3663,7 +3663,7 @@ static const char* ImAtoi(const char* src, TYPE* output)
     return src;
 }
 
-// Parse display precision back from the display format string
+// Parse display precision back from the display m_format string
 // FIXME: This is still used by some navigation code path to infer a minimum tweak step, but we should aim to rework widgets so it isn't needed.
 int ImParseFormatPrecision(const char* fmt, int default_precision)
 {
@@ -3717,7 +3717,7 @@ bool ImGui::TempInputText(const ImRect& bb, ImGuiID id, const char* label, char*
 // However this may not be ideal for all uses, as some user code may break on out of bound values.
 bool ImGui::TempInputScalar(const ImRect& bb, ImGuiID id, const char* label, ImGuiDataType data_type, void* p_data, const char* format, const void* p_clamp_min, const void* p_clamp_max)
 {
-    // FIXME: May need to clarify display behavior if format doesn't contain %.
+    // FIXME: May need to clarify display behavior if m_format doesn't contain %.
     // "%d" -> "%d" / "There are %d items" -> "%d" / "items" -> "%d" (fallback). Also see #6405
     ImGuiContext& g = *GImGui;
     const ImGuiDataTypeInfo* type_info = DataTypeGetInfo(data_type);
@@ -4889,7 +4889,7 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
         if (state != NULL)
             state->CursorClamp();
         //if (is_readonly && state != NULL)
-        //    state->TextA.clear(); // Uncomment to facilitate debugging, but we otherwise prefer to keep/amortize th allocation.
+        //    state->TextA.clear(); // Uncomment to facilitate debugging, but we otherwise prefer to keep/amortize th m_allocation.
     }
     if (state != NULL)
         state->TextSrc = is_readonly ? buf : state->TextA.Data;
@@ -7291,7 +7291,7 @@ bool ImGui::CollapsingHeader(const char* label, bool* p_visible, ImGuiTreeNodeFl
 // - Selectable()
 //-------------------------------------------------------------------------
 
-// Tip: pass a non-visible label (e.g. "##hello") then you can use the space to draw other text or image.
+// Tip: pass a non-visible label (e.g. "##hello") then you can use the space to draw other text or m_image.
 // But you need to make sure the ID is unique, e.g. enclose calls in PushID/PopID or use ##unique_id.
 // With this scheme, ImGuiSelectableFlags_SpanAllColumns and ImGuiSelectableFlags_AllowOverlap are also frequently used flags.
 // FIXME: Selectable() with (size.x == 0.0f) and (SelectableTextAlign.x > 0.0f) followed by SameLine() is currently not supported.

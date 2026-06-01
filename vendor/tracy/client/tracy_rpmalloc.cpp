@@ -428,7 +428,7 @@ typedef struct size_class_use_t size_class_use_t;
 #endif
 
 // A span can either represent a single span of memory pages with size declared by span_map_count configuration variable,
-// or a m_frameSet of spans in a continuous region, a super span. Any reference to the term "span" usually refers to both a single
+// or a set of spans in a continuous region, a super span. Any reference to the term "span" usually refers to both a single
 // span or a super span. A super span can further be divided into multiple spans (or this, super spans), where the first
 // (super)span is the master and subsequent (super)spans are subspans. The master span keeps track of how many subspans
 // that are still alive and mapped in virtual memory, and once all subspans and master have been unmapped the entire
@@ -855,8 +855,8 @@ _rpmalloc_mmap(size_t size, size_t* offset) {
 //! Unmap virtual memory
 //  address is the memory address to unmap, as returned from _memory_map
 //  size is the number of bytes to unmap, which might be less than full region for a partial unmap
-//  offset is the offset in bytes to the actual mapped region, as m_frameSet by _memory_map
-//  release is m_frameSet to 0 for partial unmap, or size of entire range for a full unmap
+//  offset is the offset in bytes to the actual mapped region, as set by _memory_map
+//  release is set to 0 for partial unmap, or size of entire range for a full unmap
 static void
 _rpmalloc_unmap(void* address, size_t size, size_t offset, size_t release) {
 	rpmalloc_assert(!release || (release >= size), "Invalid unmap size");
@@ -1117,11 +1117,11 @@ _rpmalloc_span_initialize(span_t* span, size_t total_span_count, size_t span_cou
 static void
 _rpmalloc_span_unmap(span_t* span);
 
-//! Map an aligned m_frameSet of spans, taking configured mapping granularity and the page size into account
+//! Map an aligned set of spans, taking configured mapping granularity and the page size into account
 static span_t*
 _rpmalloc_span_map_aligned_count(heap_t* heap, size_t span_count) {
 	//If we already have some, but not enough, reserved spans, release those to heap cache and map a new
-	//full m_frameSet of spans. Otherwise we would waste memory if page size > span size (huge pages)
+	//full set of spans. Otherwise we would waste memory if page size > span size (huge pages)
 	size_t aligned_span_count = _rpmalloc_span_align_count(span_count);
 	size_t align_offset = 0;
 	span_t* span = (span_t*)_rpmalloc_mmap(aligned_span_count * _memory_span_size, &align_offset);
@@ -2123,7 +2123,7 @@ _rpmalloc_allocate_from_heap_fallback(heap_t* heap, heap_size_class_t* heap_size
 	//Find a span in one of the cache levels
 	span = _rpmalloc_heap_extract_new_span(heap, heap_size_class, 1, class_idx);
 	if (EXPECTED(span != 0)) {
-		//Mark span as owned by this heap and m_frameSet base data, return first block
+		//Mark span as owned by this heap and set base data, return first block
 		return _rpmalloc_span_initialize_new(heap, heap_size_class, span, class_idx);
 	}
 
@@ -2174,7 +2174,7 @@ _rpmalloc_allocate_large(heap_t* heap, size_t size) {
 	if (!span)
 		return span;
 
-	//Mark span as owned by this heap and m_frameSet base data
+	//Mark span as owned by this heap and set base data
 	rpmalloc_assert(span->span_count >= span_count, "Internal failure");
 	span->size_class = SIZE_CLASS_LARGE;
 	span->heap = heap;

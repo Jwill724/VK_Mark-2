@@ -3,7 +3,7 @@
 // Copyright (c) 2012 - 2016, Victor Zverovich
 // All rights reserved.
 //
-// For the license information refer to format.h.
+// For the license information refer to m_format.h.
 
 #ifndef FMT_FORMAT_INL_H_
 #define FMT_FORMAT_INL_H_
@@ -43,7 +43,7 @@ FMT_FUNC void assert_fail(const char* file, int line, const char* message) {
 FMT_FUNC void format_error_code(detail::buffer<char>& out, int error_code,
                                 string_view message) noexcept {
   // Report error code making sure that the output fits into
-  // inline_buffer_size to avoid dynamic memory allocation and potential
+  // inline_buffer_size to avoid dynamic memory m_allocation and potential
   // bad_alloc.
   out.try_resize(0);
   static const char SEP[] = ": ";
@@ -1441,7 +1441,7 @@ FMT_FUNC void report_system_error(int error_code,
 
 FMT_FUNC auto vformat(string_view fmt, format_args args) -> std::string {
   // Don't optimize the "{}" case to keep the binary size small and because it
-  // can be better optimized in fmt::format anyway.
+  // can be better optimized in fmt::m_format anyway.
   auto buffer = memory_buffer();
   detail::vformat_to(buffer, fmt, args);
   return to_string(buffer);

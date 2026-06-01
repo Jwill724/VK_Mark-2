@@ -2360,7 +2360,7 @@ size_t meshopt_simplifyEdge(unsigned int* destination, const unsigned int* indic
 		memcpy(result, indices, index_count * sizeof(unsigned int));
 
 	// build an index remap and update indices/vertex_count to minimize the subsequent work
-	// note: as a consequence, errors will be computed relative to the subset extent
+	// note: as a consequence, errors will be computed relative to the subset m_extent
 	unsigned int* sparse_remap = NULL;
 	if (options & meshopt_SimplifySparse)
 		sparse_remap = buildSparseRemap(result, index_count, vertex_count, &vertex_count, allocator);
