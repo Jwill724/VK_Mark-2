@@ -20,10 +20,6 @@ void RegisterTransparentForwardPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(
-					RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -33,6 +29,11 @@ void RegisterTransparentForwardPass(
 					RD::Renderer_RenderTarget::TransparentRevealage,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::DepthRaw,
+					RD::ImageAccess::GraphicsDepthWrite,
+					RD::ImageAccess::GraphicsDepthWrite)
 
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -57,7 +58,18 @@ void RegisterTransparentForwardPass(
 						AttachmentDesc depthAttach{};
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 						depthAttach.clearValue.depthStencil.depth = 0.0f;
+
+						if (!ctx.frameState->bIsOpaqueVisible)
+						{
+							const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
+							depthAttach.imageView = depthRaw.m_imageView;
+							depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+							depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+							depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+						}
 
 						pso.UpdateRenderInfo({ depthResolved.Width(), depthResolved.Height() }, // All images are the same size as renderer drawExtent
 							{ tAccumAttach, tRevealAttach, depthAttach });
@@ -85,16 +97,30 @@ void RegisterTransparentForwardPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& indirectBuffer =
+						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto& drawRange = frameCtx->GetTransparentDrawRange();
+						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
+
+						const uint64_t triangles = SumTrianglesIndirectRange(
+							frameCtx->GetIndirectCmds(),
+							drawRange.firstCommand,
+							drawRange.commandCount,
+							pipeline.topology);
+
+						ctx.profiler->AddTransparentIndirect(
+							1,
+							drawRange.commandCount,
+							triangles);
 
 						pso.BeginRendering(cmd);
 
 						pso.DrawIndexedIndirect(
 							cmd,
 							indirectBuffer,
-							frameCtx->GetTransparentDrawRange(),
-							pass.pipelines[PIPE_ID_MAIN],
+							drawRange,
+							pipeline,
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

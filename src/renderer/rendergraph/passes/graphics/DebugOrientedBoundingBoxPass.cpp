@@ -27,10 +27,6 @@ void RegisterOBBLineDebugPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(
-					RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -48,10 +44,15 @@ void RegisterOBBLineDebugPass(
 						AttachmentDesc opaqueAttach{};
 						opaqueAttach.imageView = opaque.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+						const bool firstWrite = ctx.renderGraph->IsFirstGraphicsWrite(RD::Renderer_RenderTarget::Opaque);
+						opaqueAttach.loadOp  = firstWrite ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 						AttachmentDesc depthAttach{};
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 						depthAttach.clearValue.depthStencil.depth = 0.0f;
 
 						pso.UpdateRenderInfo(
@@ -83,7 +84,13 @@ void RegisterOBBLineDebugPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& obbBuffer = frameCtx->GetOBBLineDebugBuffer();
+						const auto& obbBuffer   = frameCtx->GetOBBLineDebugBuffer();
+						const auto& drawOffsets = frameCtx->GetOBBDrawOffsets();
+
+						// line topology -> TrianglesFromNonIndexed would return 0 anyway
+						ctx.profiler->AddDirect(
+							static_cast<uint32_t>(drawOffsets.size()),
+							0u);
 
 						OBBPush obbPush{ .vertexBuffer = obbBuffer.m_address };
 						pso.SetPush(obbPush);
@@ -94,45 +101,10 @@ void RegisterOBBLineDebugPass(
 							cmd,
 							obbBuffer.m_buffer,
 							0,
-							frameCtx->GetOBBDrawOffsets(),
+							drawOffsets,
 							pass.pipelines[PIPE_ID_MAIN]);
 
 						pso.EndRendering(cmd);
 					});
 		});
 }
-
-
-//std::vector<glm::vec3> allVerts;
-//std::vector<uint32_t> drawOffsets;
-
-//auto& resources = Engine::GetState().getGPUResources();
-//const auto& meshes = resources.GetResgisteredMeshes().meshData;
-
-//auto emitOBBVerts = [&](const Instance& inst) {
-//	const auto& aabb = meshes[inst.meshID].localAABB;
-//	const auto& matrix = World::_globalTransforms[inst.transformID];
-//	auto verts = GetOBBVertices(aabb, matrix);
-//	uint32_t offset = static_cast<uint32_t>(allVerts.size());
-//	drawOffsets.push_back(offset);
-//	allVerts.insert(allVerts.end(), verts.begin(), verts.end());
-//};
-//for (const auto& inst : frameCtx.m_visibleInstances) emitOBBVerts(inst);
-
-//const auto allocator = resources.GetAllocator();
-
-//const size_t totalSize = allVerts.size() * sizeof(glm::vec3);
-
-//AllocatedBuffer obbVBO = BufferUtils::CreateBuffer(
-//	totalSize,
-//	VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-//	VMA_MEMORY_USAGE_CPU_TO_GPU,
-//	allocator);
-//ASSERT(obbVBO.m_allocInfo.pMappedData != nullptr);
-//memcpy(obbVBO.m_mappedPtr, allVerts.data(), totalSize);
-
-//auto aabbBuf = obbVBO.m_buffer;
-//auto aabbAlloc = obbVBO.m_allocation;
-//frameCtx.m_cpuDeletionQueue.PushFunction([aabbBuf, aabbAlloc, allocator]() mutable {
-//	BufferUtils::DestroyBuffer(aabbBuf, aabbAlloc, allocator);
-//});

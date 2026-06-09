@@ -18,6 +18,8 @@ public:
 	Camera& GetCamera() { return m_camera; }
 	const Camera& GetCamera() const { return m_camera; }
 
+	ShadowControl& GetShadowControls() { return m_shadowControl; }
+
 	void InitScene(glm::vec3 spawn);
 	void InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bindlessID);
 
@@ -26,6 +28,10 @@ public:
 		m_transforms.clear();
 		m_virtualInstances.clear();
 	}
+
+	const Frustum& GetCascadeFrustum(uint32_t index) const { return m_cascadeFrustums[index]; }
+	glm::mat4& GetCascadeLightView(uint32_t index) { return m_cascadeLightViews[index]; }
+	const glm::mat4& GetCascadeLightView(uint32_t index) const { return m_cascadeLightViews[index]; }
 
 	const Frustum& GetFrustum() const { return m_frustum; }
 
@@ -55,6 +61,7 @@ public:
 
 	std::vector<VirtualInstance>& GetVirtualInstances() { return m_virtualInstances; }
 	std::vector<glm::mat4>& GetTransforms() { return m_transforms; }
+	std::vector<AABB>& GetVisibleWorldAABBs() { return m_visibleWorldAABBs; }
 
 	// Verifys for temporal
 	bool VerifyTransformCount()
@@ -78,8 +85,7 @@ private:
 	float m_csmAtlasTileRes = 0.0f;
 
 	float m_shadowFar = 1000.0f;
-	float m_cachedAspectRatio = 0.0f; // When new aspect ratio shadow splits needs an update
-	bool m_bShouldSplitsUpdate = false; // since its tied to ratio
+	bool m_bShouldSplitsUpdate = true;
 
 	glm::mat4 m_curCamView;
 	glm::mat4 m_curCamProj;

@@ -143,8 +143,7 @@ void DescriptorWriter::WriteBindlessImages(
 	VkDescriptorSet set,
 	Vulkan_DescriptorType type)
 {
-	if (images.empty())
-		return;
+	if (images.empty()) return;
 
 	auto& group = m_imageWriteGroups.emplace_back();
 

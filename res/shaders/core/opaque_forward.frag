@@ -35,7 +35,6 @@ layout(push_constant) uniform ForwardPush
 	uint flashlightShadowMapID;
 	uint flashlightCookieTexID;
 	uint pad0;
-
 	mat4 flashlightVP;
 } pc;
 

@@ -524,14 +524,6 @@ namespace RendererDefinitions
 		GraphicsRead
 	};
 
-	enum class ResourceAccess
-	{
-		Read,
-		Write,
-		Read_Write,
-		Write_Read,
-	};
-
 	enum class ResourceLifetime
 	{
 		Persistent,     // engine lifetime, freed at shutdown only
@@ -550,7 +542,6 @@ namespace RendererDefinitions
 
 	struct RenderStateInfo
 	{
-		size_t frameNumber = 0u;
 		bool bIsOpaqueVisible      = false;
 		bool bIsTransparentVisible = false;
 		bool bHasVisibles          = bIsOpaqueVisible || bIsTransparentVisible;

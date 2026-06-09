@@ -2,7 +2,6 @@
 
 #include "../../RenderPasses.h"
 #include "../../../backend/ImageUtils.h"
-#include "EngineTypes.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
@@ -20,13 +19,6 @@ void RegisterSwapchainPresentPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::PostNonAAComposite,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::AAColor,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
-
 				.DisableCulling()
 				.ForceExecution()
 
@@ -42,7 +34,7 @@ void RegisterSwapchainPresentPass(
 
 						AllocatedImage srcImage;
 
-						if (ctx.profiler->debugToggles.enableChromaticAberration)
+						if (ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->bHasVisibles)
 						{
 							srcImage = postNonAAComposite;
 						}

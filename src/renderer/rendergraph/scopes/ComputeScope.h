@@ -26,7 +26,13 @@ public:
 	void UpdateWorkgroups(Extents3D size, bool skipAutoGroupComputation = false)
 	{
 		m_workgroupSize = size;
-		if (m_workgroupSize.IsDefined()) m_bSkipGroups = skipAutoGroupComputation;
+		if (m_workgroupSize.IsDefined() && skipAutoGroupComputation)
+		{
+			m_bSkipGroups = true;
+			m_groupCountX = m_workgroupSize.Width();
+			m_groupCountY = m_workgroupSize.Height();
+			m_groupCountZ = m_workgroupSize.Depth();
+		}
 	}
 
 	const Extents2D& GetDrawExtent() const { return m_extent; }

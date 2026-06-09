@@ -61,7 +61,9 @@ public:
 		GlobalStaging.Init(size, m_vmaAlloc, m_deviceCtx.device, atomicSize);
 	}
 
-	size_t CalcGlobalStagingSize(const BindlessImageTable& imageTable) const;
+	void ResetGlobalStaging(size_t size, size_t atomicSize);
+
+	size_t CalcBaseGlobalStagingSize(const BindlessImageTable& imageTable) const;
 
 	bool IsInitialized() const noexcept { return m_vmaAlloc != VK_NULL_HANDLE; }
 

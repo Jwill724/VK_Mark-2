@@ -30,9 +30,6 @@ void RegisterClusteredLightsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::Read)
-
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{

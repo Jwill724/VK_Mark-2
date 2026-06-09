@@ -31,11 +31,6 @@ void RegisterCMAA2Pass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
-				.WriteResource(RD::Renderer_RenderTarget::CMAA2WorkingEdges,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
 				.WriteResource(RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
@@ -110,6 +105,7 @@ void RegisterCMAA2Pass(
 						// ============
 						// Build Edges
 						// ============
+						I::TransitionLayout(cmd, workingEdges, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BUILD_EDGES], pass.pushWriter);
 						I::TransitionLayout(cmd, workingEdges, RD::ImageAccess::Write, RD::ImageAccess::Read);
 						B::ComputeWriteToRead(cmd, control);

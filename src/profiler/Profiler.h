@@ -103,6 +103,8 @@ public:
 	void AddDirect(uint32_t calls, uint64_t triangles = 0);
 	void AddOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
 	void AddTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
+	void AddCSMIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
+	void AddFlashlightIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
 
 	void EnablePlatformTimerPrecision();
 	void DisablePlatformTimerPrecision();
@@ -111,7 +113,8 @@ public:
 
 	glm::vec3  cameraPos{};
 	std::mutex camMutex;
-
+	bool enableWireframeView = false;
+	TotalAssetDataCounts assetCounts;
 	RD::RenderToggles   debugToggles;
 	SSAOPush            ssaoSettings;
 	TAAPush             taaSettings;

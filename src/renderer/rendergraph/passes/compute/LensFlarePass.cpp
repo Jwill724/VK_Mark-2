@@ -4,12 +4,15 @@
 #include "../../../Renderer.h"
 #include "../../../rendergraph/RenderGraphBuilder.h"
 #include "../../scopes/ComputeScope.h"
+#include "../../../backend/ImageUtils.h"
 #include "EngineTypes.h"
 #include "../../../scene/Scene.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
+
+namespace I = ImageUtils;
 
 static constexpr size_t PIPE_ID_BRIGHT = 0;
 static constexpr size_t PIPE_ID_GEN    = 1;
@@ -24,23 +27,8 @@ void RegisterLensFlarePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::Opaque,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::ColorHistoryB,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::VolumetricLight,
-					RD::ImageAccess::Read)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::LensFlareColor,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
-				.WriteResource(
-					RD::Renderer_RenderTarget::FlareBright,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
@@ -81,11 +69,11 @@ void RegisterLensFlarePass(
 						pso.SetPush(lensFlarePush);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
 
-						bool correctOpaque = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
-						const auto& opaque = correctOpaque ?
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque) :
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryB);
+						const auto& opaque = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(ctx.scene->GetSceneData().temporal.x));
 
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
@@ -159,6 +147,8 @@ void RegisterLensFlarePass(
 							RD::Renderer_Pass::LensFlare,
 							pass.passName);
 
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
 						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
 						const auto& flareBright = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
 						const auto& lensflareColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor);
@@ -170,12 +160,12 @@ void RegisterLensFlarePass(
 						// =============
 						// Flare bright
 						// =============
+						I::TransitionLayout(cmd, flareBright, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(
-							ctx.commandBuffer,
+							cmd,
 							pass.pipelines[PIPE_ID_BRIGHT],
 							pass.pushWriter);
-
-						
+						I::TransitionLayout(cmd, flareBright, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ==========
 						// Flare gen
@@ -198,7 +188,7 @@ void RegisterLensFlarePass(
 							linearClampSampler);
 
 						pso.DispatchComputePass(
-							ctx.commandBuffer,
+							cmd,
 							pass.pipelines[PIPE_ID_GEN],
 							pass.pushWriter);
 					});

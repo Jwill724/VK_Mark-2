@@ -2,7 +2,6 @@
 
 #include "../../RenderPasses.h"
 #include "../../../backend/ImageUtils.h"
-#include "EngineTypes.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
@@ -27,16 +26,15 @@ void RegisterImguiDrawPass(
 					})
 
 				.SetRecord(
-					[graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
-
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& swapchain = ctx.swapchain;
 
 						auto swapImage = swapchain->GetCurrentImage();
 						auto swapView = swapchain->GetCurrentView();
+						const auto swapExtent = swapchain->GetExtent();
 
 						I::TransitionRawImageLayout(
 							cmd,
@@ -59,7 +57,7 @@ void RegisterImguiDrawPass(
 						renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 						renderingInfo.colorAttachmentCount = 1;
 						renderingInfo.pColorAttachments = &colorAttachment;
-						renderingInfo.renderArea = { {0, 0}, { drawExtent.Width(), drawExtent.Height() } };
+						renderingInfo.renderArea = { {0, 0}, swapExtent };
 						renderingInfo.layerCount = 1;
 						renderingInfo.viewMask = 0;
 

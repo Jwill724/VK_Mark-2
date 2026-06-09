@@ -25,11 +25,6 @@ void RegisterSMAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
@@ -44,7 +39,7 @@ void RegisterSMAAPass(
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto& tonempap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
+						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
 						const auto& smaaEdges = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SMAAEdges);
 						const auto linearLodClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearLodClamp);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
@@ -52,7 +47,7 @@ void RegisterSMAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							tonempap,
+							tonemap,
 							linearLodClampSampler);
 
 						pso.BindReadImage(
@@ -96,7 +91,7 @@ void RegisterSMAAPass(
 						// ======================
 						// Build Edges
 						// ======================
-
+						I::TransitionLayout(cmd, smaaEdges, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_EDGES], pass.pushWriter);
 						I::TransitionLayout(cmd, smaaEdges, RD::ImageAccess::Write, RD::ImageAccess::Read);
 

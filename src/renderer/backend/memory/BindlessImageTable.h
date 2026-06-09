@@ -3,6 +3,7 @@
 #include <renderer/backend/VulkanForward.h>
 #include "AllocatedImage.h"
 #include <renderer/RendererDefinitions.h>
+#include "../../../core/AssetUploadTypes.h"
 #include <span>
 
 class Allocator;
@@ -31,7 +32,7 @@ public:
 	const AllocatedImage& GetRenderTarget(RD::Renderer_RenderTarget slot) const;
 	std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>& GetRenderTargetsMutable() { return m_renderTargets; }
 	const std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>& GetRenderTargets()  const { return m_renderTargets; }
-	//void TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd);
+	void TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd);
 
 	// --- Samplers ---
 	VkSampler GetSampler(RD::Renderer_Sampler slot) const;
@@ -51,8 +52,21 @@ public:
 	// --- Asset textures ---
 	uint32_t              PushAssetTexture(AllocatedImage image);
 	const AllocatedImage& GetAssetTexture(uint32_t index)           const;
+	AllocatedImage&       GetAssetTextureMutable(uint32_t index);
 	void                  FreeAssetTexture(uint32_t index);
-	uint32_t              AssetTextureCount()                       const noexcept { return static_cast<uint32_t>(m_assetTextures.size()); }
+	uint32_t              AssetTextureCount()                 const noexcept { return static_cast<uint32_t>(m_assetTextures.size()); }
+	bool                  IsAssetTextureValid(uint32_t index) const noexcept;
+
+	uint32_t ResolveAssetSampler(const SamplerDesc& desc, VkDevice device);
+
+	VkSampler ResolveDefaultAssetSampler(const AllocatedImage& img) const noexcept;
+
+	std::vector<uint32_t> UploadAssetTextures(
+		SceneUploadBatch& batch,
+		VkDevice          device,
+		Allocator&        allocator,
+		StagingBuffer&    staging,
+		VkCommandBuffer   cmd);
 
 	std::span<const AllocatedImage> GetAssetTextureSpan()   const noexcept { return m_assetTextures; }
 	std::span<const EnvironmentSet> GetEnvironmentSetSpan() const noexcept { return m_environmentSets; }
@@ -83,8 +97,8 @@ public:
 		m_samplerCubeViewHashToID.clear();
 	}
 
-	void BuildCombinedSamplerArray();
-	void BuildSamplerCubeArray();
+	void BuildInitialCombinedSamplerArray();
+	void BuildInitialSamplerCubeArray();
 
 	void MarkDirty() noexcept { m_bIsTableDirty = true; ++m_cpuVersion; }
 	bool IsTableDirty() const noexcept { return m_bIsTableDirty; }
@@ -110,11 +124,15 @@ private:
 	uint32_t PushCombinedLocked(VkImageView view, VkSampler sampler);
 	uint32_t PushSamplerCubeLocked(VkImageView view, VkSampler sampler);
 
-	std::array<AllocatedImage, static_cast<size_t>(RD::Renderer_RenderTarget::Count)> m_renderTargets{};
-	std::array<AllocatedImage, static_cast<size_t>(RD::Renderer_Texture::Count)>      m_staticTextures{};
-	std::array<EnvironmentSet, static_cast<size_t>(RD::MAX_ENVIRONMENT_SETS)>         m_environmentSets{};
-	std::array<VkSampler,      static_cast<size_t>(RD::Renderer_Sampler::Count)>      m_samplers{};
-	std::vector<AllocatedImage>                                                       m_assetTextures{};
+	std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>                         m_renderTargets{};
+	std::array<AllocatedImage, RD::STATIC_TEXTURE_COUNT>                        m_staticTextures{};
+	std::array<EnvironmentSet, static_cast<size_t>(RD::MAX_ENVIRONMENT_SETS)>   m_environmentSets{};
+	std::array<VkSampler,      RD::SAMPLER_COUNT>                               m_samplers{};
+	std::vector<AllocatedImage>                                                 m_assetTextures{};
+	std::vector<VkSampler>                                                      m_assetSamplers{};
+	std::vector<SamplerDesc>                                                    m_assetSamplerDescs{};
+	std::unordered_map<std::string, AssetTextureEntry>                          m_assetTextureCache{};
+	std::mutex                                                                  m_assetTextureCacheMutex{};
 
 	bool     m_bAreShadowsCreated = false;
 	bool     m_bIsTableDirty      = false;
@@ -149,3 +167,28 @@ private:
 	uint32_t m_shadowMapCombinedEnd     = 0u;
 	uint32_t m_staticTextureCombinedEnd = 0u;
 };
+
+namespace TaaHistory
+{
+	struct Slots
+	{
+		RD::Renderer_RenderTarget read;   // previous frame's TAA output (history to accumulate against)
+		RD::Renderer_RenderTarget write;  // this frame's TAA output (also what later passes sample)
+	};
+
+	inline Slots Resolve(uint64_t frameIndex)
+	{
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::ColorHistoryB,    // read
+					 RD::Renderer_RenderTarget::ColorHistoryA }   // write
+			: Slots{ RD::Renderer_RenderTarget::ColorHistoryA,    // read
+					 RD::Renderer_RenderTarget::ColorHistoryB };  // write
+	}
+
+	// What every consumer downstream of TAA samples as resolved scene color.
+	inline RD::Renderer_RenderTarget Resolved(uint64_t frameIndex)
+	{
+		return Resolve(frameIndex).write;
+	}
+}

@@ -15,6 +15,9 @@ public:
 	{
 		m_atlasOffset = offset;
 		m_atlasExtent = extent;
+
+		m_renderArea.offset = offset;
+		m_renderArea.extent = extent;
 	}
 
 	void ApplyViewport(VkCommandBuffer cmd);
@@ -53,7 +56,6 @@ private:
 	{
 		m_colorAttachments.clear();
 		m_depthAttachment = {};
-		m_bHasDepth = false;
 	}
 	void WriteColorAttachmentInfo(const AttachmentDesc& desc)
 	{
@@ -80,8 +82,6 @@ private:
 
 		if (!isDepth) return;
 
-		m_bHasDepth = true;
-
 		VkRenderingAttachmentInfo depthAttach {
 			.sType               = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView           = desc.imageView,
@@ -98,8 +98,8 @@ private:
 	VkRenderingInfo m_info{};
 	std::vector<VkRenderingAttachmentInfo> m_colorAttachments;
 	VkRenderingAttachmentInfo m_depthAttachment{};
-	bool m_bHasDepth = false;
 	bool m_bHasAtlas = false;
 	VkOffset2D m_atlasOffset{};
 	VkExtent2D m_atlasExtent{};
+	VkRect2D m_renderArea{};
 };

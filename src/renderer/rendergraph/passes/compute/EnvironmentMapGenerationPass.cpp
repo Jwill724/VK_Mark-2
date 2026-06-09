@@ -27,7 +27,7 @@ void BakeEnvironmentMaps(
 {
 	ASSERT(pipelines.size() >= PIPE_ID_BRDF + 1);
 
-	ComputeScope pso{{},{}};
+	ComputeScope pso{{}};
 
 	PushDescriptorWriter pushWriter;
 

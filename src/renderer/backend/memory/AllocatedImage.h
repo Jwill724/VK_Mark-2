@@ -62,17 +62,9 @@ struct EnvironmentSet
 	void Reset()   { *this = EnvironmentSet{}; }
 };
 
-struct MaterialResources
+struct AssetTextureEntry
 {
-	AllocatedImage albedoImage;
-	VkSampler albedoSampler;
-
-	AllocatedImage metalRoughImage;
-	VkSampler metalRoughSampler;
-
-	AllocatedImage normalImage;
-	VkSampler normalSampler;
-
-	AllocatedImage emissiveImage;
-	VkSampler emissiveSampler;
+	uint32_t    tableIndex  = UINT32_MAX; // index into m_assetTextures
+	uint32_t    bindlessID  = UINT32_MAX; // cached for fast material resolve
+	uint32_t    refCount    = 0;          // how many scenes reference this
 };

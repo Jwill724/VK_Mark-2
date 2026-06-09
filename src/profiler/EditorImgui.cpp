@@ -601,10 +601,9 @@ namespace
 	static void drawCategoryPipelines(UIContext& ui)
 	{
 		RD::RenderToggles& dbg = *ui.dbg;
-		//Profiler& profiler = *ui.profiler;
+		Profiler& profiler = *ui.profiler;
 
 		UI::separatorText("Pipeline Views");
-
 		{
 			bool obb = dbg.enableOBBs != 0u;
 			if (ImGui::Checkbox("Enable OBB##pipes", &obb)) {
@@ -612,7 +611,11 @@ namespace
 			}
 		}
 
-		// TODO: Add check box to turn on wireframe view, and setup shader
+		bool wireframeView = profiler.enableWireframeView;
+		if (ImGui::Checkbox("Wireframe View", &wireframeView))
+		{
+			profiler.enableWireframeView = wireframeView;
+		}
 	}
 
 	// For the profiler window
@@ -632,9 +635,11 @@ namespace
 
 		{
 			bool capEnabled = stats.capFramerate;
-			if (ImGui::Checkbox("Cap Framerate", &capEnabled)) {
+			if (ImGui::Checkbox("Cap Framerate", &capEnabled))
+			{
 				stats.capFramerate = capEnabled;
 			}
+
 			{
 				ImGui::BeginDisabled(!stats.capFramerate);
 
@@ -681,14 +686,12 @@ namespace
 		);
 		ImGui::Text("GPU: %s", stats.gpuName.c_str());
 
-		// TODO: Figure out a different way to get present this data
-		//ImGui::Separator();
-		//ImGui::TextUnformatted("Model Data");
-		//ImGui::Text("Meshes:     %u", dbg.meshCount);
-		//ImGui::Text("Materials:  %u", dbg.materialCount);
-		//ImGui::Text("Transforms: %u", dbg.transformCount);
-		//ImGui::Text("Vertices:   %u", dbg.vertexCount);
-		//ImGui::Text("Indices:    %u", dbg.indexCount);
+		ImGui::Separator();
+		ImGui::TextUnformatted("Asset Data");
+		ImGui::Text("Meshes:     %u", profiler.assetCounts.totalMeshCount);
+		ImGui::Text("Materials:  %u", profiler.assetCounts.totalMaterialCount);
+		ImGui::Text("Vertices:   %u", profiler.assetCounts.totalVertexCount);
+		ImGui::Text("Indices:    %u", profiler.assetCounts.totalIndexCount);
 		ImGui::Text("Triangles: %llu", (unsigned long long)stats.triangleCount);
 
 		ImGui::Separator();

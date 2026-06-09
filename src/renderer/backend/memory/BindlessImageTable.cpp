@@ -79,6 +79,7 @@ static glm::vec3 HsvToRgb(float hue01, float sat, float val)
 	return rgb + glm::vec3(m);
 }
 
+
 // ======
 // INIT
 // ======
@@ -103,7 +104,7 @@ void BindlessImageTable::Shutdown(VkDevice device, Allocator& allocator)
 	FreeStaticTextures(allocator);
 	FreeEnvironmentSets(allocator);
 	FreeSamplers(device);
-	//m_assetTextures.clear();
+	m_assetTextures.clear();
 }
 
 // ===============
@@ -205,47 +206,51 @@ const AllocatedImage& BindlessImageTable::GetRenderTarget(RD::Renderer_RenderTar
 	return m_renderTargets[Index(slot)];
 }
 
-//void BindlessImageTable::TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd)
-//{
-//	std::vector<VkImageMemoryBarrier2> barriers;
-//	barriers.reserve(RD::RENDER_TARGET_COUNT);
-//
-//	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
-//	{
-//		const AllocatedImage& img = m_renderTargets[i];
-//		if (!img.IsValid()) continue;
-//
-//		const bool isDepth = (img.m_aspect == ImageAspect::Depth);
-//		VkImageAspectFlags aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-//
-//		barriers.emplace_back(VkImageMemoryBarrier2{
-//			.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-//			.srcStageMask     = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-//			.srcAccessMask    = VK_ACCESS_2_NONE,
-//			.dstStageMask     = isDepth
-//								? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
-//								: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-//			.dstAccessMask    = isDepth
-//								? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT
-//								: VK_ACCESS_2_SHADER_READ_BIT,
-//			.oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
-//			.newLayout        = isDepth
-//								? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
-//								: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-//			.image            = img.m_image,
-//			.subresourceRange = {
-//				aspectMask,
-//				0, VK_REMAINING_MIP_LEVELS,
-//				0, VK_REMAINING_ARRAY_LAYERS
-//			}
-//		});
-//	}
-//
-//	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-//	dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
-//	dep.pImageMemoryBarriers    = barriers.data();
-//	vkCmdPipelineBarrier2(cmd, &dep);
-//}
+void BindlessImageTable::TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd)
+{
+	std::vector<VkImageMemoryBarrier2> barriers;
+	barriers.reserve(RD::RENDER_TARGET_COUNT);
+
+	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
+	{
+		// Transitioned in render graph
+		if (i == static_cast<uint32_t>(RD::Renderer_RenderTarget::FlashlightShadowMap) ||
+			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::DirectionalCSMAtlas)) continue;
+
+		const AllocatedImage& img = m_renderTargets[i];
+		if (!img.IsValid()) continue;
+
+		const bool isDepth = (img.m_aspect == ImageAspect::Depth);
+		VkImageAspectFlags aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+		barriers.emplace_back(VkImageMemoryBarrier2{
+			.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask     = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			.srcAccessMask    = VK_ACCESS_2_NONE,
+			.dstStageMask     = isDepth
+								? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
+								: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+			.dstAccessMask    = isDepth
+								? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+								: VK_ACCESS_2_SHADER_READ_BIT,
+			.oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout        = isDepth
+								? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
+								: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			.image            = img.m_image,
+			.subresourceRange = {
+				aspectMask,
+				0, VK_REMAINING_MIP_LEVELS,
+				0, VK_REMAINING_ARRAY_LAYERS
+			}
+		});
+	}
+
+	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
+	dep.pImageMemoryBarriers    = barriers.data();
+	vkCmdPipelineBarrier2(cmd, &dep);
+}
 
 // =========
 // SAMPLERS
@@ -263,7 +268,7 @@ void BindlessImageTable::CreateSamplers(VkDevice device)
 
 	SetSampler(RD::Renderer_Sampler::HiZ,
 		ImageUtils::CreateSampler(device, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
+			static_cast<float>(RD::HI_Z_MIP_COUNT - 1), 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
 
 	SetSampler(RD::Renderer_Sampler::LinearLodClamp,
 		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
@@ -271,19 +276,19 @@ void BindlessImageTable::CreateSamplers(VkDevice device)
 
 	SetSampler(RD::Renderer_Sampler::PointBorder,
 		ImageUtils::CreateSampler(device, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST, false, VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK));
+			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
 
 	SetSampler(RD::Renderer_Sampler::TaaHistory,
 		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-			0.0f, 1.0f));
+			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
 
 	SetSampler(RD::Renderer_Sampler::Noise,
 		ImageUtils::CreateSampler(device, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
 			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
 
 	SetSampler(RD::Renderer_Sampler::ShadowMap,
-		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST, true, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE));
+		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			0.0f, 1.0f, VK_SAMPLER_MIPMAP_MODE_NEAREST));
 
 	SetSampler(RD::Renderer_Sampler::Linear,
 		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -318,6 +323,15 @@ void BindlessImageTable::FreeSamplers(VkDevice device)
 			vkDestroySampler(device, smp, nullptr);
 	}
 	m_samplers.fill(VK_NULL_HANDLE);
+
+	// TODO: Move asset sampler cleanup somewhere else.
+	// Asset samplers are dynamic — destroy all and clear
+	for (auto& smp : m_assetSamplers)
+		if (smp != VK_NULL_HANDLE)
+			vkDestroySampler(device, smp, nullptr);
+
+	m_assetSamplers.clear();
+	m_assetSamplerDescs.clear();
 }
 
 void BindlessImageTable::SetSampler(RD::Renderer_Sampler slot, VkSampler sampler)
@@ -640,6 +654,142 @@ void BindlessImageTable::FreeAssetTexture(uint32_t index)
 	MarkDirty();
 }
 
+AllocatedImage& BindlessImageTable::GetAssetTextureMutable(uint32_t index)
+{
+	ASSERT(index < static_cast<uint32_t>(m_assetTextures.size()));
+	return m_assetTextures[index];
+}
+
+bool BindlessImageTable::IsAssetTextureValid(uint32_t index) const noexcept
+{
+	return index < static_cast<uint32_t>(m_assetTextures.size())
+		&& m_assetTextures[index].IsValid();
+}
+
+uint32_t BindlessImageTable::ResolveAssetSampler(const SamplerDesc& desc, VkDevice device)
+{
+	for (uint32_t i = 0; i < static_cast<uint32_t>(m_assetSamplers.size()); ++i)
+	{
+		if (m_assetSamplerDescs[i].isLinear    == desc.isLinear   &&
+			m_assetSamplerDescs[i].isMipMapped == desc.isMipMapped &&
+			m_assetSamplerDescs[i].anisotropy  == desc.anisotropy)
+			return i;
+	}
+
+	VkFilter filter    = desc.isLinear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+	VkSamplerMipmapMode mipMode  = desc.isMipMapped
+		? VK_SAMPLER_MIPMAP_MODE_LINEAR
+		: VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	float maxLod = desc.isMipMapped ? static_cast<float>(RD::MAX_MIP_LEVELS) : 0.0f;
+
+	VkSampler sampler = ImageUtils::CreateSampler(
+		device,
+		filter,
+		VK_SAMPLER_ADDRESS_MODE_REPEAT,
+		maxLod,
+		desc.anisotropy,
+		mipMode);
+
+	const uint32_t slot = static_cast<uint32_t>(m_assetSamplers.size());
+	m_assetSamplers.push_back(sampler);
+	m_assetSamplerDescs.push_back(desc);
+	return slot;
+}
+
+VkSampler BindlessImageTable::ResolveDefaultAssetSampler(const AllocatedImage& img) const noexcept
+{
+	if (img.m_mipLevels <= 1)
+		return GetSampler(RD::Renderer_Sampler::LinearClamp);
+	return GetSampler(RD::Renderer_Sampler::Linear); // trilinear repeat + aniso
+}
+
+std::vector<uint32_t> BindlessImageTable::UploadAssetTextures(
+	SceneUploadBatch& batch,
+	VkDevice          device,
+	Allocator&        allocator,
+	StagingBuffer&    staging,
+	VkCommandBuffer   cmd)
+{
+	std::vector<uint32_t> ownedSlots;
+	if (batch.textures.empty()) return ownedSlots;
+
+	struct TexSlot { uint32_t assetIndex; uint32_t tableIndex; };
+	std::vector<TexSlot> validSlots;
+	validSlots.reserve(batch.textures.size());
+
+	for (uint32_t i = 0; i < static_cast<uint32_t>(batch.textures.size()); ++i)
+	{
+		TextureDesc& desc = batch.textures[i];
+		if (!desc.IsValid())
+		{
+			desc.bindlessID = GetStaticTexture(RD::Renderer_Texture::Checkerboard).m_bindlessID;
+			continue;
+		}
+
+		ImageDesc imgDesc{};
+		imgDesc.format    = desc.isSRGB
+			? Vulkan_Format::RGBA8srgb
+			: Vulkan_Format::RGBA8unorm;
+		imgDesc.extent    = { desc.width, desc.height, 1u };
+		imgDesc.usage     = Vulkan_ImageUsage::TextureSampled;
+		imgDesc.mipLevels = desc.needsMips
+			? ImageUtils::CalculateMipLevels(desc.width, desc.height, RD::MAX_MIP_LEVELS)
+			: 1u;
+		imgDesc.debugName = desc.debugName.c_str();
+
+		AllocatedImage img = allocator.AllocateImage(imgDesc);
+		VkSampler sampler = VK_NULL_HANDLE;
+		if (i < static_cast<uint32_t>(batch.samplers.size())
+			&& batch.samplers[i].rendererSlot == UINT32_MAX)
+		{
+			uint32_t slot = ResolveAssetSampler(batch.samplers[i], device);
+			sampler = m_assetSamplers[slot];
+			batch.samplers[i].rendererSlot = slot;
+		}
+		if (sampler == VK_NULL_HANDLE)
+			sampler = ResolveDefaultAssetSampler(img);
+
+		img.m_bindlessID = PushCombined(img.m_imageView, sampler);
+		desc.bindlessID  = img.m_bindlessID;
+
+		const uint32_t tableIdx = PushAssetTexture(std::move(img));
+		ownedSlots.push_back(tableIdx);   // caller gets this back
+		validSlots.push_back({ i, tableIdx });
+	}
+
+	if (!validSlots.empty())
+	{
+		std::vector<TextureUploadDesc> uploads;
+		uploads.reserve(validSlots.size());
+
+		for (const auto& slot : validSlots)
+		{
+			TextureDesc&    desc = batch.textures[slot.assetIndex];
+			AllocatedImage& img  = m_assetTextures[slot.tableIndex];
+
+			uploads.emplace_back(TextureUploadDesc{
+				.image      = &img,
+				.pixelData  = desc.pixelData.data(),
+				.pixelBytes = desc.PixelBytes(),
+				.strategy   = desc.needsMips
+								? MipStrategy::GenerateOnGPU
+								: MipStrategy::SingleLevel
+			});
+		}
+
+		staging.ExecuteTextureBatch(cmd, uploads);
+	}
+
+	for (auto& desc : batch.textures)
+	{
+		desc.pixelData.clear();
+		desc.pixelData.shrink_to_fit();
+	}
+
+	MarkDirty();
+	return ownedSlots;
+}
+
 // =====================
 // DESCRIPTOR ARRAYS
 // =====================
@@ -745,7 +895,7 @@ void BindlessImageTable::RegisterEnvironmentSetAsCube(
 // Descriptor array image bake
 // ============================
 
-void BindlessImageTable::BuildCombinedSamplerArray()
+void BindlessImageTable::BuildInitialCombinedSamplerArray()
 {
 	// Shadow maps first — fixed indices 0 and 1
 	RegisterShadowMapsAsCombined(GetSampler(RD::Renderer_Sampler::ShadowMap));
@@ -779,7 +929,7 @@ void BindlessImageTable::BuildCombinedSamplerArray()
 	MarkDirty();
 }
 
-void BindlessImageTable::BuildSamplerCubeArray()
+void BindlessImageTable::BuildInitialSamplerCubeArray()
 {
 	std::scoped_lock lock(m_samplerCubeMutex);
 

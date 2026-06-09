@@ -392,47 +392,38 @@ uint32_t ImageUtils::CalculateMipLevels(uint32_t width, uint32_t height, uint32_
 
 void ImageUtils::GenerateMipLevels(VkCommandBuffer cmd, const AllocatedImage& image)
 {
-	const uint32_t mipLevels = image.m_mipLevels;
-	VkImage img = image.m_image;
+	const uint32_t mipLevels  = image.m_mipLevels;
+	const uint32_t layerCount = image.m_bIsCubemap ? 6u : 1u;
+	VkImage        img        = image.m_image;
 
-	int32_t mipWidth  = image.Width();
-	int32_t mipHeight = image.Height();
+	int32_t mipWidth  = static_cast<int32_t>(image.Width());
+	int32_t mipHeight = static_cast<int32_t>(image.Height());
 
 	for (uint32_t mip = 1; mip < mipLevels; ++mip)
 	{
+		// mip-1 is in TRANSFER_DST (either from initial copy or from previous blit dst)
 		VkImageMemoryBarrier srcBarrier{};
 		srcBarrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 		srcBarrier.image               = img;
 		srcBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 		srcBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		srcBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, 1, 0, 1 };
-		srcBarrier.oldLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		srcBarrier.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, 1, 0, layerCount };
+		srcBarrier.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		srcBarrier.newLayout           = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		srcBarrier.srcAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+		srcBarrier.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
 		srcBarrier.dstAccessMask       = VK_ACCESS_TRANSFER_READ_BIT;
 
 		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
 			0, 0, nullptr, 0, nullptr, 1, &srcBarrier);
-
-		VkImageMemoryBarrier dstBarrier = srcBarrier;
-		dstBarrier.subresourceRange.baseMipLevel = mip;
-		dstBarrier.oldLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		dstBarrier.newLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		dstBarrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		dstBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-		vkCmdPipelineBarrier(cmd,
-			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-			0, 0, nullptr, 0, nullptr, 1, &dstBarrier);
 
 		int32_t dstWidth  = std::max(mipWidth  / 2, 1);
 		int32_t dstHeight = std::max(mipHeight / 2, 1);
 
 		VkImageBlit blit{};
-		blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, 0, 1 };
+		blit.srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip - 1, 0, layerCount };
 		blit.srcOffsets[1]  = { mipWidth, mipHeight, 1 };
-		blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1 };
+		blit.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, layerCount };
 		blit.dstOffsets[1]  = { dstWidth, dstHeight, 1 };
 
 		vkCmdBlitImage(cmd,
@@ -440,25 +431,36 @@ void ImageUtils::GenerateMipLevels(VkCommandBuffer cmd, const AllocatedImage& im
 			img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1, &blit, VK_FILTER_LINEAR);
 
-		VkImageMemoryBarrier finalBarriers[2]{};
-		finalBarriers[0]               = srcBarrier;
-		finalBarriers[0].oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		finalBarriers[0].newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		finalBarriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-		finalBarriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		finalBarriers[1]               = dstBarrier;
-		finalBarriers[1].oldLayout     = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		finalBarriers[1].newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		finalBarriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		finalBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		// mip-1 done as source — transition to SHADER_READ
+		VkImageMemoryBarrier readBarrier  = srcBarrier;
+		readBarrier.oldLayout             = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		readBarrier.newLayout             = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		readBarrier.srcAccessMask         = VK_ACCESS_TRANSFER_READ_BIT;
+		readBarrier.dstAccessMask         = VK_ACCESS_SHADER_READ_BIT;
 
 		vkCmdPipelineBarrier(cmd,
 			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-			0, 0, nullptr, 0, nullptr, 2, finalBarriers);
+			0, 0, nullptr, 0, nullptr, 1, &readBarrier);
 
 		mipWidth  = dstWidth;
 		mipHeight = dstHeight;
 	}
+
+	// Last mip is still in TRANSFER_DST from the blit destination
+	VkImageMemoryBarrier lastMip{};
+	lastMip.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	lastMip.image               = img;
+	lastMip.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	lastMip.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	lastMip.subresourceRange    = { VK_IMAGE_ASPECT_COLOR_BIT, mipLevels - 1, 1, 0, layerCount };
+	lastMip.oldLayout           = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	lastMip.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	lastMip.srcAccessMask       = VK_ACCESS_TRANSFER_WRITE_BIT;
+	lastMip.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
+
+	vkCmdPipelineBarrier(cmd,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		0, 0, nullptr, 0, nullptr, 1, &lastMip);
 }
 
 void ImageUtils::GenerateCubemapMipLevels(VkCommandBuffer cmd, const AllocatedImage& image)

@@ -66,15 +66,6 @@ struct Extents3D
 	}
 };
 
-enum class GLTFJobType
-{
-	DecodeImages,
-	BuildSamplers,
-	ProcessMaterials,
-	ProcessMeshes,
-	Count
-};
-
 struct JobInfo
 {
 	std::function<void(uint32_t threadID)> task;
@@ -142,16 +133,42 @@ enum class ThreadRole
 	Worker
 };
 
+enum class GLTFJobType
+{
+	LoadFile,
+	DecodeImages,
+	BuildSamplers,
+	ProcessMaterials,
+	ProcessMeshes,
+	BuildSceneGraph,
+	Count
+};
+
+struct ThreadScratch
+{
+	std::vector<uint8_t> bufferA; // vertex scratch — sized as needed
+	std::vector<uint8_t> bufferB; // index scratch
+	std::vector<uint8_t> bufferC; // lod index scratch
+
+	void Reset()
+	{
+		bufferA.clear();
+		bufferB.clear();
+		bufferC.clear();
+	}
+};
+
 struct ThreadContext
 {
 	uint32_t   threadID   = 0;
 	ThreadRole threadRole = ThreadRole::Worker;
 
-	LinearAllocator       scratchAllocator{};
-	std::vector<uint8_t>  scratchBuffer{};
-	BaseWorkQueue*        workQueueActive = nullptr;
-	uint32_t              jobsExecuted    = 0;
-	uint32_t              randomState     = 0;
+	LinearAllocator      scratchAllocator{};
+	std::vector<uint8_t> scratchBuffer{};
+	BaseWorkQueue*       workQueueActive = nullptr;
+	ThreadScratch        scratch{};        // type-erased, cast at use site
+	uint32_t             jobsExecuted    = 0;
+	uint32_t             randomState     = 0;
 };
 
 // Thread and queue connector struct

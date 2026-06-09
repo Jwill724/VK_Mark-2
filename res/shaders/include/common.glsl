@@ -138,7 +138,7 @@ struct SceneData {
 	mat4 prevViewProj;
 	mat4 prevView;
 	mat4 viewProjUnjittered;
-	uvec4 temporal;           // .x = frameIndex, .y = historyValid (0/1), z = Hi-Z valid(0/1)
+	uvec4 temporal;           // .x = frameNumber, .y = historyValid (0/1), z = Hi-Z valid(0/1)
 	vec4 temporalJitter;
 	// x = current jitter x ndc
 	// y = current jitter y
@@ -165,7 +165,6 @@ struct IndirectDrawCmd {
 };
 
 struct Instance {
-	uint instanceID;
 	uint meshID;
 	uint materialID;
 	uint transformID;
@@ -209,41 +208,23 @@ struct Mesh
 
 struct Vertex
 {
-	// half float 6 bytes
-	uint16_t  positionX;
-	uint16_t  positionY;
-	uint16_t  positionZ;
+	vec3 position;
 
-	// oct-encoded 2 bytes
-	int8_t    normalX;
-	int8_t    normalY;
+	// Normal: octahedral, snorm16
+	int16_t   normalX;
+	int16_t   normalY;
 
-	// 2 bytes
-	int8_t    tangentX; // oct-encoded
-	int8_t    tangentY; // sign in MSB (tangentW packed as sign bit)
+	// Tangent: octahedral, snorm16. Handedness (W) = sign of tangentY.
+	int16_t   tangentX;
+	int16_t   tangentY;
 
-	// unorm16 4 bytes
+	// UV: FP16 bits (half-float)
 	uint16_t  uvX;
 	uint16_t  uvY;
 
-	// 4 bytes
-	uint colorRGBA8;
+	// Vertex color, RGBA8 packed
+	uint      colorRGBA8;
 };
-// Total: 18 bytes
-
-//vec3 unpackPosition(uint xy, uint z_nx)
-//{
-//	vec2 xy16 = unpackHalf2x16(xy);
-//	vec2 zn   = unpackHalf2x16(z_nx); // zn.x = posZ, zn.y = normalX raw (unused here)
-//	return vec3(xy16.x, xy16.y, zn.x);
-//}
-vec3 unpackPosition(Vertex vtx)
-{
-	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
-	uint zw = uint(vtx.positionZ);
-	vec3 position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
-	return position;
-}
 
 vec2 octEncode(vec3 n) {
 	n /= abs(n.x) + abs(n.y) + abs(n.z);
@@ -267,10 +248,7 @@ vec3 octDecode(vec2 e) {
 
 float snorm8ToFloat(int v) { return clamp(float(v) / 127.0, -1.0, 1.0); }
 
-float snorm16ToFloat(int16_t v) {
-	// maps [-32767..32767] to [-1..1]
-	return clamp(float(v) / 32767.0, -1.0, 1.0);
-}
+float snorm16ToFloat(int v) { return clamp(float(v) / 32767.0, -1.0, 1.0); }
 
 vec2 unpackUV(uint16_t uvX, uint16_t uvY) {
 	uint packed = (uint(uvY) << 16u) | uint(uvX);
@@ -383,14 +361,6 @@ struct ClusteredData {
 	uint clusterCount;
 	uint maxVisibleLights;
 	vec4 pad0[6];
-};
-
-struct EnvMapIndexArray {
-	uvec4 indices[MAX_ENV_SETS];
-	// x = diffuseMapIndex
-	// y = specularMapIndex
-	// z = brdfLUTIndex
-	// w = skyboxMapIndex
 };
 
 // inline uniform block
@@ -764,7 +734,7 @@ int SampleCubeQueryLevels(uint id) {
 }
 
 void unpackVertex(
-	int id,
+	int vertexId,
 	out vec2 uv,
 	out vec4 color,
 	out vec3 normal,
@@ -772,36 +742,33 @@ void unpackVertex(
 	out float tangentHandedness,
 	out vec3 position)
 {
-	Vertex vtx = getVertexBuffer().vertices[id];
-
-	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
-	uint zw = uint(vtx.positionZ);
-	position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
+	Vertex vtx = getVertexBuffer().vertices[vertexId];
+	position = vtx.position;
 
 	uv    = unpackUV(vtx.uvX, vtx.uvY);
-	color = unpackUnorm4x8(vtx.colorRGBA8);
+	color = unpackRGBA8(vtx.colorRGBA8);
 
-	normal = octDecode(vec2(snorm8ToFloat(int(vtx.normalX)), snorm8ToFloat(int(vtx.normalY))));
+	normal = octDecode(vec2(snorm16ToFloat(int(vtx.normalX)),
+							snorm16ToFloat(int(vtx.normalY))));
 
 	int ty = int(vtx.tangentY);
 	tangentHandedness = (ty >= 0) ? 1.0 : -1.0;
-	tangent = octDecode(vec2(snorm8ToFloat(int(vtx.tangentX)), snorm8ToFloat(abs(ty))));
+	tangent = octDecode(vec2(snorm16ToFloat(int(vtx.tangentX)),
+							 snorm16ToFloat(abs(ty))));
 }
 
 void unpackVertexPrepass(
-	int id,
+	int vertexId,
 	out vec2 uv,
 	out vec3 position,
 	out vec3 normal)
 {
-	Vertex vtx = getVertexBuffer().vertices[id];
-
-	uint xy = uint(vtx.positionX) | (uint(vtx.positionY) << 16u);
-	uint zw = uint(vtx.positionZ);
-	position = vec3(unpackHalf2x16(xy), unpackHalf2x16(zw).x);
+	Vertex vtx = getVertexBuffer().vertices[vertexId];
+	position = vtx.position;
 
 	uv     = unpackUV(vtx.uvX, vtx.uvY);
-	normal = octDecode(vec2(snorm8ToFloat(int(vtx.normalX)), snorm8ToFloat(int(vtx.normalY))));
+	normal = octDecode(vec2(snorm16ToFloat(int(vtx.normalX)),
+							snorm16ToFloat(int(vtx.normalY))));
 }
 
 #endif

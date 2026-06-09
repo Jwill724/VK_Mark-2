@@ -21,11 +21,6 @@ void RegisterTransparentResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::TransparentAccumulation,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::TransparentRevealage,
-					RD::ImageAccess::Read)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
 					RD::ImageAccess::Write,

@@ -1,1197 +1,833 @@
 #include "pch.h"
 
-//#include "AssetManager.h"
-//#include "Mesh.h"
-//#include "Vertex.h"
-//#include "Material.h"
-//
-//static constexpr VkFormat GetImageFormatFromName(const std::string& imageName);
-//static constexpr void SetRuntimeImageSemantic(
-//	ModelAsset::GPUData& runtime,
-//	uint32_t imageIndex,
-//	MaterialType semantic);
-//static const char* TextureSemanticToString(MaterialType semantic);
-//static constexpr bool IsTreeMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf);
-//
-//static const std::unordered_map<ModelID, std::string> AssetPaths
-//{
-//	{ ModelID::Sponza,                 "sponza.glb"                },
-//	{ ModelID::Bistro,                 "Bistro.glb"                },
-//	{ ModelID::MRSpheres,              "MetalRoughSpheres.glb"     },
-//	{ ModelID::Duck,                   "Duck.glb"                  },
-//	{ ModelID::DamagedHelmet,          "DamagedHelmet.glb"         },
-//	{ ModelID::DragonAttenuation,      "DragonAttenuation.glb"     },
-//	{ ModelID::City,                   "city/town4new.glb"         },
-//	{ ModelID::Structure,              "structure.glb"             },
-//	{ ModelID::EmissiveTest,           "EmissiveStrengthTest.glb"  },
-//	{ ModelID::WrathDragon,            "wrath_of_the_dragon.glb"   },
-//	{ ModelID::Mech,                   "mech.glb"                  },
-//	{ ModelID::YellowMech,             "yellow_mech.glb"           },
-//	{ ModelID::Mini,                   "mini.glb"                  }
-//};
-//
-//bool AssetManager::LoadGltf(ThreadContext& threadCtx)
-//{
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue && "[loadGltf] queue broken.");
-//
-//	for (const auto& path : AssetPaths)
-//	{
-//		std::string path = BaseAssetPath + path;
-//		auto filePath = LoadGltfFiles(path);
-//		ASSERT(filePath.has_value());
-//		filePath.value()->scene->sceneName = path;
-//		queue->Push(filePath.value());
-//	}
-//
-//	return !queue->Empty();
-//}
-//
-//std::optional<std::shared_ptr<GLTFJobContext>> AssetManager::LoadGltfFiles(std::string_view filePath)
-//{
-//	fmt::println("Loading GLTF: {}", filePath);
-//
-//	auto context = std::make_shared<GLTFJobContext>();
-//	context->scene = std::make_shared<ModelAsset>();
-//	auto& scene = *context->scene;
-//
-//	std::filesystem::path path = filePath;
-//	fastgltf::Parser parser;
-//
-//	auto data = fastgltf::GltfDataBuffer::FromPath(path);
-//	if (!data || data.error() != fastgltf::Error::None)
-//	{
-//		fmt::println("Failed to load file: error code {}", static_cast<int>(data.error()));
-//		return std::nullopt;
-//	}
-//
-//	constexpr auto gltfOptions =
-//		fastgltf::Options::DontRequireValidAssetMember |
-//		fastgltf::Options::AllowDouble |
-//		fastgltf::Options::LoadGLBBuffers |
-//		fastgltf::Options::LoadExternalBuffers |
-//		fastgltf::Options::LoadExternalImages;
-//
-//	auto type = fastgltf::determineGltfFileType(data.get());
-//
-//	switch (type) {
-//	case fastgltf::GltfType::glTF:
-//	{
-//		auto result = parser.loadGltf(data.get(), path.parent_path(), gltfOptions);
-//		if (!result || result.error() != fastgltf::Error::None)
-//		{
-//			fmt::println("Failed to parse .gltf: error code {}", static_cast<int>(result.error()));
-//			return std::nullopt;
-//		}
-//		context->gltfAsset = std::move(result.get());
-//		break;
-//	}
-//	case fastgltf::GltfType::GLB:
-//	{
-//		auto result = parser.loadGltfBinary(data.get(), path.parent_path(), gltfOptions);
-//		if (!result || result.error() != fastgltf::Error::None)
-//		{
-//			fmt::println("Failed to parse .glb: error code {}", static_cast<int>(result.error()));
-//			return std::nullopt;
-//		}
-//		context->gltfAsset = std::move(result.get());
-//		break;
-//	}
-//	default:
-//		fmt::println("Unknown or unsupported glTF file type");
-//		return std::nullopt;
-//	}
-//
-//	return context;
-//}
-//
-//
-//void AssetManager::DecodeImages(
-//	ThreadContext& threadCtx,
-//	const VmaAllocator allocator,
-//	DeletionQueue& bufferQueue,
-//	const VkDevice device)
-//{
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue && "[decodeImages] queue broken.");
-//
-//	auto gltfJobs = queue->Collect();
-//	for (auto& context : gltfJobs)
-//	{
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//
-//		scene.runtime.textureIds.clear();
-//		scene.runtime.textureIds.reserve(gltf.images.size());
-//
-//		for (size_t imgIdx = 0; imgIdx < gltf.images.size(); imgIdx++)
-//		{
-//			fastgltf::Image& image = gltf.images[imgIdx];
-//			std::string imageName;
-//			if (!image.name.empty())
-//			{
-//				imageName = image.name;
-//			}
-//			else if (std::holds_alternative<fastgltf::sources::URI>(image.data))
-//			{
-//				imageName = std::string(std::get<fastgltf::sources::URI>(image.data).uri.c_str());
-//			}
-//
-//			VkFormat imageFormat = GetImageFormatFromName(imageName);
-//
-//			std::optional<AllocatedImage> loadedImage = TextureLoader::loadImage(
-//				gltf,
-//				image,
-//				imageFormat,
-//				threadCtx,
-//				scene.basePath,
-//				allocator,
-//				bufferQueue,
-//				device
-//			);
-//
-//			RuntimeImage runtimeImage{};
-//
-//			if (loadedImage.has_value())
-//			{
-//				runtimeImage.image = *loadedImage;
-//			}
-//			else {
-//				runtimeImage.image = ResourceManager::GetCheckboard_Texture();
-//
-//				JobSystem::Log(
-//					threadCtx.threadID,
-//					fmt::format("gltf failed to load texture {}\n", image.name)
-//				);
-//			}
-//
-//			scene.runtime.images.push_back(runtimeImage);
-//		}
-//
-//		queue->Push(context);
-//		context->markJobComplete(GLTFJobType::DecodeImages);
-//	}
-//}
-//
-//
-//void AssetManager::buildSamplers(ThreadContext& threadCtx) {
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue && "[buildSamplers] queue broken.");
-//
-//	const auto device = Backend::GetDevice();
-//
-//	auto gltfJobs = queue->Collect();
-//	for (auto& context : gltfJobs) {
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//
-//		for (fastgltf::Sampler& sampler : gltf.samplers) {
-//			VkFilter magFilter = TextureLoader::extract_filter(
-//				sampler.magFilter.value_or(fastgltf::Filter::Linear));
-//
-//			VkFilter minFilter = TextureLoader::extract_filter(
-//				sampler.minFilter.value_or(fastgltf::Filter::LinearMipMapLinear));
-//
-//			VkSamplerMipmapMode mipmapMode = TextureLoader::extract_mipmap_mode(
-//				sampler.minFilter.value_or(fastgltf::Filter::LinearMipMapLinear));
-//
-//			VkSampler newSampler = ImageUtils::CreateSampler(
-//				device,
-//				minFilter,
-//				VK_SAMPLER_ADDRESS_MODE_REPEAT,
-//				VK_LOD_CLAMP_NONE,
-//				CURRENT_AF_LVL,
-//				nullptr,
-//				mipmapMode);
-//
-//			scene.runtime.samplers.push_back(newSampler);
-//		}
-//
-//		queue->Push(context);
-//		context->markJobComplete(GLTFJobType::BuildSamplers);
-//	}
-//}
-//
-//void AssetManager::ProcessMaterials(
-//	ThreadContext& threadCtx,
-//	const VmaAllocator allocator,
-//	const VkDevice device)
-//{
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//
-//	auto& imageManager = ResourceManager::_globalImageManager;
-//	auto& resources = Engine::GetState().getGPUResources();
-//	auto& modelStats = resources.modelDataCounts;
-//
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue && "[processMaterials] queue broken.");
-//
-//	auto gltfJobs = queue->Collect();
-//
-//	// Collect global and local material counts
-//	for (const auto& context : gltfJobs) {
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//		scene.runtime.materialBaseOffset = modelStats.totalMaterialCount;
-//
-//		scene.runtime.localMaterialCount = static_cast<uint32_t>(gltf.materials.size());
-//		// For assets that don't contain materials
-//		if (scene.runtime.localMaterialCount == 0) scene.runtime.localMaterialCount = 1u;
-//
-//		scene.runtime.materials.clear();
-//		scene.runtime.materials.reserve(scene.runtime.localMaterialCount);
-//		modelStats.totalMaterialCount += scene.runtime.localMaterialCount;
-//	}
-//
-//	// Pre-allocate space for flat material staging
-//	const uint32_t totalMatCount = modelStats.totalMaterialCount;
-//	std::vector<Material> materialUploadList;
-//	materialUploadList.reserve(totalMatCount);
-//
-//	const auto defaultLinear = ResourceManager::GetDefaultLinear_Sampler();
-//	const auto defaultNearest = ResourceManager::GetDefaultNearest_Sampler();
-//
-//	// Default/fallback images
-//	MaterialResources materialResources {
-//		.albedoImage = ResourceManager::GetWhiteMat_Texture(),
-//		.albedoSampler = defaultLinear,
-//		.metalRoughImage = ResourceManager::GetMetalRough_Texture(),
-//		.metalRoughSampler = defaultNearest,
-//		.normalImage = ResourceManager::GetNormal_Texture(),
-//		.normalSampler = defaultLinear,
-//		.emissiveImage = ResourceManager::GetEmissive_Texture(),
-//		.emissiveSampler = defaultLinear,
-//	};
-//
-//	// Default lut indexes
-//	const uint32_t defaultAlbedoID = imageManager.AddCombinedImage(
-//		materialResources.albedoImage.m_imageView,
-//		materialResources.albedoSampler,
-//		&threadCtx
-//	);
-//	const uint32_t defaultMetalRoughID = imageManager.AddCombinedImage(
-//		materialResources.metalRoughImage.m_imageView,
-//		materialResources.metalRoughSampler,
-//		&threadCtx
-//	);
-//	const uint32_t defaultNormalID = imageManager.AddCombinedImage(
-//		materialResources.normalImage.m_imageView,
-//		materialResources.normalSampler,
-//		&threadCtx
-//	);
-//	const uint32_t defaultEmissiveID = imageManager.AddCombinedImage(
-//		materialResources.emissiveImage.m_imageView,
-//		materialResources.emissiveSampler,
-//		&threadCtx
-//	);
-//
-//	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultAlbedoID));
-//	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultMetalRoughID));
-//	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultNormalID));
-//	resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(defaultEmissiveID));
-//
-//	auto& materialFlags = resources.GetMaterialFlagsByID();
-//	materialFlags.clear();
-//
-//	materialFlags.resize(totalMatCount, 0u);
-//
-//	for (auto& context : gltfJobs) {
-//		if (!context->isJobComplete(GLTFJobType::DecodeImages) ||
-//			!context->isJobComplete(GLTFJobType::BuildSamplers)) {
-//			continue;
-//		}
-//
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//
-//		const uint32_t baseOffset = static_cast<uint32_t>(scene.runtime.materialBaseOffset);
-//
-//		uint32_t currentMat = 0;
-//
-//		// Default material
-//		if (gltf.materials.empty()) {
-//			fmt::println("Asset includes no materials, assigning default.");
-//
-//			Material newMaterial{};
-//			newMaterial.albedoID = defaultAlbedoID;
-//			newMaterial.metalRoughnessID = defaultMetalRoughID;
-//			newMaterial.normalID = defaultNormalID;
-//			newMaterial.emissiveID = defaultEmissiveID;
-//			newMaterial.passType = static_cast<uint32_t>(MaterialPass::OPAQUE);
-//			newMaterial.flags |= MATERIAL_FLAG_CASTS_SHADOWS;
-//
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
-//
-//			materialFlags[static_cast<size_t>(baseOffset + currentMat)] = newMaterial.flags;
-//
-//			scene.runtime.materials.push_back(newMaterial);
-//			materialUploadList.push_back(newMaterial);
-//
-//			currentMat++;
-//		}
-//
-//		for (fastgltf::Material& mat : gltf.materials) {
-//			auto getImageAndSampler = [&](const fastgltf::TextureInfo& texInfo, AllocatedImage& outImg, VkSampler& outSamp) {
-//				const auto& texture = gltf.textures[texInfo.textureIndex];
-//				if (texture.imageIndex.has_value())
-//					outImg = scene.runtime.images[texture.imageIndex.value()].image;
-//				if (texture.samplerIndex.has_value())
-//					outSamp = scene.runtime.samplers[texture.samplerIndex.value()];
-//			};
-//			auto markTextureSemantic = [&](const fastgltf::TextureInfo& texInfo, MaterialType semantic) {
-//				const auto& texture = gltf.textures[texInfo.textureIndex];
-//
-//				if (!texture.imageIndex.has_value()) return;
-//
-//				const uint32_t imageIndex = static_cast<uint32_t>(texture.imageIndex.value());
-//				setRuntimeImageSemantic(scene.runtime, imageIndex, semantic);
-//			};
-//
-//
-//
-//			Material newMaterial{};
-//
-//			// Albedo
-//			if (mat.pbrData.baseColorTexture.has_value()) {
-//				markTextureSemantic(*mat.pbrData.baseColorTexture, MaterialType::Albedo);
-//				getImageAndSampler(*mat.pbrData.baseColorTexture, materialResources.albedoImage, materialResources.albedoSampler);
-//				newMaterial.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
-//				newMaterial.albedoID = imageManager.AddCombinedImage(
-//					materialResources.albedoImage.m_imageView,
-//					materialResources.albedoSampler,
-//					&threadCtx
-//				);
-//			}
-//			else {
-//				newMaterial.albedoID = defaultAlbedoID;
-//			}
-//
-//			// Metal roughness
-//			if (mat.pbrData.metallicRoughnessTexture.has_value()) {
-//				markTextureSemantic(*mat.pbrData.metallicRoughnessTexture, MaterialType::MetalRoughness);
-//				getImageAndSampler(*mat.pbrData.metallicRoughnessTexture, materialResources.metalRoughImage, materialResources.metalRoughSampler);
-//				newMaterial.metalRoughFactors = glm::vec2(mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor);
-//				newMaterial.metalRoughnessID = imageManager.AddCombinedImage(
-//					materialResources.metalRoughImage.m_imageView,
-//					materialResources.metalRoughSampler,
-//					&threadCtx
-//				);
-//			}
-//			else {
-//				newMaterial.metalRoughnessID = defaultMetalRoughID;
-//			}
-//
-//			// Normals
-//			if (mat.normalTexture.has_value()) {
-//				markTextureSemantic(*mat.normalTexture, MaterialType::Normal);
-//				getImageAndSampler(*mat.normalTexture, materialResources.normalImage, materialResources.normalSampler);
-//				newMaterial.normalScale = mat.normalTexture->scale;
-//				newMaterial.normalID = imageManager.AddCombinedImage(
-//					materialResources.normalImage.m_imageView,
-//					materialResources.normalSampler,
-//					&threadCtx
-//				);
-//				newMaterial.flags |= MATERIAL_FLAG_HAS_NORMAL_MAP;
-//			}
-//			else {
-//				newMaterial.normalID = defaultNormalID;
-//			}
-//
-//			// Emissive
-//			if (mat.emissiveTexture.has_value()) {
-//				markTextureSemantic(*mat.emissiveTexture, MaterialType::Emissive);
-//				getImageAndSampler(*mat.emissiveTexture, materialResources.emissiveImage, materialResources.emissiveSampler);
-//				newMaterial.emissiveColor = glm::make_vec3(mat.emissiveFactor.data());
-//				newMaterial.emissiveStrength = mat.emissiveStrength;
-//				newMaterial.emissiveID = imageManager.AddCombinedImage(
-//					materialResources.emissiveImage.m_imageView,
-//					materialResources.emissiveSampler,
-//					&threadCtx
-//				);
-//			}
-//			else {
-//				newMaterial.emissiveID = defaultEmissiveID;
-//			}
-//
-//			// Default mat: cast shadows and opaque
-//			MaterialPass passType = MaterialPass::OPAQUE;
-//			newMaterial.flags |= MATERIAL_FLAG_CASTS_SHADOWS;
-//
-//			if (mat.alphaMode == fastgltf::AlphaMode::Mask) {
-//				newMaterial.alphaCutoff = (mat.alphaCutoff != 0.0f) ? mat.alphaCutoff : 0.5f;
-//				newMaterial.flags |= MATERIAL_FLAG_ALPHA_MASKED;
-//			}
-//
-//			if (mat.alphaMode == fastgltf::AlphaMode::Blend) {
-//				passType = MaterialPass::TRANSPARENT;
-//				newMaterial.flags &= ~MATERIAL_FLAG_CASTS_SHADOWS;
-//			}
-//			newMaterial.passType = static_cast<uint32_t>(passType);
-//
-//			if (isTreeMaterial(mat, gltf)) {
-//				newMaterial.flags |= MATERIAL_FLAG_IS_TREE;
-//			}
-//
-//			materialFlags[static_cast<size_t>(baseOffset + currentMat)] = newMaterial.flags;
-//
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.albedoID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.metalRoughnessID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.normalID));
-//			resources.AddImageLUTEntry(ImageLUTEntry::CombinedOnly(newMaterial.emissiveID));
-//
-//			if (ENABLE_DEBUG_LOGS) {
-//				JobSystem::Log(threadCtx.threadID,
-//					fmt::format("[Material:{}] A:{} MR:{} N:{} AO:{} E:{}\n",
-//						currentMat,
-//						newMaterial.albedoID,
-//						newMaterial.metalRoughnessID,
-//						newMaterial.normalID,
-//						newMaterial.emissiveID));
-//			}
-//
-//			// Store in scene-local and global staging
-//			scene.runtime.materials.push_back(newMaterial);
-//			materialUploadList.push_back(newMaterial);
-//
-//			currentMat++;
-//		}
-//
-//		if (ENABLE_DEBUG_LOGS) {
-//			for (uint32_t imageIndex = 0; imageIndex < scene.runtime.images.size(); imageIndex++) {
-//				JobSystem::Log(
-//					threadCtx.threadID,
-//					fmt::format(
-//						"[Image:{}] semantic={}\n",
-//						imageIndex,
-//						textureSemanticToString(scene.runtime.images[imageIndex].semantic)
-//					)
-//				);
-//			}
-//		}
-//
-//		queue->Push(context);
-//		context->markJobComplete(GLTFJobType::ProcessMaterials);
-//	}
-//
-//	ASSERT(!materialUploadList.empty() && "Material list is invalid.");
-//
-//	// Upload flattened materials
-//	const size_t totalMatBufSize = totalMatCount * sizeof(Material);
-//	AllocatedBuffer materialStaging = BufferUtils::CreateBuffer(
-//		totalMatBufSize,
-//		VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-//		VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
-//		allocator
-//	);
-//
-//	memcpy(materialStaging.m_allocInfo.pMappedData, materialUploadList.data(), totalMatBufSize);
-//
-//	// Material ssbo
-//	AllocatedBuffer materialBuffer = BufferUtils::CreateGPUAddressBuffer(
-//		BufferSlot::Material,
-//		resources.GetAddressTable(),
-//		totalMatBufSize,
-//		allocator
-//	);
-//	resources.AddGPUBufferToGlobalAddress(BufferSlot::Material, materialBuffer);
-//
-//	CommandBuffer::RecordDeferredCmd([&](VkCommandBuffer cmd) {
-//		VkBufferCopy copyRegion{};
-//		copyRegion.size = totalMatBufSize;
-//		vkCmdCopyBuffer(cmd, materialStaging.m_buffer, materialBuffer.m_buffer, 1, &copyRegion);
-//	}, threadCtx.cmdPool, QueueType::Transfer, device);
-//
-//	auto matBuf = materialStaging.m_buffer;
-//	auto matAlloc = materialStaging.m_allocation;
-//	resources.GetTempDQueue().PushFunction([matBuf, matAlloc, allocator]() mutable {
-//		BufferUtils::DestroyBuffer(matBuf, matAlloc, allocator);
-//	});
-//}
-//
-//
-//// Define Instances for models, meshID, materialID are setup here.
-//// A global meshes registry holds the mesh vector that'll be uploaded.
-//// meshbuffer holds each localaabb and the range data into vertex and index buffers,
-//void AssetManager::processMeshes(
-//	ThreadContext& threadCtx,
-//	MeshRegistry& meshes,
-//	std::vector<Vertex>& vertices,
-//	std::vector<uint32_t>& indices,
-//	TotalAssetDataCounts& modelDataCounts)
-//{
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue && "[processMeshes] queue broken.");
-//
-//	auto gltfJobs = queue->Collect();
-//
-//	// Compute total vertex/index counts per scene
-//	size_t totalVertexCount = 0;
-//	size_t totalIndexCount = 0;
-//
-//	for (auto& context : gltfJobs) {
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//
-//		// Grab offsets first
-//		scene.runtime.vertexOffset = totalVertexCount;
-//		scene.runtime.indexOffset = totalIndexCount;
-//
-//		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx)
-//		{
-//			const auto& node = gltf.nodes[nodeIdx];
-//			if (!node.meshIndex.has_value()) continue;
-//
-//			const auto& mesh = gltf.meshes[*node.meshIndex];
-//
-//			for (auto& p : mesh.primitives)
-//			{
-//				if (auto posAttr = p.findAttribute("POSITION"); posAttr != p.attributes.end())
-//				{
-//					totalVertexCount += gltf.accessors[posAttr->accessorIndex].count;
-//				}
-//				if (p.indicesAccessor.has_value())
-//				{
-//					totalIndexCount += gltf.accessors[p.indicesAccessor.value()].count;
-//				}
-//			}
-//		}
-//
-//		// Define scene total counts
-//		scene.runtime.vertexCount = totalVertexCount - scene.runtime.vertexOffset;
-//		scene.runtime.indexCount = totalIndexCount - scene.runtime.indexOffset;
-//		ASSERT(scene.runtime.vertexCount > 0);
-//		ASSERT(scene.runtime.indexCount > 0);
-//	}
-//
-//	// Reserve big enough buffers once
-//	modelDataCounts.totalVertexCount = static_cast<uint32_t>(totalVertexCount);
-//	modelDataCounts.totalIndexCount = static_cast<uint32_t>(totalIndexCount);
-//	vertices.resize(totalVertexCount);
-//	indices.resize(totalIndexCount);
-//
-//	std::vector<Vertex> optimizedVertices;
-//	std::vector<uint32_t> lodIndex;
-//	std::vector<uint32_t> baseIndexCopy;
-//	std::vector<glm::vec3> tempPositions;
-//	tempPositions.resize(totalVertexCount);
-//
-//	// Fill pass
-//	for (auto& context : gltfJobs) {
-//		if (!context->isJobComplete(GLTFJobType::ProcessMaterials)) continue;
-//
-//		auto& gltf = context->gltfAsset;
-//		auto& scene = *context->scene;
-//
-//		scene.runtime.bakedInstances.clear();
-//		scene.runtime.bakedNodeIDs.clear();
-//
-//		// Base offsets for this scene
-//		const size_t sceneVertexBase = scene.runtime.vertexOffset;
-//		const size_t sceneIndexBase = scene.runtime.indexOffset;
-//
-//		// Local cursors into this scene's global slice
-//		size_t sceneVertexCursor = 0;
-//		size_t sceneIndexCursor = 0;
-//
-//		uint32_t localMeshCount = 0;
-//
-//		for (uint32_t nodeIdx = 0; nodeIdx < gltf.nodes.size(); ++nodeIdx) {
-//			const auto& node = gltf.nodes[nodeIdx];
-//			if (!node.meshIndex.has_value()) continue;
-//
-//			const auto& mesh = gltf.meshes[*node.meshIndex];
-//
-//			for (auto& p : mesh.primitives) {
-//				// Vertex accessor
-//				const auto& posAccessor = gltf.accessors[p.findAttribute("POSITION")->accessorIndex];
-//				const uint32_t vertexCount = static_cast<uint32_t>(posAccessor.count);
-//
-//				const size_t vtxOff = sceneVertexBase + sceneVertexCursor;
-//
-//				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAccessor,
-//					[&](glm::vec3 v, size_t i) {
-//						ASSERT(vtxOff + i < vertices.size());
-//						Vertex vertex{};
-//						EncodePosition(vertex, v);
-//
-//						vertices[vtxOff + i] = vertex;
-//						tempPositions[i] = v;
-//					});
-//
-//				if (auto normals = p.findAttribute("NORMAL"); normals != p.attributes.end()) {
-//					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[normals->accessorIndex],
-//						[&](glm::vec3 v, size_t i) {
-//							Vertex& vertex = vertices[vtxOff + i];
-//							EncodeOctahedral_Normal(vertex, v);
-//						});
-//				}
-//
-//				if (auto tangents = p.findAttribute("TANGENT"); tangents != p.attributes.end()) {
-//					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->accessorIndex],
-//						[&](glm::vec4 v, size_t i) {
-//							Vertex& vertex = vertices[vtxOff + i];
-//							EncodeOctahedral_Tangent(vertex, v);
-//						});
-//				}
-//
-//				if (auto uv = p.findAttribute("TEXCOORD_0"); uv != p.attributes.end()) {
-//					fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[uv->accessorIndex],
-//						[&](glm::vec2 v, size_t i) {
-//							Vertex& vertex = vertices[vtxOff + i];
-//
-//							vertex.uvX = FloatToHalfBits(v.x);
-//							vertex.uvY = FloatToHalfBits(v.y);
-//						});
-//				}
-//
-//				if (auto colors = p.findAttribute("COLOR_0"); colors != p.attributes.end()) {
-//					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[colors->accessorIndex],
-//						[&](glm::vec4 v, size_t i) {
-//							Vertex& vertex = vertices[vtxOff + i];
-//
-//							EncodeRGBA8(vertex, v);
-//						});
-//				}
-//
-//				// Indices
-//				ASSERT(p.indicesAccessor.has_value() && "[processMeshes] primitive missing indices accessor.");
-//
-//				const auto& indexAccessor = gltf.accessors[p.indicesAccessor.value()];
-//				const uint32_t indexCount = static_cast<uint32_t>(indexAccessor.count);
-//
-//				const size_t idxOff = sceneIndexBase + sceneIndexCursor;
-//
-//				uint32_t maxIndex = 0;
-//				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, indexAccessor,
-//					[&](uint32_t idx, size_t j) {
-//						ASSERT(idxOff + j < indices.size());
-//						indices[idxOff + j] = idx;
-//						maxIndex = std::max(maxIndex, idx);
-//					});
-//
-//				ASSERT(maxIndex < vertexCount &&
-//					"Index buffer is referencing a vertex out of bounds for this primitive!");
-//
-//				uint32_t* indexData = indices.data() + idxOff;
-//				Vertex* vertexData = vertices.data() + vtxOff;
-//
-//				meshopt_optimizeVertexCache(
-//					indexData,
-//					indexData,
-//					static_cast<size_t>(indexCount),
-//					static_cast<size_t>(vertexCount));
-//
-//
-//				if ((indexCount % 3u) == 0u) {
-//					meshopt_optimizeOverdraw(
-//						indexData,
-//						indexData,
-//						static_cast<size_t>(indexCount),
-//						reinterpret_cast<const float*>(tempPositions.data()),
-//						static_cast<size_t>(vertexCount),
-//						sizeof(Vertex),
-//						1.05f);
-//				}
-//
-//				optimizedVertices.resize(static_cast<size_t>(vertexCount));
-//
-//				meshopt_optimizeVertexFetch(
-//					optimizedVertices.data(),
-//					indexData,
-//					static_cast<size_t>(indexCount),
-//					vertexData,
-//					static_cast<size_t>(vertexCount),
-//					sizeof(Vertex));
-//
-//				std::memcpy(
-//					vertexData,
-//					optimizedVertices.data(),
-//					static_cast<size_t>(vertexCount) * sizeof(Vertex));
-//
-//			#ifndef NDEBUG
-//				uint32_t optimizedMaxIndex = 0;
-//				for (uint32_t k = 0; k < indexCount; ++k) {
-//					optimizedMaxIndex = std::max(optimizedMaxIndex, indexData[k]);
-//				}
-//				ASSERT(optimizedMaxIndex < vertexCount && "[meshopt] optimized indices out of bounds.");
-//			#endif
-//
-//				baseIndexCopy.resize(static_cast<size_t>(indexCount));
-//				std::memcpy(
-//					baseIndexCopy.data(),
-//					indexData,
-//					static_cast<size_t>(indexCount) * sizeof(uint32_t));
-//
-//
-//				// Register mesh
-//				Mesh newMesh {
-//					.firstIndex = static_cast<uint32_t>(idxOff),
-//					.indexCount = indexCount,
-//					.vertexOffset = static_cast<uint32_t>(vtxOff),
-//					.vertexCount = vertexCount
-//				};
-//
-//				// AABB computation
-//				glm::vec3 vmin = tempPositions[vtxOff];
-//				glm::vec3 vmax = vmin;
-//				for (uint32_t i = 0; i < vertexCount; ++i) {
-//					glm::vec3 pos = tempPositions[vtxOff + static_cast<size_t>(i)];
-//					vmin = glm::min(vmin, pos);
-//					vmax = glm::max(vmax, pos);
-//				}
-//
-//				newMesh.localAABB.vmin = vmin;
-//				newMesh.localAABB.vmax = vmax;
-//				glm::vec3 extent = (vmax - vmin) * 0.5f;
-//
-//				Instance newInst{};
-//
-//				// Attach local materialID and account for global bindless array,
-//				// as well as pass types.
-//				if (p.materialIndex.has_value()) {
-//					auto bindlessMatID = scene.runtime.materialBaseOffset + p.materialIndex.value();
-//					auto localMatID = p.materialIndex.value();
-//					newInst.materialID = static_cast<uint32_t>(bindlessMatID); // ID into the gpu bindless array
-//					newInst.passType = scene.runtime.materials[localMatID].passType;
-//				}
-//				else {
-//					// Default material types
-//					newInst.materialID = static_cast<uint32_t>(scene.runtime.materialBaseOffset);
-//					newInst.passType = static_cast<uint32_t>(MaterialPass::OPAQUE);
-//				}
-//				ASSERT(newInst.materialID < modelDataCounts.totalMaterialCount && "MaterialID out of range");
-//
-//				// Mesh ID registration
-//				newInst.meshID = meshes.RegisterMesh(newMesh);
-//
-//				const float* positionPtr = reinterpret_cast<const float*>(tempPositions.data());
-//
-//				// Mesh LOD setup
-//				if ((indexCount % 3u) == 0u && positionPtr != nullptr) {
-//					meshes.ResizeMeshLods();
-//
-//					const float simplifyScale = meshopt_simplifyScale(
-//						positionPtr,
-//						static_cast<size_t>(vertexCount),
-//						sizeof(Vertex));
-//
-//					const uint32_t lod0MeshID = newInst.meshID;
-//
-//					const uint32_t lod1 =  meshes.BuildLOD(
-//						newMesh,
-//						0.60f,
-//						0.005f,
-//						totalVertexCount,
-//						totalIndexCount,
-//						indices,
-//						lodIndex,
-//						baseIndexCopy,
-//						simplifyScale,
-//						positionPtr);
-//
-//					const uint32_t lod2 =  meshes.BuildLOD(
-//						newMesh,
-//						0.35f,
-//						0.01f,
-//						totalVertexCount,
-//						totalIndexCount,
-//						indices,
-//						lodIndex,
-//						baseIndexCopy,
-//						simplifyScale,
-//						positionPtr);
-//
-//					const uint32_t lod3 =  meshes.BuildLOD(
-//						newMesh,
-//						0.20f,
-//						0.02f,
-//						totalVertexCount,
-//						totalIndexCount,
-//						indices,
-//						lodIndex,
-//						baseIndexCopy,
-//						simplifyScale,
-//						positionPtr);
-//
-//
-//					MeshLODs& lods = meshes.meshLODs[lod0MeshID];
-//					lods.lod0 = lod0MeshID;
-//					lods.lod1 = (lod1 != UINT32_MAX) ? lod1 : lod0MeshID;
-//					lods.lod2 = (lod2 != UINT32_MAX) ? lod2 : lods.lod1;
-//					lods.lod3 = (lod3 != UINT32_MAX) ? lod3 : lods.lod2;
-//
-//					// Special shadow lods
-//					lods.shadowLod0 = lod0MeshID;
-//					const bool forceShadowLod0 =
-//						MeshRegistry::IsThinMeshForShadows(newMesh) ||
-//						(indexCount < 300u) ||
-//						(newInst.passType == static_cast<uint32_t>(MaterialPass::OPAQUE));
-//
-//					// Meshes that could be hard to simplify or too small are just given highest lod
-//					if (forceShadowLod0) {
-//						lods.flags |= MESH_LOD_FLAG_FORCE_SHADOW_LOD0;
-//						lods.shadowLod1 = lod0MeshID;
-//						lods.shadowLod2 = lod0MeshID;
-//					}
-//					// A more conservative lod setup than regular meshes
-//					else {
-//						const uint32_t shadow1 = meshes.BuildLOD(
-//							newMesh,
-//							0.75f,
-//							0.002f,
-//							totalVertexCount,
-//							totalIndexCount,
-//							indices,
-//							lodIndex,
-//							baseIndexCopy,
-//							simplifyScale,
-//							positionPtr);
-//
-//						const uint32_t shadow2 = meshes.BuildLOD(
-//							newMesh,
-//							0.55f,
-//							0.004f,
-//							totalVertexCount,
-//							totalIndexCount,
-//							indices,
-//							lodIndex,
-//							baseIndexCopy,
-//							simplifyScale,
-//							positionPtr);
-//
-//						lods.shadowLod1 = (shadow1 != UINT32_MAX) ? shadow1 : lods.shadowLod0;
-//						lods.shadowLod2 = (shadow2 != UINT32_MAX) ? shadow2 : lods.shadowLod1;
-//					}
-//				}
-//
-//				scene.runtime.bakedInstances.push_back(newInst);
-//				scene.runtime.bakedNodeIDs.push_back(nodeIdx);
-//
-//				// Advance cursors
-//				sceneVertexCursor += vertexCount;
-//				sceneIndexCursor += indexCount;
-//				localMeshCount++;
-//			}
-//		}
-//
-//		if (ENABLE_DEBUG_LOGS) {
-//			JobSystem::Log(threadCtx.threadID,
-//				fmt::format("[processMeshes] totals: meshes={}, verts={}, inds={}\n",
-//					localMeshCount,
-//					scene.runtime.vertexCount,
-//					scene.runtime.indexCount));
-//		}
-//
-//		queue->Push(context);
-//		context->markJobComplete(GLTFJobType::ProcessMeshes);
-//	}
-//
-//	// Shadow indices setup on final list of indices and vertices
-//	const size_t shadowIndexBase = indices.size();
-//	indices.resize(shadowIndexBase + shadowIndexBase);
-//	for (auto& mesh : meshes.meshData) {
-//		mesh.shadowFirstIndex = static_cast<uint32_t>(shadowIndexBase + mesh.firstIndex);
-//		mesh.shadowIndexCount = mesh.indexCount;
-//
-//		uint32_t* destination = indices.data() + mesh.shadowFirstIndex;
-//		const uint32_t* source = indices.data() + mesh.firstIndex;
-//
-//		const Vertex* vertexData = vertices.data() + mesh.vertexOffset;
-//
-//		meshopt_Stream streams[1]{};
-//		streams[0].data =
-//			reinterpret_cast<const uint8_t*>(vertexData) + offsetof(Vertex, position);
-//		streams[0].size = sizeof(float) * 3u;
-//		streams[0].stride = sizeof(Vertex);
-//
-//		meshopt_generateShadowIndexBufferMulti(
-//			destination,
-//			source,
-//			static_cast<size_t>(mesh.shadowIndexCount),
-//			static_cast<size_t>(mesh.vertexCount),
-//			streams,
-//			1u);
-//	}
-//
-//	modelDataCounts.totalVertexCount = static_cast<uint32_t>(vertices.size());
-//	modelDataCounts.totalIndexCount = static_cast<uint32_t>(indices.size());
-//	modelDataCounts.totalMeshCount = meshes.GetMeshCount();
-//
-//	ASSERT(modelDataCounts.totalMeshCount > 0 &&
-//		modelDataCounts.totalVertexCount > 0 &&
-//		modelDataCounts.totalIndexCount > 0 &&
-//		"Invalid draw ranges.");
-//}
-//
-//void AssetManager::BuildSceneGraph(
-//	ThreadContext& threadCtx,
-//	std::vector<VirtualInstance>& globalInstances,
-//	std::vector<glm::mat4>& globalTransforms,
-//	TotalAssetDataCounts& modelDataCounts)
-//{
-//	ASSERT(threadCtx.workQueueActive != nullptr);
-//	auto* queue = dynamic_cast<GLTFAssetQueue*>(threadCtx.workQueueActive);
-//	ASSERT(queue);
-//
-//	auto gltfJobs = queue->Collect();
-//
-//	uint32_t instanceCounter = 0;
-//	uint32_t firstTransform = 0;
-//
-//	int gridCols = 4;       // how many models per row
-//	float spacingX = 15.0f; // horizontal spacing
-//	float spacingZ = 15.0f; // depth spacing
-//
-//	for (auto& context : gltfJobs)
-//	{
-//		if (!context->IsComplete()) continue;
-//
-//		auto& gltf = context->gltfAsset;
-//		auto& modelAsset = *context->scene;
-//
-//		// === Build all nodes ===
-//		std::vector<std::shared_ptr<Node>> nodes;
-//		nodes.reserve(gltf.nodes.size());
-//		for (size_t i = 0; i < gltf.nodes.size(); ++i)
-//		{
-//			const auto& srcNode = gltf.nodes[i];
-//			auto node = std::make_shared<Node>();
-//
-//			std::visit(fastgltf::visitor{
-//				[&](const fastgltf::math::fmat4x4& matrix)
-//				{
-//					node->localTransform = glm::make_mat4x4(matrix.data());
-//				},
-//				[&](const fastgltf::TRS& transform) {
-//					glm::vec3 tl(transform.translation[0], transform.translation[1], transform.translation[2]);
-//					glm::quat rot(transform.rotation[3], transform.rotation[0], transform.rotation[1], transform.rotation[2]);
-//					glm::vec3 sc(transform.scale[0], transform.scale[1], transform.scale[2]);
-//					node->localTransform =
-//						glm::translate(glm::mat4(1.0f), tl) *
-//						glm::toMat4(rot) *
-//						glm::scale(glm::mat4(1.0f), sc);
-//				}
-//			}, srcNode.transform);
-//
-//			nodes.push_back(node);
-//		}
-//
-//		// === Parent-child relationships ===
-//		for (size_t i = 0; i < gltf.nodes.size(); ++i)
-//		{
-//			for (auto childIdx : gltf.nodes[i].children)
-//			{
-//				nodes[i]->children.push_back(nodes[static_cast<size_t>(childIdx)]);
-//				nodes[static_cast<size_t>(childIdx)]->parent = nodes[i];
-//			}
-//		}
-//
-//		// === Find root nodes ===
-//		modelAsset.sceneNodes.topNodes.clear();
-//		for (auto& node : nodes) {
-//			if (node->parent.expired())
-//			{
-//				modelAsset.sceneNodes.topNodes.push_back(node);
-//			}
-//		}
-//
-//		// === Compute world transforms ===
-//		for (auto& node : modelAsset.sceneNodes.topNodes) {
-//			node->refreshTransform(glm::mat4(1.0f));
-//		}
-//		modelAsset.sceneNodes.nodes = nodes;
-//
-//		// define model with a sceneID
-//		ModelID sceneID = SceneIDs.at(modelAsset.sceneName);
-//		modelAsset.sceneID = sceneID;
-//
-//		// === Assign global instances ===
-//		VirtualInstance gblInst{};
-//		gblInst.sceneID = static_cast<uint8_t>(sceneID);
-//
-//		const auto& bakedInstances = modelAsset.runtime.bakedInstances;
-//		const auto& bakedNodeIDs = modelAsset.runtime.bakedNodeIDs;
-//
-//		ASSERT(bakedNodeIDs.size() == bakedInstances.size() && "[BuildSceneGraph]: bakedNodes should equal bakedInstances.");
-//
-//		// Build unique node m_frameSet + local->slot map from bakedNodeIDs
-//		modelAsset.runtime.uniqueNodeIDs.clear();
-//		modelAsset.runtime.localToNodeSlot.resize(bakedNodeIDs.size());
-//
-//		std::unordered_map<uint32_t, uint32_t> nodeToSlot;
-//		modelAsset.runtime.uniqueNodeIDs.reserve(bakedNodeIDs.size());
-//
-//		for (size_t i = 0; i < bakedNodeIDs.size(); ++i) {
-//			const uint32_t nodeIdx = static_cast<uint32_t>(bakedNodeIDs[i]);
-//			auto it = nodeToSlot.find(nodeIdx);
-//			uint32_t slot = 0;
-//			if (it == nodeToSlot.end()) {
-//				slot = static_cast<uint32_t>(modelAsset.runtime.uniqueNodeIDs.size());
-//				nodeToSlot.emplace(nodeIdx, slot);
-//				modelAsset.runtime.uniqueNodeIDs.push_back(nodeIdx);
-//			}
-//			else {
-//				slot = it->second;
-//			}
-//			modelAsset.runtime.localToNodeSlot[i] = slot;
-//		}
-//
-//		gblInst.perInstanceStride = static_cast<uint32_t>(bakedInstances.size());
-//		gblInst.transformCount = static_cast<uint32_t>(modelAsset.runtime.uniqueNodeIDs.size());
-//
-//		// Spreads out assets in even planes as grids
-//		int row = instanceCounter / gridCols;
-//		int col = instanceCounter % gridCols;
-//		gblInst.modelOffset = glm::vec3(col * spacingX, 0.0f, row * spacingZ);
-//
-//		// === Push unique transforms into the global list ===
-//		gblInst.firstTransform = firstTransform;
-//		for (uint32_t i = 0; i < gblInst.transformCount; ++i) {
-//			const uint32_t nodeIdx = modelAsset.runtime.uniqueNodeIDs[i];
-//			glm::mat4 world = nodes[nodeIdx]->worldTransform;
-//
-//			// First base transform in an asset
-//			if (i == 0) {
-//				gblInst.baseTransform = world;
-//			}
-//
-//			// Shift model into its own grid cell
-//			world = glm::translate(glm::mat4(1.0f), gblInst.modelOffset) * world;
-//			globalTransforms.push_back(world);
-//		}
-//		firstTransform += gblInst.transformCount;
-//		modelDataCounts.totalTransformCount += gblInst.transformCount;
-//
-//		gblInst.instanceID = instanceCounter++;
-//		globalInstances.push_back(gblInst);
-//
-//		if (ENABLE_DEBUG_LOGS) {
-//			JobSystem::Log(threadCtx.threadID,
-//				fmt::format("SceneGraph built: '{}'. Total bakedInstances = {}. Total materials = {}. Total transforms = {}\n",
-//					modelAsset.sceneName,
-//					bakedInstances.size(),
-//					modelAsset.runtime.materials.size(),
-//					gblInst.transformCount));
-//		}
-//
-//		queue->Push(context);
-//	}
-//}
-//
-//
-//void ModelAsset::clearAll() {
-//	auto device = Backend::GetDevice();
-//	const auto allocator = Engine::GetState().getGPUResources().GetAllocator();
-//
-//	Backend::GetGraphicsQueue().WaitIdle();
-//
-//	// Don't free global images or samplers twice
-//	for (auto& img : runtime.images) {
-//		// holy naming
-//		if (img.image.image == VK_NULL_HANDLE ||
-//			img.image.image == ResourceManager::GetCheckboard_Texture().image ||
-//			img.image.image == ResourceManager::GetWhiteMat_Texture().image ||
-//			img.image.image == ResourceManager::GetMetalRough_Texture().image ||
-//			img.image.image == ResourceManager::getAO_Texture().image ||
-//			img.image.image == ResourceManager::GetNormal_Texture().image ||
-//			img.image.image == ResourceManager::GetEmissive_Texture().image) {
-//			continue;
-//		}
-//
-//		ImageUtils::destroyImage(device, img.image, allocator);
-//	}
-//
-//	for (auto& sampler : runtime.samplers) {
-//		if (sampler == VK_NULL_HANDLE ||
-//			sampler == ResourceManager::GetDefaultLinear_Sampler() ||
-//			sampler == ResourceManager::GetDefaultNearest_Sampler()) {
-//			continue;
-//		}
-//
-//		vkDestroySampler(device, sampler, nullptr);
-//	}
-//}
-//
-//static constexpr VkFormat GetImageFormatFromName(const std::string& imageName)
-//{
-//	bool isSRGB =
-//		imageName.find("_BaseColor") != std::string::npos ||
-//		imageName.find("_Albedo") != std::string::npos ||
-//		imageName.find("diffuse") != std::string::npos ||
-//		imageName.find("_Emissive") != std::string::npos ||
-//		imageName.find("emissive") != std::string::npos;
-//
-//	return isSRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
-//}
-//
-//static constexpr void SetRuntimeImageSemantic(
-//	ModelAsset::GPUData& runtime,
-//	uint32_t imageIndex,
-//	MaterialType semantic)
-//{
-//	ASSERT(imageIndex < runtime.images.size());
-//
-//	RuntimeImage& runtimeImage = runtime.images[imageIndex];
-//
-//	if (runtimeImage.semantic == MaterialType::Unknown) {
-//		runtimeImage.semantic = semantic;
-//		return;
-//	}
-//
-//	if (runtimeImage.semantic != semantic)
-//	{
-//		fmt::println(
-//			"[AssetManager] m_image semantic conflict at m_image index {}. Existing: {}, Incoming: {}",
-//			imageIndex,
-//			static_cast<uint32_t>(runtimeImage.semantic),
-//			static_cast<uint32_t>(semantic)
-//		);
-//	}
-//}
-//
-//static const char* TextureSemanticToString(MaterialType semantic)
-//{
-//	switch (semantic)
-//	{
-//	case MaterialType::Unknown:        return "Unknown";
-//	case MaterialType::Albedo:         return "Albedo";
-//	case MaterialType::Normal:         return "Normal";
-//	case MaterialType::MetalRoughness: return "MetalRoughness";
-//	case MaterialType::Emissive:       return "Emissive";
-//	default:                           return "Invalid";
-//	}
-//}
-//
-//static constexpr bool IsTreeMaterial(const fastgltf::Material& mat, const fastgltf::Asset& gltf)
-//{
-//	if (!mat.name.empty()) {
-//		std::string lowerName(mat.name.begin(), mat.name.end());
-//
-//		// Convert to lowercase for matching
-//		std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(),
-//			[](unsigned char c) { return std::tolower(c); });
-//
-//		if (lowerName.find("tree") != std::string::npos/* ||
-//			lowerName.find("leaf") != std::string::npos ||
-//			lowerName.find("foliage") != std::string::npos ||
-//			lowerName.find("branch") != std::string::npos ||
-//			lowerName.find("pine") != std::string::npos ||
-//			lowerName.find("palm") != std::string::npos ||
-//			lowerName.find("bark") != std::string::npos*/) {
-//			return true;
-//		}
-//	}
-//
-//	return false;
-//}
+#include "AssetManager.h"
+#include "Mesh.h"
+#include "Vertex.h"
+#include "Material.h"
+#include "JobSystem.h"
+
+static const std::unordered_map<ModelID, std::string> AssetPaths
+{
+	{ ModelID::Sponza,            "sponza.glb"               },
+	//{ ModelID::Bistro,            "Bistro.glb"               },
+	//{ ModelID::MRSpheres,         "MetalRoughSpheres.glb"    },
+	//{ ModelID::Duck,              "Duck.glb"                 },
+	//{ ModelID::DamagedHelmet,     "DamagedHelmet.glb"        },
+	//{ ModelID::DragonAttenuation, "DragonAttenuation.glb"    },
+	//{ ModelID::City,              "city/town4new.glb"        },
+	//{ ModelID::Structure,         "structure.glb"            },
+	//{ ModelID::EmissiveTest,      "EmissiveStrengthTest.glb" },
+	//{ ModelID::WrathDragon,       "wrath_of_the_dragon.glb"  },
+	//{ ModelID::Mech,              "mech.glb"                 },
+	//{ ModelID::YellowMech,        "yellow_mech.glb"          },
+	//{ ModelID::Mini,              "mini.glb"                 }
+};
+
+static bool IsSRGBTexture(const std::string& name)
+{
+	return name.find("_BaseColor") != std::string::npos
+		|| name.find("_Albedo")    != std::string::npos
+		|| name.find("diffuse")    != std::string::npos
+		|| name.find("_Emissive")  != std::string::npos
+		|| name.find("emissive")   != std::string::npos;
+}
+
+static bool IsTreeMaterial(const fastgltf::Material& mat)
+{
+	if (mat.name.empty()) return false;
+	std::string lower(mat.name.begin(), mat.name.end());
+	std::transform(lower.begin(), lower.end(), lower.begin(),
+		[](unsigned char c) { return std::tolower(c); });
+	return lower.find("tree") != std::string::npos;
+}
+
+static SamplerDesc ExtractSamplerDesc(const fastgltf::Sampler& sampler)
+{
+	SamplerDesc desc{};
+
+	auto minFilter = sampler.minFilter.value_or(fastgltf::Filter::LinearMipMapLinear);
+
+	desc.isLinear = true;
+	switch (sampler.magFilter.value_or(fastgltf::Filter::Linear))
+	{
+	case fastgltf::Filter::Nearest:
+	case fastgltf::Filter::NearestMipMapNearest:
+	case fastgltf::Filter::NearestMipMapLinear:
+		desc.isLinear = false;
+		break;
+	default:
+		break;
+	}
+
+	switch (minFilter)
+	{
+	case fastgltf::Filter::NearestMipMapNearest:
+	case fastgltf::Filter::LinearMipMapNearest:
+	case fastgltf::Filter::NearestMipMapLinear:
+	case fastgltf::Filter::LinearMipMapLinear:
+		desc.isMipMapped = true;
+		break;
+	default:
+		desc.isMipMapped = false;
+		break;
+	}
+
+	desc.anisotropy = desc.isMipMapped ? RD::ANISOTROPY_LEVEL_16 : 1.0f;
+	return desc;
+}
+
+// -----------------------------------------------------------------------
+// AssetManager::LoadScenes
+// -----------------------------------------------------------------------
+
+void AssetManager::LoadScenes(
+	SceneBatchReadyCallback      onBatchReady,
+	JobSystem&                   jobSystem)
+{
+	if (AssetPaths.empty()) return;
+
+	m_queues = std::make_shared<StageQueues>();
+	m_queues->onBatchReady = std::move(onBatchReady);
+
+	for (const auto& [sceneID, relativePath] : AssetPaths)
+	{
+		std::filesystem::path fullPath =
+			std::filesystem::path(BaseAssetPath) / relativePath;
+
+		auto context      = std::make_shared<GLTFJobContext>();
+		context->batch    = std::make_shared<SceneUploadBatch>();
+		context->basePath = fullPath.parent_path();
+
+		context->batch->sceneID   = sceneID;
+		context->batch->sceneName = relativePath;
+
+		m_queues->loadFile.Push(context);
+		m_queues->pendingSceneCount++;
+	}
+
+	auto queues = m_queues;
+
+	// Workers drain all CPU stages
+	jobSystem.SubmitJob([this, queues](ThreadContext& ctx)
+	{
+		ScopedWorkQueue scoped(ctx, queues.get());
+
+		while (!queues->IsFullyDrained())
+		{
+			bool didWork = false;
+			didWork |= StageLoadFile(ctx);
+			didWork |= StageDecodeImages(ctx);
+			didWork |= StageBuildSamplers(ctx);
+			didWork |= StageProcessMaterials(ctx);
+			didWork |= StageProcessMeshes(ctx);
+			didWork |= StageBuildSceneGraph(ctx);
+
+			if (!didWork)
+				std::this_thread::yield();
+		}
+	});
+}
+
+// -----------------------------------------------------------------------
+// StageLoadFile
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageLoadFile(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->loadFile.Collect();
+	if (jobs.empty()) return false;
+
+	for (auto& context : jobs)
+	{
+		const std::string fullPath = BaseAssetPath + context->batch->sceneName;
+		fmt::println("[AssetManager] Loading: {}", fullPath);
+
+		fastgltf::Parser parser;
+		auto data = fastgltf::GltfDataBuffer::FromPath(fullPath);
+		if (!data || data.error() != fastgltf::Error::None)
+		{
+			fmt::println("[AssetManager] Failed to read: {}", fullPath);
+			sq->pendingSceneCount--;
+			continue;
+		}
+
+		constexpr auto opts =
+			fastgltf::Options::DontRequireValidAssetMember |
+			fastgltf::Options::AllowDouble |
+			fastgltf::Options::LoadGLBBuffers |
+			fastgltf::Options::LoadExternalBuffers |
+			fastgltf::Options::LoadExternalImages;
+
+		auto type = fastgltf::determineGltfFileType(data.get());
+		fastgltf::Expected<fastgltf::Asset> result{ fastgltf::Error::None };
+
+		if (type == fastgltf::GltfType::glTF)
+			result = parser.loadGltf(data.get(), context->basePath, opts);
+		else if (type == fastgltf::GltfType::GLB)
+			result = parser.loadGltfBinary(data.get(), context->basePath, opts);
+		else
+		{
+			fmt::println("[AssetManager] Unknown file type: {}", fullPath);
+			sq->pendingSceneCount--;
+			continue;
+		}
+
+		if (!result || result.error() != fastgltf::Error::None)
+		{
+			fmt::println("[AssetManager] Parse failed: {}", fullPath);
+			sq->pendingSceneCount--;
+			continue;
+		}
+
+		context->gltfAsset = std::move(result.get());
+		sq->Advance(context, GLTFJobType::LoadFile);
+		++ctx.jobsExecuted;
+	}
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// StageDecodeImages
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageDecodeImages(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->decodeImages.Collect();
+	if (jobs.empty()) return false;
+
+	for (auto& context : jobs)
+	{
+		if (!context->CanRun(GLTFJobType::DecodeImages))
+		{
+			sq->decodeImages.Push(context);
+			continue;
+		}
+
+		auto& gltf  = context->gltfAsset;
+		auto& batch = *context->batch;
+		batch.textures.reserve(gltf.images.size());
+
+		for (size_t i = 0; i < gltf.images.size(); ++i)
+		{
+			auto& gltfImage = gltf.images[i];
+			TextureDesc desc{};
+
+			// Resolve debug name
+			if (!gltfImage.name.empty())
+				desc.debugName = std::string(gltfImage.name);
+			else if (std::holds_alternative<fastgltf::sources::URI>(gltfImage.data))
+				desc.debugName = std::string(
+					std::get<fastgltf::sources::URI>(gltfImage.data).uri.path());
+			else
+				desc.debugName = fmt::format("tex_{}_{}", batch.sceneName, i);
+
+			desc.isSRGB = IsSRGBTexture(desc.debugName);
+
+			// Decode pixels
+			int w = 0, h = 0, ch = 0;
+			uint8_t* raw = nullptr;
+
+			std::visit(fastgltf::visitor
+			{
+				[&](fastgltf::sources::Array& arr)
+				{
+					raw = stbi_load_from_memory(
+						reinterpret_cast<const uint8_t*>(arr.bytes.data()),
+						static_cast<int>(arr.bytes.size()),
+						&w, &h, &ch, 4);
+				},
+				[&](fastgltf::sources::URI& uri)
+				{
+					ASSERT(uri.uri.isLocalPath());
+					auto full = context->basePath / std::string(uri.uri.path());
+					raw = stbi_load(full.string().c_str(), &w, &h, &ch, 4);
+				},
+				[&](fastgltf::sources::BufferView& bv)
+				{
+					auto& bufView = gltf.bufferViews[bv.bufferViewIndex];
+					auto& buf     = gltf.buffers[bufView.bufferIndex];
+					std::visit(fastgltf::visitor
+					{
+						[&](fastgltf::sources::Array& arr)
+						{
+							raw = stbi_load_from_memory(
+								reinterpret_cast<const uint8_t*>(arr.bytes.data()) + bufView.byteOffset,
+								static_cast<int>(bufView.byteLength),
+								&w, &h, &ch, 4);
+						},
+						[](auto&) {}
+					}, buf.data);
+				},
+				[](auto&) {}
+			}, gltfImage.data);
+
+			if (raw && w > 0 && h > 0)
+			{
+				desc.width     = static_cast<uint32_t>(w);
+				desc.height    = static_cast<uint32_t>(h);
+				desc.needsMips = (w >= 8 && h >= 8);
+				desc.pixelData.assign(raw, raw + (w * h * 4));
+				stbi_image_free(raw);
+			}
+			else
+			{
+				// Empty pixelData signals Renderer to use checkerboard fallback
+				fmt::println("[AssetManager] Decode failed: {}", desc.debugName);
+			}
+
+			batch.textures.push_back(std::move(desc));
+		}
+
+		sq->Advance(context, GLTFJobType::DecodeImages);
+		++ctx.jobsExecuted;
+	}
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// StageBuildSamplers
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageBuildSamplers(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->buildSamplers.Collect();
+	if (jobs.empty()) return false;
+
+	for (auto& context : jobs)
+	{
+		if (!context->CanRun(GLTFJobType::BuildSamplers))
+		{
+			sq->buildSamplers.Push(context);
+			continue;
+		}
+
+		auto& gltf  = context->gltfAsset;
+		auto& batch = *context->batch;
+		batch.samplers.reserve(gltf.samplers.size());
+
+		for (auto& gltfSampler : gltf.samplers)
+			batch.samplers.push_back(ExtractSamplerDesc(gltfSampler));
+
+		sq->Advance(context, GLTFJobType::BuildSamplers);
+		++ctx.jobsExecuted;
+	}
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// StageProcessMaterials
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageProcessMaterials(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->processMaterials.Collect();
+	if (jobs.empty()) return false;
+
+	for (auto& context : jobs)
+	{
+		if (!context->CanRun(GLTFJobType::ProcessMaterials))
+		{
+			sq->processMaterials.Push(context);
+			continue;
+		}
+
+		auto& gltf  = context->gltfAsset;
+		auto& batch = *context->batch;
+
+		// Always emit at least one default material at index 0
+		// Default ids defined later
+		{
+			batch.materials.emplace_back(MaterialDesc{
+				.flags = MATERIAL_FLAG_CASTS_SHADOWS,
+				.passType = static_cast<uint32_t>(MaterialPass::Opaque)});
+		}
+
+		for (auto& mat : gltf.materials)
+		{
+			MaterialDesc desc{};
+			desc.flags   |= MATERIAL_FLAG_CASTS_SHADOWS;
+			desc.passType = static_cast<uint32_t>(MaterialPass::Opaque);
+
+			auto resolveTexture = [&](
+				const fastgltf::TextureInfo& info,
+				uint32_t& outTexIdx,
+				uint32_t& outSampIdx)
+			{
+				const auto& tex = gltf.textures[info.textureIndex];
+				if (tex.imageIndex.has_value())
+					outTexIdx = static_cast<uint32_t>(tex.imageIndex.value());
+				if (tex.samplerIndex.has_value())
+					outSampIdx = static_cast<uint32_t>(tex.samplerIndex.value());
+			};
+
+			if (mat.pbrData.baseColorTexture.has_value())
+			{
+				resolveTexture(*mat.pbrData.baseColorTexture,
+					desc.albedoTexIdx, desc.albedoSamplerIdx);
+				desc.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+			}
+			if (mat.pbrData.metallicRoughnessTexture.has_value())
+			{
+				resolveTexture(*mat.pbrData.metallicRoughnessTexture,
+					desc.metalRoughTexIdx, desc.metalRoughSampIdx);
+				desc.metalRoughFactors = {
+					mat.pbrData.metallicFactor,
+					mat.pbrData.roughnessFactor
+				};
+			}
+			if (mat.normalTexture.has_value())
+			{
+				resolveTexture(*mat.normalTexture,
+					desc.normalTexIdx, desc.normalSamplerIdx);
+				desc.normalScale  = mat.normalTexture->scale;
+				desc.flags       |= MATERIAL_FLAG_HAS_NORMAL_MAP;
+			}
+			if (mat.emissiveTexture.has_value())
+			{
+				resolveTexture(*mat.emissiveTexture,
+					desc.emissiveTexIdx, desc.emissiveSampIdx);
+				desc.emissiveColor    = glm::make_vec3(mat.emissiveFactor.data());
+				desc.emissiveStrength = mat.emissiveStrength;
+			}
+
+			if (mat.alphaMode == fastgltf::AlphaMode::Mask)
+			{
+				desc.alphaCutoff  = mat.alphaCutoff != 0.0f ? mat.alphaCutoff : 0.5f;
+				desc.flags       |= MATERIAL_FLAG_ALPHA_MASKED;
+			}
+			if (mat.alphaMode == fastgltf::AlphaMode::Blend)
+			{
+				desc.passType  = static_cast<uint32_t>(MaterialPass::Transparent);
+				desc.flags    &= ~MATERIAL_FLAG_CASTS_SHADOWS;
+			}
+			if (IsTreeMaterial(mat))
+				desc.flags |= MATERIAL_FLAG_IS_TREE;
+
+			batch.materials.push_back(std::move(desc));
+		}
+
+		batch.materialFlags.reserve(batch.materials.size());
+		for (const auto& desc : batch.materials)
+			batch.materialFlags.push_back(desc.flags);
+
+		sq->Advance(context, GLTFJobType::ProcessMaterials);
+		++ctx.jobsExecuted;
+	}
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// StageProcessMeshes
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->processMeshes.Collect();
+	if (jobs.empty()) return false;
+
+	auto& rawVerts  = ctx.scratch.bufferA;
+	auto& rawIdx    = ctx.scratch.bufferB;
+	auto& rawLodIdx = ctx.scratch.bufferC;
+
+	for (auto& context : jobs)
+	{
+		if (!context->CanRun(GLTFJobType::ProcessMeshes))
+		{
+			sq->processMeshes.Push(context);
+			continue;
+		}
+
+		auto& gltf  = context->gltfAsset;
+		auto& batch = *context->batch;
+
+		// --- Count pass: SAME predicate as fill (POSITION + indices) ---
+		size_t totalVerts = 0, totalIndices = 0;
+		for (auto& node : gltf.nodes)
+		{
+			if (!node.meshIndex.has_value()) continue;
+			for (auto& prim : gltf.meshes[*node.meshIndex].primitives)
+			{
+				auto pos = prim.findAttribute("POSITION");
+				if (pos == prim.attributes.end())      continue;
+				if (!prim.indicesAccessor.has_value()) continue;
+				totalVerts   += gltf.accessors[pos->accessorIndex].count;
+				totalIndices += gltf.accessors[*prim.indicesAccessor].count;
+			}
+		}
+
+		batch.vertices.resize(totalVerts);   // default-zeroed Vertex{}
+		batch.indices.resize(totalIndices);
+
+		size_t vtxCursor = 0, idxCursor = 0;
+
+		for (uint32_t nodeIdx = 0; nodeIdx < static_cast<uint32_t>(gltf.nodes.size()); ++nodeIdx)
+		{
+			auto& node = gltf.nodes[nodeIdx];
+			if (!node.meshIndex.has_value()) continue;
+
+			for (auto& prim : gltf.meshes[*node.meshIndex].primitives)
+			{
+				auto posAttr = prim.findAttribute("POSITION");
+				if (posAttr == prim.attributes.end())  continue;
+				if (!prim.indicesAccessor.has_value()) continue;
+
+				const auto& posAcc = gltf.accessors[posAttr->accessorIndex];
+				const auto& idxAcc = gltf.accessors[*prim.indicesAccessor];
+				const uint32_t vCnt = static_cast<uint32_t>(posAcc.count);
+				const uint32_t iCnt = static_cast<uint32_t>(idxAcc.count);
+
+				// --- Fill: position written straight into the vertex ---
+				fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, posAcc,
+					[&](glm::vec3 v, size_t i)
+					{
+						batch.vertices[vtxCursor + i].position = v;
+					});
+
+				if (auto it = prim.findAttribute("NORMAL"); it != prim.attributes.end())
+					fastgltf::iterateAccessorWithIndex<glm::vec3>(gltf, gltf.accessors[it->accessorIndex],
+						[&](glm::vec3 v, size_t i)
+						{
+							EncodeOctahedral_Normal(batch.vertices[vtxCursor + i], v);
+						});
+
+				if (auto it = prim.findAttribute("TANGENT"); it != prim.attributes.end())
+					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[it->accessorIndex],
+						[&](glm::vec4 v, size_t i)
+						{
+							EncodeOctahedral_Tangent(batch.vertices[vtxCursor + i], v);});
+
+				if (auto it = prim.findAttribute("TEXCOORD_0"); it != prim.attributes.end())
+					fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[it->accessorIndex],
+						[&](glm::vec2 v, size_t i)
+						{
+							batch.vertices[vtxCursor + i].uvX = FloatToHalfBits(v.x);
+							batch.vertices[vtxCursor + i].uvY = FloatToHalfBits(v.y);
+						});
+
+				if (auto it = prim.findAttribute("COLOR_0"); it != prim.attributes.end())
+					fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[it->accessorIndex],
+						[&](glm::vec4 v, size_t i)
+						{
+							EncodeRGBA8(batch.vertices[vtxCursor + i], v);
+						});
+
+				fastgltf::iterateAccessorWithIndex<uint32_t>(gltf, idxAcc,
+					[&](uint32_t idx, size_t j)
+					{
+						batch.indices[idxCursor + j] = idx;
+					});
+
+				uint32_t* idxPtr = batch.indices.data()  + idxCursor;
+				Vertex*   vtxPtr = batch.vertices.data() + vtxCursor;
+
+				// Position read straight from inside the vertex (float32), stride = sizeof(Vertex).
+				// meshopt reorders the vertex (and position with it) in lockstep, so no separate
+				// position array and no remap desync — this is the watertight path.
+				const float* posPtr = reinterpret_cast<const float*>(
+					reinterpret_cast<const uint8_t*>(vtxPtr) + offsetof(Vertex, position));
+
+				// --- AABB + scale from the vertex positions [0, vCnt) ---
+				glm::vec3 vmin = vtxPtr[0].position, vmax = vmin;
+				for (uint32_t i = 0; i < vCnt; ++i)
+				{
+					vmin = glm::min(vmin, vtxPtr[i].position);
+					vmax = glm::max(vmax, vtxPtr[i].position);
+				}
+				const float simplifyScale = meshopt_simplifyScale(posPtr, vCnt, sizeof(Vertex));
+
+				// --- meshopt reorder ---
+				meshopt_optimizeVertexCache(idxPtr, idxPtr, iCnt, vCnt);
+				if ((iCnt % 3u) == 0u)
+					meshopt_optimizeOverdraw(idxPtr, idxPtr, iCnt, posPtr, vCnt, sizeof(Vertex), 1.05f);
+
+				// optimizeVertexFetch reorders the vertex buffer AND remaps indices in lockstep;
+				// float position lives in the vertex so it moves with it — fully consistent.
+				rawVerts.resize(vCnt * sizeof(Vertex));
+				meshopt_optimizeVertexFetch(
+					reinterpret_cast<Vertex*>(rawVerts.data()),
+					idxPtr, iCnt, vtxPtr, vCnt, sizeof(Vertex));
+				std::memcpy(vtxPtr, rawVerts.data(), vCnt * sizeof(Vertex));
+				// posPtr still valid — points into vtxPtr, now holding reordered vertices.
+
+				// --- MeshDesc ---
+				MeshDesc meshDesc{};
+				meshDesc.firstIndex     = static_cast<uint32_t>(idxCursor);
+				meshDesc.indexCount     = iCnt;
+				meshDesc.vertexOffset   = static_cast<uint32_t>(vtxCursor);
+				meshDesc.vertexCount    = vCnt;
+				meshDesc.localAABB.vmin = vmin;
+				meshDesc.localAABB.vmax = vmax;
+
+				const uint32_t lod0Idx = static_cast<uint32_t>(batch.meshes.size());
+				meshDesc.lod0 = lod0Idx;
+				batch.meshes.push_back(meshDesc);
+
+				// --- Resolve material/pass ---
+				uint32_t passType = static_cast<uint32_t>(MaterialPass::Opaque);
+				uint32_t matFlags = 0;
+				uint32_t localMaterialIdx = DEFAULT_MATERIAL_INDEX;
+				if (prim.materialIndex.has_value())
+				{
+					localMaterialIdx = static_cast<uint32_t>(prim.materialIndex.value()) + 1;
+					ASSERT(localMaterialIdx < batch.materials.size()
+						&& "glTF material index out of range of processed materials.");
+					passType = batch.materials[localMaterialIdx].passType;
+					matFlags = batch.materials[localMaterialIdx].flags;
+				}
+
+				rawIdx.resize(iCnt * sizeof(uint32_t));
+				std::memcpy(rawIdx.data(), idxPtr, iCnt * sizeof(uint32_t));
+
+				auto buildLOD = [&](float ratio, float error) -> uint32_t
+				{
+					size_t target = std::max<size_t>(3u, static_cast<size_t>(iCnt * ratio) / 3 * 3);
+					if (target >= iCnt) return UINT32_MAX;
+					rawLodIdx.resize(iCnt * sizeof(uint32_t));
+					size_t lodCount = meshopt_simplify(
+						reinterpret_cast<uint32_t*>(rawLodIdx.data()),
+						reinterpret_cast<uint32_t*>(rawIdx.data()),
+						iCnt, posPtr, vCnt, sizeof(Vertex),
+						target, error * simplifyScale);
+					if (lodCount < 3 || (lodCount % 3) != 0) return UINT32_MAX;
+					rawLodIdx.resize(lodCount * sizeof(uint32_t));
+
+					auto* lodIdxPtr = reinterpret_cast<uint32_t*>(rawLodIdx.data());
+					meshopt_optimizeVertexCache(lodIdxPtr, lodIdxPtr, lodCount, vCnt);
+					if ((lodCount % 3u) == 0u)
+						meshopt_optimizeOverdraw(lodIdxPtr, lodIdxPtr, lodCount, posPtr, vCnt, sizeof(Vertex), 1.05f);
+
+					MeshDesc lodMesh   = meshDesc;
+					lodMesh.firstIndex = static_cast<uint32_t>(batch.indices.size());
+					lodMesh.indexCount = static_cast<uint32_t>(lodCount);
+					lodMesh.flags     |= MESH_FLAG_IS_LOD;
+					const uint32_t lodIdx = static_cast<uint32_t>(batch.meshes.size());
+					batch.indices.insert(batch.indices.end(), lodIdxPtr, lodIdxPtr + lodCount);
+					batch.meshes.push_back(lodMesh);
+					return lodIdx;
+				};
+
+				if ((iCnt % 3u) == 0u)
+				{
+					uint32_t lod1 = buildLOD(0.60f, 0.005f);
+					uint32_t lod2 = buildLOD(0.35f, 0.010f);
+					uint32_t lod3 = buildLOD(0.20f, 0.020f);
+
+					auto& md = batch.meshes[lod0Idx];
+					md.lod1 = lod1 != UINT32_MAX ? lod1 : lod0Idx;
+					md.lod2 = lod2 != UINT32_MAX ? lod2 : md.lod1;
+					md.lod3 = lod3 != UINT32_MAX ? lod3 : md.lod2;
+
+					const bool thinMesh = MeshRegistry::IsThinMeshForShadows(
+						Mesh{ .localAABB = { vmin, vmax } });
+
+					// Pin shadow-LOD0 for geometry where simplification leaks light:
+					// thin slivers, tiny meshes, and alpha-tested foliage.
+					const bool isFoliage = (matFlags & MATERIAL_FLAG_ALPHA_MASKED)
+										 || (matFlags & MATERIAL_FLAG_IS_TREE);
+
+					const bool forceLod0 = thinMesh || iCnt < 300u || isFoliage;
+
+					if (forceLod0)
+					{
+						md.shadowLod0 = lod0Idx;
+						md.shadowLod1 = lod0Idx;
+						md.shadowLod2 = lod0Idx;
+						md.flags |= MESH_LOD_FLAG_FORCE_SHADOW_LOD0;
+					}
+					else
+					{
+						md.shadowLod0 = lod0Idx;
+						md.shadowLod1 = buildLOD(0.75f, 0.002f);
+						md.shadowLod2 = buildLOD(0.55f, 0.004f);
+						if (md.shadowLod1 == UINT32_MAX) md.shadowLod1 = lod0Idx;
+						if (md.shadowLod2 == UINT32_MAX) md.shadowLod2 = md.shadowLod1;
+					}
+				}
+
+				batch.instances.emplace_back(InstanceDesc{
+					.localMeshIdx = lod0Idx,
+					.localMaterialIdx = localMaterialIdx,
+					.nodeIdx = nodeIdx,
+					.passType = passType});
+
+				vtxCursor += vCnt;
+				idxCursor += iCnt;
+			}
+		}
+
+		// Shadow index buffer.
+		// Base (lod0) meshes get a position-welded shadow copy appended after the render
+		// indices. LOD meshes are ALREADY simplified — welding them again tears their
+		// silhouette (the leak). LODs reuse their own render indices.
+		const size_t shadowBase = batch.indices.size();
+
+		// Reserve shadow space only for base meshes (sum of their index counts).
+		size_t shadowTotal = 0;
+		for (const auto& md : batch.meshes)
+			if ((md.flags & MESH_FLAG_IS_LOD) == 0u)
+				shadowTotal += md.indexCount;
+
+		batch.indices.resize(shadowBase + shadowTotal);
+
+		size_t shadowCursor = shadowBase;
+		for (auto& md : batch.meshes)
+		{
+			if (md.flags & MESH_FLAG_IS_LOD)
+			{
+				// Reuse the LOD's own (simplified, watertight) render indices for shadows.
+				md.shadowFirstIndex = md.firstIndex;
+				md.shadowIndexCount = md.indexCount;
+				continue;
+			}
+
+			md.shadowFirstIndex = static_cast<uint32_t>(shadowCursor);
+			md.shadowIndexCount = md.indexCount;
+
+			// Float position stream for the position-only weld.
+			const Vertex* verts = batch.vertices.data() + md.vertexOffset;
+			meshopt_Stream streams[1]{};
+			streams[0].data   = reinterpret_cast<const uint8_t*>(verts) + offsetof(Vertex, position);
+			streams[0].size   = sizeof(float) * 3u;
+			streams[0].stride = sizeof(Vertex);
+
+			meshopt_generateShadowIndexBufferMulti(
+				batch.indices.data() + md.shadowFirstIndex,
+				batch.indices.data() + md.firstIndex,
+				md.shadowIndexCount, md.vertexCount, streams, 1u);
+
+			shadowCursor += md.indexCount;
+		}
+
+		sq->Advance(context, GLTFJobType::ProcessMeshes);
+		++ctx.jobsExecuted;
+	}
+
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// StageBuildSceneGraph
+// -----------------------------------------------------------------------
+
+bool AssetManager::StageBuildSceneGraph(ThreadContext& ctx)
+{
+	auto* sq = static_cast<StageQueues*>(ctx.workQueueActive);
+	auto jobs = sq->buildSceneGraph.Collect();
+	if (jobs.empty()) return false;
+
+	for (auto& context : jobs)
+	{
+		if (!context->CanRun(GLTFJobType::BuildSceneGraph))
+		{
+			sq->buildSceneGraph.Push(context);
+			continue;
+		}
+
+		auto& gltf  = context->gltfAsset;
+		auto& batch = *context->batch;
+
+		// Build node list
+		std::vector<std::shared_ptr<Node>> nodes;
+		nodes.reserve(gltf.nodes.size());
+
+		for (auto& srcNode : gltf.nodes)
+		{
+			auto node = std::make_shared<Node>();
+			std::visit(fastgltf::visitor
+			{
+				[&](const fastgltf::math::fmat4x4& m)
+				{
+					node->localTransform = glm::make_mat4x4(m.data());
+				},
+				[&](const fastgltf::TRS& trs)
+				{
+					glm::vec3 t(trs.translation[0], trs.translation[1], trs.translation[2]);
+					glm::quat r(trs.rotation[3], trs.rotation[0], trs.rotation[1], trs.rotation[2]);
+					glm::vec3 s(trs.scale[0], trs.scale[1], trs.scale[2]);
+					node->localTransform =
+						glm::translate(glm::mat4(1.f), t) *
+						glm::toMat4(r) *
+						glm::scale(glm::mat4(1.f), s);
+				}
+			}, srcNode.transform);
+			nodes.push_back(node);
+		}
+
+		// Parent-child wiring
+		for (size_t i = 0; i < gltf.nodes.size(); ++i)
+			for (auto childIdx : gltf.nodes[i].children)
+			{
+				nodes[i]->children.push_back(nodes[childIdx]);
+				nodes[childIdx]->parent = nodes[i];
+			}
+
+		// World transforms
+		for (auto& node : nodes)
+			if (node->parent.expired())
+				node->RefreshTransform(glm::mat4(1.f));
+
+		// Collect unique nodes referenced by instances and build transform list
+		std::unordered_map<uint32_t, uint32_t> nodeToSlot;
+		std::vector<uint32_t> uniqueNodeIDs;
+
+		for (auto& inst : batch.instances)
+		{
+			if (nodeToSlot.find(inst.nodeIdx) == nodeToSlot.end())
+			{
+				const uint32_t slot = static_cast<uint32_t>(uniqueNodeIDs.size());
+				nodeToSlot[inst.nodeIdx] = slot;
+				uniqueNodeIDs.push_back(inst.nodeIdx);
+			}
+		}
+
+		batch.localToNodeSlot.resize(batch.instances.size());
+		for (size_t i = 0; i < batch.instances.size(); ++i)
+		{
+			const uint32_t nodeIdx = batch.instances[i].nodeIdx;
+			auto it = nodeToSlot.find(nodeIdx);
+			ASSERT(it != nodeToSlot.end());
+			batch.localToNodeSlot[i] = it->second;
+		}
+
+		batch.nodeTransforms.reserve(uniqueNodeIDs.size());
+		for (auto nodeIdx : uniqueNodeIDs)
+			batch.nodeTransforms.push_back(nodes[nodeIdx]->worldTransform);
+
+		VirtualInstance vi{};
+		vi.sceneID           = static_cast<uint8_t>(batch.sceneID);
+		vi.perInstanceStride = static_cast<uint32_t>(batch.instances.size());
+		vi.transformCount    = static_cast<uint32_t>(uniqueNodeIDs.size());
+		vi.baseTransform     = batch.nodeTransforms.empty()
+							   ? glm::mat4(1.0f) : batch.nodeTransforms[0];
+
+		batch.virtualInstance = vi;
+
+		sq->Advance(context, GLTFJobType::BuildSceneGraph);
+		++ctx.jobsExecuted;
+	}
+	return true;
+}
+
+// -----------------------------------------------------------------------
+// Cleanup
+// -----------------------------------------------------------------------
+
+void AssetManager::Shutdown(JobSystem& jobSystem)
+{
+	// Drain any in-flight CPU pipeline stages
+	jobSystem.Wait();
+
+	// Drop queue — all contexts have completed
+	m_queues.reset();
+
+	// Clear any pending batches that never got consumed
+	{
+		std::scoped_lock lock(m_batchMutex);
+		m_pendingBatches.clear();
+	}
+}

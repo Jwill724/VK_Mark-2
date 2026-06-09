@@ -381,8 +381,8 @@ void TransferQueue::DestroyTimelineSemaphore()
 
 uint64_t TransferQueue::Submit(
 	const std::vector<VkCommandBuffer>& cmdBuffers,
-	VkSemaphore                         waitSemaphore,
 	uint64_t                            waitValue,
+	VkSemaphore                         waitSemaphore,
 	VkPipelineStageFlags2               waitStages)
 {
 	const uint64_t signaled = SubmitWithTimelineSync(

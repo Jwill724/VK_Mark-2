@@ -3,6 +3,7 @@
 #include "Engine.h"
 #include "Window.h"
 #include "JobSystem.h"
+#include "AssetManager.h"
 #include "../profiler/EditorImgui.h"
 #include "renderer/Renderer.h"
 #include "renderer/backend/Device.h"
@@ -12,11 +13,12 @@
 namespace Engine
 {
 	Window _mainWindow;
-	const Window& GetWindow() { return _mainWindow; }
+	//const Window& GetWindow() { return _mainWindow; }
 
 	Renderer _renderer;
 	JobSystem _jobSystem;
 	Editor _editor;
+	AssetManager _assetManager;
 
 	static constexpr uint32_t DEFAULT_WIN_EXTENT_W = 1280;
 	static constexpr uint32_t DEFAULT_WIN_EXTENT_H = 960;
@@ -27,6 +29,9 @@ namespace Engine
 	void Cleanup();
 
 	void Run();
+
+	std::vector<SceneUploadBatch> _pendingBatches;
+	std::mutex _batchMutex;
 }
 
 void Engine::Run()
@@ -43,7 +48,25 @@ void Engine::Run()
 
 	_isInitialized = true;
 
-	// Load assets
+	_renderer.StartTimer();
+	_assetManager.LoadScenes(
+		[&](SceneUploadBatch&& batch)
+		{
+			std::scoped_lock lock(_batchMutex);
+			_pendingBatches.push_back(std::move(batch));
+		},
+		_jobSystem);
+
+	_jobSystem.Wait();
+
+	_jobSystem.SubmitRenderJob([batches = std::move(_pendingBatches)](ThreadContext&) mutable
+	{
+		_renderer.UploadScenes(std::move(batches));
+	});
+	_jobSystem.Wait();
+
+	_renderer.EndAssetTimer();
+	_pendingBatches.clear();
 
 	bool hasWindowResized = false;
 
@@ -53,7 +76,7 @@ void Engine::Run()
 
 		if (_mainWindow.ThrottleIfWindowUnfocused(0.033)) continue;
 
-		_renderer.BeingFrameTimer();
+		_renderer.BeginFrameTimer();
 
 		_renderer.TickVramUsage();
 
@@ -98,6 +121,8 @@ void Engine::Cleanup()
 	{
 		_isInitialized = false;
 		_renderer.StallDevice();
+		_assetManager.Shutdown(_jobSystem);
+		_renderer.UnloadAllScenes();
 		_editor.Shutdown(_renderer);
 		_renderer.Cleanup();
 		_jobSystem.Shutdown();

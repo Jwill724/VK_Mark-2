@@ -22,8 +22,6 @@ void RegisterContactShadowsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
 				.WriteResource(RD::Renderer_RenderTarget::SSContactShadows,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
@@ -77,7 +75,6 @@ void RegisterContactShadowsPass(
 								{
 									push.waveOffsets = disp.waveOffset;
 								});
-
 
 							pso.UpdateWorkgroups({
 								static_cast<uint32_t>(disp.waveCount[0]),

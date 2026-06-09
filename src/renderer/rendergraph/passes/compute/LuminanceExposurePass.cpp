@@ -9,6 +9,7 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../../profiler/Profiler.h"
+#include "../../../scene/Scene.h"
 
 namespace B = BufferBarriers;
 
@@ -25,16 +26,6 @@ void RegisterLuminanceExposurePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
-					RD::ImageAccess::Read)
-				.ReadResource(
-					RD::Renderer_RenderTarget::ColorHistoryB,
-					RD::ImageAccess::Read)
-				.ReadResource(
-					RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Read)
-
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -43,11 +34,11 @@ void RegisterLuminanceExposurePass(
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-
 						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
-						const auto& opaque = !taaEnabled ?
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque) :
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryB);
+
+						const auto& opaque = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x)));
 
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);

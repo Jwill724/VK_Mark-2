@@ -7,6 +7,7 @@
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
+#include "../../../scene/Scene.h"
 
 static constexpr size_t PIPE_ID_COMPOSITE = 0;
 
@@ -20,19 +21,6 @@ void RegisterFinalCompositePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::Opaque,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::ColorHistoryB,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::VolumetricLight,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::LensFlareColor,
-					RD::ImageAccess::Read)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::Tonemap,
 					RD::ImageAccess::Write,
@@ -51,8 +39,14 @@ void RegisterFinalCompositePass(
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& scope = std::get<ComputeScope>(pass.scope);
 
+						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
+
+						const auto& opaque = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x)));
+
 						const auto& aaColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AAColor);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
@@ -66,7 +60,8 @@ void RegisterFinalCompositePass(
 							RD::PUSH_BINDING_WRITE_1,
 							tonemap);
 
-						if (static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode) == RD::AntiAliasingMethod::AA_CMAA2)
+						if (ctx.frameState->bCopyPostAAImage &&
+							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2))
 						{
 							scope.BindWriteImage(
 								pass.pushWriter,
@@ -124,7 +119,7 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 
-						if (ctx.frameState->bIsOpaqueVisible &&
+						if (ctx.frameState->bHasVisibles &&
 							ctx.profiler->debugToggles.enableLensFlare)
 						{
 							scope.BindReadImage(

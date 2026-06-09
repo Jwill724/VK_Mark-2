@@ -51,6 +51,7 @@ public:
 			m_bIsInitialized = false;
 		}
 	}
+
 private:
 	bool m_bIsInitialized = false;
 	void InitScheduler();

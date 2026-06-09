@@ -8,6 +8,7 @@
 #include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
+#include "../../../scene/LightingSystem.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
 
@@ -41,6 +42,8 @@ void RegisterFlashlightShadowMapPass(
 						depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 						depth.clearValue.depthStencil.depth = 1.0f;
 
+						pso.SetPush(LightingSystem::_mainFlashLight.ViewProj);
+
 						pso.UpdateRenderInfo(
 							{
 								shadowmap.Width(),
@@ -71,16 +74,21 @@ void RegisterFlashlightShadowMapPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& indirectBuffer =
+						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto& drawRange = frameCtx->GetFlashlightDrawRange();
+						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
+
+						ctx.profiler->AddFlashlightIndirect(1, drawRange.commandCount);
 
 						pso.BeginRendering(cmd);
 
 						pso.DrawIndexedIndirect(
 							cmd,
 							indirectBuffer,
-							frameCtx->GetFlashlightShadowDrawRange(),
-							pass.pipelines[PIPE_ID_MAIN],
+							drawRange,
+							pipeline,
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

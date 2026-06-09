@@ -46,13 +46,13 @@ struct RenderPassDesc
 	record;
 };
 
-
 class RenderPassBuilder
 {
 public:
 	RenderPassBuilder(RenderPassDesc& desc) : m_desc(desc) {}
 
 	// Direct first inputs of a possible pass/subpasses
+	// TODO: Figure out how to make this read resource practical, not in use currently.
 	RenderPassBuilder& ReadResource(
 		RD::Renderer_RenderTarget target,
 		RD::ImageAccess access,

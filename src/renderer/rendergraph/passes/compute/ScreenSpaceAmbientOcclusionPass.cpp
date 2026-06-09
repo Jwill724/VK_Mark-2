@@ -22,7 +22,7 @@ static constexpr size_t PIPE_ID_DENOISE        = 3;
 
 void RegisterSSAOPass(
 	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines) // Quarter res of full draw extents
+	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
 		"SSAO",
@@ -30,12 +30,8 @@ void RegisterSSAOPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-				.ReadResource(RD::Renderer_RenderTarget::ViewSpaceNormals,
-					RD::ImageAccess::Read)
-
-				.WriteResource(RD::Renderer_RenderTarget::BentNormals,
+				.WriteResource(
+					RD::Renderer_RenderTarget::BentNormals,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
@@ -44,7 +40,7 @@ void RegisterSSAOPass(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+						pass.scope = ComputeScope{ drawExtent };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						auto& ssaoPush = ctx.profiler->ssaoSettings;
@@ -55,7 +51,8 @@ void RegisterSSAOPass(
 
 						ssaoPush.depthLinearizeMult = -proj[3][2];
 						ssaoPush.depthLinearizeAdd  =  proj[2][2];
-						if (ssaoPush.depthLinearizeMult * ssaoPush.depthLinearizeAdd < 0.0) {
+						if (ssaoPush.depthLinearizeMult * ssaoPush.depthLinearizeAdd < 0.0)
+						{
 							ssaoPush.depthLinearizeAdd = -ssaoPush.depthLinearizeAdd;
 						}
 
@@ -75,7 +72,7 @@ void RegisterSSAOPass(
 						pso.SetPush(ssaoPush);
 
 						const auto& linearizedMinHiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ);
-						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& depthResolved    = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
 						pso.BindReadImage(
@@ -92,7 +89,8 @@ void RegisterSSAOPass(
 							pso.BindWriteImage(
 								pass.pushWriter,
 								pushWriteBinding,
-								linearizedMinHiZ);
+								linearizedMinHiZ,
+								i);
 							pushWriteBinding++;
 						}
 					})
@@ -101,7 +99,7 @@ void RegisterSSAOPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return ctx.frameState->bIsOpaqueVisible &&
-							ctx.profiler->debugToggles.aoMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF);
+							ctx.profiler->debugToggles.aoMode != static_cast<uint32_t>(RD::AmbientOcclusionMethod::AO_OFF);
 					})
 
 				.SetRecord(
@@ -126,7 +124,7 @@ void RegisterSSAOPass(
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 						const auto depthPyramidSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 						const auto aoSampler           = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearLodClamp);
-						const auto nearSampler         = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto nearSampler         = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Nearest);
 
 						// ======================
 						// HiZ Prefilter
@@ -148,7 +146,7 @@ void RegisterSSAOPass(
 						I::TransitionLayout(cmd, edgeInfo,    RD::ImageAccess::Read, RD::ImageAccess::Write);
 
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, linearizedMinHiZ, depthPyramidSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, viewSpaceNormals,  nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, viewSpaceNormals, nearestClampSampler);
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, rawAO);
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, edgeInfo);
@@ -156,7 +154,6 @@ void RegisterSSAOPass(
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
 
-						I::TransitionLayout(cmd, bentNormals, RD::ImageAccess::Write, RD::ImageAccess::Read);
 						I::TransitionLayout(cmd, rawAO,       RD::ImageAccess::Write, RD::ImageAccess::Read);
 						I::TransitionLayout(cmd, edgeInfo,    RD::ImageAccess::Write, RD::ImageAccess::Read);
 

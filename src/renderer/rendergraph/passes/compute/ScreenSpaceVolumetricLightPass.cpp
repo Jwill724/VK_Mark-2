@@ -25,9 +25,6 @@ void RegisterVolumetricLightPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -75,15 +72,16 @@ void RegisterVolumetricLightPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
+						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& volumetricBlur = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLightBlur);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 
 						// ======================
 						// Volumetric Light
 						// ======================
-
+						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
-
 						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ======================
@@ -94,8 +92,14 @@ void RegisterVolumetricLightPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							volumetricLight,
+							depthResolved,
 							nearestClampSampler);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
+							volumetricLight,
+							linearClampSampler);
 
 						pso.BindWriteImage(
 							pass.pushWriter,
@@ -112,8 +116,14 @@ void RegisterVolumetricLightPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							volumetricBlur,
+							depthResolved,
 							nearestClampSampler);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
+							volumetricBlur,
+							linearClampSampler);
 
 						pso.BindWriteImage(
 							pass.pushWriter,

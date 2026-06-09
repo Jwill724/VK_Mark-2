@@ -43,6 +43,8 @@ public:
 	VkImage GetCurrentImage() const { return m_images[m_currentSwapchainImageIndex]; };
 	VkImageView GetCurrentView() const { return m_views[m_currentSwapchainImageIndex]; };
 
+	VkExtent2D GetExtent() const { return m_extent; }
+
 	VkFormat GetFormat() const { return m_format; }
 
 private:

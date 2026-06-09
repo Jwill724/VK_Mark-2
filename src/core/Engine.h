@@ -1,10 +1,10 @@
 #pragma once
 
-class Window;
+//class Window;
 
 namespace Engine
 {
-	const Window& GetWindow();
+	//const Window& GetWindow();
 
 	bool IsInitialized();
 

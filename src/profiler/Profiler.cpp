@@ -375,16 +375,12 @@ float Profiler::EndTimerSec() const
 // -----------------------------------------------------------------------------
 void Profiler::ResetDrawCalls()
 {
-	m_stats.triangleCount                    = 0;
-	m_stats.directDraws                      = 0;
-	m_stats.opaqueIndirect.commands          = 0;
-	m_stats.opaqueIndirect.subdraws          = 0;
-	m_stats.transparentIndirect.commands     = 0;
-	m_stats.transparentIndirect.subdraws     = 0;
-	m_stats.directionalCSMIndirect.commands  = 0;
-	m_stats.directionalCSMIndirect.subdraws  = 0;
-	m_stats.flashlightShadowIndirect.commands = 0;
-	m_stats.flashlightShadowIndirect.subdraws = 0;
+	m_stats.triangleCount = 0;
+	m_stats.directDraws = 0;
+	m_stats.opaqueIndirect = {};
+	m_stats.transparentIndirect = {};
+	m_stats.directionalCSMIndirect = {};
+	m_stats.flashlightShadowIndirect = {};
 }
 
 void Profiler::AddDirect(uint32_t calls, uint64_t triangles)
@@ -405,6 +401,20 @@ void Profiler::AddTransparentIndirect(uint32_t commands, uint32_t subdraws, uint
 	m_stats.transparentIndirect.commands += commands;
 	m_stats.transparentIndirect.subdraws += subdraws;
 	m_stats.triangleCount                += triangles;
+}
+
+void Profiler::AddCSMIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles)
+{
+	m_stats.directionalCSMIndirect.commands += commands;
+	m_stats.directionalCSMIndirect.subdraws += subdraws;
+	m_stats.triangleCount                   += triangles;
+}
+
+void Profiler::AddFlashlightIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles)
+{
+	m_stats.flashlightShadowIndirect.commands += commands;
+	m_stats.flashlightShadowIndirect.subdraws += subdraws;
+	m_stats.triangleCount                     += triangles;
 }
 
 // -----------------------------------------------------------------------------

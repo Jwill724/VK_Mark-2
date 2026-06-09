@@ -12,27 +12,19 @@
 
 struct Vertex
 {
-	// half float 6 bytes
-	uint16_t  positionX;
-	uint16_t  positionY;
-	uint16_t  positionZ;
+	glm::vec3 position{0.0f};
 
-	// oct-encoded 2 bytes
-	int8_t    normalX;
-	int8_t    normalY;
+	int16_t  normalX = 0;     // oct snorm16
+	int16_t  normalY = 0;
 
-	// 2 bytes
-	int8_t    tangentX; // oct-encoded
-	int8_t    tangentY; // sign in MSB (tangentW packed as sign bit)
+	int16_t  tangentX = 0;    // oct snorm16, W in sign of tangentY
+	int16_t  tangentY = 0;
 
-	// unorm16 4 bytes
-	uint16_t  uvX;
-	uint16_t  uvY;
+	uint16_t uvX = 0;         // half-float bits
+	uint16_t uvY = 0;
 
-	// 4 bytes
-	uint32_t  colorRGBA8;
+	uint32_t colorRGBA8 = 0xFFFFFFFFu;
 };
-// Total: 20 bytes
 
 inline int16_t ToSnorm16(float value)
 {
@@ -85,13 +77,6 @@ inline uint16_t FloatToHalfBits(float value)
 	return static_cast<uint16_t>((sign << 15) | (halfExp << 10) | halfMantissa);
 };
 
-inline void EncodePosition(Vertex& vertex, const glm::vec3& v)
-{
-	vertex.positionX = FloatToHalfBits(v.x);
-	vertex.positionY = FloatToHalfBits(v.y);
-	vertex.positionZ = FloatToHalfBits(v.z);
-}
-
 inline glm::vec2 EncodeOctahedral(const glm::vec3& n)
 {
 	glm::vec3 normal = glm::normalize(n);
@@ -116,17 +101,18 @@ inline glm::vec2 EncodeOctahedral(const glm::vec3& n)
 inline void EncodeOctahedral_Normal(Vertex& vertex, const glm::vec3& n)
 {
 	glm::vec2 enc  = EncodeOctahedral(n);
-	vertex.normalX = ToSnorm8(enc.x);
-	vertex.normalY = ToSnorm8(enc.y);
+	vertex.normalX = ToSnorm16(enc.x);
+	vertex.normalY = ToSnorm16(enc.y);
 }
 
 inline void EncodeOctahedral_Tangent(Vertex& vertex, const glm::vec4& t)
 {
 	glm::vec2 enc = EncodeOctahedral(glm::vec3(t.x, t.y, t.z));
 
-	// Quantize to [1..127] so zero is never produced — preserves sign bit for W
-	int8_t tx = static_cast<int8_t>(glm::clamp(static_cast<int>(std::round(enc.x * 127.0f)), -127, 127));
-	int8_t ty = static_cast<int8_t>(glm::clamp(static_cast<int>(std::round(enc.y * 127.0f)), -127, 127));
+	int16_t tx = static_cast<int16_t>(glm::clamp(
+		static_cast<int>(std::round(enc.x * 32767.0f)), -32767, 32767));
+	int16_t ty = static_cast<int16_t>(glm::clamp(
+		static_cast<int>(std::round(enc.y * 32767.0f)), -32767, 32767));
 
 	// Flip sign of Y to encode tangentW, avoiding zero
 	if (ty == 0) ty = 1; // guard: zero has no sign

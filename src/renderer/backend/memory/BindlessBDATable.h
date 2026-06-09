@@ -35,7 +35,7 @@ public:
 
 	bool IsTableDirty() const { return m_bIsTableDirty; }
 
-	// Called after descriptor update
+	// Called after buffer barrier
 	void ClearDirty() { m_bIsTableDirty = false; }
 
 	uint32_t GetCpuVersion() const { return m_cpuVersion; }

@@ -29,17 +29,6 @@ void RegisterHiZGenerationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				// Occurs directly after the prepass.
-				.ReadResource(
-					RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-				.WriteResource(
-					RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read,
-					0u,
-					RD::HI_Z_MIP_COUNT)
-
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -58,13 +47,14 @@ void RegisterHiZGenerationPass(
 							RD::Renderer_Pass::HiZGeneration,
 							pass.passName);
 
-						pass.scope = ComputeScope{{ drawExtent }, { WORKGROUP_8x8 }};
+						pass.scope = ComputeScope{ drawExtent , WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
-						auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
+						const auto& dummyUint8 = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::DummyU8);
+						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						auto nearestSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 						auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
@@ -75,7 +65,7 @@ void RegisterHiZGenerationPass(
 						ImageUtils::TransitionLayout(
 							cmd,
 							hiZ,
-							RD::ImageAccess::DepthRead,
+							RD::ImageAccess::Read,
 							RD::ImageAccess::Write,
 							0,
 							hiZ.m_mipLevels);
@@ -105,6 +95,14 @@ void RegisterHiZGenerationPass(
 									hiZ,
 									hiZSampler,
 									mip - 1);
+							}
+							else
+							{
+								pso.BindReadImage(
+									pass.pushWriter,
+									RD::PUSH_BINDING_READ_2,
+									dummyUint8,
+									hiZSampler);
 							}
 
 							//------------------------------------

@@ -7,15 +7,6 @@
 
 namespace RD = RendererDefinitions;
 
-struct TotalAssetDataCounts
-{
-	uint32_t totalVertexCount = 0u;
-	uint32_t totalIndexCount = 0u;
-	uint32_t totalMaterialCount = 0u;
-	uint32_t totalMeshCount = 0u;
-	uint32_t totalTransformCount = 0u;
-};
-
 // Virtual control over instances, enables true instancing with unique transforms
 struct VirtualInstance
 {
@@ -78,7 +69,7 @@ struct alignas(16) SceneInfo
 	glm::mat4 prevViewProj{};
 	glm::mat4 prevView{};
 	glm::mat4 viewProjUnjittered{};
-	// x = frameIndex, y = historyValid (0/1), z = Hi-Z valid(0/1)
+	// x = frameNumber, y = historyValid (0/1), z = Hi-Z valid(0/1)
 	glm::uvec4 temporal{};
 	// x = current jitter x ndc
 	// y = current jitter y
@@ -88,7 +79,7 @@ struct alignas(16) SceneInfo
 	// w for sun power
 	glm::vec4 sunlightDirection{};
 	glm::vec4 sunlightColor{};
-	glm::vec4 cameraPos{};         // xyz pos, .w exposure
+	glm::vec4 cameraPos{};         // xyz pos
 	glm::vec4 cameraClips{};       // .x near and .y far
 	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
 	glm::vec4 pixelSizes{};        // .x/.y = 1 / full m_extent .z/.w = = 1 / half m_extent

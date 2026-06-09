@@ -20,8 +20,6 @@ void RegisterFXAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
 				.WriteResource(
 					RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
@@ -31,7 +29,7 @@ void RegisterFXAAPass(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+						pass.scope = ComputeScope{ drawExtent };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& aaColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AAColor);

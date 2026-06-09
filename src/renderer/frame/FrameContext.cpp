@@ -304,8 +304,6 @@ void FrameContext::TickDescriptorWrites(DescriptorWriter& writer)
 			RD::ADDRESS_TABLE_BINDING,
 			m_gpuAddressTable.GetTableBuffer(),
 			m_frameSet);
-
-		m_gpuAddressTable.ClearDirty();
 	}
 
 	if (m_bClusterUniformWriteNeeded)
@@ -333,14 +331,70 @@ void FrameContext::AssignCSMUniform(AllocatedBuffer buffer, const Allocator& all
 	});
 }
 
-const IndirectDrawRange& FrameContext::GetDirectionalCSMDrawRange(uint32_t cascade) const
+const IndirectDrawRange& FrameContext::GetCSMDrawRange(uint32_t cascade) const
 {
 	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
-	return m_csmDrawRange[cascade];
-};
+	return m_csmDrawRanges[cascade];
+}
+
+IndirectDrawRange& FrameContext::GetCSMDrawRange(uint32_t cascade)
+{
+	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
+	return m_csmDrawRanges[cascade];
+}
+
+const InstanceRange& FrameContext::GetCSMInstanceRange(uint32_t cascade) const
+{
+	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
+	return m_csmInstanceRanges[cascade];
+}
+
+InstanceRange& FrameContext::GetCSMInstanceRange(uint32_t cascade)
+{
+	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
+	return m_csmInstanceRanges[cascade];
+}
+
+void FrameContext::ValidateOpaque() const
+{
+	ASSERT(m_opaqueInstanceRange.firstInstance + m_opaqueInstanceRange.visibleCount
+		<= m_visibleInstances.size());
+
+	ASSERT(m_opaqueDrawRange.firstCommand + m_opaqueDrawRange.commandCount
+		<= m_indirectDraws.size());
+}
+
+void FrameContext::ValidateTransparent() const
+{
+	ASSERT(m_transparentInstanceRange.firstInstance + m_transparentInstanceRange.visibleCount
+		<= m_visibleInstances.size());
+
+	ASSERT(m_transparentDrawRange.firstCommand + m_transparentDrawRange.commandCount
+		<= m_indirectDraws.size());
+}
+
+void FrameContext::ValidateCSM(uint32_t index) const
+{
+	ASSERT(m_csmInstanceRanges[index].firstInstance + m_csmInstanceRanges[index].visibleCount
+		<= m_visibleInstances.size());
+
+	ASSERT(m_csmDrawRanges[index].firstCommand + m_csmDrawRanges[index].commandCount
+		<= m_indirectDraws.size());
+}
+
+void FrameContext::ValidateFlashlight() const
+{
+	ASSERT(m_flashlightShadowInstanceRange.firstInstance + m_flashlightShadowInstanceRange.visibleCount
+		<= m_visibleInstances.size());
+
+	ASSERT(m_flashlightShadowDrawRange.firstCommand + m_flashlightShadowDrawRange.commandCount
+		<= m_indirectDraws.size());
+}
 
 void FrameContext::Cleanup(const DeviceContext& deviceCtx, Allocator& allocator)
 {
+	ClearDrawData();
+
 	m_cpuDeletionQueue.Flush(); // Memory frees for SceneInfo and DirectionalCSM uniforms occur in here
 	allocator.FreeBuffer(m_clustered_UBO);
 

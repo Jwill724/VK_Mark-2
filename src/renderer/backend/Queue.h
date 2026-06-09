@@ -120,8 +120,8 @@ public:
 	// Submit work and advance the internal timeline.
 	uint64_t Submit(
 		const std::vector<VkCommandBuffer>& cmdBuffers,
-		VkSemaphore                         waitSemaphore = VK_NULL_HANDLE,
 		uint64_t                            waitValue     = 0,
+		VkSemaphore                         waitSemaphore = VK_NULL_HANDLE,
 		VkPipelineStageFlags2               waitStages    = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
 
 	// The semaphore callers need to embed in their wait lists.

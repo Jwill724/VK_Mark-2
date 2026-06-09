@@ -79,7 +79,7 @@ void BindlessBDATable::SetGpuVersion(uint32_t version)
 	m_gpuVersion = version;
 }
 
-void BindlessBDATable::IsVersionMismatched() const { INVARIANT(m_cpuVersion != m_gpuVersion && "GPU is about to use stale address table!"); }
+void BindlessBDATable::IsVersionMismatched() const { INVARIANT(m_cpuVersion == m_gpuVersion && "GPU is about to use stale address table!"); }
 
 
 void BindlessBDATable::SetAddress(RD::Renderer_Buffer slot, uint64_t address)

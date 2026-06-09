@@ -217,18 +217,23 @@ void PM::SetupPipelineConfig(const PipelinePreset& preset)
 		preset.enableBlending,
 		VK_BLEND_FACTOR_ONE);
 
-	// Manual formats
-	if (preset.IsColorDefined() && preset.IsDepthDefined())
+	const bool hasColor = preset.IsColorDefined();
+	const bool hasDepth = preset.IsDepthDefined();
+
+	if (hasColor || hasDepth)
 	{
+		// At least one was set intentionally
 		TheBuilder.ColorAndDepthConfig(
 			preset.colorFormats,
-			preset.depthFormat);
+			hasDepth ? preset.depthFormat
+					 : static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat()));
 	}
-	else // Default builder formats
+	else
 	{
+		// Nothing specified at all — fall back to builder defaults.
 		TheBuilder.ColorAndDepthConfig(
 			{ static_cast<Vulkan_Format>(TheBuilder.GetColorFormat()) },
-			{ static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat()) });
+			static_cast<Vulkan_Format>(TheBuilder.GetDepthFormat()));
 	}
 
 	TheBuilder.DepthStencilConfig(

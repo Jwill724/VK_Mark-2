@@ -73,13 +73,13 @@ struct FrameStats
 	IndirectStats flashlightShadowIndirect;
 };
 
-//struct SubPassTimingStats
-//{
-//	std::string name;
-//	float gpuMsRaw = 0.0f;
-//	bool resolved = false; 
-//	TimerAverager gpuMsAverage;
-//};
+struct TotalAssetDataCounts
+{
+	uint32_t totalVertexCount = 0u;
+	uint32_t totalIndexCount = 0u;
+	uint32_t totalMaterialCount = 0u;
+	uint32_t totalMeshCount = 0u;
+};
 
 struct PassTimingStats
 {

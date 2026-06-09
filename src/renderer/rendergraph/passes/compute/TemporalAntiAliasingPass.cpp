@@ -3,15 +3,16 @@
 #include "../../RenderPasses.h"
 #include "../../../rendergraph/RenderGraphBuilder.h"
 #include "../../scopes/ComputeScope.h"
-#include "EngineTypes.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
+#include "../../../scene/Scene.h"
+#include "../../../backend/ImageUtils.h"
+
+namespace I = ImageUtils;
 
 static constexpr size_t PIPE_ID_MAIN  = 0;
-
-// TODO: Look into the logic for color history indexing
 
 void RegisterTAAPass(
 	RenderGraph& graph,
@@ -23,24 +24,6 @@ void RegisterTAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-				.ReadResource(RD::Renderer_RenderTarget::PrevDepthResolved,
-					RD::ImageAccess::DepthRead)
-				.ReadResource(RD::Renderer_RenderTarget::Opaque,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::ColorHistoryA,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::Velocity,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::PrevVelocity,
-					RD::ImageAccess::Read)
-
-				.WriteResource(
-					RD::Renderer_RenderTarget::ColorHistoryB,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
-
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -48,13 +31,15 @@ void RegisterTAAPass(
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
+						const auto slots = TaaHistory::Resolve(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x));
+						const auto& history = ctx.imageTable->GetRenderTarget(slots.read);
+						const auto& current = ctx.imageTable->GetRenderTarget(slots.write);
+
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& prevDepthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved);
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
 						const auto& prevVelocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity);
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
-						const auto& colorHistoryA = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryA);
-						const auto& colorHistoryB = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryB);
 						const auto taaHistorySampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::TaaHistory);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
@@ -67,7 +52,7 @@ void RegisterTAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_2,
-							colorHistoryA,
+							history,
 							taaHistorySampler);
 
 						pso.BindReadImage(
@@ -95,7 +80,7 @@ void RegisterTAAPass(
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
-							colorHistoryB);
+							current);
 					})
 
 				.SetExecutionCondition(
@@ -106,17 +91,22 @@ void RegisterTAAPass(
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::TAA,
-							pass.passName);
+		.SetRecord(
+			[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+			{
+				auto passScope = ctx.profiler->ProfilePass(
+					*ctx.frameCtx, ctx.commandBuffer, RD::Renderer_Pass::TAA, pass.passName);
 
-						auto& pso = std::get<ComputeScope>(pass.scope);
-						pso.DispatchComputePass(ctx.commandBuffer, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
-					});
+				VkCommandBuffer cmd = ctx.commandBuffer;
+
+				const auto slots    = TaaHistory::Resolve(ctx.scene->GetSceneData().temporal.x);
+				const auto& current = ctx.imageTable->GetRenderTarget(slots.write);
+
+				auto& pso = std::get<ComputeScope>(pass.scope);
+
+				I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
+				pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
+				I::TransitionLayout(cmd, current, RD::ImageAccess::Write, RD::ImageAccess::Read);
+			});
 		});
 }

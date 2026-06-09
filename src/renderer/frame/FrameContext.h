@@ -34,6 +34,19 @@ public:
 		Allocator& allocator);
 	void Cleanup(const DeviceContext& deviceCtx, Allocator& allocator);
 
+	BindlessBDATable& GetBindlessBDATable() { return m_gpuAddressTable; }
+
+	void SetPendingAddrTableVersion(uint32_t version) { m_pendingAddressTableVersion = version; }
+	uint32_t GetPendingAddrTableVersion() const noexcept { return m_pendingAddressTableVersion; }
+
+	const std::vector<Instance>& GetVisibleInstances() const { return m_visibleInstances; }
+	std::vector<Instance>& GetVisibleInstances() { return m_visibleInstances; }
+
+	const std::vector<VkDrawIndexedIndirectCommand>& GetIndirectCmds() const { return m_indirectDraws; }
+	std::vector<VkDrawIndexedIndirectCommand>& GetIndirectCmds() { return m_indirectDraws; }
+
+	std::vector<VkCommandBuffer>& GetTransferCommands() { return m_transferCommands; }
+
 	void CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue);
 	void StashSubmitted(QueueType queue);
 	void FreeStashedCmds(const DeviceContext& deviceCtx);
@@ -43,13 +56,16 @@ public:
 		m_visibleInstances.clear();
 		m_indirectDraws.clear();
 		m_opaqueDrawRange = {};
+		m_opaqueInstanceRange = {};
 		m_transparentDrawRange = {};
-		m_visibleShadowCasters.clear();
+		m_transparentInstanceRange = {};
 		m_flashlightShadowDrawRange = {};
+		m_flashlightShadowInstanceRange = {};
+
 		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
 		{
-			m_csmDrawRange[i] = {};
-			//m_shadowDrawRanges[i] = {};
+			m_csmDrawRanges[i] = {};
+			m_csmInstanceRanges[i] = {};
 		}
 	}
 
@@ -73,19 +89,80 @@ public:
 
 	bool IsOpaqueVisible() const noexcept
 	{
-		return m_opaqueDrawRange.visibleCount > 0 && m_opaqueDrawRange.commandCount > 0;
+		return m_opaqueDrawRange.commandCount > 0 && m_opaqueInstanceRange.visibleCount > 0;
 	}
 	bool IsTransparentVisible() const noexcept
 	{
-		return m_transparentDrawRange.visibleCount > 0 && m_transparentDrawRange.commandCount > 0;
+		return m_transparentDrawRange.commandCount > 0 && m_transparentInstanceRange.visibleCount > 0;
+	}
+
+	bool IsThereVisibles() const noexcept
+	{
+		return IsOpaqueVisible() || IsTransparentVisible();
 	}
 
 	bool IsTemporalValid() const noexcept { return m_bIsTemporalValid; }
 
 	const IndirectDrawRange& GetOpaqueDrawRange() const { return m_opaqueDrawRange; }
+	IndirectDrawRange& GetOpaqueDrawRange() { return m_opaqueDrawRange; }
+
+	const InstanceRange& GetOpaqueInstanceRange() const { return m_opaqueInstanceRange; }
+	InstanceRange& GetOpaqueInstanceRange() { return m_opaqueInstanceRange; }
+
 	const IndirectDrawRange& GetTransparentDrawRange() const { return m_transparentDrawRange; }
-	const IndirectDrawRange& GetDirectionalCSMDrawRange(uint32_t cascade) const;
-	const IndirectDrawRange& GetFlashlightShadowDrawRange() const { return m_flashlightShadowDrawRange; }
+	IndirectDrawRange& GetTransparentDrawRange() { return m_transparentDrawRange; }
+
+	const InstanceRange& GetTransparentInstanceRange() const { return m_transparentInstanceRange; }
+	InstanceRange& GetTransparentInstanceRange() { return m_transparentInstanceRange; }
+
+	const IndirectDrawRange& GetCSMDrawRange(uint32_t cascade) const;
+	IndirectDrawRange& GetCSMDrawRange(uint32_t cascade);
+
+	const InstanceRange& GetCSMInstanceRange(uint32_t cascade) const;
+	InstanceRange& GetCSMInstanceRange(uint32_t cascade);
+
+	const IndirectDrawRange& GetFlashlightDrawRange() const { return m_flashlightShadowDrawRange; }
+
+	IndirectDrawRange& GetFlashlightDrawRange() { return m_flashlightShadowDrawRange; }
+
+	const InstanceRange& GetFlashlightInstanceRange() const { return m_flashlightShadowInstanceRange; }
+
+	InstanceRange& GetFlashlightInstanceRange() { return m_flashlightShadowInstanceRange; }
+
+	void SetDrawData(DrawBuildOutput&& out)
+	{
+		m_visibleInstances = std::move(out.visibleInstances);
+		m_indirectDraws = std::move(out.indirectDraws);
+
+		m_opaqueInstanceRange = out.opaqueInstances;
+		m_opaqueDrawRange = out.opaqueDraws;
+
+		m_transparentInstanceRange = out.transparentInstances;
+		m_transparentDrawRange = out.transparentDraws;
+
+		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+		{
+			m_csmDrawRanges[i] = out.csm[i].drawRange;
+			m_csmInstanceRanges[i] = out.csm[i].instanceRange;
+		}
+
+		m_flashlightShadowDrawRange = out.flashlight.drawRange;
+		m_flashlightShadowInstanceRange = out.flashlight.instanceRange;
+	}
+
+	void ValidateOpaque() const;
+	void ValidateTransparent() const;
+	void ValidateCSM(uint32_t cascade) const;
+	void ValidateFlashlight() const;
+
+	VkCommandPool  GetTransferPool()  const { return m_transferPool; }
+	uint64_t&      GetTransferWaitValue()   { return transferWaitValue; }
+
+	bool IsTransformsUploadNeeded()  const noexcept { return m_bTransformsBufferUploadNeeded; }
+	bool IsLightsUploadNeeded()      const noexcept { return m_bLightsBufferUploadNeeded; }
+
+	void ClearTransformsUploadFlag() noexcept { m_bTransformsBufferUploadNeeded = false; }
+	void ClearLightsUploadFlag()     noexcept { m_bLightsBufferUploadNeeded = false; }
 
 	bool DoesCachedExtentNeedUpdate(uint32_t width, uint32_t height) noexcept
 	{
@@ -203,14 +280,17 @@ private:
 	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsed{};
 
 	// Visible instances from directional light perspective
-	std::vector<Instance> m_visibleShadowCasters;
-	std::array<IndirectDrawRange, RD::MAX_SHADOW_CASCADES> m_csmDrawRange;
+	std::array<IndirectDrawRange, RD::MAX_SHADOW_CASCADES> m_csmDrawRanges;
+	std::array<InstanceRange, RD::MAX_SHADOW_CASCADES> m_csmInstanceRanges;
 
 	// Shadow casters for flashlight
 	IndirectDrawRange m_flashlightShadowDrawRange;
+	InstanceRange m_flashlightShadowInstanceRange;
 
 	IndirectDrawRange m_opaqueDrawRange;
+	InstanceRange m_opaqueInstanceRange;
 	IndirectDrawRange m_transparentDrawRange;
+	InstanceRange m_transparentInstanceRange;
 
 	VisibilitySyncResult m_visibilitySyncResult;
 

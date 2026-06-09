@@ -8,6 +8,7 @@
 #include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
+#include "../../../scene/Scene.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
 
@@ -37,8 +38,6 @@ void RegisterDirectionalCSMPass(
 						AttachmentDesc depth{};
 						depth.imageView = atlas.m_imageView;
 						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-						depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 						depth.clearValue.depthStencil.depth = 1.0f;
 
 						pso.UpdateRenderInfo(
@@ -71,8 +70,10 @@ void RegisterDirectionalCSMPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& indirectBuffer =
+						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
 
 						const VkExtent2D atlasExtent = pso.GetAtlasExtent();
 						const VkExtent2D tileExtent =
@@ -96,12 +97,19 @@ void RegisterDirectionalCSMPass(
 
 							pso.UpdateAtlas(offset, tileExtent);
 							pso.ApplyViewport(cmd);
+							pso.SetPush(ctx.scene->GetCSMData().cascadeVP[cascadeIdx]);
+
+							const auto& drawRange = frameCtx->GetCSMDrawRange(cascadeIdx);
+
+							ctx.profiler->AddCSMIndirect(
+								1,
+								drawRange.commandCount);
 
 							pso.DrawIndexedIndirect(
 								cmd,
 								indirectBuffer,
-								frameCtx->GetDirectionalCSMDrawRange(cascadeIdx),
-								pass.pipelines[PIPE_ID_MAIN],
+								drawRange,
+								pipeline,
 								pass.pushWriter);
 						}
 

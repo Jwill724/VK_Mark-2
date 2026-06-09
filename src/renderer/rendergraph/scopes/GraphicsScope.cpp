@@ -53,14 +53,14 @@ void GraphicsScope::ApplyViewport(VkCommandBuffer cmd)
 	{
 		DefineViewportAndScissorAtlas(
 			cmd,
-			m_atlasOffset,
-			m_atlasExtent);
+			m_renderArea.offset,
+			m_renderArea.extent);
 	}
 	else
 	{
 		DefineViewportAndScissor(
 			cmd,
-			m_info.renderArea.extent);
+			m_renderArea.extent);
 	}
 }
 
@@ -76,31 +76,50 @@ void GraphicsScope::UpdateRenderInfo(
 		WriteColorAttachmentInfo(desc);
 
 		// Only one depth attachment can exist
-		if (!m_bHasDepth)
-		{
-			WriteDepthAttachmentInfo(desc);
-		}
+		WriteDepthAttachmentInfo(desc);
 	}
+
+	m_bHasAtlas = isAtlas;
+
+	m_renderArea.offset = { 0, 0 };
+	m_renderArea.extent =
+	{
+		extent.Width(),
+		extent.Height()
+	};
 
 	if (isAtlas)
 	{
-		m_bHasAtlas = isAtlas;
-		m_info.renderArea.offset = m_atlasOffset;
-		m_info.renderArea.extent = m_atlasExtent;
+		m_atlasOffset = { 0, 0 };
+
+		m_atlasExtent =
+		{
+			extent.Width(),
+			extent.Height()
+		};
+
+		m_renderArea.offset = m_atlasOffset;
+		m_renderArea.extent = m_atlasExtent;
 	}
 
+	bool hasColor = m_colorAttachments.size() > 0;
+	bool hasDepth = m_depthAttachment.imageView != VK_NULL_HANDLE;
+
 	m_info.colorAttachmentCount = static_cast<uint32_t>(m_colorAttachments.size());
-	m_info.pColorAttachments = m_colorAttachments.data();
-	m_info.pDepthAttachment = m_bHasDepth ? &m_depthAttachment : nullptr;
+	m_info.pColorAttachments =  hasColor ? m_colorAttachments.data() : nullptr;
+	m_info.pDepthAttachment = hasDepth ? &m_depthAttachment : nullptr;
 
 	m_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-	m_info.renderArea.offset = { 0, 0 };
-	m_info.renderArea.extent = { extent.Width(), extent.Height() };
 	m_info.layerCount = 1;
+	m_info.renderArea = m_renderArea;
+
+	ASSERT(m_renderArea.extent.width > 0);
+	ASSERT(m_renderArea.extent.height > 0);
 }
 
 void GraphicsScope::BeginRendering(VkCommandBuffer cmd)
 {
+	m_info.renderArea = m_renderArea;
 	vkCmdBeginRendering(cmd, &m_info);
 
 	// Atlas viewport more manual

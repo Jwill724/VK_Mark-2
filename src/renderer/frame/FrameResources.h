@@ -1,5 +1,6 @@
 #pragma once
 
+#include <renderer/backend/VulkanForward.h>
 #include "renderer/RendererDefinitions.h"
 #include "Bounds.h"
 #include "../scene/World.h"
@@ -17,7 +18,6 @@ namespace RD = RendererDefinitions;
 // An instance basically = mesh
 struct Instance
 {
-	uint32_t instanceID   = UINT32_MAX;  // Unique runtime tag for a renderables list *not current used
 	uint32_t meshID       = UINT32_MAX;  // global meshBuffer
 	uint32_t materialID   = UINT32_MAX;  // global material buffer
 	uint32_t transformID  = UINT32_MAX;  // global transform/prevTransform buffer
@@ -150,13 +150,92 @@ struct alignas(16) LightClustersData
 	glm::vec4 pad0[6] = { glm::vec4(0.0f) };
 };
 
+struct InstanceRange
+{
+	uint32_t firstInstance = 0;
+	uint32_t visibleCount = 0;
+};
+
 // Indirect draw buffer can fit in lots of different draws
 struct IndirectDrawRange
 {
 	uint32_t firstCommand = 0;   // first indirect command index in frameCtx.indirectDraws
-	uint32_t commandCount = 0;   // number of VkDrawIndexedIndirectCommand entries for this pass
-	uint32_t visibleCount = 0;   // number of visible instances (sum of cmd.instanceCount)
-	uint32_t firstInstance = 0;
+	uint32_t commandCount = 0;   // number of subdraws inside of VkDrawIndexedIndirectCommand
+};
+
+struct ShadowDrawRange
+{
+	IndirectDrawRange drawRange{};
+	InstanceRange instanceRange{};
+};
+
+class InstanceWriteScope
+{
+public:
+	InstanceWriteScope(std::vector<Instance>& out)
+		: m_instances(out)
+	{
+		m_range.firstInstance = static_cast<uint32_t>(out.size());
+	}
+
+	void Add(const Instance& inst)
+	{
+		m_instances.emplace_back(inst);
+	}
+
+	void End()
+	{
+		m_range.visibleCount =
+			static_cast<uint32_t>(m_instances.size()) - m_range.firstInstance;
+	}
+
+	const InstanceRange& GetRange() const { return m_range; }
+
+private:
+	std::vector<Instance>& m_instances;
+	InstanceRange m_range{};
+};
+
+class IndirectDrawScope
+{
+public:
+	IndirectDrawScope(std::vector<VkDrawIndexedIndirectCommand>& out)
+		: m_draws(out)
+	{
+		m_range.firstCommand = static_cast<uint32_t>(out.size());
+	}
+
+	void Add(const VkDrawIndexedIndirectCommand& cmd)
+	{
+		m_draws.emplace_back(cmd);
+	}
+
+	void End()
+	{
+		m_range.commandCount =
+			static_cast<uint32_t>(m_draws.size()) - m_range.firstCommand;
+	}
+
+	const IndirectDrawRange& GetRange() const { return m_range; }
+
+private:
+	std::vector<VkDrawIndexedIndirectCommand>& m_draws;
+	IndirectDrawRange m_range{};
+};
+
+struct DrawBuildOutput
+{
+	std::vector<Instance> visibleInstances{};
+	std::vector<VkDrawIndexedIndirectCommand> indirectDraws{};
+
+	InstanceRange opaqueInstances{};
+	IndirectDrawRange opaqueDraws{};
+
+	InstanceRange transparentInstances{};
+	IndirectDrawRange transparentDraws{};
+
+	std::array<ShadowDrawRange, RD::MAX_SHADOW_CASCADES> csm{};
+	ShadowDrawRange flashlight{};
 };
 
 // Some chunk of a flat array that needs to go
@@ -194,12 +273,12 @@ struct alignas(16) BindlessAccessPush
 struct alignas(16) ForwardPush
 {
 	uint32_t activeLightCount = 0;
-	float oitDepthScale = 400.0f;
 
 	uint32_t diffuseID = UINT32_MAX;
 	uint32_t specularID = UINT32_MAX;
 	uint32_t brdfID = UINT32_MAX;
 
+	float oitDepthScale = 400.0f;
 	uint32_t flashlightShadowMapID = UINT32_MAX;
 	uint32_t flashlightCookieTexID = UINT32_MAX;
 	uint32_t pad0;
@@ -271,7 +350,7 @@ struct alignas(16) LensFlarePush
 
 	glm::vec2 sunUv{ 0.5f, 0.5f };
 	float sunVisible = 1.0f;
-	uint32_t rainbowLUTIndex = 0u;
+	uint32_t rainbowLUTIndex = UINT32_MAX;
 
 	// Bright-pass params (FlareBright)
 	float brightThreshold = 15.0f;

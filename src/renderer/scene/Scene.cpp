@@ -6,7 +6,7 @@
 
 static constexpr uint32_t TAA_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 
-static glm::vec2 BuildTemporalJitterPixels(uint32_t m_frameIndex);
+static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex);
 static glm::vec2 ConvertJitterPixelsToNDC(
 	const glm::vec2 jitterPixels,
 	const float width,
@@ -59,6 +59,8 @@ bool Scene::UpdateCamera(
 {
 	bool isTemporalInvalid = false;
 
+	const auto& aaMode = profiler.debugToggles.aaMode;
+
 	float width  = static_cast<float>(drawExtent.Width());
 	float height = static_cast<float>(drawExtent.Height());
 	const float aspect = width / height;
@@ -81,7 +83,7 @@ bool Scene::UpdateCamera(
 
 	glm::vec2 jitterNDC = glm::vec2(0.0f);
 
-	if (profiler.debugToggles.aaMode == TAA_U32)
+	if (aaMode == TAA_U32)
 	{
 		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
 		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
@@ -97,7 +99,6 @@ bool Scene::UpdateCamera(
 	m_sceneInfo.view = m_curCamView;
 	m_sceneInfo.invView = glm::inverse(m_curCamView);
 
-	const auto& aaMode = profiler.debugToggles.aaMode;
 	if (aaMode == TAA_U32)
 	{
 		m_sceneInfo.proj = m_curCamProjJittered;
@@ -157,14 +158,216 @@ bool Scene::UpdateCamera(
 			halfPixelSize.y);
 
 		isTemporalInvalid = true;
-
-		m_cachedAspectRatio = aspect; // Assign unique aspect
-		m_bShouldSplitsUpdate = true;
 	}
 
 	return isTemporalInvalid;
 }
 
+static constexpr glm::vec4 BuildAtlasUV(
+	VkExtent2D atlasExtent,
+	VkExtent2D tileExtent,
+	uint32_t tileX,
+	uint32_t tileY,
+	uint32_t borderPixels)
+{
+	const float atlasW = static_cast<float>(atlasExtent.width);
+	const float atlasH = static_cast<float>(atlasExtent.height);
+
+	const float tileW  = static_cast<float>(tileExtent.width);
+	const float tileH  = static_cast<float>(tileExtent.height);
+
+	const float borderU = static_cast<float>(borderPixels) / atlasW;
+	const float borderV = static_cast<float>(borderPixels) / atlasH;
+
+	const float offsetX = static_cast<float>(tileX) * tileW;
+	const float offsetY = static_cast<float>(tileY) * tileH;
+
+	const float offsetU = (offsetX / atlasW) + borderU;
+	const float offsetV = (offsetY / atlasH) + borderV;
+
+	const float scaleU  = (tileW / atlasW) - 2.0f * borderU;
+	const float scaleV  = (tileH / atlasH) - 2.0f * borderV;
+
+	return glm::vec4(scaleU, scaleV, offsetU, offsetV);
+}
+
+void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bindlessID)
+{
+	const VkExtent2D atlasExtent = {
+		atlasWidth,
+		atlasHeight
+	};
+
+	// For a 2x2 grid:
+	const uint32_t tilesPerRow = 2u;
+	const VkExtent2D tileExtent = {
+		atlasWidth / tilesPerRow,
+		atlasHeight / tilesPerRow
+	};
+
+	const uint32_t borderPixels = 2;
+
+	for (uint32_t cascadeIndex = 0; cascadeIndex < RD::MAX_SHADOW_CASCADES; ++cascadeIndex)
+	{
+		const uint32_t tileX = cascadeIndex % tilesPerRow;
+		const uint32_t tileY = cascadeIndex / tilesPerRow;
+
+		m_csmInfo.atlasUV[cascadeIndex] = BuildAtlasUV(atlasExtent, tileExtent, tileX, tileY, borderPixels);
+	}
+
+	m_csmAtlasTileRes = static_cast<float>(atlasWidth / 2u);
+
+	m_shadowControl.splitLambda = 0.97f;
+	m_csmInfo.params.x = 0.0001f;
+	m_csmInfo.params.y = static_cast<float>(bindlessID);
+	m_csmInfo.params.z = static_cast<float>(RD::MAX_SHADOW_CASCADES);
+	m_csmInfo.params.w = 1.0f / m_csmAtlasTileRes;
+	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+}
+
+// Two great starting points to learn cascade shadow maps
+// https://learnopengl.com/Guest-Articles/2021/CSM
+// https://www.youtube.com/watch?v=3FMONJ1O39U&list=LL&index=157
+// Both GLM_FORCE are enabled globally in hpp within pch
+// #define GLM_FORCE_DEPTH_ZERO_TO_ONE
+// #define GLM_FORCE_RIGHT_HANDED
+// Pipeline depth compare LESS
+// CULL MODE: FRONT BIT
+void Scene::UpdateCSMInfo()
+{
+	constexpr float CASCADE_RADIUS[RD::MAX_SHADOW_CASCADES] = {
+		17.0f,
+		46.0f,
+		160.0f,
+		500.0f // sss carries last cascade
+	};
+
+	const auto lightDir = GetLightDir();
+
+	if (m_bShouldSplitsUpdate)
+	{
+		m_bShouldSplitsUpdate = false;
+
+		const float nearClip = m_camera.GetNearClip();
+		const float clipRange = m_shadowFar - nearClip;
+		const float ratio = m_shadowFar / nearClip;
+
+		// Compute split distances in view space (absolute units)
+		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+		{
+			const float p              = (static_cast<float>(i) + 1.0f) / static_cast<float>(RD::MAX_SHADOW_CASCADES);
+			const float log            = nearClip * std::pow(ratio, p);
+			const float uni            = nearClip + (clipRange * p);
+			m_csmInfo.cascadeSplits[i] = (m_shadowControl.splitLambda * log) + ((1.0f - m_shadowControl.splitLambda) * uni);
+		}
+	}
+
+	float lastSplitDist = m_camera.GetNearClip();
+	for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
+	{
+		const float curSplit = m_csmInfo.cascadeSplits[i];
+
+		const float splitMid = (lastSplitDist + curSplit) * 0.5f;
+
+		const glm::vec3 camPos = m_camera.GetPosition();
+		const glm::vec3 camForward = m_camera.GetView();
+
+		const glm::vec3 frustumCenter = camPos + camForward * splitMid;
+
+		// Light view
+		const glm::vec3 lightPos = frustumCenter + lightDir;
+		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		m_cascadeLightViews[i] = lightView;
+
+		float radius = CASCADE_RADIUS[i];
+
+		const float worldUnitsPerTexel = (radius * 2.0f) / m_csmAtlasTileRes;
+		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+		//m_csmInfo.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
+
+		glm::vec3 max = glm::vec3(radius);
+		glm::vec3 min = -max;
+
+		// Extend depth range to keep shadow visuals consistent
+		const float depthRange = max.z - min.z;
+		min.z -= depthRange;
+
+		// Scale factor hack that fixes issues with large assets
+		min.z *= 5.0f;
+
+		m_csmInfo.cascadeBias[i] = (worldUnitsPerTexel / depthRange) * 0.5f;
+
+		// Orthographic projection
+		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
+
+		glm::mat4 shadowMatrix = lightProj * lightView;
+
+		// This works beautifully, it keeps the shadows 100% stable during movement
+		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
+		// scale origin by shadow map size
+		// round it (nearest texel)
+		// get the offset
+		// scale it back down, only use x,y and apply it to vp matrix
+		glm::vec3 shadowOrigin  = shadowMatrix * glm::vec4(glm::vec3(0.0f), 1.0f);
+		shadowOrigin            = shadowOrigin * m_csmAtlasTileRes / 2.0f;
+		glm::vec3 roundedOrigin = glm::round(shadowOrigin);
+		glm::vec3 roundOffset   = roundedOrigin - shadowOrigin;
+		roundOffset             = roundOffset * 2.0f / m_csmAtlasTileRes;
+		roundOffset.z           = 0.0f;
+		shadowMatrix[3]        += glm::vec4(roundOffset, 0.0f);
+		m_csmInfo.cascadeVP[i]  = shadowMatrix;
+
+		lastSplitDist = curSplit;
+
+		m_cascadeFrustums[i].ExtractNew(m_csmInfo.cascadeVP[i]);
+	}
+}
+
+static float HaltonSequence(uint32_t index, uint32_t base)
+{
+	float f = 1.0, r = 0.0;
+	while (index > 0) {
+		f /= static_cast<float>(base);
+		r += f * float(index % base);
+		index /= base;
+	}
+	return r;
+}
+
+static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex)
+{
+	const uint32_t sequenceLength = 16u;
+	uint32_t index = (frameIndex % sequenceLength) + 1u;
+
+	glm::vec2 jitter;
+	jitter.x = HaltonSequence(index, 2u);
+	jitter.y = HaltonSequence(index, 3u);
+	jitter -= glm::vec2(0.5f);
+	return jitter;
+}
+
+static glm::vec2 ConvertJitterPixelsToNDC(
+	const glm::vec2 jitterPixels,
+	const float width,
+	const float height)
+{
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	jitterNDC.x = (2.0f * jitterPixels.x) / width;
+	jitterNDC.y = (2.0f * jitterPixels.y) / height;
+
+	return jitterNDC;
+}
+
+static glm::mat4 ApplyProjectionJitter(
+	glm::mat4 proj,
+	const glm::vec2 jitterNDC)
+{
+	proj[2][0] += jitterNDC.x;
+	proj[2][1] += jitterNDC.y;
+	return proj;
+}
 
 static int bend_min(const int a, const int b) { return a > b ? b : a; }
 static int bend_max(const int a, const int b) { return a > b ? a : b; }
@@ -311,210 +514,4 @@ void Scene::BuildDispatchList(const int waveSize)
 	}
 
 	m_dispatchList = std::move(result);
-}
-
-
-static constexpr glm::vec4 BuildAtlasUV(
-	VkExtent2D atlasExtent,
-	VkExtent2D tileExtent,
-	uint32_t tileX,
-	uint32_t tileY,
-	uint32_t borderPixels)
-{
-	const float atlasW = static_cast<float>(atlasExtent.width);
-	const float atlasH = static_cast<float>(atlasExtent.height);
-
-	const float tileW  = static_cast<float>(tileExtent.width);
-	const float tileH  = static_cast<float>(tileExtent.height);
-
-	const float borderU = static_cast<float>(borderPixels) / atlasW;
-	const float borderV = static_cast<float>(borderPixels) / atlasH;
-
-	const float offsetX = static_cast<float>(tileX) * tileW;
-	const float offsetY = static_cast<float>(tileY) * tileH;
-
-	const float offsetU = (offsetX / atlasW) + borderU;
-	const float offsetV = (offsetY / atlasH) + borderV;
-
-	const float scaleU  = (tileW / atlasW) - 2.0f * borderU;
-	const float scaleV  = (tileH / atlasH) - 2.0f * borderV;
-
-	return glm::vec4(scaleU, scaleV, offsetU, offsetV);
-}
-
-void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bindlessID)
-{
-	const VkExtent2D atlasExtent = {
-		atlasWidth,
-		atlasHeight
-	};
-
-	// For a 2x2 grid:
-	const uint32_t tilesPerRow = 2u;
-	const VkExtent2D tileExtent = {
-		atlasWidth / tilesPerRow,
-		atlasHeight / tilesPerRow
-	};
-
-	const uint32_t borderPixels = 2;
-
-	for (uint32_t cascadeIndex = 0; cascadeIndex < RD::MAX_SHADOW_CASCADES; ++cascadeIndex) {
-		const uint32_t tileX = cascadeIndex % tilesPerRow;
-		const uint32_t tileY = cascadeIndex / tilesPerRow;
-
-		m_csmInfo.atlasUV[cascadeIndex] = BuildAtlasUV(atlasExtent, tileExtent, tileX, tileY, borderPixels);
-	}
-
-	m_csmAtlasTileRes = static_cast<float>(atlasWidth / 2u);
-
-	m_shadowControl.splitLambda = 0.97f;
-	m_csmInfo.params.x = 0.0001f;
-	m_csmInfo.params.z = static_cast<float>(RD::MAX_SHADOW_CASCADES);
-	m_csmInfo.params.y = static_cast<float>(bindlessID);
-	m_csmInfo.params.w = 1.0f / m_csmAtlasTileRes;
-	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
-}
-
-// Two great starting points to learn cascade shadow maps
-// https://learnopengl.com/Guest-Articles/2021/CSM
-// https://www.youtube.com/watch?v=3FMONJ1O39U&list=LL&index=157
-// Both GLM_FORCE are enabled globally in hpp within pch
-// #define GLM_FORCE_DEPTH_ZERO_TO_ONE
-// #define GLM_FORCE_RIGHT_HANDED
-// Pipeline depth compare LESS
-// CULL MODE: FRONT BIT
-void Scene::UpdateCSMInfo()
-{
-	constexpr float CASCADE_RADIUS[RD::MAX_SHADOW_CASCADES] = {
-		17.0f,
-		46.0f,
-		160.0f,
-		500.0f // sss carries last cascade
-	};
-
-	const auto lightDir = GetLightDir();
-
-	if (m_bShouldSplitsUpdate)
-	{
-		m_bShouldSplitsUpdate = false;
-
-		const float nearClip = m_camera.GetNearClip();
-		const float clipRange = m_shadowFar - nearClip;
-		const float ratio = m_shadowFar / nearClip;
-
-		// Compute split distances in view space (absolute units)
-		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
-		{
-			const float p              = (static_cast<float>(i) + 1.0f) / static_cast<float>(RD::MAX_SHADOW_CASCADES);
-			const float log            = nearClip * std::pow(ratio, p);
-			const float uni            = nearClip + (clipRange * p);
-			m_csmInfo.cascadeSplits[i] = (m_shadowControl.splitLambda * log) + ((1.0f - m_shadowControl.splitLambda) * uni);
-		}
-	}
-
-	float lastSplitDist = m_camera.GetNearClip();
-	for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
-	{
-		const float curSplit = m_csmInfo.cascadeSplits[i];
-
-		const float splitMid = (lastSplitDist + curSplit) * 0.5f;
-
-		const glm::vec3 camPos = m_camera.GetPosition();
-		const glm::vec3 camForward = m_camera.GetView();
-
-		const glm::vec3 frustumCenter = camPos + camForward * splitMid;
-
-		// Light view
-		const glm::vec3 lightPos = frustumCenter + lightDir;
-		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-		m_cascadeLightViews[i] = lightView;
-
-		float radius = CASCADE_RADIUS[i];
-
-		const float worldUnitsPerTexel = (radius * 2.0f) / m_csmAtlasTileRes;
-		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
-
-		//m_csmInfo.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
-
-		glm::vec3 max = glm::vec3(radius);
-		glm::vec3 min = -max;
-
-		// Extend depth range to keep shadow visuals consistent
-		const float depthRange = max.z - min.z;
-		min.z -= depthRange;
-
-		// Scale factor hack that fixes issues with large assets
-		//min.z *= 5.0f;
-
-		m_csmInfo.cascadeBias[i] = (worldUnitsPerTexel / depthRange) * 0.5f;
-
-		// Orthographic projection
-		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
-
-		glm::mat4 shadowMatrix = lightProj * lightView;
-
-		// This works beautifully, it keeps the shadows 100% stable during movement
-		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
-		// scale origin by shadow map size
-		// round it (nearest texel)
-		// get the offset
-		// scale it back down, only use x,y and apply it to vp matrix
-		glm::vec3 shadowOrigin  = shadowMatrix * glm::vec4(glm::vec3(0.0f), 1.0f);
-		shadowOrigin            = shadowOrigin * m_csmAtlasTileRes / 2.0f;
-		glm::vec3 roundedOrigin = glm::round(shadowOrigin);
-		glm::vec3 roundOffset   = roundedOrigin - shadowOrigin;
-		roundOffset             = roundOffset * 2.0f / m_csmAtlasTileRes;
-		roundOffset.z           = 0.0f;
-		shadowMatrix[3]        += glm::vec4(roundOffset, 0.0f);
-		m_csmInfo.cascadeVP[i]  = shadowMatrix;
-
-		lastSplitDist = curSplit;
-
-		m_cascadeFrustums[i].ExtractNew(m_csmInfo.cascadeVP[i]);
-	}
-}
-
-static float HaltonSequence(uint32_t index, uint32_t base)
-{
-	float f = 1.0, r = 0.0;
-	while (index > 0) {
-		f /= static_cast<float>(base);
-		r += f * float(index % base);
-		index /= base;
-	}
-	return r;
-}
-
-static glm::vec2 BuildTemporalJitterPixels(uint32_t m_frameIndex)
-{
-	const uint32_t sequenceLength = 16u;
-	uint32_t index = (m_frameIndex % sequenceLength) + 1u;
-
-	glm::vec2 jitter;
-	jitter.x = HaltonSequence(index, 2u);
-	jitter.y = HaltonSequence(index, 3u);
-	jitter -= glm::vec2(0.5f);
-	return jitter;
-}
-
-static glm::vec2 ConvertJitterPixelsToNDC(
-	const glm::vec2 jitterPixels,
-	const float width,
-	const float height)
-{
-	glm::vec2 jitterNDC = glm::vec2(0.0f);
-
-	jitterNDC.x = (2.0f * jitterPixels.x) / width;
-	jitterNDC.y = (2.0f * jitterPixels.y) / height;
-
-	return jitterNDC;
-}
-
-static glm::mat4 ApplyProjectionJitter(
-	glm::mat4 proj,
-	const glm::vec2 jitterNDC)
-{
-	proj[2][0] += jitterNDC.x;
-	proj[2][1] += jitterNDC.y;
-	return proj;
 }

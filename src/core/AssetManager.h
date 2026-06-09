@@ -1,116 +1,125 @@
 #pragma once
 
-//#include "AssetUploadTypes.h"
-//#include "EngineTypes.h"
-//#include <fastgltf/types.hpp>
-//#include <functional>
-//#include <atomic>
-//
-//inline static const std::string BaseAssetPath = "res/assets/";
-//
-//class ModelAsset;
-//
-//struct GLTFJobContext;
-//using GLTFAssetQueue = TypedWorkQueue<std::shared_ptr<GLTFJobContext>>;
-//
-//// Called by Renderer when a SceneUploadBatch is ready to upload
-//using SceneBatchReadyCallback = std::function<void(SceneUploadBatch&&)>;
-//
-//class AssetManager
-//{
-//public:
-//	// Kicks off the full pipeline for a set of glTF paths.
-//	// When all stages for a scene are complete, fires onBatchReady
-//	// on the calling thread (or a Renderer thread — caller decides).
-//	void LoadScenes(
-//		std::span<const std::string> paths,
-//		SceneBatchReadyCallback      onBatchReady);
-//
-//	// Individual pipeline stages — each operates on the queue
-//	// and advances GLTFJobContext through its job flags.
-//	// All produce data into SceneUploadBatch, no GPU calls.
-//
-//	void StageLoadGltf    (ThreadContext& ctx, GLTFAssetQueue& queue);
-//	void StageDecodeImages(ThreadContext& ctx, GLTFAssetQueue& queue);
-//	void StageBuildSamplers(ThreadContext& ctx, GLTFAssetQueue& queue);
-//	void StageProcessMaterials(ThreadContext& ctx, GLTFAssetQueue& queue);
-//	void StageProcessMeshes(ThreadContext& ctx, GLTFAssetQueue& queue);
-//	void StageBuildSceneGraph(ThreadContext& ctx, GLTFAssetQueue& queue);
-//
-//	// Lifetime management — AssetManager tells Renderer when to free
-//	void RequestUnload(ModelID sceneID, SceneBatchReadyCallback onUnloadReady);
-//
-//private:
-//	std::unordered_map<ModelID, SceneUploadBatch> m_pendingBatches;
-//	std::mutex m_batchMutex;
-//};
-//
-//class ModelAsset
-//{
-//	friend class AssetManager;
-//public:
-//	static struct GPUData
-//	{
-//		std::vector<VirtualInstance> bakedInstances;
-//		size_t vertexOffset = 0;
-//		size_t indexOffset = 0;
-//		size_t vertexCount = 0;
-//		size_t indexCount = 0;
-//		uint32_t localMaterialCount = 0;
-//		size_t materialBaseOffset = 0;
-//		std::vector<uint32_t> textureIds;
-//		std::vector<uint32_t> samplersIds;
-//		std::vector<uint32_t> materialIds;
-//		std::vector<bool> normalMapFlags;
-//
-//		std::vector<uint32_t> bakedNodeIDs;    // nodes to search each inner transform tree
-//		std::vector<uint32_t> uniqueNodeIDs;   // compact list of node indices that own a transform
-//		std::vector<uint32_t> localToNodeSlot; // primitive i -> node slot in uniqueNodeIDs
-//	};
-//
-//	static struct SceneGraphNodes
-//	{
-//		std::vector<std::shared_ptr<Node>> nodes;
-//		// nodes that don't have a parent, for iterating through the file in tree order
-//		std::vector<std::shared_ptr<Node>> topNodes;
-//	};
-//
-//	ModelID sceneID = ModelID::Count;
-//	std::string sceneName;
-//	std::filesystem::path basePath;
-//
-//	GPUData runtime;
-//	SceneGraphNodes sceneNodes;
-//
-//private:
-//	void ClearAll();
-//};
-//
-//struct GLTFJobContext
-//{
-//	std::shared_ptr<SceneUploadBatch> batch;   // accumulates all stage output
-//	fastgltf::Asset                   gltfAsset;
-//	std::filesystem::path             basePath;
-//
-//	// Set to true when scene is passed into loadedscenes
-//	std::atomic<bool> bHasRegisteredScene = false;
-//
-//	std::array<std::atomic<bool>, static_cast<size_t>(GLTFJobType::Count)> jobComplete;
-//
-//	constexpr void MarkJobComplete(GLTFJobType type)
-//	{
-//		jobComplete[static_cast<size_t>(type)] = true;
-//	}
-//
-//	constexpr bool IsJobComplete(GLTFJobType type) const noexcept
-//	{
-//		return jobComplete[static_cast<size_t>(type)];
-//	}
-//
-//	constexpr bool IsComplete() const noexcept
-//	{
-//		for (bool status : jobComplete)
-//			if (!status) return false;
-//		return true;
-//	}
-//};
+#include "AssetUploadTypes.h"
+#include "EngineTypes.h"
+#include <fastgltf/types.hpp>
+#include <atomic>
+
+class JobSystem;
+struct GLTFJobContext;
+struct StageQueues;
+
+inline static const std::string BaseAssetPath = "res/assets/";
+
+using SceneBatchReadyCallback = std::function<void(SceneUploadBatch&&)>;
+
+class AssetManager
+{
+public:
+	void LoadScenes(
+		SceneBatchReadyCallback      onBatchReady,
+		JobSystem&                   jobSystem);
+
+	void Shutdown(JobSystem& jobSystem);
+
+private:
+	bool StageLoadFile        (ThreadContext& ctx);
+	bool StageDecodeImages    (ThreadContext& ctx);
+	bool StageBuildSamplers   (ThreadContext& ctx);
+	bool StageProcessMaterials(ThreadContext& ctx);
+	bool StageProcessMeshes   (ThreadContext& ctx);
+	bool StageBuildSceneGraph (ThreadContext& ctx);
+
+	std::shared_ptr<StageQueues> m_queues;
+	std::unordered_map<ModelID, SceneUploadBatch> m_pendingBatches;
+	std::mutex m_batchMutex;
+};
+
+struct GLTFJobContext
+{
+	std::shared_ptr<SceneUploadBatch> batch;
+	fastgltf::Asset                   gltfAsset;
+	std::filesystem::path             basePath;
+
+	std::atomic<bool> bHasRegisteredScene = false;
+	std::array<std::atomic<bool>, static_cast<size_t>(GLTFJobType::Count)> jobComplete{};
+
+	void MarkComplete(GLTFJobType t) { jobComplete[static_cast<size_t>(t)] = true; }
+	bool IsComplete(GLTFJobType t) const { return jobComplete[static_cast<size_t>(t)]; }
+	bool IsFullyComplete() const
+	{
+		for (const auto& b : jobComplete) if (!b) return false;
+		return true;
+	}
+
+	bool CanRun(GLTFJobType stage) const
+	{
+		switch (stage)
+		{
+		case GLTFJobType::LoadFile:
+			return true;
+		case GLTFJobType::DecodeImages:
+		case GLTFJobType::BuildSamplers:
+		case GLTFJobType::ProcessMeshes:
+			return IsComplete(GLTFJobType::LoadFile);
+		case GLTFJobType::ProcessMaterials:
+			return IsComplete(GLTFJobType::DecodeImages)
+				&& IsComplete(GLTFJobType::BuildSamplers);
+		case GLTFJobType::BuildSceneGraph:
+			return IsComplete(GLTFJobType::ProcessMaterials)
+				&& IsComplete(GLTFJobType::ProcessMeshes);
+		default:
+			return false;
+		}
+	}
+};
+
+struct StageQueues : BaseWorkQueue
+{
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> loadFile;
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> decodeImages;
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> buildSamplers;
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> processMaterials;
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> processMeshes;
+	TypedWorkQueue<std::shared_ptr<GLTFJobContext>> buildSceneGraph;
+
+	SceneBatchReadyCallback onBatchReady;
+	std::atomic<uint32_t>   pendingSceneCount{ 0 };
+
+	bool IsFullyDrained() const noexcept { return pendingSceneCount.load() == 0; }
+
+	void Advance(std::shared_ptr<GLTFJobContext> ctx, GLTFJobType completedStage)
+	{
+		ctx->MarkComplete(completedStage);
+
+		switch (completedStage)
+		{
+		case GLTFJobType::LoadFile:
+			decodeImages.Push(ctx);
+			buildSamplers.Push(ctx);
+			processMeshes.Push(ctx);
+			break;
+
+		case GLTFJobType::DecodeImages:
+		case GLTFJobType::BuildSamplers:
+			if (ctx->CanRun(GLTFJobType::ProcessMaterials))
+				processMaterials.Push(ctx);
+			break;
+
+		case GLTFJobType::ProcessMaterials:
+		case GLTFJobType::ProcessMeshes:
+			if (ctx->CanRun(GLTFJobType::BuildSceneGraph))
+				buildSceneGraph.Push(ctx);
+			break;
+
+		case GLTFJobType::BuildSceneGraph:
+			pendingSceneCount--;
+			if (onBatchReady)
+				onBatchReady(std::move(*ctx->batch));
+			break;
+
+		default:
+			break;
+		}
+	}
+};

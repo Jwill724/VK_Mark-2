@@ -58,14 +58,14 @@ void RegisterThePrepass(
 						AttachmentDesc prepassVelocity{};
 						prepassVelocity.imageView = velocity.m_imageView;
 						prepassVelocity.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-						prepassVelocity.clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+						prepassVelocity.clearValue.color = { { 0.0f } };
 
 						pso.UpdateRenderInfo(
 							{
 								depthResolved.Width(),
 								depthResolved.Height()
 							},
-							{ prepassDepth, prepassNormal, prepassVelocity });
+							{ prepassNormal, prepassVelocity, prepassDepth });
 					})
 
 				.SetExecutionCondition(
@@ -90,7 +90,7 @@ void RegisterThePrepass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& indirectBuffer =
+						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 
 						pso.BeginRendering(cmd);

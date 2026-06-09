@@ -20,10 +20,6 @@ void RegisterChromaticAberrationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(RD::Renderer_RenderTarget::AAColor,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::Tonemap,
-					RD::ImageAccess::Read)
 				.WriteResource(
 					RD::Renderer_RenderTarget::PostNonAAComposite,
 					RD::ImageAccess::Write,

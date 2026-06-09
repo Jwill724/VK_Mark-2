@@ -2,8 +2,8 @@
 
 #include "World.h"
 #include "Scene.h"
-//#include "DrawPreparation.h"
-//#include "Visibility.h"
+#include "DrawPreparation.h"
+#include "Visibility.h"
 #include "LightingSystem.h"
 #include "../backend/memory/ResourceAllocator.h"
 #include "../RendererDefinitions.h"
@@ -11,7 +11,8 @@
 #include "../backend/memory/BindlessImageTable.h"
 #include "../frame/FrameContext.h"
 #include "../../profiler/Profiler.h"
-//#include "Mesh.h"
+#include "Mesh.h"
+#include "../../core/AssetUploadTypes.h"
 
 static constexpr glm::vec3 DEFAULT_SPAWN { 1.0, 1.0, 1.0 };
 
@@ -64,23 +65,44 @@ namespace World
 
 void World::Cleanup()
 {
-	//_loadedScenes.clear();
+	_loadedScenes.clear();
 	_visState.Cleanup();
 	_scene.Shutdown();
 }
 
-void World::Init(const BindlessImageTable& imgTable, bool isAssetsLoaded)
+void World::Init(const BindlessImageTable& imgTable)
 {
 	uint32_t cookieGoboID = imgTable.GetStaticTexture(RD::Renderer_Texture::CookieGobo).m_bindlessID;
 	uint32_t flashlightShadowMapID = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap).m_bindlessID;
 	LightingSystem::_mainFlashLight.Init(flashlightShadowMapID, cookieGoboID);
+	LightingSystem::Init();
 
 	_scene.InitScene(DEFAULT_SPAWN);
 
 	const auto& csm = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
 	_scene.InitCSMInfo(csm.Width(), csm.Height(), csm.m_bindlessID);
+}
 
-	_bAreAssetsLoaded = isAssetsLoaded;
+void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
+{
+	const ModelID id = asset->sceneID;
+
+	_loadedScenes[id] = asset;
+
+	const uint32_t firstTransform =
+		static_cast<uint32_t>(_scene.GetTransforms().size());
+
+	for (const auto& t : asset->nodeTransforms)
+		_scene.GetTransforms().push_back(t);
+
+	asset->virtualInstance.firstTransform = firstTransform;
+	asset->virtualInstance.instanceID = static_cast<uint32_t>(_scene.GetVirtualInstances().size());
+
+	_scene.GetVirtualInstances().push_back(asset->virtualInstance);
+
+	_bAreAssetsLoaded = true;
+
+	fmt::println("[World] Scene registered: '{}'", asset->sceneName);
 }
 
 void World::UpdateWorldState(
@@ -97,19 +119,6 @@ void World::UpdateWorldState(
 	sceneData.temporal.x = jitter_frame_index++;
 
 	bIsTemporalInvalid = _scene.UpdateCamera(frameCtx.GetCachedExtent(), profiler, window);
-
-	// No scene loaded in
-	if (!_bAreAssetsLoaded)
-	{
-		sceneData.temporal.y = 0u;
-		frameCtx.AssignSceneUniform(allocator.AllocateUniform(sceneData), allocator);
-		return;
-	}
-
-	// =====================
-	// RESET TRANSIENT DATA
-	// =====================
-	frameCtx.ClearDrawData();
 
 	const auto deltaTime = profiler.getStats().deltaSecondsRaw;
 
@@ -216,132 +225,121 @@ void World::UpdateWorldState(
 	frameCtx.AssignCSMUniform(allocator.AllocateUniform(_scene.GetCSMData()), allocator);
 }
 
-//void World::UpdateDrawData(
-//	FrameContext& frameCtx,
-//	const std::vector<Mesh>& meshes,
-//	const std::vector<MeshLODs>& meshLODs,
-//	const Profiler& profiler)
-//{
-//	const auto& debug = profiler.debugToggles;
-//
-//	auto visResult = Visibility::syncFromGlobalInstances(
-//		_visState,
-//		_scene.GetVirtualInstances(),
-//		_loadedScenes,
-//		meshes,
-//		_scene.GetTransforms());
-//
-//	frameCtx.SetVisibilityResult(visResult);
-//
-//	Visibility::ApplySyncResult(_visState, frameCtx.GetVisibilitySyncResult());
-//
-//	// CPU CULLING
-//	Visibility::cullBVHCollect(
-//		_visState,
-//		_currentFrustum,
-//		frameCtx.m_visibleInstances,
-//		_visibleWorldAABBs);
-//
-//	if (!frameCtx.m_visibleInstances.empty())
-//	{
-//		frameCtx.m_visibleCount = static_cast<uint32_t>(frameCtx.m_visibleInstances.size());
-//
-//		if (debug.enableShadows)
-//		{
-//			frameCtx.m_visibleShadowCasters.reserve(std::max(1024u, frameCtx.m_visibleCount * 2u));
-//
-//			AABB visibleReceiverWS = ComputeVisibleReceiverAABB(_visibleWorldAABBs);
-//			const glm::vec3 centerWS = 0.5f * (visibleReceiverWS.vmin + visibleReceiverWS.vmax);
-//			const glm::vec3 extentWS = 0.5f * (visibleReceiverWS.vmax - visibleReceiverWS.vmin);
-//
-//			for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex) {
-//				IndirectDrawRange& cascadeRange = frameCtx.m_csmDrawRange[cascadeIndex];
-//				cascadeRange.firstInstance = static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size());
-//
-//				// Transform to light space
-//				glm::vec3 centerLS = glm::vec3(_cascadeLightViews[cascadeIndex] * glm::vec4(centerWS, 1.0f));
-//				glm::mat3 absLightMat = glm::mat3(
-//					glm::abs(_cascadeLightViews[cascadeIndex][0]),
-//					glm::abs(_cascadeLightViews[cascadeIndex][1]),
-//					glm::abs(_cascadeLightViews[cascadeIndex][2]));
-//
-//				glm::vec3 extentLS = absLightMat * extentWS;
-//
-//				glm::vec3 receiverLSMin = centerLS - extentLS;
-//				glm::vec3 receiverLSMax = centerLS + extentLS;
-//
-//				//// Extend toward the light (higher Z)
-//				//receiverLSMax.z += _shadowControl.maxCasterDistance[cascadeIndex];
-//
-//				//// Small safety padding
-//				//receiverLSMin.x -= _shadowControl.xyPadding;
-//				//receiverLSMin.y -= _shadowControl.xyPadding;
-//				//receiverLSMax.x += _shadowControl.xyPadding;
-//				//receiverLSMax.y += _shadowControl.xyPadding;
-//
-//				Visibility::cullBVHCollectShadowCastersReceivers(
-//					cascadeIndex,
-//					_visState,
-//					_cascadeFrustums[cascadeIndex],
-//					_cascadeLightViews[cascadeIndex],
-//					receiverLSMin,
-//					receiverLSMax,
-//					frameCtx.m_visibleShadowCasters,
-//					gpuResources.GetMaterialFlagsByID()
-//				);
-//
-//				cascadeRange.visibleCount =
-//					static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size()) - cascadeRange.firstInstance;
-//
-//				ASSERT(cascadeRange.firstInstance + cascadeRange.visibleCount <= frameCtx.m_visibleShadowCasters.size());
-//			}
-//		}
-//
-//		if (LightingSystem::_mainFlashLight.IsFlashLightOn()) {
-//			frameCtx.m_visibleShadowCasters.reserve(frameCtx.m_visibleShadowCasters.size() + frameCtx.m_visibleCount);
-//
-//			frameCtx.m_flashlightShadowCasterRange.firstInstance =
-//				static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size());
-//
-//			Visibility::cullBVHCollectShadowCasters(
-//				_visState,
-//				LightingSystem::_mainFlashLight.frustum,
-//				frameCtx.m_visibleShadowCasters,
-//				gpuResources.GetMaterialFlagsByID(),
-//				false
-//			);
-//
-//			frameCtx.m_flashlightShadowCasterRange.visibleCount =
-//				static_cast<uint32_t>(frameCtx.m_visibleShadowCasters.size()) - frameCtx.m_flashlightShadowCasterRange.firstInstance;
-//
-//			ASSERT(frameCtx.m_flashlightShadowCasterRange.firstInstance +
-//				frameCtx.m_flashlightShadowCasterRange.visibleCount <= frameCtx.m_visibleShadowCasters.size());
-//		}
-//
-//		DrawPreparation::buildAndSortIndirectDraws(
-//			frameCtx,
-//			meshes.meshData,
-//			meshes.meshLODs,
-//			_visibleWorldAABBs,
-//			_sceneData.cameraPos,
-//			_curCamProjUnjittered,
-//			debug);
-//	}
-//
-//	DrawPreparation::uploadGPUBuffersForFrame(
-//		frameCtx,
-//		gpuResources,
-//		_globalTransforms,
-//		LightingSystem::_globalLightList,
-//		Backend::GetTransferQueue(),
-//		bool(_sceneData.temporal.y),
-//		Engine::GetProfiler().isGPUAccelOn());
-//}
+void World::UpdateDrawData(
+	FrameContext&                frameCtx,
+	const std::vector<Mesh>&     meshes,
+	const std::vector<MeshLODs>& meshLODs,
+	const Profiler&              profiler,
+	std::vector<uint32_t>&       materialFlags)
+{
+	if (!_bAreAssetsLoaded) return;
+
+	// =====================
+	// RESET TRANSIENT DATA
+	// =====================
+	frameCtx.ClearDrawData();
+
+	const auto& debug = profiler.debugToggles;
+
+	// Visibility sync
+	auto visResult = Visibility::SyncFromGlobalInstances(
+		_visState,
+		_scene.GetVirtualInstances(),
+		_loadedScenes,
+		meshes,
+		_scene.GetTransforms());
+
+	frameCtx.SetVisibilityResult(visResult);
+	Visibility::ApplySyncResult(_visState, frameCtx.GetVisibilitySyncResult());
+
+	// Camera frustum cull
+	std::vector<Instance> culledVisible;
+	std::vector<AABB>     culledAABBs;
+
+	Visibility::CullBVHCollect(
+		_visState,
+		_scene.GetFrustum(),
+		culledVisible,
+		culledAABBs);
+
+	if (culledVisible.empty()) return;
+
+	// Shadow caster culling — frame-local scratch
+	std::array<std::vector<Instance>, RD::MAX_SHADOW_CASCADES> csmCasters;
+	std::vector<Instance> flashlightCasters;
+
+	if (debug.enableShadows)
+	{
+		AABB visibleReceiverWS = culledAABBs[0];
+		for (size_t i = 1; i < culledAABBs.size(); ++i)
+		{
+			visibleReceiverWS.vmin = glm::min(visibleReceiverWS.vmin, culledAABBs[i].vmin);
+			visibleReceiverWS.vmax = glm::max(visibleReceiverWS.vmax, culledAABBs[i].vmax);
+		}
+
+		const glm::vec3 centerWS = 0.5f * (visibleReceiverWS.vmin + visibleReceiverWS.vmax);
+		const glm::vec3 extentWS = 0.5f * (visibleReceiverWS.vmax - visibleReceiverWS.vmin);
+
+		for (uint32_t cascade = 0; cascade < RD::MAX_SHADOW_CASCADES; ++cascade)
+		{
+			const glm::mat4& lightView = _scene.GetCascadeLightView(cascade);
+			const glm::vec3 centerLS   = glm::vec3(lightView * glm::vec4(centerWS, 1.0f));
+			const glm::mat3 absLightMat = glm::mat3(
+				glm::abs(lightView[0]),
+				glm::abs(lightView[1]),
+				glm::abs(lightView[2]));
+			const glm::vec3 extentLS = absLightMat * extentWS;
+
+			const glm::vec3 receiverLSMin = centerLS - extentLS;
+			const glm::vec3 receiverLSMax = centerLS + extentLS;
+
+			Visibility::CullBVHCollectShadowCastersReceivers(
+				cascade,
+				_visState,
+				_scene.GetCascadeFrustum(cascade),
+				lightView,
+				receiverLSMin,
+				receiverLSMax,
+				csmCasters[cascade],
+				materialFlags);
+		}
+
+		if (LightingSystem::_mainFlashLight.IsFlashLightOn())
+		{
+			Visibility::CullBVHCollectShadowCasters(
+				_visState,
+				LightingSystem::_mainFlashLight.Frustum,
+				flashlightCasters,
+				materialFlags,
+				false);
+		}
+	}
+
+	//fmt::println("After culling shadow instances");
+
+	const bool flashlightOn = debug.enableShadows
+		&& LightingSystem::_mainFlashLight.IsFlashLightOn();
+
+	DrawBuildOutput drawOut = DrawPreparation::BuildAndSortIndirectDraws(
+		culledVisible,
+		culledAABBs,
+		meshes,
+		meshLODs,
+		_scene.GetSceneData().cameraPos,
+		_scene.GetCurrentProjUnjittered(),
+		csmCasters,
+		flashlightCasters,
+		materialFlags,
+		debug.enableShadows,
+		flashlightOn);
+
+	frameCtx.SetDrawData(std::move(drawOut));
+}
 
 // ===============================
 // Hard coded transform code sucks
 
-static glm::mat4 makeGridTransform3D(uint32_t index, uint32_t count, float spacing)
+static glm::mat4 MakeGridTransform3D(uint32_t index, uint32_t count, float spacing)
 {
 	ASSERT(count > 0);
 
@@ -371,14 +369,19 @@ bool World::SyncGlobalInstancesAndTransforms(
 	std::vector<glm::mat4>& globalTransforms,
 	const double deltaTime)
 {
+	if (!_bAreAssetsLoaded) return false;
+
 	bool transformsUpdated = false;
 
-	for (auto& inst : globalInstances) {
+	for (auto& inst : globalInstances)
+	{
 		ModelID sid = static_cast<ModelID>(inst.sceneID);
 		SceneProfileEntry& profile = sceneProfiles.at(sid);
 
-		if (profile.instanceCount == 1) {
-			if (profile.drawType == RD::InstancingMethod::DrawStatic) {
+		if (profile.instanceCount == 1)
+		{
+			if (profile.drawType == RD::InstancingMethod::DrawStatic)
+			{
 				// TODO: Create a way to modify transforms at runtime
 				if (!braindeadhack && sid == ModelID::DamagedHelmet) {
 					glm::mat4& M = globalTransforms[inst.firstTransform];
@@ -392,7 +395,8 @@ bool World::SyncGlobalInstancesAndTransforms(
 				inst.drawType = profile.drawType;
 				continue; // transforms already baked into static
 			}
-			if (profile.drawType == RD::InstancingMethod::DrawDynamic) {
+			if (profile.drawType == RD::InstancingMethod::DrawDynamic)
+			{
 				inst.drawType = profile.drawType;
 
 				constexpr float spinSpeedRadiansPerSecond = glm::radians(30.0f);
@@ -416,7 +420,7 @@ bool World::SyncGlobalInstancesAndTransforms(
 				transformsUpdated = true;
 				continue;
 			}
-		//	if (profile.drawType == InstancingMethod::DrawDynamic) {
+		//	if (profile.drawType == RD::InstancingMethod::DrawDynamic) {
 		//		inst.drawType = profile.drawType;
 
 		//		const float deltaSecondsFloat = static_cast<float>(deltaTime);
@@ -448,16 +452,15 @@ bool World::SyncGlobalInstancesAndTransforms(
 
 		// Defined from copy values append list or decrease list
 		// on first run this will always be an append
-		if (profile.drawType == RD::InstancingMethod::DrawMultiStatic || profile.instanceCount > 1) {
+		if (profile.drawType == RD::InstancingMethod::DrawMultiStatic || profile.instanceCount > 1)
+		{
 			inst.drawType = profile.drawType;
 
 			const uint32_t desiredUsedCopies = std::max(1u, profile.instanceCount);
 
 			const uint32_t desiredCapacityCopies = desiredUsedCopies;
 
-			if (inst.usedCopies == desiredUsedCopies && inst.capacityCopies >= desiredCapacityCopies) {
-				continue;
-			}
+			if (inst.usedCopies == desiredUsedCopies && inst.capacityCopies >= desiredCapacityCopies) continue;
 
 			const uint32_t transformsPerCopy = inst.transformCount;
 			ASSERT(transformsPerCopy > 0);
@@ -470,7 +473,8 @@ bool World::SyncGlobalInstancesAndTransforms(
 			// We can only append in-place if this slab currently ends at the end of the global array.
 			const bool slabIsAtEnd = (oldSlabEnd == globalTransforms.size());
 
-			if (desiredCapacityCopies > oldCapacityCopies) {
+			if (desiredCapacityCopies > oldCapacityCopies)
+			{
 				const glm::mat4 baseTransform = globalTransforms[oldSlabBegin];
 
 				//fmt::print("[syncGI] multistatic: oldCap={} newCap={} firstT={} tfCount={} slabEnd={} tfSize(before)={}\n",
@@ -494,10 +498,12 @@ bool World::SyncGlobalInstancesAndTransforms(
 				}
 
 				// Append transforms for new copies (copy indices [oldCap .. newCap)).
-				for (uint32_t copyIndex = oldCapacityCopies; copyIndex < desiredCapacityCopies; ++copyIndex) {
-					glm::mat4 offset = makeGridTransform3D(copyIndex, desiredCapacityCopies, 5.0f);
+				for (uint32_t copyIndex = oldCapacityCopies; copyIndex < desiredCapacityCopies; ++copyIndex)
+				{
+					glm::mat4 offset = MakeGridTransform3D(copyIndex, desiredCapacityCopies, 5.0f);
 
-					for (uint32_t slot = 0; slot < transformsPerCopy; ++slot) {
+					for (uint32_t slot = 0; slot < transformsPerCopy; ++slot)
+					{
 						const uint32_t baseSlotIndex = inst.firstTransform + slot; // copy 0, slot N
 						const glm::mat4 slotBaseTransform = globalTransforms[baseSlotIndex];
 

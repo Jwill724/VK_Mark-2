@@ -368,8 +368,13 @@ void Allocator::FreeImage(AllocatedImage& img) const
 	vmaDestroyImage(m_vmaAlloc, img.m_image, img.m_allocation);
 }
 
+void Allocator::ResetGlobalStaging(size_t size, size_t atomicSize)
+{
+	GlobalStaging.Shutdown();
+	GlobalStaging.Init(size, m_vmaAlloc, m_deviceCtx.device, atomicSize);
+}
 
-size_t Allocator::CalcGlobalStagingSize(const BindlessImageTable& imageTable) const
+size_t Allocator::CalcBaseGlobalStagingSize(const BindlessImageTable& imageTable) const
 {
 	size_t total = 0;
 
@@ -385,8 +390,6 @@ size_t Allocator::CalcGlobalStagingSize(const BindlessImageTable& imageTable) co
 	// - RGBA32F = 16 bytes per pixel
 	// - layers = 1
 	// - mip = 0 upload (single level)
-	const uint32_t pixelBytes = 16u;
-
 	for (const auto& envSet : imageTable.GetEnvironmentSetSpan())
 	{
 		if (!envSet.IsValid()) continue;

@@ -27,6 +27,7 @@ class BindlessImageTable;
 class BindlessBDATable;
 class Scene;
 class Swapchain;
+class RenderGraph;
 
 struct RenderPassExecutionContext
 {
@@ -40,6 +41,8 @@ struct RenderPassExecutionContext
 	const Scene*                     scene       = nullptr;
 	const RD::RenderStateInfo*       frameState  = nullptr;
 	const Swapchain*                 swapchain   = nullptr;
+
+	RenderGraph* renderGraph = nullptr;
 
 	void Reset() { *this = RenderPassExecutionContext{}; }
 };

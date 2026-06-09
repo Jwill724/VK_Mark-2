@@ -23,6 +23,8 @@ class JobSystem;
 struct FrameStats;
 class Scene;
 struct GLFWwindow;
+struct SceneUploadBatch;
+struct ModelAsset;
 
 // Manages core vulkan state and memory allocation.
 // All primary resources are stored here, gpu buffers, image, frame data.
@@ -44,12 +46,15 @@ public:
 		return debug.enableProfilerView || debug.enableSettings;
 	}
 
+	void UploadScenes(std::vector<SceneUploadBatch>&& batches);
+	void UnloadAllScenes();
+
 	void RecordRenderCommand();
 
 	bool PrepareFrame(); // Returns false if no resize occured
 	bool SubmitFrame();
 
-	void BeingFrameTimer() { m_profiler.BeginFrame(); }
+	void BeginFrameTimer() { m_profiler.BeginFrame(); }
 	void EndFrameTimer() { m_profiler.EndFrame(); }
 
 	Profiler& GetProfiler() { return m_profiler; }
@@ -67,17 +72,18 @@ public:
 
 	void TickVramUsage();
 
-	bool AreAssetsLoaded() const noexcept { return m_bAssetsLoaded == true; }
-
 	Extents2D GetDrawExtent() const { return m_drawExtent; }
 
 	uint32_t GetFrameNumber() const { return m_frameNumber; }
 	bool IsFirstFrame() const noexcept { return m_frameNumber == 0; }
 
+	const std::vector<uint32_t>& GetMaterialFlagsById() { return m_materialFlagsIDs; }
+
 	void UpdateRendererContext(GLFWwindow* window);
 
 	void ResetFrameStats() { m_profiler.ResetDrawCalls(); m_profiler.ResetPassStats(); }
 	void StartTimer() { m_profiler.StartTimer(); }
+	void EndAssetTimer();
 	void EndSceneUpdateTimer() { m_profiler.getStats().sceneUpdateTime.Add(m_profiler.EndTimerMS()); }
 	void EndDrawTimer() { m_profiler.getStats().drawTime.Add(m_profiler.EndTimerMS()); }
 
@@ -98,7 +104,25 @@ private:
 	void InitFrameResources();
 	void CleanupFrameResources();
 
+	void CreateOBBLineBuffer(FrameContext& frameCtx);
+
 	void CheckGlobalDescriptorSetSync();
+
+	void BatchUploadTextures(
+		std::vector<SceneUploadBatch>& batches,
+		std::vector<std::shared_ptr<ModelAsset>>& assets,
+		VkCommandBuffer cmd);
+	void BatchUploadMeshes(
+		std::vector<SceneUploadBatch>& batches,
+		std::vector<std::shared_ptr<ModelAsset>>& assets,
+		VkCommandBuffer cmd);
+	void BatchUploadMaterials(
+		std::vector<SceneUploadBatch>& batches,
+		std::vector<std::shared_ptr<ModelAsset>>& assets);
+
+	void UpdateGlobalBufferTable(VkCommandBuffer cmd);
+
+	void FreeAllAssetTextures();
 
 	void TimestampPoolStart(FrameContext& frameCtx);
 	void TimestampPoolEnd(FrameContext& frameCtx);
@@ -142,12 +166,21 @@ private:
 
 	Profiler m_profiler;
 
-	bool m_bAssetsLoaded = false;
+	void InitRenderSettings(
+		bool enableLensFlare,
+		bool enableChromaticAberration,
+		bool enableShadows,
+		bool enableSSS,
+		bool enableVolumetrics,
+		RD::AntiAliasingMethod aaMode,
+		RD::AmbientOcclusionMethod aoMode,
+		bool enableProfilerView,
+		bool enableSettings);
 
 	// Must always initialize to read states
 	bool m_bRenderTargetsLayoutsTransitioned = false;
 
-	uint32_t m_activeEnvSet = 0;
+	uint32_t m_activeEnvSet = UINT32_MAX;
 
 	glm::vec4 m_luminanceSums[RD::MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) };
 };

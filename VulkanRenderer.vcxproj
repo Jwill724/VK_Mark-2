@@ -79,12 +79,6 @@
     <ClCompile Include="src\core\JobSystem.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\core\loader\TextureLoader.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\loader\MeshLoader.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
     <ClCompile Include="src\core\AssetManager.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -392,8 +386,6 @@
     <ClInclude Include="src\core\JobSystem.h" />
     <ClInclude Include="src\core\AssetManager.h" />
     <ClInclude Include="src\core\Environment.h" />
-    <ClInclude Include="src\core\loader\TextureLoader.h" />
-    <ClInclude Include="src\core\loader\MeshLoader.h" />
     <ClInclude Include="src\core\Window.h" />
     <!-- input -->
     <ClInclude Include="src\input\UserInput.h" />

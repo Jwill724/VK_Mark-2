@@ -55,7 +55,7 @@ void RenderGraph::Build(
 	// --- Opaque + Skybox ---
 	RegisterSkyboxPass(*this,              pipeManager.GetBundle<SkyboxPipelineSlot>());
 	RegisterOpaqueForwardPass(*this,       pipeManager.GetBundle<OpaqueForwardPipelineSlot>());
-	//RegisterOBBLineDebugPass(*this,        pipeManager.GetBundle<ObbDebugPipelineSlot>());
+	RegisterOBBLineDebugPass(*this,        pipeManager.GetBundle<ObbDebugPipelineSlot>());
 
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
@@ -65,14 +65,14 @@ void RenderGraph::Build(
 	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
 
 	// --- TAA ---
-	//RegisterTAAPass(*this,                 pipeManager.GetBundle<TAAPipelineSlot>());
+	RegisterTAAPass(*this, pipeManager.GetBundle<TAAPipelineSlot>());
 
 	// --- Post process ---
 	RegisterLuminanceExposurePass(*this,   pipeManager.GetBundle<ExposurePipelineSlot>());
 	RegisterLensFlarePass(*this,           pipeManager.GetBundle<LensFlarePipelineSlot>());
 	RegisterFinalCompositePass(*this,      pipeManager.GetBundle<FinalCompositePipelineSlot>());
 
-	// --- AA ---
+	// --- Post AA ---
 	RegisterCMAA2Pass(*this,               pipeManager.GetBundle<CMAA2PipelineSlot>());
 	RegisterSMAAPass(*this,                pipeManager.GetBundle<SMAAPipelineSlot>());
 	RegisterFXAAPass(*this,                pipeManager.GetBundle<FXAAPipelineSlot>());
@@ -97,13 +97,14 @@ void RenderGraph::Shutdown()
 void RenderGraph::Sync(const RD::RenderStateInfo& frameState)
 {
 	bool stateChanged =
-		(m_recentFrameState.activeLightCount  != frameState.activeLightCount)  ||
-		(m_recentFrameState.bCopyPostAAImage  != frameState.bCopyPostAAImage)  ||
-		(m_recentFrameState.bIsOpaqueVisible  != frameState.bIsOpaqueVisible)  ||
+		(m_recentFrameState.activeLightCount      != frameState.activeLightCount)      ||
+		(m_recentFrameState.bCopyPostAAImage      != frameState.bCopyPostAAImage)      ||
+		(m_recentFrameState.bHasVisibles          != frameState.bHasVisibles)          ||
+		(m_recentFrameState.bIsOpaqueVisible      != frameState.bIsOpaqueVisible)      ||
 		(m_recentFrameState.bIsTransparentVisible != frameState.bIsTransparentVisible) ||
-		(m_recentFrameState.bFlashlightOn     != frameState.bFlashlightOn)     ||
-		(m_recentFrameState.bTemporalValid    != frameState.bTemporalValid)    ||
-		(m_recentFrameState.bShowImgui        != frameState.bShowImgui);
+		(m_recentFrameState.bFlashlightOn         != frameState.bFlashlightOn)         ||
+		(m_recentFrameState.bTemporalValid        != frameState.bTemporalValid)        ||
+		(m_recentFrameState.bShowImgui            != frameState.bShowImgui);
 
 	m_recentFrameState.bStateChanged = stateChanged;
 
@@ -147,11 +148,12 @@ void RenderGraph::ExecutePasses(RenderPassExecutionContext& ctx)
 
 	// Reset tracked layouts each frame — all render targets start unknown
 	m_trackedLayouts.clear();
+	m_writtenThisFrame.clear();
+	ctx.renderGraph = this;
 
 	for (auto idx : m_activePassIndices)
 	{
 		auto& pass = m_passes[idx];
-
 		if (pass.shouldExecute && !pass.shouldExecute(ctx)) continue;
 
 		// Enter transitions (before setup so push binds see correct layout)
@@ -170,6 +172,10 @@ void RenderGraph::ExecutePasses(RenderPassExecutionContext& ctx)
 
 		// Exit transitions (auto — after record)
 		PostTransitionResources(ctx, pass);
+
+		// Chaining graphics color attachments
+		for (const auto& res : pass.resources)
+			if (res.bIsWrite) m_writtenThisFrame.insert(res.target);
 	}
 }
 

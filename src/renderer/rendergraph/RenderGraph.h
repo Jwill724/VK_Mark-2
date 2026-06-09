@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 
 class BindlessImageTable;
 struct RenderPassExecutionContext;
@@ -47,6 +48,11 @@ public:
 
 	const Extents2D& GetDrawExtent() const noexcept { return m_drawExtent; }
 
+	bool IsFirstGraphicsWrite(RD::Renderer_RenderTarget t) const
+	{
+		return m_writtenThisFrame.find(t) == m_writtenThisFrame.end();
+	}
+
 private:
 	RenderPassDesc& CreatePass(
 		std::string name,
@@ -77,6 +83,7 @@ private:
 		RenderPassDesc& pass);
 	
 	std::unordered_map<RD::Renderer_RenderTarget, RD::ImageAccess> m_trackedLayouts;
+	std::unordered_set<RD::Renderer_RenderTarget> m_writtenThisFrame;
 
 	std::vector<RenderPassDesc> m_passes;
 

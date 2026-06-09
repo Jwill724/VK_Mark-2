@@ -21,8 +21,7 @@ void main()
 	// fetch transform
 	mat4 model = getTransformBuffer().transforms[inst.transformID];
 
-	vec3 position = unpackPosition(vtx);
-	vec4 worldPos = model * vec4(position, 1.0);
+	vec4 worldPos = model * vec4(vtx.position, 1.0);
 
 	gl_Position = pc.viewproj * worldPos;
 }

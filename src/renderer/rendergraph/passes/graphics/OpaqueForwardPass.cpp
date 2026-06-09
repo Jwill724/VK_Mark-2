@@ -9,6 +9,7 @@
 #include "../../../frame/FrameContext.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
+static constexpr size_t PIPE_ID_WIREFRAME = 1;
 
 void RegisterOpaqueForwardPass(
 	RenderGraph& graph,
@@ -20,24 +21,15 @@ void RegisterOpaqueForwardPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.ReadResource(
-					RD::Renderer_RenderTarget::DepthResolved,
-					RD::ImageAccess::DepthRead)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::AORaw,
-					RD::ImageAccess::Read)
-				.ReadResource(
-					RD::Renderer_RenderTarget::SSContactShadows,
-					RD::ImageAccess::Read)
-				.ReadResource(
-					RD::Renderer_RenderTarget::BentNormals,
-					RD::ImageAccess::Read)
-
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::DepthRaw,
+					RD::ImageAccess::GraphicsDepthWrite,
+					RD::ImageAccess::GraphicsDepthWrite)
 
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -57,10 +49,25 @@ void RegisterOpaqueForwardPass(
 						opaqueAttach.imageView = opaque.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+						const bool firstWrite = ctx.renderGraph->IsFirstGraphicsWrite(RD::Renderer_RenderTarget::Opaque);
+						opaqueAttach.loadOp  = firstWrite ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
 						AttachmentDesc depthAttach{};
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 						depthAttach.clearValue.depthStencil.depth = 0.0f;
+
+						if (ctx.profiler->enableWireframeView)
+						{
+							const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
+							depthAttach.imageView = depthRaw.m_imageView;
+							depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+							depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+							depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+						}
 
 						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
 
@@ -91,16 +98,32 @@ void RegisterOpaqueForwardPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& indirectBuffer =
+						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						uint32_t pipeID = !ctx.profiler->enableWireframeView ? PIPE_ID_MAIN : PIPE_ID_WIREFRAME;
+
+						const auto& drawRange = frameCtx->GetOpaqueDrawRange();
+						const auto& pipeline  = pass.pipelines[pipeID];
+
+						const uint64_t triangles = SumTrianglesIndirectRange(
+							frameCtx->GetIndirectCmds(),
+							drawRange.firstCommand,
+							drawRange.commandCount,
+							pipeline.topology);
+
+						ctx.profiler->AddOpaqueIndirect(
+							1,
+							frameCtx->GetOpaqueDrawRange().commandCount,
+							triangles);
 
 						pso.BeginRendering(cmd);
 
 						pso.DrawIndexedIndirect(
 							cmd,
 							indirectBuffer,
-							frameCtx->GetOpaqueDrawRange(),
-							pass.pipelines[PIPE_ID_MAIN],
+							drawRange,
+							pipeline,
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

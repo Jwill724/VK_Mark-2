@@ -75,10 +75,6 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 
 	clusterTileSliceRangesBytes = static_cast<size_t>(tileCount) * sizeof(glm::uvec2); 
 
-	const uint32_t elementsPerBlock = 256u;
-	const uint32_t blockCount =
-		(clusterCount + elementsPerBlock - 1u) / elementsPerBlock;
-
 	clusterScanScratchBytes = 4u;
 
 	clusterCountsBytes =

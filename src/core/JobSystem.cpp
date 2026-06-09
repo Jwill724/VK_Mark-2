@@ -49,7 +49,6 @@ public:
 		ThreadContext& ctx = ThreadContexts[threadNum];
 		ctx.jobsExecuted++;
 		m_fn(ctx);
-		delete this;
 	}
 
 private:
@@ -123,12 +122,14 @@ void JobSystem::SubmitJob(std::function<void(ThreadContext&)> taskFn)
 void JobSystem::SubmitRenderJob(std::function<void(ThreadContext&)> taskFn)
 {
 	auto* task = new PinnedTask(std::move(taskFn), RENDER_THREAD);
+	s_pendingTasks.push_back(task);
 	Scheduler.AddPinnedTask(task);
 }
 
 void JobSystem::SubmitMainJob(std::function<void(ThreadContext&)> taskFn)
 {
 	auto* task = new PinnedTask(std::move(taskFn), MAIN_THREAD);
+	s_pendingTasks.push_back(task);
 	Scheduler.AddPinnedTask(task);
 }
 
