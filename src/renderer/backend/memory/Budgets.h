@@ -5,7 +5,7 @@
 namespace RD = RendererDefinitions;
 
 // Can get risky? Keep this updated at all cost!
-inline constexpr size_t INSTANCE_SIZE     = 20;
+inline constexpr size_t INSTANCE_SIZE     = 16;
 inline constexpr size_t INDIRECT_CMD_SIZE = 20;
 inline constexpr size_t LOCAL_LIGHT_SIZE  = 60;
 inline constexpr size_t MAT4_SIZE         = 64;
