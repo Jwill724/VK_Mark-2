@@ -114,6 +114,7 @@ public:
 	glm::vec3  cameraPos{};
 	std::mutex camMutex;
 	bool enableWireframeView = false;
+	RD::ShadowQuality shadowQuality;
 	TotalAssetDataCounts assetCounts;
 	RD::RenderToggles   debugToggles;
 	SSAOPush            ssaoSettings;

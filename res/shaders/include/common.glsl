@@ -24,8 +24,8 @@ const uint AA_SMAA  = 2u;
 const uint AA_FXAA  = 3u;
 const uint AA_TAA   = 4u;
 
-const uint TM_ACESFILM = 0u;
-const uint TM_GT7      = 1u;
+//const uint TM_ACESFILM = 0u;
+//const uint TM_GT7      = 1u;
 
 const uint AO_OFF               = 0u;
 const uint AO_VBAO              = 1u;
@@ -325,13 +325,12 @@ const uint MAX_CASCADES_INDEX = MAX_CASCADES - 1u;
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	vec4 cascadeSplits;
-	// x=bias, y=shadowAtlasID, z=cascadeCount, w=atlasTexelSize(1/atlasHeight)
+	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize(1/atlasHeight)
 	vec4 params;
 	// xy = uvScale, zw = uvOffset (per cascade)
 	vec4 atlasUV[MAX_CASCADES];
 	vec4 maxFilterRadiusTexels;
-	float cascadeBias[MAX_CASCADES];
-	//float cascadeNormalOffset[MAX_CASCADES];
+	vec4 cascadeWorldTexels;
 };
 
 // Lighting struct
@@ -373,29 +372,28 @@ struct DebugToggles
 
 	uint aaMode;
 	uint aoMode;
-	uint shadowFilter;
 	uint enableShadows;
-
 	uint enableVolumetrics;
-	uint tonemapper;
-	uint activeEnvMap;
-	uint showAlbedo;
 
+	uint showAlbedo;
 	uint showNormals;
 	uint showRoughness;
 	uint showMetallic;
-	uint showAmbientOcclusion;
 
+	uint showAmbientOcclusion;
 	uint showSpecular;
 	uint showDiffuse;
 	uint showEmissive;
-	uint showBentNormals;
 
+	uint showBentNormals;
 	uint showCascadeSplits;
 	uint showSSS;
+	uint pad0;
 
+	uint activeEnvMap;
 	uint enableProfilerView;
 	uint enableSettings;
+	uint pad1;
 };
 
 

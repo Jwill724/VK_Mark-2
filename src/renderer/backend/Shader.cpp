@@ -12,6 +12,8 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::TransparentResolve_c,        "core/transparent_resolve.spv"              },
 	{ RD::Renderer_Shader::ObbLine_v,                   "debug/obb_lineVS.spv"                      },
 	{ RD::Renderer_Shader::ObbLine_f,                   "debug/obb_lineFS.spv"                      },
+	{ RD::Renderer_Shader::Wireframe_v,                 "debug/wireframeVS.spv"                     },
+	{ RD::Renderer_Shader::Wireframe_f,                 "debug/wireframeFS.spv"                     },
 	{ RD::Renderer_Shader::Skybox_v,                    "environment/skyboxVS.spv"                  },
 	{ RD::Renderer_Shader::Skybox_f,                    "environment/skyboxFS.spv"                  },
 	{ RD::Renderer_Shader::Prepass_v,                   "core/prepassVS.spv"                        },

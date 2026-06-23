@@ -68,9 +68,8 @@ float sampleShadowVolumetric(ViewReconstructResult result, mat4 cascadeVP, vec4 
 	vec3 uvz       = worldToShadowUvz(worldPos, cascadeVP, valid);
 	if (!valid) return 1.0;
 
-	const uint  shadowMapID = uint(csm.params.y);
-	const float bias        = csm.params.x;
-	const float texel       = csm.params.w;
+	const uint  shadowMapID = uint(csm.params.x);
+	const float texel       = csm.params.z;
 
 	vec2 atlasUV = uvz.xy * atlas.xy + atlas.zw;
 
@@ -79,7 +78,7 @@ float sampleShadowVolumetric(ViewReconstructResult result, mat4 cascadeVP, vec4 
 		shadowMapID,
 		atlasUV,
 		uvz.z,
-		bias,
+		MIN_SHADOW_BIAS,
 		texel);
 
 	return shadow;
@@ -175,7 +174,7 @@ void main()
 	vec3 baseScatter      = sunColor * pc.density * phase * dirMask * pc.scatteringStrength;
 
 	// Shadow info
-	uint  cascadeCount = uint(csm.params.z); 
+	uint  cascadeCount = uint(csm.params.y); 
 	uint  cascadeIdx   = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
 	float nextSplit    = csm.cascadeSplits[min(cascadeIdx, MAX_CASCADES_INDEX)];
 	vec4  atlas        = csm.atlasUV[cascadeIdx];

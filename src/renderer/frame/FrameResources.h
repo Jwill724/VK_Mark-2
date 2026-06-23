@@ -5,6 +5,8 @@
 #include "Bounds.h"
 #include "../scene/World.h"
 
+// Note: Instance and LocalLight sizes for buffers are predefined in renderer/backend/memory/Budgets.h
+
 namespace RD = RendererDefinitions;
 
 inline constexpr uint32_t TIMESTAMP_PASS_COUNT       = static_cast<uint32_t>(RD::PASS_COUNT);
@@ -315,8 +317,8 @@ struct alignas(16) SSAOPush
 
 struct alignas(16) TAAPush
 {
-	float minBlend = 0.05f;
-	float maxBlend = 0.5f;
+	float minBlend = 0.0125f;
+	float maxBlend = 0.25f;
 	float depthDisocclusionScale = 200.0f;
 	float pad0;
 };

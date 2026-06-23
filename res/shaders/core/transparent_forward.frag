@@ -121,7 +121,7 @@ void main()
 			if (light.lightType == LIGHT_TYPE_POINT) {
 				localLightColor += evaluatePointLight(
 					light, inWorldPos, scene.cameraPos.xyz,
-					N, V, NdotV, albedo, F0, rough, 1.0, unusedNdotL);
+					N, V, NdotV, albedo, F0, rough, unusedNdotL);
 			}
 			else if (light.lightType == LIGHT_TYPE_SPOT) {
 				const bool isFlashLight = (light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u;
@@ -131,7 +131,7 @@ void main()
 
 				localLightColor += evaluateSpotLight(
 					light, inWorldPos, scene.cameraPos.xyz,
-					N, V, NdotV, albedo, F0, rough, 1.0, unusedNdotL);
+					N, V, NdotV, albedo, F0, rough, unusedNdotL);
 			}
 		}
 	}

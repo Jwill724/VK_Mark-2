@@ -110,8 +110,7 @@ DrawBuildOutput DrawPreparation::BuildAndSortIndirectDraws(
 
 		for (auto& [key, inds] : batches)
 		{
-			if (lod_instances[inds[0]].passType !=
-				static_cast<uint32_t>(MaterialPass::Opaque)) continue;
+			if (lod_instances[inds[0]].passType != static_cast<uint32_t>(MaterialPass::Opaque)) continue;
 
 			if (key.meshID >= static_cast<uint32_t>(meshes.size())) continue;
 			const Mesh& mesh = meshes[key.meshID];
@@ -197,12 +196,9 @@ DrawBuildOutput DrawPreparation::BuildAndSortIndirectDraws(
 							slot =  MeshRegistry::ApplyFoliageBias(slot, cascade);
 						}
 
-						//shadowID = (slot == 0u) ? lods.shadowLod0
-						//		 : (slot == 1u) ? lods.shadowLod1
-						//						: lods.shadowLod2;
-
-						// shadow lod 1 and 2 is fucking broken somehow
-						shadowID = lods.shadowLod0;
+						shadowID = (slot == 0u) ? lods.shadowLod0
+								 : (slot == 1u) ? lods.shadowLod1
+												: lods.shadowLod2;
 					}
 
 					shadowBatches[shadowID].push_back(i);

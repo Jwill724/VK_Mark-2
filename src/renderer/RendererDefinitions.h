@@ -116,12 +116,35 @@ namespace RendererDefinitions
 	inline constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES      = 100u;
 	inline constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 10000u;
 
-	// Shadow settings
-	inline constexpr uint32_t DIRECTIONAL_CSM_ATLAS_X = 4096u;
-	inline constexpr uint32_t DIRECTIONAL_CSM_ATLAS_Y = 4096u;
+	inline constexpr uint32_t CSM_QUALITY_ULTRA  = 8192u;
+	inline constexpr uint32_t CSM_QUALITY_HIGH   = 4096u;
+	inline constexpr uint32_t CSM_QUALITY_MEDIUM = 3072u;
+	inline constexpr uint32_t CSM_QUALITY_LOW    = 2048u;
 
-	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_X = 512u;
-	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_Y = 512u;
+	inline constexpr uint32_t FLASHLIGHT_SHADOW_QUALITY_HIGH = 512u;
+	//inline constexpr uint32_t FLASHLIGHT_SHADOW_QUALITY_LOW  = 256u;
+
+	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_X = FLASHLIGHT_SHADOW_QUALITY_HIGH;
+	inline constexpr uint32_t FLASHLIGHT_SHADOW_MAP_Y = FLASHLIGHT_SHADOW_QUALITY_HIGH;
+
+	enum class ShadowQuality
+	{
+		Low,
+		Medium,
+		High,
+		Ultra,
+	};
+
+	inline uint32_t EvaluateShadowQuality(ShadowQuality quality)
+	{
+		switch(quality)
+		{
+			case ShadowQuality::Low:    return CSM_QUALITY_LOW;
+			case ShadowQuality::Medium: return CSM_QUALITY_MEDIUM;
+			case ShadowQuality::High:   return CSM_QUALITY_HIGH;
+			case ShadowQuality::Ultra:  return CSM_QUALITY_ULTRA;
+		}
+	}
 
 	enum class Renderer_Pass
 	{
@@ -440,17 +463,11 @@ namespace RendererDefinitions
 		AA_TAA      // Temporal Anti-Aliasing
 	};
 
-	enum class ToneMapper
-	{
-		TM_ACESFILM,
-		TM_GT7
-	};
-
-	enum class ShadowFilter
-	{
-		SHADOW_FILTER_PCF,
-		//SHADOW_FILTER_PCSS
-	};
+	//enum class ToneMapper
+	//{
+	//	TM_ACESFILM,
+	//	TM_GT7
+	//};
 
 	// Define this somewhere
 	struct alignas(4) RenderToggles
@@ -462,29 +479,28 @@ namespace RendererDefinitions
 
 		uint32_t aaMode                    = 0;
 		uint32_t aoMode                    = 0;
-		uint32_t shadowFilter              = 0;
 		uint32_t enableShadows             = 0;
-
 		uint32_t enableVolumetrics         = 0;
-		uint32_t tonemapper                = 0;
-		uint32_t activeEnvMap              = 0;
-		uint32_t showAlbedo                = 0;
 
+		uint32_t showAlbedo                = 0;
 		uint32_t showNormals               = 0;
 		uint32_t showRoughness             = 0;
 		uint32_t showMetallic              = 0;
-		uint32_t showAmbientOcclusion      = 0;
 
+		uint32_t showAmbientOcclusion      = 0;
 		uint32_t showSpecular              = 0;
 		uint32_t showDiffuse               = 0;
 		uint32_t showEmissive              = 0;
-		uint32_t showBentNormals           = 0;
 
+		uint32_t showBentNormals           = 0;
 		uint32_t showCascadeSplits         = 0;
 		uint32_t showSSS                   = 0;
+		uint32_t pad0;
 
+		uint32_t activeEnvMap              = 0;
 		uint32_t enableProfilerView        = 0;
 		uint32_t enableSettings            = 0;
+		uint32_t pad1;
 	};
 
 	enum class ImageAccess

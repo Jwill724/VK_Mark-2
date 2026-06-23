@@ -101,7 +101,6 @@ vec3 evaluatePointLight(
 	vec3 albedo,
 	vec3 F0,
 	float roughness,
-	float aoTerm,
 	out float outNdotL)
 {
 	vec3 toLight = light.position - worldPos;
@@ -136,9 +135,7 @@ vec3 evaluatePointLight(
 	vec3 diff = DisneyDiffuse(albedo, roughness, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(NdotV, NdotL, normalWS, viewDirWS, H_ws, F0, roughness);
 
-	float microVis = MicroShadowVisibility(NdotL, aoTerm);
-
-	return (diff + spec) * radiance * NdotL * microVis;
+	return (diff + spec) * radiance * NdotL;
 }
 
 vec3 evaluateSpotLight(
@@ -151,7 +148,6 @@ vec3 evaluateSpotLight(
 	vec3 albedo,
 	vec3 F0,
 	float roughness,
-	float aoTerm,
 	out float outNdotL)
 {
 	vec3 toLight = light.position - worldPos;
@@ -182,11 +178,27 @@ vec3 evaluateSpotLight(
 		albedo,
 		F0,
 		roughness,
-		aoTerm,
 		dummyNdotL);
 
 	outNdotL = dummyNdotL;
 	return pointResult * cone;
+}
+
+// How light-space depth changes per unit atlas-UV on the receiver plane.
+vec2 computeDepthGradientUV(vec2 atlasUV, float depth)
+{
+	vec2  duvdx = dFdx(atlasUV);
+	vec2  duvdy = dFdy(atlasUV);
+	float dzdx  = dFdx(depth);
+	float dzdy  = dFdy(depth);
+
+	float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
+	if (abs(det) < 1e-12) return vec2(0.0);
+
+	vec2 g;
+	g.x = ( duvdy.y * dzdx - duvdx.y * dzdy) / det;
+	g.y = (-duvdy.x * dzdx + duvdx.x * dzdy) / det;
+	return g;
 }
 
 #endif

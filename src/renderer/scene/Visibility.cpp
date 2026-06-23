@@ -313,10 +313,12 @@ void Visibility::CullBVHCollect(
 
 		if (!BoxInFrustum(node.box, frus)) continue;
 
-		if (node.count) {
+		if (node.count)
+		{
 			const uint32_t first = node.first;
 			const uint32_t last = first + node.count;
-			for (uint32_t i = first; i < last; ++i) {
+			for (uint32_t i = first; i < last; ++i)
+			{
 				const uint32_t idx = vs.leafIndex[i];
 				const AABB& wb = vs.worldAABBs[idx];
 				if (!BoxInFrustum(wb, frus)) continue;
@@ -325,7 +327,8 @@ void Visibility::CullBVHCollect(
 				visibleWorldAABBs.push_back(wb);
 			}
 		}
-		else {
+		else
+		{
 			stack.push_back(static_cast<uint32_t>(node.left));
 			stack.push_back(static_cast<uint32_t>(node.right));
 		}
@@ -344,11 +347,15 @@ void Visibility::CullBVHCollectShadowCastersReceivers(
 {
 	if (vs.bvh.empty()) return;
 
-	glm::vec3 lightDirWS = glm::normalize(glm::vec3(-lightView[2]));
-
 	auto& shadowSettings = World::GetScene().GetShadowControls();
 	const float LS_EPSILON = shadowSettings.lsEpsilon;
-	const float DIR_EPSILON = shadowSettings.dirEpsilon;
+
+	// abs() of the light-view rotation: maps world half-extents into light
+	// space. Constant for the whole traversal, so hoist it out of the loop.
+	const glm::mat3 absLightMat = glm::mat3(
+		glm::abs(lightView[0]),
+		glm::abs(lightView[1]),
+		glm::abs(lightView[2]));
 
 	std::vector<uint32_t> stack;
 	stack.reserve(128u);
@@ -366,17 +373,21 @@ void Visibility::CullBVHCollectShadowCastersReceivers(
 		const glm::vec3 nodeOrigin = 0.5f * (node.box.vmin + node.box.vmax);
 		const glm::vec3 nodeExtent = 0.5f * (node.box.vmax - node.box.vmin);
 
-		// Node test against loose receiver
-		glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(nodeOrigin, 1.0f));
-		glm::vec3 extentLS = glm::mat3(
-			glm::abs(lightView[0]), glm::abs(lightView[1]), glm::abs(lightView[2])) * nodeExtent;
+		const glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(nodeOrigin, 1.0f));
+		const glm::vec3 extentLS = absLightMat * nodeExtent;
 
-		glm::vec3 nMin = centerLS - extentLS;
-		glm::vec3 nMax = centerLS + extentLS;
+		const glm::vec3 nMin = centerLS - extentLS;
+		const glm::vec3 nMax = centerLS + extentLS;
 
+		// Receiver footprint test in light space.
+		//   X/Y: shadow projects straight down light-space Z, so the node must
+		//        overlap the receiver footprint in X and Y (symmetric overlap).
+		//   Z:   extend the receiver volume toward the light to +inf. Reject
+		//        only if the node is entirely on the FAR side of the receiver
+		//        (farther from the light) — those cast onto nothing visible.
 		if (nMin.x > receiverLSMax.x + LS_EPSILON || nMax.x < receiverLSMin.x - LS_EPSILON) continue;
 		if (nMin.y > receiverLSMax.y + LS_EPSILON || nMax.y < receiverLSMin.y - LS_EPSILON) continue;
-		if (nMin.z > receiverLSMax.z + LS_EPSILON || nMax.z < receiverLSMin.z - LS_EPSILON) continue;
+		if (nMax.z < receiverLSMin.z - LS_EPSILON) continue;
 
 		if (node.count)
 		{
@@ -393,33 +404,26 @@ void Visibility::CullBVHCollectShadowCastersReceivers(
 				if ((materialFlags & MATERIAL_FLAG_CASTS_SHADOWS) == 0u) continue;
 				if (inst.passType == static_cast<uint32_t>(MaterialPass::Transparent)) continue;
 
-				bool isAlphaMasked = (materialFlags & MATERIAL_FLAG_ALPHA_MASKED) != 0u;
-				bool isTree        = (materialFlags & MATERIAL_FLAG_IS_TREE) != 0u;
+				const bool isAlphaMasked = (materialFlags & MATERIAL_FLAG_ALPHA_MASKED) != 0u;
+				const bool isTree        = (materialFlags & MATERIAL_FLAG_IS_TREE) != 0u;
 
 				if (isAlphaMasked && !isTree && currentCascadeIndex >= 2) continue;
-				if (isAlphaMasked && isTree && currentCascadeIndex >= 3) continue;
+				if (isAlphaMasked &&  isTree && currentCascadeIndex >= 3) continue;
 
 				const AABB& wb = vs.worldAABBs[idx];
 
-				const glm::vec3 originWB = 0.5f * (node.box.vmin + node.box.vmax);
+				const glm::vec3 originWB = 0.5f * (wb.vmin + wb.vmax);
+				const glm::vec3 extentWB = 0.5f * (wb.vmax - wb.vmin);
 
-				float casterProj = glm::dot(lightDirWS, originWB);
-				if (casterProj > DIR_EPSILON) continue;
+				const glm::vec3 casterCenterLS = glm::vec3(lightView * glm::vec4(originWB, 1.0f));
+				const glm::vec3 casterExtentLS = absLightMat * extentWB;
 
-				const glm::vec3 extentWB = 0.5f * (node.box.vmax - node.box.vmin);
+				const glm::vec3 casterMinLS = casterCenterLS - casterExtentLS;
+				const glm::vec3 casterMaxLS = casterCenterLS + casterExtentLS;
 
-				glm::vec3 casterCenterLS = glm::vec3(lightView * glm::vec4(originWB, 1.0f));
-				glm::mat3 absLight = glm::mat3(
-					glm::abs(lightView[0]),
-					glm::abs(lightView[1]),
-					glm::abs(lightView[2]));
-				glm::vec3 casterExtentLS = absLight * extentWB;
-
-				//float casterZMin = casterCenterLS.z - casterExtentLS.z;
-				float casterZMax = casterCenterLS.z + casterExtentLS.z;
-
-				//if (casterZMin > receiverLSMax.z + LS_EPSILON) continue;
-				if (casterZMax < receiverLSMin.z - LS_EPSILON) continue;
+				if (casterMinLS.x > receiverLSMax.x + LS_EPSILON || casterMaxLS.x < receiverLSMin.x - LS_EPSILON) continue;
+				if (casterMinLS.y > receiverLSMax.y + LS_EPSILON || casterMaxLS.y < receiverLSMin.y - LS_EPSILON) continue;
+				if (casterMaxLS.z < receiverLSMin.z - LS_EPSILON) continue;
 
 				if (!BoxInFrustum(wb, frus)) continue;
 

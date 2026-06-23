@@ -279,9 +279,35 @@ namespace
 		}
 
 		if (dbg.enableShadows) {
+			const char* qualityModes[] = { "Low", "Medium", "High", "Ultra" };
+			int currentQuality = (int)profiler.shadowQuality;
+
+			if (ImGui::Combo("Shadow Quality", &currentQuality, qualityModes, IM_ARRAYSIZE(qualityModes))) {
+				profiler.shadowQuality = static_cast<RD::ShadowQuality>(currentQuality);
+			}
+			auto& shadowControl = World::GetScene().GetShadowControls();
+			int shadowFar = static_cast<int>(shadowControl.shadowFar);
+			ImGui::SliderInt("Shadow Far##rt", &shadowFar, 500, 1500);
+			if (shadowFar != static_cast<int>(shadowControl.shadowFar))
+			{
+				shadowControl.shadowFar = static_cast<float>(shadowFar);
+				World::GetScene().ShouldUpdateCascadeSplits();
+			}
+
+			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) {
+				dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
+			}
+
+			bool depthHack = shadowControl.enableShadowDepthExtendHack;
+			if (ImGui::Checkbox("Enable Depth Hack##rt", &depthHack)) {
+				shadowControl.enableShadowDepthExtendHack = depthHack;
+				World::GetScene().ShouldUpdateCascadeSplits();
+			}
+
 			if (ImGui::Checkbox("Enable Screen Space Contact Shadows##rt", &contact)) {
 				dbg.enableSSS = contact ? 1u : 0u;
 			}
+
 			if (dbg.enableSSS) {
 				auto& contactShadowSettings = profiler.contactShadowsSettings;
 				ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
@@ -289,10 +315,6 @@ namespace
 				int shadowContrastInt = static_cast<int>(contactShadowSettings.shadowContrast);
 				ImGui::SliderInt("Shadow Contrast##rt", &shadowContrastInt, 1, 8);
 				contactShadowSettings.shadowContrast = static_cast<float>(shadowContrastInt);
-			}
-
-			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) {
-				dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
 			}
 		}
 
@@ -306,8 +328,8 @@ namespace
 		}
 		if (dbg.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA)) {
 			auto& taaSettings = profiler.taaSettings;
-			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.2f");
-			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.2f");
+			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.3f");
+			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.3f");
 			ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 500.0f);
 		}
 
@@ -959,9 +981,8 @@ void Editor::InitImgui(
 	ImGui::CreateContext();
 
 	ImGuiIO& io = ImGui::GetIO();
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable keyboard controls
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable gamepad controls
 	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange; // Prevent ImGui from overriding the cursor
+	io.ConfigFlags |= ImGuiConfigFlags_NoKeyboard;
 	io.IniFilename = nullptr; // Won't create imgui file
 
 	ImGui_ImplGlfw_InitForVulkan(window, true);

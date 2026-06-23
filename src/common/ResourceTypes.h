@@ -89,23 +89,20 @@ struct alignas(16) DirectionalCSMInfo
 {
 	glm::mat4 cascadeVP[RD::MAX_SHADOW_CASCADES]{0.0f};
 	glm::vec4 cascadeSplits{0.0f};
-	// x=bias, y=shadowAtlasID, z=cascadeCount, w=atlasTexelSize
+	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize
 	glm::vec4 params{ 0.0f };
 	// xy = uvScale, zw = uvOffset (per cascade)
 	glm::vec4 atlasUV[RD::MAX_SHADOW_CASCADES]{};
 	glm::vec4 maxFilterRadiusTexels{};
-	float cascadeBias[RD::MAX_SHADOW_CASCADES]{};
-	//float cascadeNormalOffset[MAX_SHADOW_CASCADES]{};
+	glm::vec4 cascadeWorldTexels{};
 };
 
 struct ShadowControl
 {
-	float splitLambda          = 0.97f;
-	float bias                 = 0.0001f;
-	float softnessFactor;
-	float maxCasterDistance[4] = { 3000.0f, 4000.0f, 5000.0f, 6000.0f };
-	float xyPadding            = 150.0f;
-	float lsEpsilon            = 5.0f;
-	float dirEpsilon           = 20.0f;
-	float shadowRadii[4]       = { 17.0f, 46.0f, 160.0f, 1000.0f };
+	float splitLambda                = 0.97f;
+	float bias                       = 0.0001f;
+	float shadowFar                  = 1000.0f;
+	float lsEpsilon                  = 1.0f;
+	// Doubles the far depth range
+	bool enableShadowDepthExtendHack = false;
 };

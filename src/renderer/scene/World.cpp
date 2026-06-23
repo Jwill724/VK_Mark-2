@@ -14,9 +14,9 @@
 #include "Mesh.h"
 #include "../../core/AssetUploadTypes.h"
 
-static constexpr glm::vec3 DEFAULT_SPAWN { 1.0, 1.0, 1.0 };
-
 namespace RD = RendererDefinitions;
+
+static constexpr glm::vec3 DEFAULT_SPAWN { 1.0, 1.0, 1.0 };
 
 static uint32_t jitter_frame_index = 0u;
 
@@ -314,8 +314,6 @@ void World::UpdateDrawData(
 				false);
 		}
 	}
-
-	//fmt::println("After culling shadow instances");
 
 	const bool flashlightOn = debug.enableShadows
 		&& LightingSystem::_mainFlashLight.IsFlashLightOn();

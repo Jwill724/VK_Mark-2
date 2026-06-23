@@ -720,5 +720,11 @@
     <None Include="res\shaders\visibility\visibility.comp">
       <Filter>res\shaders\visibility</Filter>
     </None>
+    <None Include="res\shaders\debug\wireframeVS.vert">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\debug\wireframeFS.frag">
+      <Filter>res\shaders\debug</Filter>
+    </None>
   </ItemGroup>
 </Project>

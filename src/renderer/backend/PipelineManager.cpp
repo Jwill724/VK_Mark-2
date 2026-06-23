@@ -26,8 +26,8 @@ void PM::RegisterPipelines()
 	reg(RP::Opaque,      {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
 						  { RS::Opaque_f,      SS::FRAGMENT_STAGE }});
 
-	reg(RP::Wireframe,   {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
-						  { RS::Opaque_f,      SS::FRAGMENT_STAGE }});
+	reg(RP::Wireframe,   {{ RS::Wireframe_v,   SS::VERTEX_STAGE   },
+						  { RS::Wireframe_f,   SS::FRAGMENT_STAGE }});
 
 	reg(RP::Prepass,     {{ RS::Prepass_v,     SS::VERTEX_STAGE   },
 						  { RS::Prepass_f,     SS::FRAGMENT_STAGE }});

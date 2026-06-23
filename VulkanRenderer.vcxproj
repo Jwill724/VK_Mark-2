@@ -461,6 +461,8 @@
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\core\transparent_forward.frag" />
     <None Include="res\shaders\core\transparent_resolve.comp" />
+    <None Include="res\shaders\debug\wireframeFS.frag" />
+    <None Include="res\shaders\debug\wireframeVS.vert" />
     <None Include="res\shaders\post_process\chromatic_aberration.comp" />
     <None Include="res\shaders\post_process\smaa_blend.comp" />
     <None Include="res\shaders\post_process\smaa_edges.comp" />

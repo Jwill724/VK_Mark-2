@@ -71,11 +71,14 @@ void RegisterOpaqueForwardPass(
 
 						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
 
-						pso.SetPush(ctx.profiler->forwardPush);
+						if (!ctx.profiler->enableWireframeView)
+						{
+							pso.SetPush(ctx.profiler->forwardPush);
 
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, aoRaw, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, contactShadows, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, bentNormals, linearClampSampler);
+							pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, aoRaw, nearestClampSampler);
+							pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, contactShadows, nearestClampSampler);
+							pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, bentNormals, linearClampSampler);
+						}
 					})
 
 				.SetExecutionCondition(

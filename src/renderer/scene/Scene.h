@@ -19,6 +19,7 @@ public:
 	const Camera& GetCamera() const { return m_camera; }
 
 	ShadowControl& GetShadowControls() { return m_shadowControl; }
+	const ShadowControl& GetShadowControls() const { return m_shadowControl; }
 
 	void InitScene(glm::vec3 spawn);
 	void InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bindlessID);
@@ -71,6 +72,8 @@ public:
 
 	void BuildDispatchList(const int waveSize = 64);
 	const DispatchList& GetDispatchList() const { return m_dispatchList; }
+
+	void ShouldUpdateCascadeSplits() { m_bShouldSplitsUpdate = true; }
 private:
 	SceneInfo m_sceneInfo;
 	DirectionalCSMInfo m_csmInfo;
@@ -81,6 +84,7 @@ private:
 
 	Frustum m_cascadeFrustums[RD::MAX_SHADOW_CASCADES];
 	glm::mat4 m_cascadeLightViews[RD::MAX_SHADOW_CASCADES];
+	glm::mat4 m_cascadeLightProjs[RD::MAX_SHADOW_CASCADES];
 
 	float m_csmAtlasTileRes = 0.0f;
 

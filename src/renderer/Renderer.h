@@ -26,6 +26,14 @@ struct GLFWwindow;
 struct SceneUploadBatch;
 struct ModelAsset;
 
+inline constexpr bool LensFlareOn           = true;
+inline constexpr bool ChromaticAberrationOn = true;
+inline constexpr bool VolumetricsOn         = true;
+inline constexpr bool ShadowsOn             = true;
+inline constexpr bool ScreenSpaceShadowsOn  = true;
+inline constexpr bool ProfilerViewOn        = false;
+inline constexpr bool SettingsTabOn         = true;
+
 // Manages core vulkan state and memory allocation.
 // All primary resources are stored here, gpu buffers, image, frame data.
 // Bindless textures, push descriptors for render targets, indirect buffer table for bindless gpu buffers.
@@ -108,6 +116,8 @@ private:
 
 	void CheckGlobalDescriptorSetSync();
 
+	void CheckCSMAtlasExtentUpdate();
+
 	void BatchUploadTextures(
 		std::vector<SceneUploadBatch>& batches,
 		std::vector<std::shared_ptr<ModelAsset>>& assets,
@@ -166,6 +176,8 @@ private:
 
 	Profiler m_profiler;
 
+	RD::ShadowQuality m_currentShadowQuality;
+
 	void InitRenderSettings(
 		bool enableLensFlare,
 		bool enableChromaticAberration,
@@ -174,6 +186,7 @@ private:
 		bool enableVolumetrics,
 		RD::AntiAliasingMethod aaMode,
 		RD::AmbientOcclusionMethod aoMode,
+		RD::ShadowQuality shadowQuality,
 		bool enableProfilerView,
 		bool enableSettings);
 

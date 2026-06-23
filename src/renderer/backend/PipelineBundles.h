@@ -176,12 +176,10 @@ enum class TransparentResolvePipelineSlot : uint8_t
 enum class OpaqueForwardPipelineSlot : uint8_t
 {
 	Opaque,
-
 	Wireframe,
 
 	Count
 };
-
 
 enum class TransparentForwardPipelineSlot : uint8_t
 {

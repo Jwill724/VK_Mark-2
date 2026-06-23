@@ -642,8 +642,8 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 					else
 					{
 						md.shadowLod0 = lod0Idx;
-						md.shadowLod1 = buildLOD(0.75f, 0.002f);
-						md.shadowLod2 = buildLOD(0.55f, 0.004f);
+						md.shadowLod1 = buildLOD(0.40f, 0.006f);
+						md.shadowLod2 = buildLOD(0.18f, 0.012f);
 						if (md.shadowLod1 == UINT32_MAX) md.shadowLod1 = lod0Idx;
 						if (md.shadowLod2 == UINT32_MAX) md.shadowLod2 = md.shadowLod1;
 					}

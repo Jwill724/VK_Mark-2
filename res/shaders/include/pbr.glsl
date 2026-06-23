@@ -71,28 +71,29 @@ vec3 F_SchlickRoughness(vec3 F0, float NoV, float roughness)
 // Roughness-aware specular AO (cheap, view-dependent)
 float SpecAO_Conservative(float ao, float NdotV, float rough)
 {
-	// stronger on smooth, lighter on rough
-	float p = mix(4.0, 1.5, rough);
-	float v = max(NdotV, 0.1);
 	// never < ao and =1 when ao=1
-	float t = pow(saturatePBR(ao + v - 1.0 + ao), p);
+	float t = saturatePBR(pow(NdotV + ao, exp2(-16 * rough - 1)) - 1 + ao);
 	return clamp(max(t, ao), 0.0, 1.0);
 }
 
-// Multi-scatter energy compensation (UE/Frostbite style)
+// Multi-scatter energy compensation.
+// DFG LUT (brdf.x/.y) is split-sum from Karis (UE4 2013) / Frostbite 2014.
+// Compensation term is Fdez-Aguera 2019; F_avg/21 from Kulla-Conty 2017.
+// Returns a multiplier to apply onto single-scatter spec (FssEss = F0*brdf.x + brdf.y).
 vec3 MultiScatterEnergyComp(vec3 F0, vec2 brdf)
 {
-	// E_ss = single-scatter energy from brdf; keep metals from over-darkening
-	vec3 E_ss  = F0 * brdf.x + brdf.y;
-	vec3 F_avg = F0 + (1.0 - F0) * 0.047619;
-	return 1.0 + F_avg * (1.0 - E_ss) / max(E_ss, 1e-3);
+	float Ess  = brdf.x + brdf.y;                  // achromatic single-scatter energy
+	float Ems  = 1.0 - Ess;                        // energy lost after one scatter
+	vec3  Favg = F0 + (1.0 - F0) / 21.0;           // Kulla-Conty average Fresnel
+	vec3  FmsEms = Ems * Favg / max(1.0 - Favg * Ems, 1e-4);
+	return 1.0 + FmsEms;
 }
 
 float MicroShadowVisibility(float NdotL, float occlusion)
 {
 	float ao = clamp(occlusion, 0.0, 1.0);
-	float visibility = (NdotL + ao) / (1.0 + ao);
-	return clamp(visibility, 0.0, 1.0);
+	float ao2 = ao * ao;
+	return saturatePBR(NdotL + 2 * ao2 - 1);
 }
 
 #endif

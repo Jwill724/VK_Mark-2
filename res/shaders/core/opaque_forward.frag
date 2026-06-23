@@ -76,12 +76,17 @@ void main()
 	if (DBG(showNormals)) RET(N * 0.5 + 0.5, 1.0);
 
 	vec3  albedo = inColor * base.rgb;
-	float rough  = SampleTexture(mat.metalRoughnessID, inUV).g * mat.metalRoughFactors.y;
-	float metal  = SampleTexture(mat.metalRoughnessID, inUV).b * mat.metalRoughFactors.x;
-	vec3  emissT = SampleTexture(mat.emissiveID,       inUV).rgb;
+
+	// Only need g and b
+	vec3 metalRough = SampleTexture(mat.metalRoughnessID, inUV).rgb;
+	vec3 emissT     = SampleTexture(mat.emissiveID,       inUV).rgb;
+
+	float rough  = metalRough.g * mat.metalRoughFactors.y;
+	float metal  = metalRough.b * mat.metalRoughFactors.x;
 
 	vec3  emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
 	float lum      = max(max(emissive.r, emissive.g), emissive.b);
+	// No bloom so hack it a bit
 	// Boost only bright parts
 	float boost    = smoothstep(1.0, 10.0, lum);
 	emissive      *= mix(1.0, 3.0, boost);
@@ -133,12 +138,13 @@ void main()
 
 	// multi-scatter energy compensation for direct spec
 	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
-	spec *= MultiScatterEnergyComp(F0, brdf);
+	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
+	spec *= multiScatterComp;
 
 	if (DBG(showDiffuse))  RET(diff * (sunColor) * NdotL, alpha);
 	if (DBG(showSpecular)) RET(spec * (sunColor) * NdotL, alpha);
 
-	// Shadows
+	// cascaded shadow maps
 	float shadow     = 1.0;
 	mat2  shadowHash = mat2(1.0);
 	if (debug.aaMode != AA_TAA) {
@@ -149,60 +155,72 @@ void main()
 	}
 	if (DBG(enableShadows)) {
 		ShadowCSM   csm          = getShadowCSM();
-		const uint  cascadeCount = uint(csm.params.z);
-		const uint  shadowMapID  = uint(csm.params.y);
-		//const float shadowBias   = csm.params.x;
-		const float texel        = csm.params.w;
+		const uint  shadowMapID  = uint(csm.params.x);
+		const uint  cascadeCount = uint(csm.params.y);
+		const float texel        = csm.params.z;
 
-		// cascade index for split
-		uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
+		const uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
+		const uint nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
 
-		const float angleScale = (0.25 + (1.0 - NdotL) * 0.65);
-		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
-		const float shadowBias = csm.cascadeBias[cascadeIdx];
-		const float bias       = max(shadowBias * angleScale, MIN_SHADOW_BIAS);
-
-//		const float normalOffset  = csm.cascadeNormalOffset[cascadeIdx];
-//		float NdotLRaw    = dot(geometricNormalWS, L);       // signed, not clamped
-//		float offsetScale = clamp(1.0 - NdotLRaw, 0.0, 1.0); // 0 on lit face, 1 on dark face
-//		vec3 offsetPos    = inWorldPos + geometricNormalWS * (normalOffset * offsetScale);
-
-		// Debug view for cascade splits
 		if (DBG(showCascadeSplits)) {
-			vec3        overlayColor = cascadeColor(cascadeIdx);
-			const float overlayAlpha = 0.6;
-			vec3        finalColor   = mix(albedo, overlayColor, overlayAlpha);
-
+			vec3  overlayColor = cascadeColor(cascadeIdx);
+			vec3  finalColor   = mix(albedo, overlayColor, 0.6);
 			RET(finalColor, alpha);
 		}
 
+		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
+		const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
+
+		const float curWorldTexel  = csm.cascadeWorldTexels[cascadeIdx];
+		const float nextWorldTexel = csm.cascadeWorldTexels[nextIdx];
+
+		const mat4 curCascadeVP  = csm.cascadeVP[cascadeIdx];
+		const mat4 nextCascadeVP = csm.cascadeVP[nextIdx];
+
+		float maxPlaneBiasCur = computeMaxPlaneBias(radius, curWorldTexel,
+			ndcDepthPerWorld(curCascadeVP));
+
+		float maxPlaneBiasNext = computeMaxPlaneBias(nextRadius, nextWorldTexel,
+			ndcDepthPerWorld(nextCascadeVP));
+
+		vec3 offsetVec     = computeNormalOffset(geometricNormalWS, L, curWorldTexel);
+		vec3 nextOffsetVec = computeNormalOffset(geometricNormalWS, L, nextWorldTexel);
+		vec3 offsetPos     = inWorldPos + offsetVec;
+		vec3 nextOffsetPos = inWorldPos + nextOffsetVec;
+
 		// transform into light space
-		vec4 lightSpacePos = csm.cascadeVP[cascadeIdx] * vec4(inWorldPos, 1.0);
+		vec4 lightSpacePos = curCascadeVP * vec4(offsetPos, 1.0);
 		vec3 projCoords    = lightSpacePos.xyz / lightSpacePos.w;
 		vec2 shadowUV      = projCoords.xy * 0.5 + 0.5;           // [-1, 1] to [0, 1]
 		shadowUV.y         = 1.0 - shadowUV.y;                    // Flip y orientation
 		float curDepth     = projCoords.z;                        // z already in [0, 1]
 
+		vec4 nextLightVP    = nextCascadeVP * vec4(nextOffsetPos, 1.0);
+		vec3 nextProjCoords = nextLightVP.xyz / nextLightVP.w;
+		vec2 nextShadowUV   = nextProjCoords.xy * 0.5 + 0.5;
+		nextShadowUV.y      = 1.0 - nextShadowUV.y;
+		float nextDepth     = nextProjCoords.z;
+
+		vec4 atlas        = csm.atlasUV[cascadeIdx];
+		vec2 atlasUV      = shadowUV * atlas.xy + atlas.zw;
+		vec2 atlasMin     = atlas.zw;
+		vec2 atlasMax     = atlas.zw + atlas.xy;
+
+		vec4 nextAtlas    = csm.atlasUV[nextIdx];
+		vec2 nextAtlasUV  = nextShadowUV * nextAtlas.xy + nextAtlas.zw;
+		vec2 nextAtlasMin = nextAtlas.zw;
+		vec2 nextAtlasMax = nextAtlas.zw + nextAtlas.xy;
+
+		vec2 depthGradCur  = computeDepthGradientUV(atlasUV,     curDepth);
+		vec2 depthGradNext = computeDepthGradientUV(nextAtlasUV, nextDepth);
+
 		if (!(shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
 			  shadowUV.y < 0.0 || shadowUV.y > 1.0 ||
 			  curDepth   < 0.0 || curDepth   > 1.0))
 		{
-			vec4 atlas   = csm.atlasUV[cascadeIdx];
-			vec2 atlasUV = shadowUV * atlas.xy + atlas.zw;
-
-			vec2 atlasMin = atlas.zw;
-			vec2 atlasMax = atlas.zw + atlas.xy;
-
 			float sA = PCFVogel(
-				shadowHash,
-				shadowMapID,
-				atlasUV,
-				curDepth,
-				bias,
-				texel,
-				radius,
-				atlasMin,
-				atlasMax);
+				shadowHash, shadowMapID, atlasUV, curDepth,
+				texel, radius, atlasMin, atlasMax, depthGradCur, maxPlaneBiasCur);
 
 			shadow = sA;
 
@@ -210,43 +228,17 @@ void main()
 			// The code for comparing view depth with splits and the blend itself copied from this.
 			// Blending between cascades for smooth transitions.
 			if (cascadeIdx < MAX_CASCADES_INDEX) {
-				uint  nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
 				float blendEnd   = csm.cascadeSplits[cascadeIdx];
-				float blendStart = blendEnd * 0.90;
+				float blendStart = blendEnd * 0.9;
 
 				if (viewDepth >= blendStart) {
-					const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
-//					const float nextNormalOffset  = csm.cascadeNormalOffset[nextIdx];
-//					vec3 nextOffsetPos = inWorldPos + geometricNormalWS * (nextNormalOffset * offsetScale);
-					vec4 nextLightVP = csm.cascadeVP[nextIdx] * vec4(inWorldPos, 1.0);
-					vec3 nextProjCoords = nextLightVP.xyz / nextLightVP.w;
-
-					vec2 nextShadowUV = nextProjCoords.xy * 0.5 + 0.5;
-					nextShadowUV.y = 1.0 - nextShadowUV.y;
-
-					float nextDepth = nextProjCoords.z;
-
 					if (!(nextShadowUV.x < 0.0 || nextShadowUV.x > 1.0 ||
-						nextShadowUV.y   < 0.0 || nextShadowUV.y > 1.0 ||
-						nextDepth        < 0.0 || nextDepth      > 1.0))
+						  nextShadowUV.y < 0.0 || nextShadowUV.y > 1.0 ||
+						  nextDepth      < 0.0 || nextDepth      > 1.0))
 					{
-						vec4 nextAtlas         = csm.atlasUV[nextIdx];
-						vec2 nextAtlasUV       = nextShadowUV * nextAtlas.xy + nextAtlas.zw;
-						const float nextBias   = max(csm.cascadeBias[nextIdx] * angleScale, MIN_SHADOW_BIAS);
-
-						vec2 nextAtlasMin = nextAtlas.zw;
-						vec2 nextAtlasMax = nextAtlas.zw + nextAtlas.xy;
-
 						float sB = PCFVogel(
-							shadowHash,
-							shadowMapID,
-							nextAtlasUV,
-							nextDepth,
-							nextBias,
-							texel,
-							nextRadius,
-							nextAtlasMin,
-							nextAtlasMax);
+							shadowHash, shadowMapID, nextAtlasUV, nextDepth,
+							texel, nextRadius, nextAtlasMin, nextAtlasMax, depthGradNext, maxPlaneBiasNext);
 
 						// smoothstep goes 0 at blendStart -> 1 at blendEnd,
 						float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
@@ -300,20 +292,14 @@ void main()
 			const uint clusterLightID = clusterLightIDsBuf.lightIDs[offset + i];
 
 			LocalLight light  = lightBuf.lights[clusterLightID];
-			float unusedNdotL = 0.0;
 			if (light.lightType == LIGHT_TYPE_POINT) {
-				localLightColor += evaluatePointLight(
-					light,
-					inWorldPos,
-					scene.cameraPos.xyz,
-					N,
-					V,
-					NdotV,
-					albedo,
-					F0,
-					rough,
-					aoTerm,
-					unusedNdotL);
+				float pointNdotL = 0.0;
+				vec3 pointResult = evaluatePointLight(
+					light, inWorldPos, scene.cameraPos.xyz, N, V, NdotV,
+					albedo, F0, rough, pointNdotL);
+
+				pointResult *= MicroShadowVisibility(pointNdotL, aoTerm);
+				localLightColor += pointResult;
 			}
 			else if (light.lightType == LIGHT_TYPE_SPOT) {
 				const bool isFlashLight = (light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u;
@@ -322,22 +308,11 @@ void main()
 				if (isFlashLight && isFlashLightOff) continue;
 
 				float spotNdotL = 0.0;
-
 				vec3 lightResult = evaluateSpotLight(
-					light,
-					inWorldPos,
-					scene.cameraPos.xyz,
-					N,
-					V,
-					NdotV,
-					albedo,
-					F0,
-					rough,
-					aoTerm,
-					spotNdotL);
+					light, inWorldPos, scene.cameraPos.xyz, N, V, NdotV,
+					albedo, F0, rough, spotNdotL);
 
-				float spotMicroVis = MicroShadowVisibility(spotNdotL, aoTerm);
-				lightResult *= spotMicroVis;
+				lightResult *= MicroShadowVisibility(spotNdotL, aoTerm);
 
 				bool castsShadow = (light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u;
 				// Shadow only for flashlight for now
@@ -359,7 +334,6 @@ void main()
 						float angleScale = 1.0 - clamp(spotNdotL, 0.0, 1.0);
 
 						float flashlightShadowBias = MIN_SHADOW_BIAS * (0.25 + angleScale * 0.65);
-						float radiusTexels = 1.0;
 
 						float shadowTerm = PCFPoissonLow(
 							shadowHash,
@@ -367,8 +341,7 @@ void main()
 							flashlightShadowUV,
 							flashlightShadowZ,
 							flashlightShadowBias,
-							flashlightShadowTexel
-						);
+							FLASHLIGHT_TEXEL_SIZE);
 
 						lightResult *= shadowTerm;
 					}
@@ -381,10 +354,10 @@ void main()
 						  flashlightShadowUV.y < 0.0 || flashlightShadowUV.y > 1.0))
 					{
 						float rawCookie = SampleTexture(pc.flashlightCookieTexID, flashlightShadowUV).r;
-						cookieGobo      = pow(rawCookie, 2.0);
+						cookieGobo      = pow(rawCookie, 2.0); // Make texture stick out more
 					}
 
-						lightResult *= cookieGobo;
+					lightResult *= cookieGobo;
 				}
 
 				localLightColor += lightResult;
@@ -398,6 +371,7 @@ void main()
 
 	// IBL specular
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, pc.specularID);
+	iblSpec *= multiScatterComp;
 
 	// IBL diffuse
 	vec3 irradianceN = N;
@@ -428,11 +402,6 @@ void main()
 	vec3 ambientDiffuse  = kD * (iblDiff * aoTerm);
 	float specAO         = SpecAO_Conservative(aoTerm, NdotV, rough);
 	vec3 ambientSpecular = iblSpec * specAO;
-
-	// Fake sky visibility term
-	float skyFacing    = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
-	float skyOcclusion = mix(0.5, 1.0, skyFacing);
-	ambientDiffuse    *= skyOcclusion;
 
 	vec3 ambient = ambientDiffuse + ambientSpecular;
 

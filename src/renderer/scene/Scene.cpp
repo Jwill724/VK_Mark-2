@@ -76,7 +76,7 @@ bool Scene::UpdateCamera(
 	m_curCamProjUnjittered = glm::perspectiveRH_ZO(
 		glm::radians(m_camera.GetFovY()),
 		aspect,
-		m_camera.GetFarClip(),
+		m_camera.GetFarClip(),  // This is required for reversed z to work
 		m_camera.GetNearClip());
 
 	m_previousJitterNDC = m_currentJitterNDC;
@@ -163,6 +163,10 @@ bool Scene::UpdateCamera(
 	return isTemporalInvalid;
 }
 
+// =============================
+// CASCADED SHADOW MAPPING TECH
+// =============================
+
 static constexpr glm::vec4 BuildAtlasUV(
 	VkExtent2D atlasExtent,
 	VkExtent2D tileExtent,
@@ -218,11 +222,12 @@ void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bind
 	m_csmAtlasTileRes = static_cast<float>(atlasWidth / 2u);
 
 	m_shadowControl.splitLambda = 0.97f;
-	m_csmInfo.params.x = 0.0001f;
-	m_csmInfo.params.y = static_cast<float>(bindlessID);
-	m_csmInfo.params.z = static_cast<float>(RD::MAX_SHADOW_CASCADES);
-	m_csmInfo.params.w = 1.0f / m_csmAtlasTileRes;
+	m_csmInfo.params.x = static_cast<float>(bindlessID);
+	m_csmInfo.params.y = static_cast<float>(RD::MAX_SHADOW_CASCADES);
+	m_csmInfo.params.z = 1.0f / m_csmAtlasTileRes;
 	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+
+	m_bShouldSplitsUpdate = true;
 }
 
 // Two great starting points to learn cascade shadow maps
@@ -235,11 +240,12 @@ void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bind
 // CULL MODE: FRONT BIT
 void Scene::UpdateCSMInfo()
 {
-	constexpr float CASCADE_RADIUS[RD::MAX_SHADOW_CASCADES] = {
-		17.0f,
-		46.0f,
-		160.0f,
-		500.0f // sss carries last cascade
+	// Cascades not dependent FOV, these values worked best with trial and error tests with 4 cascades 
+	constexpr float CASCADE_RADIUS_RATIO[RD::MAX_SHADOW_CASCADES] = {
+		0.017f,
+		0.046f,
+		0.160f,
+		0.500f // sss carries last cascade
 	};
 
 	const auto lightDir = GetLightDir();
@@ -247,6 +253,9 @@ void Scene::UpdateCSMInfo()
 	if (m_bShouldSplitsUpdate)
 	{
 		m_bShouldSplitsUpdate = false;
+
+		// Ranges from 500-1500 (1k is default)
+		m_shadowFar = m_shadowControl.shadowFar;
 
 		const float nearClip = m_camera.GetNearClip();
 		const float clipRange = m_shadowFar - nearClip;
@@ -259,6 +268,29 @@ void Scene::UpdateCSMInfo()
 			const float log            = nearClip * std::pow(ratio, p);
 			const float uni            = nearClip + (clipRange * p);
 			m_csmInfo.cascadeSplits[i] = (m_shadowControl.splitLambda * log) + ((1.0f - m_shadowControl.splitLambda) * uni);
+
+			// Cascade radius and world texels
+			float radius = CASCADE_RADIUS_RATIO[i] * m_shadowFar;
+			const float worldUnitsPerTexel = (radius * 2.0f) / m_csmAtlasTileRes;
+			radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+			m_csmInfo.cascadeWorldTexels[i] = worldUnitsPerTexel;
+
+			// Light projection setup
+			const glm::vec3 max = glm::vec3(radius);
+			glm::vec3 min = -max;
+
+			// Extend depth range to keep shadow visuals consistent
+			const float depthRange = max.z - min.z;
+			min.z -= depthRange;
+
+			// Hack that accounts for very far away occluders
+			if (m_shadowControl.enableShadowDepthExtendHack)
+			{
+				min.z *= 2.0f;
+			}
+
+			// Orthographic projection
+			m_cascadeLightProjs[i] = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
 		}
 	}
 
@@ -279,29 +311,7 @@ void Scene::UpdateCSMInfo()
 		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
 		m_cascadeLightViews[i] = lightView;
 
-		float radius = CASCADE_RADIUS[i];
-
-		const float worldUnitsPerTexel = (radius * 2.0f) / m_csmAtlasTileRes;
-		radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
-
-		//m_csmInfo.cascadeNormalOffset[i] = worldUnitsPerTexel * 0.1f;
-
-		glm::vec3 max = glm::vec3(radius);
-		glm::vec3 min = -max;
-
-		// Extend depth range to keep shadow visuals consistent
-		const float depthRange = max.z - min.z;
-		min.z -= depthRange;
-
-		// Scale factor hack that fixes issues with large assets
-		min.z *= 5.0f;
-
-		m_csmInfo.cascadeBias[i] = (worldUnitsPerTexel / depthRange) * 0.5f;
-
-		// Orthographic projection
-		const glm::mat4 lightProj = glm::orthoRH_ZO(min.x, max.x, min.y, max.y, min.z, max.z);
-
-		glm::mat4 shadowMatrix = lightProj * lightView;
+		glm::mat4 shadowMatrix = m_cascadeLightProjs[i] * lightView;
 
 		// This works beautifully, it keeps the shadows 100% stable during movement
 		// https://github.com/tonadr1022/vkrender2/blob/main/src/techniques/CSM.cpp
@@ -418,7 +428,8 @@ void Scene::BuildDispatchList(const int waveSize)
 	// They each form a rectangle with one corner on the light XY coordinate
 	// If the rectangle isn't square, it will need breaking in two on the larger axis
 	// 0 = bottom left, 1 = bottom right, 2 = top left, 2 = top right
-	for (int q = 0; q < 4; q++) {
+	for (int q = 0; q < 4; q++)
+	{
 		// Quads 0 and 3 needs to be +1 vertically, 1 and 2 need to be +1 horizontally
 		bool vertical = q == 0 || q == 3;
 
@@ -431,7 +442,8 @@ void Scene::BuildDispatchList(const int waveSize)
 			bend_max(0, (((q & 2) ? biased_bounds[3] : -biased_bounds[1]) + waveSize * (vertical ? 2 : 1) - 1)) / waveSize,
 		};
 
-		if ((bounds[2] - bounds[0]) > 0 && (bounds[3] - bounds[1]) > 0) {
+		if ((bounds[2] - bounds[0]) > 0 && (bounds[3] - bounds[1]) > 0)
+		{
 			int bias_x = (q == 2 || q == 3) ? 1 : 0;
 			int bias_y = (q == 1 || q == 3) ? 1 : 0;
 
@@ -508,7 +520,8 @@ void Scene::BuildDispatchList(const int waveSize)
 	}
 
 	// Scale the shader values by the wave count, the shader expects this
-	for (int i = 0; i < result.dispatchCount; i++) {
+	for (int i = 0; i < result.dispatchCount; i++)
+	{
 		result.dispatch[i].waveOffset[0] *= waveSize;
 		result.dispatch[i].waveOffset[1] *= waveSize;
 	}

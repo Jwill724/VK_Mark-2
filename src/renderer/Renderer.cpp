@@ -17,13 +17,23 @@
 #include "core/Environment.h"
 #include "core/AssetUploadTypes.h"
 
-// TODO LIST: At the end of record have profiler add up the draw stats
-
 void Renderer::Init(
 	const Window& window,
 	JobSystem& jobSystem)
 {
 	SetDrawExtent(window.GetExtent());
+
+	InitRenderSettings(
+		LensFlareOn,
+		ChromaticAberrationOn,
+		ShadowsOn,
+		ScreenSpaceShadowsOn,
+		VolumetricsOn,
+		RD::AntiAliasingMethod::AA_CMAA2,
+		RD::AmbientOcclusionMethod::AO_GTAO_BENT_NORMALS,
+		RD::ShadowQuality::High,
+		ProfilerViewOn,
+		SettingsTabOn);
 
 	// ==========================
 	// === Vulkan state setup ===
@@ -123,6 +133,7 @@ void Renderer::Init(
 	m_bindlessImageTable.Init(
 		{ m_drawExtent.Width(), m_drawExtent.Height(), 1u },
 		Environment::_HDRPathCount,
+		m_currentShadowQuality,
 		m_device->GetContext().device,
 		m_allocator);
 
@@ -244,25 +255,6 @@ void Renderer::Init(
 
 	CreateRenderGraph();
 
-	bool lensFlareOn           = true;
-	bool chromaticAberrationOn = true;
-	bool volumetricsOn         = true;
-	bool shadowsOn             = true;
-	bool sssOn                 = true;
-	bool profilerViewOn        = false;
-	bool settingsTabOn         = true;
-
-	InitRenderSettings(
-		lensFlareOn,
-		chromaticAberrationOn,
-		shadowsOn,
-		sssOn,
-		volumetricsOn,
-		RD::AntiAliasingMethod::AA_CMAA2,
-		RD::AmbientOcclusionMethod::AO_GTAO_BENT_NORMALS,
-		profilerViewOn,
-		settingsTabOn);
-
 	World::Init(m_bindlessImageTable);
 
 	auto& smaaPush = m_profiler.smaaTexturesIds;
@@ -277,6 +269,18 @@ void Renderer::Init(
 	m_profiler.lensFlareSettings.rainbowLUTIndex = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::RainbowLut).m_bindlessID;
 
 	m_profiler.ssaoSettings.hilbertLutID = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::HilbertCurveLut).m_bindlessID;
+}
+
+// Only called after swapchain presented and queue wait
+void Renderer::CheckCSMAtlasExtentUpdate()
+{
+	if (m_currentShadowQuality != m_profiler.shadowQuality) {
+		StallDevice();
+		m_currentShadowQuality = m_profiler.shadowQuality;
+		m_bindlessImageTable.UpdateCSMAtlasExtent(m_currentShadowQuality, m_allocator);
+		const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
+		World::GetScene().InitCSMInfo(csmAtlas.Width(), csmAtlas.Height(), csmAtlas.m_bindlessID);
+	}
 }
 
 void Renderer::CheckGlobalDescriptorSetSync()
@@ -386,6 +390,7 @@ void Renderer::InitRenderSettings(
 	bool enableVolumetrics,
 	RD::AntiAliasingMethod aaMode,
 	RD::AmbientOcclusionMethod aoMode,
+	RD::ShadowQuality shadowQuality,
 	bool enableProfilerView,
 	bool enableSettings)
 {
@@ -402,6 +407,9 @@ void Renderer::InitRenderSettings(
 
 	toggles.enableProfilerView = enableProfilerView ? 1u : 0u;
 	toggles.enableSettings     = enableSettings     ? 1u : 0u;
+
+	m_currentShadowQuality = shadowQuality;
+	m_profiler.shadowQuality = shadowQuality;
 }
 
 void Renderer::CreateOBBLineBuffer(FrameContext& frameCtx)
@@ -526,13 +534,13 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 
 		// Allocate singular global buffers sized for ALL scenes combined
 		m_globalAddressTable.AddGPUBufferToAddressTable(
-				RD::Renderer_Buffer::Vertex, totalVtxBytes, m_allocator);
+			RD::Renderer_Buffer::Vertex, totalVtxBytes, m_allocator);
 
 		m_globalAddressTable.AddGPUBufferToAddressTable(
-				RD::Renderer_Buffer::Index, totalIdxBytes, m_allocator);
+			RD::Renderer_Buffer::Index, totalIdxBytes, m_allocator);
 
 		m_globalAddressTable.AddGPUBufferToAddressTable(
-				RD::Renderer_Buffer::Mesh, totalMeshBytes, m_allocator);
+			RD::Renderer_Buffer::Mesh, totalMeshBytes, m_allocator);
 
 		auto cmdPool = m_device->GetThreadCommandPool(
 			JobSystem::RENDER_THREAD, QueueType::Transfer);
@@ -1062,6 +1070,7 @@ bool Renderer::SubmitFrame()
 			graphicsQ.WaitIdle();
 
 		m_bHasDrawExtentResized = true;
+		CheckCSMAtlasExtentUpdate();
 
 		// Resize swapchain, update window, recreate render targets with new extent
 		return m_bHasDrawExtentResized;
@@ -1071,15 +1080,16 @@ bool Renderer::SubmitFrame()
 		INVARIANT(swapResult == VK_SUCCESS);
 	}
 
+	CheckCSMAtlasExtentUpdate();
 	m_frameNumber++;
 	return m_bHasDrawExtentResized; // Should be false
 }
 
 void Renderer::TickVramUsage()
 {
-	if (m_profiler.getStats().vramQueryTimerSeconds >= 10.0f)
+	if (m_profiler.getStats().vramQueryTimerSeconds >= 5.0f)
 	{
-		m_profiler.getStats().vramQueryTimerSeconds -= 10.0f;
+		m_profiler.getStats().vramQueryTimerSeconds -= 5.0f;
 		m_profiler.SetVRAMUsage(m_allocator.GetTotalVRAMUsage());
 	}
 }

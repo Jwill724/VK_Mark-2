@@ -50,7 +50,7 @@ namespace RenderTargetDescs
 	inline ImageDesc PrevDepth(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::D32, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "PrevDepth" };
+				 .usage  = Vulkan_ImageUsage::DrawDepth, .debugName = "PrevDepth" };
 	}
 
 	inline ImageDesc Velocity(Extents3D ext)
@@ -190,11 +190,11 @@ namespace RenderTargetDescs
 				 .mipLevels = mipCount, .bPerMipStorage = true, .debugName = "LinearizedMinHiZ" };
 	}
 
-	// --- Shadow maps (fixed size, no extent param) ---
+	// --- Shadow maps ---
 
-	inline ImageDesc DirectionalCSMAtlas()
+	inline ImageDesc DirectionalCSMAtlas(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::D32, .extent = { RD::DIRECTIONAL_CSM_ATLAS_X, RD::DIRECTIONAL_CSM_ATLAS_Y, 1 },
+		return { .format = Vulkan_Format::D32, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::ShadowMap, .debugName = "DirectionalCSMAtlas" };
 	}
 

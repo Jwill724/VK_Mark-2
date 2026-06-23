@@ -6,28 +6,8 @@
 #include "../include/common.glsl"
 #include "../include/depth.glsl"
 
-// =============================
-// === TAA DESIGN REQUISITES ===
-//
-// 1. Exponential transparency fading on past frames to prevent ghosting and smearing. Frame N and Frame N-1 is just as opaque.
-//    Frame N-2 should appear a third transparency or completely invisible (Both options are needed for those more or less bothered by blur or pixel crawl).
-//
-// 2. In order to make rule 1 visually stable, the temporal jitter pattern must be kept under 2 alternating positions that can sample thin
-//    under sampled objects and specular highlights. Using positions showed in the 2017 Decima AA paper would be the best for this design.
-//
-// 3. Because of the limitations set by the first two rules, stair stepping needs to be addressed with SMAA only.
-//    Use FXAA or even CMAA2 will not be sufficient enough or will cause blur.
-//    SMAA is the only stair stepping elimination solution that doesn't harm the original clarity for a cheap cost.
-// 
-// 4. Accurate and high quality motion vectors need to be generated and combined with a high quality aggressive reprojection/pixel rejection algorithm.
-//    We could derive from advanced reprojection solutions used in TSR or FSR3.1+.
-//
-// 5. Use the short array of past frames to create a 200% buffer that can be downscaled to the current resolution. This can be done with spatial interpolation
-//    upscalers like FSR1 which already produce better results than AI and can be enhanced with accurate hints from SMAA edge detection and
-//    temporal pixel correction(view DecimaSiggraph2017.pptx slide 50).
-//
-// 6. Always test the solution in complex motion that includes: Fast animations, fast camera movement, frequent disocclusion, and fast free flowing thin objects.
-//    Always test at 1080p60fps on Blur Buster approved monitors with BFI or CRT/Plasma Screens and compare motions results with 4xSSAA. Not 8xSSAA or 8xMSAA.
+// Heavily based on Spartan Engine implementation
+// https://github.com/PanosK92/SpartanEngine/blob/master/data/shaders/taau.hlsl
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
@@ -49,9 +29,9 @@ layout(push_constant) uniform TAAPush {
 vec3 RGBToYCoCg(vec3 rgb)
 {
 	float co = rgb.r - rgb.b;
-	float t = rgb.b + co * 0.5;
+	float t  = rgb.b + co * 0.5;
 	float cg = rgb.g - t;
-	float y = t + cg * 0.5;
+	float y  = t + cg * 0.5;
 	return vec3(y, co, cg);
 }
 
@@ -64,23 +44,85 @@ vec3 YCoCgToRGB(vec3 ycocg)
 	return vec3(r, g, b);
 }
 
-vec3 sampleHistoryBilinear(vec2 uv)
+vec3 tonemap(vec3 c)
 {
-	return RGBToYCoCg(texture(inColorHistory, uv).rgb);
+	float luma = max(c.r, max(c.g, c.b));
+	return c / (1.0 + luma);
 }
 
-vec2 getDilatedVelocity(vec2 uv, vec2 texelSize)
+vec3 tonemapInverse(vec3 c)
 {
-	float maxMag = 0.0;
-	vec2 dilated = vec2(0.0);
+	float luma = max(c.r, max(c.g, c.b));
+	return c / max(1.0 - luma, 1e-3);
+}
+
+vec3 sampleHistoryCatmullRom(vec2 uv, vec2 resolution)
+{
+	vec2 samplePos = uv * resolution;
+	vec2 texPos1   = floor(samplePos - 0.5) + 0.5;
+	vec2 f         = samplePos - texPos1;
+
+	vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+	vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+	vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+	vec2 w3 = f * f * (-0.5 + 0.5 * f);
+
+	vec2 w12      = w1 + w2;
+	vec2 offset12 = w2 / w12;
+
+	vec2 invRes   = 1.0 / resolution;
+	vec2 texPos0  = (texPos1 - 1.0) * invRes;
+	vec2 texPos3  = (texPos1 + 2.0) * invRes;
+	vec2 texPos12 = (texPos1 + offset12) * invRes;
+
+	vec3 h0 = texture(inColorHistory, vec2(texPos12.x, texPos0.y )).rgb;
+	vec3 h1 = texture(inColorHistory, vec2(texPos0.x,  texPos12.y)).rgb;
+	vec3 h2 = texture(inColorHistory, vec2(texPos12.x, texPos12.y)).rgb;
+	vec3 h3 = texture(inColorHistory, vec2(texPos3.x,  texPos12.y)).rgb;
+	vec3 h4 = texture(inColorHistory, vec2(texPos12.x, texPos3.y )).rgb;
+
+	vec3 result = vec3(0.0);
+	result += h0 * w12.x * w0.y;
+	result += h1 * w0.x  * w12.y;
+	result += h2 * w12.x * w12.y;
+	result += h3 * w3.x  * w12.y;
+	result += h4 * w12.x * w3.y;
+
+	float weightSum  = w12.x + w12.y - w12.x * w12.y;
+	vec3  historyMin = min(min(min(h0, h1), min(h2, h3)), h4);
+	vec3  historyMax = max(max(max(h0, h1), max(h2, h3)), h4);
+	return clamp(result / weightSum, historyMin, historyMax);
+}
+
+vec3 clipAABB(vec3 aabbMin, vec3 aabbMax, vec3 p, vec3 q)
+{
+	vec3 r    = q - p;
+	vec3 rmax = aabbMax - p;
+	vec3 rmin = aabbMin - p;
+
+	const float eps = 1e-7;
+	if (r.x > rmax.x + eps) r *= (rmax.x / r.x);
+	if (r.y > rmax.y + eps) r *= (rmax.y / r.y);
+	if (r.z > rmax.z + eps) r *= (rmax.z / r.z);
+	if (r.x < rmin.x - eps) r *= (rmin.x / r.x);
+	if (r.y < rmin.y - eps) r *= (rmin.y / r.y);
+	if (r.z < rmin.z - eps) r *= (rmin.z / r.z);
+
+	return p + r;
+}
+
+vec2 getDilatedVelocity(ivec2 pixel, ivec2 res)
+{
+	float bestZ   = -1.0;
+	vec2  dilated = vec2(0.0);
 
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
-			vec2 v = texture(inVelocity, uv + vec2(x, y) * texelSize).rg;
-			float mag = dot(v, v);
-			if (mag > maxMag) {
-				maxMag  = mag;
-				dilated = v;
+			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
+			float z = texelFetch(inDepth, t, 0).r;
+			if (z > bestZ) {           // pick the tap nearest the camera
+				bestZ   = z;
+				dilated = texelFetch(inVelocity, t, 0).rg;
 			}
 		}
 	}
@@ -91,106 +133,107 @@ vec2 getDilatedVelocity(vec2 uv, vec2 texelSize)
 float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV)
 {
 	vec2 historyUV = uv - velocityUV;
-
 	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
 
-	vec2 prevVelocity = texture(inVelocityHistory, historyUV).rg;
+	vec2  prevVelocity  = texture(inVelocityHistory, historyUV).rg;
 	float velocityDelta = length(prevVelocity - velocityUV);
 	return clamp((velocityDelta - 0.0002) * 50.0, 0.0, 1.0);
 }
 
-float computeDepthDisocclusion(vec2 uv, vec2 velocityUV)
+float computeDepthDisocclusion(vec2 uv, vec2 velocityUV, ivec2 pixel)
 {
 	vec2 historyUV = uv - velocityUV;
-
 	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
 
-	float currentDepth = texelFetch(inDepth, ivec2(uv / vec2(scene.pixelSizes.xy)), 0).r;
+	float currentDepth = texelFetch(inDepth, pixel, 0).r;
 	float prevDepth    = texture(inPrevDepth, historyUV).r;
-
-	float depthDelta = currentDepth - prevDepth;
-
+	float depthDelta   = abs(currentDepth - prevDepth);
 	return clamp(depthDelta * pc.depthDisocclusionScale, 0.0, 1.0);
-}
-
-vec3 varianceClip(vec3 historyYCoCg, vec2 uv, vec3 midM, float disocclusion)
-{
-	vec2 texelSize = vec2(scene.pixelSizes.xy);
-
-	// Sample neighbourhood in RGB then convert — neighbourhood is jittered
-	// but we anchor clip bounds to the unjittered center tap (midM) for chroma
-	vec3 topL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1, -1) * texelSize).rgb);
-	vec3 topM = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 0, -1) * texelSize).rgb);
-	vec3 topR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1, -1) * texelSize).rgb);
-	vec3 midL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1,  0) * texelSize).rgb);
-	vec3 midR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1,  0) * texelSize).rgb);
-	vec3 botL = RGBToYCoCg(texture(inColorCurrent, uv + vec2(-1,  1) * texelSize).rgb);
-	vec3 botM = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 0,  1) * texelSize).rgb);
-	vec3 botR = RGBToYCoCg(texture(inColorCurrent, uv + vec2( 1,  1) * texelSize).rgb);
-
-	// 5-tap cross only for clip bounds — less noisy than full 3x3 on jittered input
-	vec3 cMin5 = min(min(min(min(topM, midL), midM), midR), botM);
-	vec3 cMax5 = max(max(max(max(topM, midL), midM), midR), botM);
-
-	// 3x3 for variance/stddev — still useful for the statistical box
-	const float totalSamples = 9.0;
-	vec3 mean  = (topL + topM + topR + midL + midM + midR + botL + botM + botR) / totalSamples;
-	vec3 sqSum = (topL*topL + topM*topM + topR*topR +
-				  midL*midL + midM*midM + midR*midR +
-				  botL*botL + botM*botM + botR*botR) / totalSamples;
-	vec3 variance = sqSum - mean * mean;
-	vec3 stddev   = sqrt(max(variance, vec3(0.0)));
-
-	float stabilityBias = 1.0 - disocclusion;        // 1 = fully stable, 0 = disoccluded
-	vec3 gamma = vec3(mix(2.0, 1.0, stabilityBias)); // wider box on stable pixels
-	vec3 vMin = max(mean - gamma * stddev, cMin5);
-	vec3 vMax = min(mean + gamma * stddev, cMax5);
-
-	// Chroma extent anchored to the unjittered center tap (passed in as midM)
-	// prevents chroma from chasing the jitter offset each frame
-	vec2 chromaExtent = vec2(0.25 * 0.5 * (vMax.r - vMin.r));
-	vMin.yz = midM.gb - chromaExtent;
-	vMax.yz = midM.gb + chromaExtent;
-
-	return clamp(historyYCoCg, vMin, vMax);
 }
 
 void main()
 {
 	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
 
-	SceneData scene   = getSceneData();
-	const ivec2 res   = ivec2(scene.viewportSize.xy);
+	SceneData scene = getSceneData();
+	const ivec2 res = ivec2(scene.viewportSize.xy);
 
 	if (pixel.x >= res.x || pixel.y >= res.y) return;
 
 	const vec2 invRes = vec2(scene.pixelSizes.xy);
 	const vec2 uv     = (vec2(pixel) + 0.5) * invRes;
+	const vec2 outRes = vec2(res);
 
-	vec3 currentColor = texelFetch(inColorCurrent, pixel, 0).rgb;
-	vec3 currentYCoCg = RGBToYCoCg(currentColor);
+	// ----- 3x3 neighbourhood stats in *tonemapped* YCoCg -------------------
+	// one pass builds the moments, the min/max box, and grabs the center tap
+	vec3 m1   = vec3(0.0);
+	vec3 m2   = vec3(0.0);
+	vec3 cMin = vec3( 1e9);
+	vec3 cMax = vec3(-1e9);
 
-	vec2 velocityUV = getDilatedVelocity(uv, invRes);
+	vec3 currentYCoCgTm = vec3(0.0);
+
+	for (int y = -1; y <= 1; ++y) {
+		for (int x = -1; x <= 1; ++x) {
+			ivec2 tap = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
+			vec3  s   = texelFetch(inColorCurrent, tap, 0).rgb;
+			s         = any(isnan(s)) ? vec3(0.0) : max(s, vec3(0.0)); // NaN/firefly guard (Spartan)
+
+			vec3 c = RGBToYCoCg(tonemap(s));
+
+			m1   += c;
+			m2   += c * c;
+			cMin  = min(cMin, c);
+			cMax  = max(cMax, c);
+
+			if (x == 0 && y == 0) currentYCoCgTm = c;
+		}
+	}
+
+	const float sampleCount = 9.0;
+	vec3 mean  = m1 / sampleCount;
+	vec3 sigma = sqrt(max(m2 / sampleCount - mean * mean, vec3(0.0)));
+	sigma      = max(sigma, vec3(0.005)); // floor so flat regions still reject a little
+
+	// ----- reprojection ----------------------------------------------------
+	vec2 velocityUV = getDilatedVelocity(pixel, res);
 	vec2 historyUV  = uv - velocityUV;
 
 	bool validHistory = all(greaterThanEqual(historyUV, vec2(0.0))) &&
 						all(lessThanEqual(historyUV, vec2(1.0)));
 
 	if (!validHistory) {
-		imageStore(outColorResolved, pixel, vec4(currentColor, 1.0));
+		vec3 rgb = max(tonemapInverse(YCoCgToRGB(currentYCoCgTm)), vec3(0.0)); // == current color
+		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(65504.0)), 1.0));
 		return;
 	}
 
 	float disocclusion = max(computeVelocityDisocclusion(uv, velocityUV),
-							 computeDepthDisocclusion(uv, velocityUV));
+							 computeDepthDisocclusion(uv, velocityUV, pixel));
 
-	vec3 historyYCoCg = sampleHistoryBilinear(historyUV);
-	historyYCoCg      = varianceClip(historyYCoCg, uv, currentYCoCg, disocclusion);
+	// ----- history fetch (Catmull-Rom), tonemapped YCoCg -------------------
+	vec3 historyRGB     = max(sampleHistoryCatmullRom(historyUV, outRes), vec3(0.0));
+	vec3 historyYCoCgTm = RGBToYCoCg(tonemap(historyRGB));
 
-	float alpha = mix(pc.minBlend, pc.maxBlend, disocclusion);
+	// ----- adaptive clip box ------------------------------------------------
+	// wide box when still & low-contrast (keeps detail), tight under motion,
+	// contrast and disocclusion (rejects stale history hard at silhouettes)
+	float motion   = clamp(length(velocityUV * outRes) * (1.0 / 64.0), 0.0, 1.0);
+	float contrast = clamp((cMax.x - cMin.x) * 4.0, 0.0, 1.0);
+	float gamma    = mix(1.5, 1.0, motion);
+	gamma          = mix(gamma, 0.75, contrast);
+	gamma          = mix(gamma, 0.75, disocclusion);
 
-	vec3 resolvedYCoCg = mix(historyYCoCg, currentYCoCg, alpha);
-	vec3 resolvedRGB   = YCoCgToRGB(resolvedYCoCg);
+	vec3 aabbMin   = max(mean - sigma * gamma, cMin);
+	vec3 aabbMax   = min(mean + sigma * gamma, cMax);
+	historyYCoCgTm = clipAABB(aabbMin, aabbMax, mean, historyYCoCgTm);
 
-	imageStore(outColorResolved, pixel, vec4(resolvedRGB, 1.0));
+	// ----- accumulation ----------------------------------------------------
+	float instability = max(max(motion, contrast), disocclusion);
+	float blend       = mix(pc.minBlend, pc.maxBlend, instability);
+
+	vec3 resolvedYCoCgTm = mix(historyYCoCgTm, currentYCoCgTm, blend);
+	vec3 resolvedRGB     = max(tonemapInverse(YCoCgToRGB(resolvedYCoCgTm)), vec3(0.0));
+
+	imageStore(outColorResolved, pixel, vec4(min(resolvedRGB, vec3(65504.0)), 1.0));
 }

@@ -1,14 +1,13 @@
 #ifndef SHADOW_GLSL
 #define SHADOW_GLSL
 
-const float flashlightShadowTexel = 1.0 / 512.0;
+const float FLASHLIGHT_TEXEL_SIZE = 1.0 / 512.0;
 
-const float shadowFar = 1000.0;
-
+// The only number that works
 const float MIN_SHADOW_BIAS = 0.0001;
 
-const uint SHADOW_FILTER_PCF  = 0u;
-//const uint SHADOW_FILTER_PCSS = 1u;
+const float SHADOW_BASE_BIAS_TEXELS  = 0.5;
+const float SHADOW_SLOPE_BIAS_TEXELS = 0.8;
 
 // 8-tap Poisson disk in texels
 const vec2 poisson8[8] = vec2[](
@@ -54,6 +53,33 @@ float gaussianWeight(vec2 diskPos)
 	return exp(-d2 * 2.0);
 }
 
+// Pushes the receiver along its normal to escape self-shadowing acne.
+// Offset grows with grazing angle (slope = sin of the angle to the light)
+// and is scaled into world units by the cascade's texel size.
+vec3 computeNormalOffset(vec3 normalWS, vec3 L, float texelSizeWorld)
+{
+	float nDotL = dot(normalWS, L);
+	float slope = sqrt(clamp(1.0 - nDotL * nDotL, 0.0, 1.0));
+	float offsetAmount = (SHADOW_BASE_BIAS_TEXELS + slope * SHADOW_SLOPE_BIAS_TEXELS) * texelSizeWorld;
+	return normalWS * offsetAmount;
+}
+
+// NDC depth change per world unit along the cascade's depth axis.
+// Ortho => w==1, so row-2 of the linear part is the gradient; its length
+// is 1/depthRange. Correct per-cascade even under tight/SDSM fitting.
+float ndcDepthPerWorld(mat4 cascadeVP)
+{
+	return length(vec3(cascadeVP[0][2], cascadeVP[1][2], cascadeVP[2][2]));
+}
+
+// Max legitimate per-tap depth correction (NDC) for receiver-plane bias:
+// the depth span across one kernel radius for the steepest slope we trust.
+float computeMaxPlaneBias(float radiusTexels, float worldPerTexel, float ndcPerWorld)
+{
+	float kernelWorldRadius = radiusTexels * worldPerTexel; // texels -> world
+	return kernelWorldRadius * ndcPerWorld;                 // world -> NDC
+}
+
 // Used for volumetric directional and flashlight
 float PCFPoissonLow(
 	mat2  poissonRotation,
@@ -74,21 +100,21 @@ float PCFPoissonLow(
 	return sum * (1.0 / 8.0);
 }
 
-// Remaining PCF functions for primary directional shadow map
+// Remaining PCF functions for directional shadow map
 
 float PCFPoissonHigh(
 	mat2  poissonRotation,
 	uint  shadowMapID,
 	vec2  shadowUV,
 	float receiverDepth,
-	float bias,
 	float texel,
 	float radius,
 	vec2 atlasMin,
-	vec2 atlasMax)
+	vec2 atlasMax,
+	vec2 depthGradient,
+	float maxPlaneBias)
 {
-	float samplePos = texel * radius;   // UV-space kernel radius
-	float depthPos  = receiverDepth + bias;
+	float samplePos = texel * radius;
 
 	float sum       = 0.0;
 	float weightSum = 0.0;
@@ -98,11 +124,13 @@ float PCFPoissonHigh(
 		vec2  offset     = (poissonRotation * diskPos) * samplePos;
 
 		vec2 sampleUV = clamp(shadowUV + offset, atlasMin, atlasMax);
+		vec2 actualOffset = sampleUV - shadowUV; 
+		float planeBias = clamp(dot(actualOffset, depthGradient), -maxPlaneBias, maxPlaneBias);
+		float depthPos  = receiverDepth + planeBias + MIN_SHADOW_BIAS;
 
 		float depthSample = SampleTexture(shadowMapID, sampleUV).r;
 		float shadow      = depthSample >= depthPos ? 1.0 : 0.0;
 
-		// Gaussian weight keyed to unit-disk distance
 		float w    = gaussianWeight(diskPos);
 		sum       += shadow * w;
 		weightSum += w;
@@ -122,14 +150,14 @@ float PCFVogel(
 	uint  shadowMapID,
 	vec2  shadowUV,
 	float receiverDepth,
-	float bias,
 	float texel,
 	float radius,
 	vec2 atlasMin,
-	vec2 atlasMax)
+	vec2 atlasMax,
+	vec2 depthGradient,
+	float maxPlaneBias)
 {
 	float samplePos = texel * radius;
-	float depthPos  = receiverDepth + bias;
 
 	float phi = atan(poissonRotation[0][1], poissonRotation[0][0]);
 
@@ -141,6 +169,10 @@ float PCFVogel(
 		vec2  offset  = diskPos * samplePos;
 
 		vec2 sampleUV = clamp(shadowUV + offset, atlasMin, atlasMax);
+		vec2 actualOffset = sampleUV - shadowUV; 
+
+		float planeBias = clamp(dot(actualOffset, depthGradient), -maxPlaneBias, maxPlaneBias);
+		float depthPos  = receiverDepth + planeBias + MIN_SHADOW_BIAS;
 
 		float depthSample = SampleTexture(shadowMapID, sampleUV).r;
 		float shadow      = depthSample >= depthPos ? 1.0 : 0.0;

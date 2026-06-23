@@ -87,11 +87,13 @@ static glm::vec3 HsvToRgb(float hue01, float sat, float val)
 void BindlessImageTable::Init(
 	Extents3D drawExtent,
 	uint32_t  environmentSetCount,
+	RD::ShadowQuality shadowQuality,
 	VkDevice  device,
 	Allocator& allocator)
 {
 	CreateSamplers(device);
 	CreateRenderTargets(drawExtent, allocator);
+	CreateShadowMaps(shadowQuality, allocator);
 	CreateStaticTextures(allocator);
 	CreateEnvironmentSets(environmentSetCount, allocator);
 }
@@ -146,13 +148,47 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor,          allocator.AllocateImage(RTDescs::LensFlareColor(quarter)));
 	SetRenderTarget(RD::Renderer_RenderTarget::HiZ,                     allocator.AllocateImage(RTDescs::HiZ(drawExtent, RD::HI_Z_MIP_COUNT)));
 	SetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ,        allocator.AllocateImage(RTDescs::LinearizedMinHiZ(drawExtent, RD::HI_Z_MIP_COUNT)));
+}
 
+// First time setup only
+void BindlessImageTable::CreateShadowMaps(RD::ShadowQuality quality, Allocator& allocator)
+{
 	if (!m_bAreShadowsCreated)
 	{
-		SetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas, allocator.AllocateImage(RTDescs::DirectionalCSMAtlas()));
+		const uint32_t res = RD::EvaluateShadowQuality(quality);
+		const Extents3D extent = { res, res, 1 };
+		SetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas, allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(extent)));
 		SetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap, allocator.AllocateImage(RTDescs::FlashlightShadowMap()));
 		m_bAreShadowsCreated = true;
 	}
+}
+
+void BindlessImageTable::UpdateCSMAtlasExtent(RD::ShadowQuality quality, Allocator& allocator)
+{
+	ASSERT(m_bAreShadowsCreated && "UpdateCSMAtlasExtent: shadow maps not created");
+
+	AllocatedImage& atlas = m_renderTargets[Index(RD::Renderer_RenderTarget::DirectionalCSMAtlas)];
+	ASSERT(atlas.IsValid() && "UpdateCSMAtlasExtent: CSM atlas image is invalid");
+
+	// Preserve the bindless slot — the descriptor index must not move
+	const uint32_t bindlessID = atlas.m_bindlessID;
+
+	// Destroy old (deferred free) and rebuild at the new resolution
+	allocator.FreeImage(atlas);
+	atlas.Reset();
+
+	const uint32_t  res    = RD::EvaluateShadowQuality(quality);
+	const Extents3D extent = { res, res, 1 };
+	atlas = allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(extent));
+	atlas.m_bindlessID = bindlessID;
+
+	// Re-point the existing combined-sampler slot at the new view (same index)
+	{
+		std::scoped_lock lock(m_combinedMutex);
+		UpdateCombinedLocked(bindlessID, atlas.m_imageView, GetSampler(RD::Renderer_Sampler::ShadowMap));
+	}
+
+	MarkDirty();
 }
 
 void BindlessImageTable::FreeRenderTargets(Allocator& allocator)
@@ -841,6 +877,25 @@ uint32_t BindlessImageTable::PushSamplerCube(VkImageView view, VkSampler sampler
 {
 	std::scoped_lock lock(m_samplerCubeMutex);
 	return PushSamplerCubeLocked(view, sampler);
+}
+
+void BindlessImageTable::UpdateCombinedLocked(uint32_t index, VkImageView view, VkSampler sampler)
+{
+	ASSERT(index < static_cast<uint32_t>(m_combinedViews.size()));
+	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE);
+
+	// Drop the stale key currently mapped to this slot
+	const VkDescriptorImageInfo& prev = m_combinedViews[index];
+	if (prev.imageView != VK_NULL_HANDLE)
+	{
+		auto prevKey = ImageViewSamplerKey{ prev.imageView, prev.sampler };
+		if (auto it = m_combinedViewHashToID.find(prevKey);
+			it != m_combinedViewHashToID.end() && it->second == index)
+			m_combinedViewHashToID.erase(it);
+	}
+
+	m_combinedViews[index] = VkDescriptorImageInfo{ sampler, view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+	m_combinedViewHashToID[ImageViewSamplerKey{ view, sampler }] = index;
 }
 
 void BindlessImageTable::RegisterShadowMapsAsCombined(VkSampler shadowSampler)

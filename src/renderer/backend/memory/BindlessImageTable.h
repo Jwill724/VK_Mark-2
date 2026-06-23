@@ -15,7 +15,12 @@ namespace RD = RendererDefinitions;
 class BindlessImageTable final
 {
 public:
-	void Init(Extents3D drawExtent, uint32_t environmentSetCount, VkDevice device, Allocator& allocator);
+	void Init(
+		Extents3D drawExtent,
+		uint32_t environmentSetCount,
+		RD::ShadowQuality shadowQuality,
+		VkDevice device,
+		Allocator& allocator);
 	void Shutdown(VkDevice device, Allocator& allocator);
 
 	void PreallocateEquirects(std::span<const char* const> hdrPaths, Allocator& allocator);
@@ -33,6 +38,9 @@ public:
 	std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>& GetRenderTargetsMutable() { return m_renderTargets; }
 	const std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>& GetRenderTargets()  const { return m_renderTargets; }
 	void TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd);
+
+	// Shadow maps
+	void UpdateCSMAtlasExtent(RD::ShadowQuality quality, Allocator& allocator);
 
 	// --- Samplers ---
 	VkSampler GetSampler(RD::Renderer_Sampler slot) const;
@@ -108,6 +116,7 @@ private:
 	void CreateRenderTargets(Extents3D drawExtent, Allocator& allocator);
 	void CreateStaticTextures(Allocator& allocator);
 	void CreateEnvironmentSets(uint32_t setCount, Allocator& allocator);
+	void CreateShadowMaps(RD::ShadowQuality quality, Allocator& allocator);
 	void CreateSamplers(VkDevice device);
 
 	void FreeRenderTargets(Allocator& allocator);
@@ -123,6 +132,7 @@ private:
 
 	uint32_t PushCombinedLocked(VkImageView view, VkSampler sampler);
 	uint32_t PushSamplerCubeLocked(VkImageView view, VkSampler sampler);
+	void UpdateCombinedLocked(uint32_t index, VkImageView view, VkSampler sampler);
 
 	std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>                         m_renderTargets{};
 	std::array<AllocatedImage, RD::STATIC_TEXTURE_COUNT>                        m_staticTextures{};

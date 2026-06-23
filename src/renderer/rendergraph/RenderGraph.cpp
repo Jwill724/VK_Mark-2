@@ -65,7 +65,7 @@ void RenderGraph::Build(
 	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
 
 	// --- TAA ---
-	RegisterTAAPass(*this, pipeManager.GetBundle<TAAPipelineSlot>());
+	RegisterTAAPass(*this,                 pipeManager.GetBundle<TAAPipelineSlot>());
 
 	// --- Post process ---
 	RegisterLuminanceExposurePass(*this,   pipeManager.GetBundle<ExposurePipelineSlot>());
