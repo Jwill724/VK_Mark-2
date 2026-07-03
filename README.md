@@ -22,6 +22,7 @@
 - HI-Z Generation (Depth mip pyramid)
 - Lens Flare
 - Chromatic Aberration (Spartan Engine implementation)
+- Bloom (Spartan Engine implementation)
 - Mesh optimizer
 - Tracy profiler
 
@@ -37,7 +38,6 @@
 -Grand Turismo 7 tonemapping
 -Physically based light units
 -Atmospheric scattering sky with sun
--Bloom
 -SSGI
 -SSR
 -Planar reflections
@@ -67,7 +67,7 @@
 
 ## Requirements for build
 - Windows 10+
-- Discrete GPU with 6gb+ vram
+- Discrete GPU with 4gb+ vram
 - Vulkan SDK (1.4+)
 - Visual Studio 2026
 

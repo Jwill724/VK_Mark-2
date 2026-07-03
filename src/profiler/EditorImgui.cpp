@@ -330,7 +330,9 @@ namespace
 			auto& taaSettings = profiler.taaSettings;
 			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.3f");
 			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.3f");
-			ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 500.0f);
+			ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 10.0f);
+			ImGui::SliderFloat("Sharpen", &taaSettings.sharpen, 0.0f, 1.0f);
+			ImGui::SliderFloat("Tau", &taaSettings.tau, 0.01f, 0.1f, "%.2f");
 		}
 
 		UI::separatorText("Environment");
@@ -581,10 +583,25 @@ namespace
 			ImGui::SliderFloat("Exposure", &exposure, 0.01f, 0.3f);
 		}
 
+		ImGui::NewLine();
+		UI::separatorText("Bloom");
+		{
+			bool bloomOn = dbg.enableBloom != 0u;
+			if (ImGui::Checkbox("Enable Bloom##post", &bloomOn)) {
+				dbg.enableBloom = bloomOn ? 1u : 0u;
+			}
+
+			if (dbg.enableBloom)
+			{
+				auto& bloom = profiler.bloomPush;
+				ImGui::SliderFloat("Bloom Intensity", &profiler.debugToggles.bloomIntensity, 0.03, 0.2f, "%.2f");
+				ImGui::SliderFloat("Bloom Threshold", &bloom.bloomThreshold, 0.01f, 3.0f, "%.2f");
+				ImGui::SliderFloat("Bloom Knee", &bloom.bloomKnee, 0.01f, 2.0f, "%.2f");
+			}
+		}
 
 		ImGui::NewLine();
 		UI::separatorText("Chromatic Aberration");
-
 		{
 			bool ca = dbg.enableChromaticAberration != 0u;
 			if (ImGui::Checkbox("Enable Chromatic Aberration##post", &ca)) {

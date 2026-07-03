@@ -26,6 +26,7 @@ void Renderer::Init(
 	InitRenderSettings(
 		LensFlareOn,
 		ChromaticAberrationOn,
+		BloomOn,
 		ShadowsOn,
 		ScreenSpaceShadowsOn,
 		VolumetricsOn,
@@ -385,6 +386,7 @@ void Renderer::EndAssetTimer()
 void Renderer::InitRenderSettings(
 	bool enableLensFlare,
 	bool enableChromaticAberration,
+	bool enableBloom,
 	bool enableShadows,
 	bool enableSSS,
 	bool enableVolumetrics,
@@ -396,11 +398,14 @@ void Renderer::InitRenderSettings(
 {
 	RD::RenderToggles& toggles = m_profiler.debugToggles;
 
+	toggles.enableBloom               = enableBloom               ? 1u : 0u;
 	toggles.enableLensFlare           = enableLensFlare           ? 1u : 0u;
 	toggles.enableChromaticAberration = enableChromaticAberration ? 1u : 0u;
 	toggles.enableShadows             = enableShadows             ? 1u : 0u;
 	toggles.enableSSS                 = enableSSS                 ? 1u : 0u;
 	toggles.enableVolumetrics         = enableVolumetrics         ? 1u : 0u;
+
+	toggles.bloomIntensity = 0.06;
 
 	toggles.aaMode = static_cast<uint32_t>(aaMode);
 	toggles.aoMode = static_cast<uint32_t>(aoMode);
@@ -861,6 +866,11 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 	auto& forwardPush = m_profiler.forwardPush;
 	auto& lumaPush = m_profiler.lumaExposureSettings;
+	auto& taaPush = m_profiler.taaSettings;
+
+	const float rawDt = std::max(float(m_profiler.getStats().deltaSecondsRaw), 1e-5f);
+	taaPush.invDeltaTime = 1.0f / rawDt;
+	taaPush.deltaTime    = std::clamp(rawDt, 1.0f / RD::TARGET_FPS_240, 1.0f / 30.0f);
 
 	uint32_t tilesX = m_drawExtent.Width() / 16u;
 	uint32_t tilesY = m_drawExtent.Height() / 16u;

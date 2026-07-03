@@ -164,6 +164,7 @@ namespace RendererDefinitions
 		VolumetricLighting,
 		TAA,
 		LuminanceExposure,
+		Bloom,
 		LensFlare,
 		FinalComposite,
 		CMAA2,
@@ -222,6 +223,9 @@ namespace RendererDefinitions
 
 		FlareBright_c,
 		FlareGen_c,
+
+		BloomDownsample_c,
+		BloomUpsample_c,
 
 		LightCulling_c,
 		ClusterTileSliceRanges_c,
@@ -288,6 +292,9 @@ namespace RendererDefinitions
 		FlareBright,
 		FlareGen,
 
+		BloomDownsample,
+		BloomUpsample,
+
 		LightCulling,
 
 		ClusterTileSliceRanges,
@@ -338,6 +345,7 @@ namespace RendererDefinitions
 		ColorHistoryB,
 		FlareBright,
 		LensFlareColor,
+		BloomMipchain,
 		Velocity,
 		PrevVelocity,
 		ViewSpaceNormals,
@@ -495,12 +503,12 @@ namespace RendererDefinitions
 		uint32_t showBentNormals           = 0;
 		uint32_t showCascadeSplits         = 0;
 		uint32_t showSSS                   = 0;
-		uint32_t pad0;
-
 		uint32_t activeEnvMap              = 0;
+
 		uint32_t enableProfilerView        = 0;
 		uint32_t enableSettings            = 0;
-		uint32_t pad1;
+		uint32_t enableBloom               = 0;
+		float bloomIntensity               = 0.0;
 	};
 
 	enum class ImageAccess

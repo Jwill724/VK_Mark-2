@@ -260,7 +260,31 @@ vec4 unpackRGBA8(uint packedRGBA8) {
 }
 
 float luminance(vec3 color) {
-	return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+	return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-5);
+}
+
+// helper: karis average
+// suppresses fireflies by weighting bright pixels less
+float KarisWeight(vec3 color)
+{
+	return 1.0 / (1.0 + luminance(color));
+}
+
+float softThreshold(float value, float threshold, float knee)
+{
+	float kneeMin = threshold - knee;
+	float kneeMax = threshold + knee;
+
+	if (value <= kneeMin) return 0.0;
+
+	if (value >= kneeMax) return value - threshold;
+
+	// Smooth in-between
+	float t = (value - kneeMin) / max(kneeMax - kneeMin, 1e-6);
+	t = t * t * (3.0 - 2.0 * t);
+
+	float soft = (value - threshold) * t;
+	return max(soft, 0.0);
 }
 
 float saturate(float value) { return clamp(value, 0.0, 1.0); }
@@ -388,12 +412,12 @@ struct DebugToggles
 	uint showBentNormals;
 	uint showCascadeSplits;
 	uint showSSS;
-	uint pad0;
-
 	uint activeEnvMap;
+
 	uint enableProfilerView;
 	uint enableSettings;
-	uint pad1;
+	uint enableBloom;
+	float bloomIntensity;
 };
 
 
@@ -694,6 +718,17 @@ uvec4 SampleTexelFetch(uint id, ivec2 uv, int lod) {
 		return uvec4(1u);
 	}
 	return texelFetch(TEXU2D(id), uv, lod);
+}
+
+vec4 SampleTextureBias(uint id, vec2 uv, float bias) {
+	if (id == INVALID_TEXTURE_ID) {
+		return vec4(1.0);
+	}
+#if defined(GL_FRAGMENT_SHADER) || defined(FRAGMENT_SHADER)
+	return texture(TEX2D(id), uv, bias);
+#else
+	return textureLod(TEX2D(id), uv, 0.0);
+#endif
 }
 
 vec4 SampleTextureLod(uint id, vec2 uv, float lod) {

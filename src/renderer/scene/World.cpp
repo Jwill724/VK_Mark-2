@@ -199,7 +199,9 @@ void World::UpdateWorldState(
 
 	frameCtx.EvaluateTransformsStatus(result);
 
-	bIsTemporalInvalid = _scene.VerifyTransformCount();
+	const bool bTransformsChanged = _scene.VerifyTransformCount();
+
+	bIsTemporalInvalid = bIsTemporalInvalid || bTransformsChanged;
 
 	// Screen space contact shadows
 	if (profiler.debugToggles.enableSSS)

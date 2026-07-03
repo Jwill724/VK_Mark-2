@@ -40,13 +40,12 @@ layout(push_constant) uniform ForwardPush
 
 void main()
 {
-	Material mat = getMaterialBuffer().materials[inMaterialID];
-
-	const vec4  base  = SampleTexture(mat.albedoID, inUV) * mat.colorFactor;
+	Material mat      = getMaterialBuffer().materials[inMaterialID];
+	SceneData scene   = getSceneData();
+	const vec4  base  = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w) * mat.colorFactor;
 	const float alpha = base.a;
 	if (alpha < mat.alphaCutoff) discard;
 
-	SceneData scene             = getSceneData();
 	ClusteredData clusteredData = getClusteredData();
 	DebugToggles debug          = getDebugToggles();
 
@@ -60,7 +59,7 @@ void main()
 	vec3 N                       = geometricNormalWS;
 
 	if ((mat.flags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0u) {
-		vec3 normalTex = SampleTexture(mat.normalID, inUV).rgb;
+		vec3 normalTex = SampleTextureBias(mat.normalID, inUV, scene.viewportSize.w).rgb;
 
 		vec3 T   = normalize(inTangent - geometricNormalWS * dot(geometricNormalWS, inTangent));
 		vec3 B   = cross(geometricNormalWS, T) * inTangentW;
@@ -75,21 +74,17 @@ void main()
 
 	if (DBG(showNormals)) RET(N * 0.5 + 0.5, 1.0);
 
-	vec3  albedo = inColor * base.rgb;
+	vec3 albedo = inColor * base.rgb;
 
 	// Only need g and b
-	vec3 metalRough = SampleTexture(mat.metalRoughnessID, inUV).rgb;
-	vec3 emissT     = SampleTexture(mat.emissiveID,       inUV).rgb;
+	vec3 metalRough = SampleTextureBias(mat.metalRoughnessID, inUV, scene.viewportSize.w).rgb;
+	vec3 emissT     = SampleTextureBias(mat.emissiveID,       inUV, scene.viewportSize.w).rgb;
 
 	float rough  = metalRough.g * mat.metalRoughFactors.y;
 	float metal  = metalRough.b * mat.metalRoughFactors.x;
 
-	vec3  emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
-	float lum      = max(max(emissive.r, emissive.g), emissive.b);
-	// No bloom so hack it a bit
-	// Boost only bright parts
-	float boost    = smoothstep(1.0, 10.0, lum);
-	emissive      *= mix(1.0, 3.0, boost);
+	float emissiveStrength = (mat.emissiveStrength * 15.0);
+	vec3  emissive = emissT * (mat.emissiveColor * emissiveStrength);
 
 	rough = specularAA(rough, N);
 	metal = clamp(metal, 0.0, 1.0);
@@ -136,7 +131,7 @@ void main()
 	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
 	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
 
-	// multi-scatter energy compensation for direct spec
+	// multi-scatter energy compensation
 	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
 	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
 	spec *= multiScatterComp;

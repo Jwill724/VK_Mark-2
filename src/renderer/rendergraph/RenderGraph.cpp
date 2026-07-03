@@ -69,6 +69,7 @@ void RenderGraph::Build(
 
 	// --- Post process ---
 	RegisterLuminanceExposurePass(*this,   pipeManager.GetBundle<ExposurePipelineSlot>());
+	RegisterBloomPass(*this,               pipeManager.GetBundle<BloomPipelineSlot>());
 	RegisterLensFlarePass(*this,           pipeManager.GetBundle<LensFlarePipelineSlot>());
 	RegisterFinalCompositePass(*this,      pipeManager.GetBundle<FinalCompositePipelineSlot>());
 

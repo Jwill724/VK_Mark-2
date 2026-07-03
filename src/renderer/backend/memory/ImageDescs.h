@@ -160,6 +160,13 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "CMAA2WorkingEdges" };
 	}
 
+	inline ImageDesc BloomMipchain(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = halfExt,
+			.usage = Vulkan_ImageUsage::ComputeReadWrite, .mipLevels = 0, .bPerMipStorage = true,
+			.debugName = "BloomMipchain" };
+	}
+
 	// --- Quarter resolution ---
 
 	inline ImageDesc FlareBright(Extents3D quarterExt)

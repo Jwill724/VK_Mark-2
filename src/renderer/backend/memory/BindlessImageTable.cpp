@@ -128,6 +128,7 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved,       allocator.AllocateImage(RTDescs::PrevDepth(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::Velocity,                allocator.AllocateImage(RTDescs::Velocity(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity,            allocator.AllocateImage(RTDescs::PrevVelocity(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain,           allocator.AllocateImage(RTDescs::BloomMipchain(half)));
 	SetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals,        allocator.AllocateImage(RTDescs::ViewSpaceNormals(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::Tonemap,                 allocator.AllocateImage(RTDescs::ToneMap(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo,              allocator.AllocateImage(RTDescs::AOEdgeInfo(drawExtent)));

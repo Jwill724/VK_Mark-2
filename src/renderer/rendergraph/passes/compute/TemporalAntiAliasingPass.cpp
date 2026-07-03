@@ -103,6 +103,7 @@ void RegisterTAAPass(
 				const auto& current = ctx.imageTable->GetRenderTarget(slots.write);
 
 				auto& pso = std::get<ComputeScope>(pass.scope);
+				pso.SetPush(ctx.profiler->taaSettings);
 
 				I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
 				pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);

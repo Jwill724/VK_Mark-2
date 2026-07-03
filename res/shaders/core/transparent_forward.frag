@@ -31,13 +31,12 @@ layout(push_constant) uniform ForwardPush
 
 void main()
 {
-	Material mat = getMaterialBuffer().materials[inMaterialID];
+	Material mat    = getMaterialBuffer().materials[inMaterialID];
+	SceneData scene = getSceneData();
+	const vec4 base = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w) * mat.colorFactor;
+	float alpha     = base.a;
+	vec3  albedo    = inColor * base.rgb;
 
-	vec4 base     = SampleTexture(mat.albedoID, inUV) * mat.colorFactor;
-	float alpha   = base.a;
-	vec3  albedo  = inColor * base.rgb;
-
-	SceneData scene             = getSceneData();
 	ClusteredData clusteredData = getClusteredData();
 	DebugToggles debug          = getDebugToggles();
 
@@ -47,7 +46,7 @@ void main()
 	vec3 N = geometricNormalWS;
 
 	if ((mat.flags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0u) {
-		vec3 normalTex = SampleTexture(mat.normalID, inUV).rgb;
+		vec3 normalTex = SampleTextureBias(mat.normalID, inUV, scene.viewportSize.w).rgb;
 
 		vec3 T   = normalize(inTangent - geometricNormalWS * dot(geometricNormalWS, inTangent));
 		vec3 B   = cross(geometricNormalWS, T) * inTangentW;
@@ -60,12 +59,18 @@ void main()
 		N = normalize(tbn * normalTS);
 	}
 
-	float rough = SampleTexture(mat.metalRoughnessID, inUV).g * mat.metalRoughFactors.y;
-	float metal = clamp(SampleTexture(mat.metalRoughnessID, inUV).b * mat.metalRoughFactors.x, 0.0, 1.0);
+	// Only need g and b
+	vec3 metalRough = SampleTextureBias(mat.metalRoughnessID, inUV, scene.viewportSize.w).rgb;
+	vec3 emissT     = SampleTextureBias(mat.emissiveID,       inUV, scene.viewportSize.w).rgb;
 
-	vec3 emissT   = SampleTexture(mat.emissiveID, inUV).rgb;
+	float rough  = metalRough.g * mat.metalRoughFactors.y;
+	float metal  = metalRough.b * mat.metalRoughFactors.x;
+
 	vec3 emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
 	float lum     = max(max(emissive.r, emissive.g), emissive.b);
+
+	// No bloom so hack it a bit
+	// Boost only bright parts
 	float boost   = smoothstep(1.0, 10.0, lum);
 	emissive     *= mix(1.0, 3.0, boost);
 
@@ -87,7 +92,8 @@ void main()
 	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
 
 	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
-	spec *= MultiScatterEnergyComp(F0, brdf);
+	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
+	spec *= multiScatterComp;
 
 	// Sun direct — no shadow for transparents
 	vec3 direct = (diff + spec) * sunColor * NdotL;
@@ -138,6 +144,8 @@ void main()
 
 	// IBL
 	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, pc.specularID);
+	iblSpec *= multiScatterComp;
+
 	vec3 iblDiff = sampleIrradiance(N, pc.diffuseID) * albedo;
 
 	vec3 ambientDiffuse  = kD * iblDiff;

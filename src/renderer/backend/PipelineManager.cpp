@@ -65,6 +65,8 @@ void PM::RegisterPipelines()
 	regC(RP::VolumetricLightBlur,       RS::VolumetricLightBlur_c);
 	regC(RP::FlareBright,               RS::FlareBright_c);
 	regC(RP::FlareGen,                  RS::FlareGen_c);
+	regC(RP::BloomDownsample,           RS::BloomDownsample_c);
+	regC(RP::BloomUpsample,             RS::BloomUpsample_c);
 	regC(RP::SMAAEdges,                 RS::SMAAEdges_c);
 	regC(RP::SMAAWeights,               RS::SMAAWeights_c);
 	regC(RP::SMAABlend,                 RS::SMAABlend_c);

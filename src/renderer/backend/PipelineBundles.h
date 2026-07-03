@@ -63,6 +63,15 @@ enum class VolumetricLightingPipelineSlot : uint8_t
 	Count
 };
 
+enum class BloomPipelineSlot : uint8_t
+{
+	Downsample,
+
+	Upsample,
+
+	Count
+};
+
 enum class ExposurePipelineSlot : uint8_t
 {
 	Reduce,
@@ -321,6 +330,16 @@ struct PipelineBundleTraits<LensFlarePipelineSlot>
 	{
 		RD::Renderer_Pipeline::FlareBright,
 		RD::Renderer_Pipeline::FlareGen
+	};
+};
+
+template<>
+struct PipelineBundleTraits<BloomPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::BloomDownsample,
+		RD::Renderer_Pipeline::BloomUpsample
 	};
 };
 

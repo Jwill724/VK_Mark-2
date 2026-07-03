@@ -87,6 +87,7 @@ bool Scene::UpdateCamera(
 	{
 		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
 		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
+
 	}
 
 	m_currentJitterNDC = jitterNDC;
@@ -136,9 +137,12 @@ bool Scene::UpdateCamera(
 	if (m_sceneInfo.viewportSize.x != width || m_sceneInfo.viewportSize.y != height)
 	{
 		float pixelCount = width * height;
-		m_sceneInfo.viewportSize = glm::vec4(width, height, pixelCount, 0.0f);
+		m_sceneInfo.viewportSize = glm::vec4(width, height, pixelCount, 0.0);
 
 		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
+
+		m_sceneInfo.cameraClips.z = fullPixelSize.x;
+		m_sceneInfo.cameraClips.w = fullPixelSize.y;
 
 		VkExtent3D halfExtent = {
 			(drawExtent.Width() + 1u) >> 1,
@@ -159,6 +163,8 @@ bool Scene::UpdateCamera(
 
 		isTemporalInvalid = true;
 	}
+
+	m_sceneInfo.viewportSize.w = (aaMode == TAA_U32) ? -1.0f : 0.0f;
 
 	return isTemporalInvalid;
 }
@@ -347,7 +353,7 @@ static float HaltonSequence(uint32_t index, uint32_t base)
 
 static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex)
 {
-	const uint32_t sequenceLength = 16u;
+	const uint32_t sequenceLength = 8u;
 	uint32_t index = (frameIndex % sequenceLength) + 1u;
 
 	glm::vec2 jitter;

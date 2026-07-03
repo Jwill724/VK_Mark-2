@@ -68,6 +68,10 @@ void RegisterLensFlarePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterBloomPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
 void RegisterFinalCompositePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);

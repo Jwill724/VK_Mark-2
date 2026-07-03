@@ -317,10 +317,14 @@ struct alignas(16) SSAOPush
 
 struct alignas(16) TAAPush
 {
-	float minBlend = 0.0125f;
-	float maxBlend = 0.25f;
-	float depthDisocclusionScale = 200.0f;
-	float pad0;
+	float minBlend = 0.05f;
+	float maxBlend = 0.9f;
+	float depthDisocclusionScale = 4.0f;
+	float deltaTime = 0.0f;
+	float invDeltaTime = 0.0f;
+	float motionSpeedScale = 1.0f / 3840.0f;
+	float sharpen = 0.0f;
+	float tau = 0.06f;
 };
 
 struct alignas(16) VolumetricPush
@@ -419,6 +423,16 @@ struct alignas(16) SkyboxPush
 	glm::mat4 invVp = glm::mat4(0.0f);
 	uint32_t skyboxID = UINT32_MAX;
 	uint32_t pad0[3];
+};
+
+struct alignas(16) BloomPush
+{
+	glm::vec2 srcTexelSize;
+	glm::uvec2 dstRes;
+	float filterRadius = 1.0f;
+	uint32_t flags; // 0 = first downsample
+	float bloomThreshold = 1.0f;
+	float bloomKnee = 1.0f;
 };
 
 struct alignas(16) LightCullingPush

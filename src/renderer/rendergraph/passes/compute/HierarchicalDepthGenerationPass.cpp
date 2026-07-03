@@ -10,6 +10,8 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
+namespace I = ImageUtils;
+
 static constexpr size_t PIPE_ID_HI_Z = 0;
 
 static struct alignas(16) DepthPyramidPush
@@ -62,7 +64,7 @@ void RegisterHiZGenerationPass(
 						// TRANSITION WHOLE CHAIN FOR WRITES
 						//----------------------------------------
 
-						ImageUtils::TransitionLayout(
+						I::TransitionLayout(
 							cmd,
 							hiZ,
 							RD::ImageAccess::Read,
@@ -136,7 +138,7 @@ void RegisterHiZGenerationPass(
 							//------------------------------------
 							// CURRENT MIP BECOMES READABLE
 							//------------------------------------
-							ImageUtils::TransitionLayout(
+							I::TransitionLayout(
 								cmd,
 								hiZ,
 								RD::ImageAccess::Write,

@@ -51,6 +51,7 @@ void RegisterFinalCompositePass(
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
 						const auto& lensflare = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor);
+						const auto& bloom = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain);
 						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
@@ -133,6 +134,25 @@ void RegisterFinalCompositePass(
 							scope.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_4,
+								dummy,
+								linearClampSampler);
+						}
+
+						if (ctx.profiler->debugToggles.enableBloom &&
+							ctx.frameState->bHasVisibles)
+						{
+							scope.BindReadImage(
+								pass.pushWriter,
+								RD::PUSH_BINDING_READ_5,
+								bloom,
+								linearClampSampler,
+								0);
+						}
+						else
+						{
+							scope.BindReadImage(
+								pass.pushWriter,
+								RD::PUSH_BINDING_READ_5,
 								dummy,
 								linearClampSampler);
 						}

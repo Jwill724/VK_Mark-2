@@ -342,6 +342,9 @@
     <ClCompile Include="vendor\fmt\format.cc">
       <Filter>vendor</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -725,6 +728,12 @@
     </None>
     <None Include="res\shaders\debug\wireframeFS.frag">
       <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\post_process\bloom_downsample.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\bloom_upsample.comp">
+      <Filter>res\shaders\post_process</Filter>
     </None>
   </ItemGroup>
 </Project>

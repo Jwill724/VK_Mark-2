@@ -28,6 +28,7 @@ struct ModelAsset;
 
 inline constexpr bool LensFlareOn           = true;
 inline constexpr bool ChromaticAberrationOn = true;
+inline constexpr bool BloomOn               = true;
 inline constexpr bool VolumetricsOn         = true;
 inline constexpr bool ShadowsOn             = true;
 inline constexpr bool ScreenSpaceShadowsOn  = true;
@@ -181,6 +182,7 @@ private:
 	void InitRenderSettings(
 		bool enableLensFlare,
 		bool enableChromaticAberration,
+		bool enableBloom,
 		bool enableShadows,
 		bool enableSSS,
 		bool enableVolumetrics,

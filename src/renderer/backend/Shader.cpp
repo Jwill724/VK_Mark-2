@@ -35,6 +35,8 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::VolumetricLightBlur_c,       "post_process/volumetric_light_blur.spv"    },
 	{ RD::Renderer_Shader::FlareBright_c,               "post_process/flare_bright.spv"             },
 	{ RD::Renderer_Shader::FlareGen_c,                  "post_process/flare_gen.spv"                },
+	{ RD::Renderer_Shader::BloomDownsample_c,           "post_process/bloom_downsample.spv"         },
+	{ RD::Renderer_Shader::BloomUpsample_c,             "post_process/bloom_upsample.spv"           },
 	{ RD::Renderer_Shader::SMAAEdges_c,                 "post_process/smaa_edges.spv"               },
 	{ RD::Renderer_Shader::SMAAWeights_c,               "post_process/smaa_weights.spv"             },
 	{ RD::Renderer_Shader::SMAABlend_c,                 "post_process/smaa_blend.spv"               },

@@ -67,7 +67,10 @@ public:
 	// Verifys for temporal
 	bool VerifyTransformCount()
 	{
-		return (static_cast<uint32_t>(m_transforms.size()) != m_recentTransformCount);
+		const uint32_t current = static_cast<uint32_t>(m_transforms.size());
+		const bool changed = (current != m_recentTransformCount);
+		m_recentTransformCount = current;
+		return changed;
 	}
 
 	void BuildDispatchList(const int waveSize = 64);

@@ -7,8 +7,8 @@
 #include "../include/common.glsl"
 
 layout(location = 0) out vec3 outViewNormal;
-layout(location = 1) out vec2 outCurrNdc;
-layout(location = 2) out vec2 outPrevNdc;
+layout(location = 1) out vec4 outCurrClip;
+layout(location = 2) out vec4 outPrevClip;
 layout(location = 3) out vec2 outUV;
 layout(location = 4) flat out uint outTemporalValidation;
 layout(location = 5) flat out uint outMaterialID;
@@ -29,8 +29,7 @@ void main()
 
 	mat4 model = getTransformBuffer().transforms[inst.transformID];
 
-	SceneData scene    = getSceneData();
-	DebugToggles debug = getDebugToggles();
+	SceneData scene = getSceneData();
 
 	mat4 prevModel = model;
 	if (scene.temporal.y == 1u) {
@@ -43,24 +42,14 @@ void main()
 	vec4 worldPos     = model     * vec4(position, 1.0);
 	vec4 prevWorldPos = prevModel * vec4(position, 1.0);
 
-	vec4 currClip     = scene.viewProj           * worldPos;
-	vec4 currClipUnj  = scene.viewProjUnjittered * worldPos;
-	vec4 prevClip     = scene.prevViewProj       * prevWorldPos;
+	vec4 currClip    = scene.viewProj           * worldPos;
+	vec4 currClipUnj = scene.viewProjUnjittered * worldPos;
+	vec4 prevClip    = scene.prevViewProj       * prevWorldPos;
 
-	outUV = uv;
-
-	bool currValid = currClip.w > 0.0 && prevClip.w > 0.0;
-
-	if (!currValid) {
-		outCurrNdc            = vec2(0.0);
-		outPrevNdc            = vec2(0.0);
-		outTemporalValidation = 0u;
-	} 
-	else {
-		outCurrNdc            = currClipUnj.xy / currClipUnj.w; 
-		outPrevNdc            = prevClip.xy / prevClip.w;
-		outTemporalValidation = scene.temporal.y;
-	}
+	outUV                 = uv;
+	outCurrClip           = currClipUnj;
+	outPrevClip           = prevClip;
+	outTemporalValidation = scene.temporal.y;
 
 	gl_Position = currClip;
 }

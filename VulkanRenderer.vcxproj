@@ -104,6 +104,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / rendergraph -->
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -463,6 +464,8 @@
     <None Include="res\shaders\core\transparent_resolve.comp" />
     <None Include="res\shaders\debug\wireframeFS.frag" />
     <None Include="res\shaders\debug\wireframeVS.vert" />
+    <None Include="res\shaders\post_process\bloom_downsample.comp" />
+    <None Include="res\shaders\post_process\bloom_upsample.comp" />
     <None Include="res\shaders\post_process\chromatic_aberration.comp" />
     <None Include="res\shaders\post_process\smaa_blend.comp" />
     <None Include="res\shaders\post_process\smaa_edges.comp" />

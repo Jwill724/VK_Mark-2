@@ -124,6 +124,7 @@ public:
 	SSSPush             contactShadowsSettings;
 	ToneMappingSettings toneMappingSettings;
 	LumaExposurePush    lumaExposureSettings;
+	BloomPush           bloomPush;
 	ForwardPush         forwardPush;
 	SkyboxPush          skyboxPush;
 	LightCullingPush    lightCullingPush;

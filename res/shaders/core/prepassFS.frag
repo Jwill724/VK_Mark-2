@@ -6,8 +6,8 @@
 #include "../include/common.glsl"
 
 layout(location = 0) in vec3 inViewNormal;
-layout(location = 1) in vec2 inCurrNdc;
-layout(location = 2) in vec2 inPrevNdc;
+layout(location = 1) in vec4 inCurrClip;
+layout(location = 2) in vec4 inPrevClip;
 layout(location = 3) in vec2 inUV;
 layout(location = 4) flat in uint inTemporalValidation;
 layout(location = 5) flat in uint inMaterialID;
@@ -15,28 +15,28 @@ layout(location = 5) flat in uint inMaterialID;
 layout(location = 0) out vec4 outViewSpaceNormal;
 layout(location = 1) out vec2 outVelocity;
 
-vec2 computeVelocityUV(const vec2 viewport)
+vec2 computeVelocityUV(vec2 viewport)
 {
 	if (inTemporalValidation != 1u) return vec2(0.0);
+	if (inCurrClip.w <= 0.0 || inPrevClip.w <= 0.0) return vec2(0.0);
 
-	vec2 velocityUV = (inCurrNdc - inPrevNdc) * 0.5;
+	vec2 currNdc = inCurrClip.xy / inCurrClip.w;
+	vec2 prevNdc = inPrevClip.xy / inPrevClip.w;
 
-	vec2 viewportSize = max(viewport.xy, vec2(1.0));
-	vec2 velocityPx   = velocityUV * viewportSize;
-
-	const float maxVelocityPx = 256.0;
-	velocityPx = clamp(velocityPx, vec2(-maxVelocityPx), vec2(maxVelocityPx));
-
-	return velocityPx / viewportSize;
+	vec2 velocityUV = (currNdc - prevNdc) * 0.5;
+	vec2 viewportSz = max(viewport, vec2(1.0));
+	vec2 velocityPx = clamp(velocityUV * viewportSz, vec2(-256.0), vec2(256.0));
+	return velocityPx / viewportSz;
 }
 
-void main() {
+void main()
+{
 	Material mat = getMaterialBuffer().materials[inMaterialID];
-	float alpha = SampleTexture(mat.albedoID, inUV).a * mat.colorFactor.a;
+	SceneData scene = getSceneData();
+	float alpha = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w).a * mat.colorFactor.a;
 	if (alpha < mat.alphaCutoff) discard;
 
-	outViewSpaceNormal = vec4(normalize(inViewNormal) * 0.5 + 0.5, 1.0); // [-1,1] -> [0,1]
+	outViewSpaceNormal = vec4(normalize(inViewNormal) * 0.5 + 0.5, 1.0);
 
-	SceneData scene = getSceneData();
 	outVelocity = computeVelocityUV(scene.viewportSize.xy);
 }

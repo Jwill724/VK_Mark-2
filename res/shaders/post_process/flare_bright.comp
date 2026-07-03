@@ -96,20 +96,3 @@ void main()
 
 	imageStore(outFlareBright, outCoord, vec4(brightColor, 1.0));
 }
-
-float softThreshold(float value, float threshold, float knee)
-{
-	float kneeMin = threshold - knee;
-	float kneeMax = threshold + knee;
-
-	if (value <= kneeMin) return 0.0;
-
-	if (value >= kneeMax) return value - threshold;
-
-	// Smooth in-between
-	float t = (value - kneeMin) / max(kneeMax - kneeMin, 1e-6);
-	t = t * t * (3.0 - 2.0 * t);
-
-	float soft = (value - threshold) * t;
-	return max(soft, 0.0);
-}

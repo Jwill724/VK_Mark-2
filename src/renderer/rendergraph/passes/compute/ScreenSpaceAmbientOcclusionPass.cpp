@@ -18,8 +18,6 @@ static constexpr size_t PIPE_ID_MAIN           = 1;
 static constexpr size_t PIPE_ID_FILTER         = 2;
 static constexpr size_t PIPE_ID_DENOISE        = 3;
 
-// This could run async along shadow raster
-
 void RegisterSSAOPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
