@@ -2,7 +2,6 @@
 
 #include "ResourceTypes.h"
 #include "renderer/frame/FrameResources.h"
-#include "Bounds.h"
 
 #include "renderer/RendererDefinitions.h"
 namespace RD = RendererDefinitions;
@@ -12,7 +11,6 @@ namespace RD = RendererDefinitions;
 // TODO: work on this further
 struct Flashlight final : public LocalLight
 {
-	Frustum Frustum;
 	glm::mat4 ViewProj;
 	bool IsFlashLightActive() const { return m_flashlightEnabled || m_flashlightFlagsChanged; }
 	bool IsFlashLightOn() const { return m_flashlightEnabled; }

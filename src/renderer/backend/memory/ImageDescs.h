@@ -9,7 +9,7 @@ namespace RD = RendererDefinitions;
 
 namespace RenderTargetDescs
 {
-	// --- Full resolution (pass drawExtent) ---
+	// --- Full resolution matches swapchain ---
 
 	inline ImageDesc Opaque(Extents3D ext)
 	{
@@ -63,6 +63,12 @@ namespace RenderTargetDescs
 	{
 		return { .format = Vulkan_Format::RG16F, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "PrevVelocity" };
+	}
+
+	inline ImageDesc Visibility(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RG32U, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "Visibility" };
 	}
 
 	inline ImageDesc ViewSpaceNormals(Extents3D ext)
@@ -153,7 +159,7 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "VolumetricBlur" };
 	}
 
-	// CMAA2 uses { halfWidth, fullHeight } — caller constructs and passes directly
+	// CMAA2 uses { halfWidth, fullHeight }
 	inline ImageDesc CMAA2WorkingEdges(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::R8U, .extent = ext,
@@ -181,7 +187,7 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "LensFlareColor" };
 	}
 
-	// --- Mip-chain targets (pass drawExtent; mip count from RendererDefinitions) ---
+	// --- Mip-chain targets ---
 
 	inline ImageDesc HiZ(Extents3D ext, uint32_t mipCount)
 	{

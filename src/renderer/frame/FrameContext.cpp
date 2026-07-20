@@ -27,63 +27,111 @@ void FrameContext::Init(
 	m_commandBuffer = device.CreateCommandBuffer(m_graphicsPool);
 	m_frameSet = descriptorsManager.AllocateFrameDescriptorSet(logicalDevice);
 
-	//////////////////////////////////////////////////////////////
-	// THESE SSBOS REQUIRE STAGING COPIES
-
 	// GPU address table
 	m_gpuAddressTable.Init(allocator);
 
-	////////////////////////////////////////////
-	// gpu writable (not yet tho)
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::VisibleInstances,
-		MAX_INSTANCE_SIZE_GPU_BYTES,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::IndirectDraws,
-		MAX_INDIRECT_SIZE_GPU_BYTES,
-		allocator);
-	///////////////////////////////////////////
-
-	////////////////////////////////////////
-	// Read only
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::Transforms,
-		MAX_TRANSFORMS_SIZE_GPU_BYTES,
+		GPU_BYTES_TRANSFORMS,
 		allocator);
 
-	// Just needs temporal validation to copy Transforms (aka current transforms) to prevTransforms
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::PrevTransforms,
-		MAX_TRANSFORMS_SIZE_GPU_BYTES,
+		GPU_BYTES_TRANSFORMS,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::Lights,
-		MAX_LIGHTS_SIZE_GPU_BYTES,
+		GPU_BYTES_LIGHTS,
 		allocator);
-	/////////////////////////////////////////
 
-	///////////////////////////////////////////////////////////////
-
-
-	// Every other ssbo can use cmdfill
-
+	// Cull outputs
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::VisibleLightCount,
-		MIN_SSBO_ALIGNMENT_BYTES,
+		RD::Renderer_Buffer::InstanceVisibility,
+		GPU_BYTES_INSTANCE_VISIBILITY,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::VisibleLightIDs,
-		MAX_LIGHT_IDS_SIZE_GPU_BYTES,
+		RD::Renderer_Buffer::VisibleCount,
+		sizeof(uint32_t),
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::VisibleInstances,
+		GPU_BYTES_VISIBLE_INSTANCES,
+		allocator);
+
+	// Draw build intermediates
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::InstanceStreams,
+		GPU_BYTES_INSTANCE_STREAMS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::InstanceCursors,
+		GPU_BYTES_INSTANCE_STREAMS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DrawInstanceIDs,
+		GPU_BYTES_DRAW_INSTANCE_IDS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::IndirectDraws,
+		GPU_BYTES_INDIRECT_DRAWS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::IndirectDrawCounts,
+		GPU_BYTES_INDIRECT_DRAW_COUNTS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DrawBins,
+		GPU_BYTES_DRAW_BINS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DrawBinCounters,
+		GPU_BYTES_DRAW_BIN_COUNTERS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::ShadowCullData,
+		GPU_BYTES_SHADOW_CULL_DATA,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::DispatchIndirectArgs,
-		MIN_SSBO_ALIGNMENT_BYTES,
+		GPU_BYTES_DISPATCH_INDIRECT_ARGS,
 		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DrawStats,
+		sizeof(GPUStats),
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::VisibleLightCount,
+		sizeof(uint32_t),
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::VisibleLightIDs,
+		GPU_BYTES_VISIBLE_LIGHT_IDS,
+		allocator);
+
+	// Readback stats buffer
+	m_statsReadback = allocator.AllocateBuffer({
+		sizeof(GPUStats),
+		Vulkan_BufferUsage::READ_BACK,
+		HeapType::Readback
+	});
+
+	vmaMapMemory(allocator.GetVma(),
+		m_statsReadback.m_allocation,
+		reinterpret_cast<void**>(const_cast<GPUStats**>(&m_statsMapped)));
 
 	// Light cluster buffers
 	ClusterBufferSizes clusterBufSizes;
@@ -120,6 +168,39 @@ void FrameContext::ClusterReset(Allocator& allocator)
 {
 	for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::ClusterCounts);
 		i <= static_cast<size_t>(RD::Renderer_Buffer::ClusterScanScratch);
+		i++)
+	{
+		m_gpuAddressTable.ClearGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
+	}
+}
+
+void FrameContext::CreateDebugBuffers(Allocator& allocator)
+{
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DebugCounts,
+		GPU_BYTES_DEBUG_COUNTERS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DebugItems,
+		GPU_BYTES_DEBUG_ITEMS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DebugVertex,
+		GPU_BYTES_DEBUG_VERTEX,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DebugDraw,
+		RD::INDIRECT_CMD_SIZE,
+		allocator);
+}
+
+void FrameContext::DestroyDebugBuffers(Allocator& allocator)
+{
+	for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::DebugCounts);
+		i <= static_cast<size_t>(RD::Renderer_Buffer::DebugDraw);
 		i++)
 	{
 		m_gpuAddressTable.ClearGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
@@ -282,19 +363,15 @@ void FrameContext::FreeStashedCmds(const DeviceContext& deviceCtx)
 void FrameContext::TickDescriptorWrites(DescriptorWriter& writer)
 {
 	// Most frequent writes
-
 	writer.WriteBuffer(
 		RD::FRAME_BINDING_SCENE,
 		m_sceneInfo_UBO,
 		m_frameSet);
 
-	if (IsOpaqueVisible())
-	{
-		writer.WriteBuffer(
-			RD::FRAME_BINDING_CSM,
-			m_directionalCSM_UBO,
-			m_frameSet);
-	}
+	writer.WriteBuffer(
+		RD::FRAME_BINDING_CSM,
+		m_directionalCSM_UBO,
+		m_frameSet);
 
 	// Less frequent writes
 
@@ -331,72 +408,17 @@ void FrameContext::AssignCSMUniform(AllocatedBuffer buffer, const Allocator& all
 	});
 }
 
-const IndirectDrawRange& FrameContext::GetCSMDrawRange(uint32_t cascade) const
-{
-	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
-	return m_csmDrawRanges[cascade];
-}
-
-IndirectDrawRange& FrameContext::GetCSMDrawRange(uint32_t cascade)
-{
-	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
-	return m_csmDrawRanges[cascade];
-}
-
-const InstanceRange& FrameContext::GetCSMInstanceRange(uint32_t cascade) const
-{
-	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
-	return m_csmInstanceRanges[cascade];
-}
-
-InstanceRange& FrameContext::GetCSMInstanceRange(uint32_t cascade)
-{
-	ASSERT(cascade < RD::MAX_SHADOW_CASCADES);
-	return m_csmInstanceRanges[cascade];
-}
-
-void FrameContext::ValidateOpaque() const
-{
-	ASSERT(m_opaqueInstanceRange.firstInstance + m_opaqueInstanceRange.visibleCount
-		<= m_visibleInstances.size());
-
-	ASSERT(m_opaqueDrawRange.firstCommand + m_opaqueDrawRange.commandCount
-		<= m_indirectDraws.size());
-}
-
-void FrameContext::ValidateTransparent() const
-{
-	ASSERT(m_transparentInstanceRange.firstInstance + m_transparentInstanceRange.visibleCount
-		<= m_visibleInstances.size());
-
-	ASSERT(m_transparentDrawRange.firstCommand + m_transparentDrawRange.commandCount
-		<= m_indirectDraws.size());
-}
-
-void FrameContext::ValidateCSM(uint32_t index) const
-{
-	ASSERT(m_csmInstanceRanges[index].firstInstance + m_csmInstanceRanges[index].visibleCount
-		<= m_visibleInstances.size());
-
-	ASSERT(m_csmDrawRanges[index].firstCommand + m_csmDrawRanges[index].commandCount
-		<= m_indirectDraws.size());
-}
-
-void FrameContext::ValidateFlashlight() const
-{
-	ASSERT(m_flashlightShadowInstanceRange.firstInstance + m_flashlightShadowInstanceRange.visibleCount
-		<= m_visibleInstances.size());
-
-	ASSERT(m_flashlightShadowDrawRange.firstCommand + m_flashlightShadowDrawRange.commandCount
-		<= m_indirectDraws.size());
-}
-
 void FrameContext::Cleanup(const DeviceContext& deviceCtx, Allocator& allocator)
 {
-	ClearDrawData();
-
 	m_cpuDeletionQueue.Flush(); // Memory frees for SceneInfo and DirectionalCSM uniforms occur in here
 	allocator.FreeBuffer(m_clustered_UBO);
+
+	if (m_statsMapped)
+	{
+		vmaUnmapMemory(allocator.GetVma(), m_statsReadback.m_allocation);
+		m_statsMapped = nullptr;
+	}
+	allocator.FreeBuffer(m_statsReadback);
 
 	m_gpuAddressTable.Shutdown(allocator);
 

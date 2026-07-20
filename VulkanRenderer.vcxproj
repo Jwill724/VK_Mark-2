@@ -105,6 +105,10 @@
     </ClCompile>
     <!-- renderer / rendergraph -->
     <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\DrawBuildPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\InstanceCullPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -125,7 +129,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\DebugOrientedBoundingBoxPass.cpp">
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\LineDebugPass.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
@@ -220,9 +224,6 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\scene\LightingSystem.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\Visibility.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / backend -->
@@ -419,7 +420,6 @@
     <ClInclude Include="src\renderer\scene\LightingSystem.h" />
     <ClInclude Include="src\renderer\scene\Scene.h" />
     <ClInclude Include="src\renderer\scene\World.h" />
-    <ClInclude Include="src\renderer\scene\Visibility.h" />
     <ClInclude Include="src\renderer\scene\DrawPreparation.h" />
     <!-- renderer / backend -->
     <ClInclude Include="src\renderer\backend\Debugging.h" />
@@ -462,8 +462,15 @@
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\core\transparent_forward.frag" />
     <None Include="res\shaders\core\transparent_resolve.comp" />
+    <None Include="res\shaders\debug\debug_args.comp" />
+    <None Include="res\shaders\debug\debug_build.comp" />
+    <None Include="res\shaders\debug\debug_count.comp" />
     <None Include="res\shaders\debug\wireframeFS.frag" />
     <None Include="res\shaders\debug\wireframeVS.vert" />
+    <None Include="res\shaders\include\culling.glsl" />
+    <None Include="res\shaders\include\draws.glsl" />
+    <None Include="res\shaders\include\instances.glsl" />
+    <None Include="res\shaders\include\bindings.glsl" />
     <None Include="res\shaders\post_process\bloom_downsample.comp" />
     <None Include="res\shaders\post_process\bloom_upsample.comp" />
     <None Include="res\shaders\post_process\chromatic_aberration.comp" />
@@ -472,6 +479,7 @@
     <None Include="res\shaders\post_process\smaa_weights.comp" />
     <None Include="res\shaders\post_process\taa.comp" />
     <None Include="res\shaders\shadows\bend_sss.comp" />
+    <None Include="res\shaders\shadows\shadow_bounds.comp" />
     <None Include="res\shaders\shadows\shadow_depthVS.vert" />
     <None Include="res\shaders\include\common.glsl" />
     <None Include="res\shaders\include\shading_functions.glsl" />
@@ -493,8 +501,8 @@
     <None Include="res\shaders\environment\brdf_lut.comp" />
     <None Include="res\shaders\post_process\exposure_finalize.comp" />
     <None Include="res\shaders\post_process\exposure_reduce.comp" />
-    <None Include="res\shaders\debug\obb_lineVS.vert" />
-    <None Include="res\shaders\debug\obb_lineFS.frag" />
+    <None Include="res\shaders\debug\line_debugVS.vert" />
+    <None Include="res\shaders\debug\line_debugFS.frag" />
     <None Include="res\shaders\post_process\flare_bright.comp" />
     <None Include="res\shaders\post_process\flare_gen.comp" />
     <None Include="res\shaders\post_process\fxaa.comp" />
@@ -505,7 +513,11 @@
     <None Include="res\shaders\post_process\final_composite.comp" />
     <None Include="res\shaders\post_process\volumetric_light_blur.comp" />
     <None Include="res\shaders\post_process\volumetric_light.comp" />
-    <None Include="res\shaders\visibility\visibility.comp" />
+    <None Include="res\shaders\visibility\draw_args.comp" />
+    <None Include="res\shaders\visibility\draw_emit.comp" />
+    <None Include="res\shaders\visibility\draw_place.comp" />
+    <None Include="res\shaders\visibility\draw_scatter.comp" />
+    <None Include="res\shaders\visibility\instance_cull.comp" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->

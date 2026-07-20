@@ -90,7 +90,6 @@ public:
 
 	void UpdateRendererContext(GLFWwindow* window);
 
-	void ResetFrameStats() { m_profiler.ResetDrawCalls(); m_profiler.ResetPassStats(); }
 	void StartTimer() { m_profiler.StartTimer(); }
 	void EndAssetTimer();
 	void EndSceneUpdateTimer() { m_profiler.getStats().sceneUpdateTime.Add(m_profiler.EndTimerMS()); }
@@ -112,8 +111,6 @@ private:
 
 	void InitFrameResources();
 	void CleanupFrameResources();
-
-	void CreateOBBLineBuffer(FrameContext& frameCtx);
 
 	void CheckGlobalDescriptorSetSync();
 
@@ -157,6 +154,7 @@ private:
 	BindlessBDATable m_globalAddressTable;
 	std::vector<Material> m_materials;
 	MeshRegistry m_registeredMeshes;
+	BinTableBuild m_drawBinTableBuild;
 
 	BindlessImageTable m_bindlessImageTable;
 

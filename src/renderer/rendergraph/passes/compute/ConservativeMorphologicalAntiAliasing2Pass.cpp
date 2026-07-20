@@ -69,7 +69,7 @@ void RegisterCMAA2Pass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bHasVisibles &&
+						return ctx.frameState->activeInstanceCount > 0 &&
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2);
 					})
 
@@ -99,7 +99,7 @@ void RegisterCMAA2Pass(
 
 						// Buffers reset to zero
 						pso.FillGpuBuffer(cmd, control);
-						pso.FillGpuBuffer(cmd, deferredHeads, 0x7FFFFFFFu); // Maybe write this value somewhere??
+						pso.FillGpuBuffer(cmd, deferredHeads, 0x7FFFFFFFu);
 
 
 						// ============
@@ -123,7 +123,7 @@ void RegisterCMAA2Pass(
 						pso.UpdateExtent({1, 1});
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DISPATCH_ARGS], pass.pushWriter);
-						B::ComputeWriteToIndirectDispatchRead(cmd, indirectArgs);
+						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 
 						// =================
 						// Shape Candidates
@@ -157,7 +157,7 @@ void RegisterCMAA2Pass(
 							push.params.w = 1.0f;
 						});
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DISPATCH_ARGS], pass.pushWriter);
-						B::ComputeWriteToIndirectDispatchRead(cmd, indirectArgs);
+						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 
 						// =================
 						// Deferred Resolve

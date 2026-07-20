@@ -2,7 +2,6 @@
 
 #include <renderer/backend/VulkanForward.h>
 #include "renderer/RendererDefinitions.h"
-#include "Bounds.h"
 #include "../scene/World.h"
 
 // Note: Instance and LocalLight sizes for buffers are predefined in renderer/backend/memory/Budgets.h
@@ -17,13 +16,73 @@ inline constexpr uint32_t TIMESTAMP_QUERY_COUNT      = PASS_TIMESTAMP_QUERY_COUN
 
 namespace RD = RendererDefinitions;
 
-// An instance basically = mesh
-struct Instance
+enum InstanceFlags : uint32_t
 {
-	uint32_t meshID       = UINT32_MAX;  // global meshBuffer
-	uint32_t materialID   = UINT32_MAX;  // global material buffer
-	uint32_t transformID  = UINT32_MAX;  // global transform/prevTransform buffer
-	uint32_t passType     = UINT32_MAX;  // opaque/transparent material pass
+	PASS_OPAQUE      = 1 << 0,
+	PASS_TRANSPARENT = 1 << 1,
+	STATIC_OBJECT    = 1 << 2,
+	DYNAMIC_OBJECT   = 1 << 3,
+	CAST_CSM         = 1 << 4,
+	CAST_FLASHLIGHT  = 1 << 5,
+	RECEIVE_SHADOW   = 1 << 6,
+	OCCLUDABLE       = 1 << 7,
+	LOD_ENABLED      = 1 << 8,
+	ALPHA_TESTED     = 1 << 9,
+	GPU_SKINNED      = 1 << 10,
+	ALWAYS_VISIBLE   = 1 << 11,
+	IS_TREE          = 1 << 12,
+	HAS_NORMALS      = 1 << 13,
+	INSTANCE_ACTIVE  = 1 << 14,
+};
+
+struct InstanceInput
+{
+	uint32_t meshID       = UINT32_MAX;
+	uint32_t materialID   = UINT32_MAX;
+	uint32_t transformID  = UINT32_MAX;
+	uint32_t lod0         = UINT32_MAX;
+	uint32_t lod1         = UINT32_MAX;
+	uint32_t lod2         = UINT32_MAX;
+	uint32_t lod3         = UINT32_MAX;
+	uint32_t shadowLod0   = UINT32_MAX;
+	uint32_t shadowLod1   = UINT32_MAX;
+	uint32_t shadowLod2   = UINT32_MAX;
+	uint32_t flags        = UINT32_MAX;
+};
+
+struct DrawBin
+{
+	uint32_t meshID = UINT32_MAX;
+	uint32_t materialID = UINT32_MAX;
+
+	uint32_t instanceOffset = UINT32_MAX;
+	uint32_t instanceCount = UINT32_MAX;
+};
+
+struct DebugDraw
+{
+	uint32_t type;
+
+	uint32_t instanceID;
+
+	uint32_t color;
+
+	uint32_t flags;
+};
+
+struct GPUStats
+{
+	uint32_t visibleOpaque = 0;
+
+	uint32_t visibleTransparent = 0;
+
+	uint32_t visibleShadowCasters = 0;
+
+	uint32_t opaqueDrawCount = 0;
+	uint32_t transparentDrawCount = 0;
+	uint32_t shadowDrawCount = 0;
+
+	uint32_t triangleCount = 0; // Doesnt count shadows
 };
 
 struct CoreSlab
@@ -33,43 +92,20 @@ struct CoreSlab
 	uint32_t usedCopies = 0u;
 };
 
-struct BVHNode
-{
-	AABB box; // node bounds
-	glm::vec3 extent;
-	glm::vec3 origin;
-	float sphereRadius;
-	int left = -1; // child indices; -1 => leaf
-	int right = -1;
-	uint32_t first = 0; // start index into leafIndex[]
-	uint16_t count = 0; // leaf count (0 for internal)
-};
-
-// Instances in VisibilityState go into one row per cullable unit,
+// Instances in InstanceState go into one row per cullable unit,
 // that can be drawm = mesh x copy.
-// Built when copies change (multi-static slider), not per-frame.
-
-struct VisibilityState
+struct InstanceState
 {
-	std::vector<Instance> instances;    // per mesh X copy
-	std::vector<AABB> worldAABBs;       // parallel to coreStatic
-	std::vector<uint32_t> transformIDs; // parallel to coreStatic
+	std::vector<InstanceInput> gpuInputs; // per mesh X copy
+	//std::vector<AABB> worldAABBs;        // parallel to coreStatic
 	std::unordered_map<ModelID, CoreSlab> slabs;
-
 	std::vector<uint32_t> active;    // live rows (indices into coreStatic)
-	std::vector<uint32_t> leafIndex; // permutation used by BVH build
-	std::vector<BVHNode> bvh;
-
-	void Cleanup()
+	void Cleanup() noexcept
 	{
-		instances.clear();
-		worldAABBs.clear();
-		transformIDs.clear();
-		slabs.clear();
-
+		gpuInputs.clear();
 		active.clear();
-		leafIndex.clear();
-		bvh.clear();
+		//worldAABBs.clear();
+		slabs.clear();
 	}
 };
 
@@ -152,113 +188,11 @@ struct alignas(16) LightClustersData
 	glm::vec4 pad0[6] = { glm::vec4(0.0f) };
 };
 
-struct InstanceRange
-{
-	uint32_t firstInstance = 0;
-	uint32_t visibleCount = 0;
-};
-
-// Indirect draw buffer can fit in lots of different draws
-struct IndirectDrawRange
-{
-	uint32_t firstCommand = 0;   // first indirect command index in frameCtx.indirectDraws
-	uint32_t commandCount = 0;   // number of subdraws inside of VkDrawIndexedIndirectCommand
-};
-
-struct ShadowDrawRange
-{
-	IndirectDrawRange drawRange{};
-	InstanceRange instanceRange{};
-};
-
-class InstanceWriteScope
-{
-public:
-	InstanceWriteScope(std::vector<Instance>& out)
-		: m_instances(out)
-	{
-		m_range.firstInstance = static_cast<uint32_t>(out.size());
-	}
-
-	void Add(const Instance& inst)
-	{
-		m_instances.emplace_back(inst);
-	}
-
-	void End()
-	{
-		m_range.visibleCount =
-			static_cast<uint32_t>(m_instances.size()) - m_range.firstInstance;
-	}
-
-	const InstanceRange& GetRange() const { return m_range; }
-
-private:
-	std::vector<Instance>& m_instances;
-	InstanceRange m_range{};
-};
-
-class IndirectDrawScope
-{
-public:
-	IndirectDrawScope(std::vector<VkDrawIndexedIndirectCommand>& out)
-		: m_draws(out)
-	{
-		m_range.firstCommand = static_cast<uint32_t>(out.size());
-	}
-
-	void Add(const VkDrawIndexedIndirectCommand& cmd)
-	{
-		m_draws.emplace_back(cmd);
-	}
-
-	void End()
-	{
-		m_range.commandCount =
-			static_cast<uint32_t>(m_draws.size()) - m_range.firstCommand;
-	}
-
-	const IndirectDrawRange& GetRange() const { return m_range; }
-
-private:
-	std::vector<VkDrawIndexedIndirectCommand>& m_draws;
-	IndirectDrawRange m_range{};
-};
-
-struct DrawBuildOutput
-{
-	std::vector<Instance> visibleInstances{};
-	std::vector<VkDrawIndexedIndirectCommand> indirectDraws{};
-
-	InstanceRange opaqueInstances{};
-	IndirectDrawRange opaqueDraws{};
-
-	InstanceRange transparentInstances{};
-	IndirectDrawRange transparentDraws{};
-
-	std::array<ShadowDrawRange, RD::MAX_SHADOW_CASCADES> csm{};
-	ShadowDrawRange flashlight{};
-};
-
 // Some chunk of a flat array that needs to go
 struct DirtyRange
 {
 	uint32_t offset = 0;
 	uint32_t count = 0;
-};
-
-// === Per-frame sync ===
-// Compares current VirtualInstance.usedCopies/firstTransform to visState.slabs and decides:
-//  - grow: appendSceneCopies + buildBVH()
-//  - shrink: shrinkSceneCopiesLazy + buildBVH()
-//  - relocate-only: rewriteSceneSlice + refitBVH()
-//  - no change: do nothing
-// Returns whether topology changed or a refit-only is needed, plus any transform upload ranges.
-struct VisibilitySyncResult
-{
-	bool topologyChanged = false;   // grew/shrank -> call buildBVH()
-	bool refitOnly = false;         // only transforms changed -> call refitBVH()
-	std::vector<DirtyRange> dirtyTransformRanges; // for GPU uploads
 };
 
 // === RENDER PASS PUSH CONSTANTS ===
@@ -274,17 +208,30 @@ struct alignas(16) BindlessAccessPush
 
 struct alignas(16) ForwardPush
 {
-	uint32_t activeLightCount = 0;
-
 	uint32_t diffuseID = UINT32_MAX;
 	uint32_t specularID = UINT32_MAX;
 	uint32_t brdfID = UINT32_MAX;
-
 	float oitDepthScale = 400.0f;
+
 	uint32_t flashlightShadowMapID = UINT32_MAX;
 	uint32_t flashlightCookieTexID = UINT32_MAX;
 	uint32_t pad0;
-	glm::mat4 flashlightVP;
+	uint32_t pad1;
+
+	uint32_t showAlbedo                = 0;
+	uint32_t showNormals               = 0;
+	uint32_t showRoughness             = 0;
+	uint32_t showMetallic              = 0;
+
+	uint32_t showAmbientOcclusion      = 0;
+	uint32_t showSpecular              = 0;
+	uint32_t showDiffuse               = 0;
+	uint32_t showEmissive              = 0;
+
+	uint32_t showBentNormals           = 0;
+	uint32_t showCascadeSplits         = 0;
+	uint32_t showSSS                   = 0;
+	uint32_t pad2;
 };
 
 struct alignas(16) SSAOPush
@@ -383,17 +330,6 @@ struct alignas(16) LensFlarePush
 	float pad3{ 0.0f };
 };
 
-// Active IDs map 1:1 with worldaabbs
-struct alignas(16) VisibilityPush
-{
-	uint64_t activeIDsBufferAddr;
-	uint64_t worldAABBsBufferAddr;
-	uint32_t activeCount;
-	uint32_t hizEnabled;
-	uint32_t pad0;
-	uint32_t pad1;
-};
-
 // Screen space contact shadows usage
 struct alignas(16) SSSPush
 {
@@ -433,15 +369,6 @@ struct alignas(16) BloomPush
 	uint32_t flags; // 0 = first downsample
 	float bloomThreshold = 1.0f;
 	float bloomKnee = 1.0f;
-};
-
-struct alignas(16) LightCullingPush
-{
-	uint32_t activeLightCount;
-	uint32_t pad0;
-	uint32_t pad1;
-	uint32_t pad2;
-	glm::vec4 planes[6];
 };
 
 struct ToneMappingSettings

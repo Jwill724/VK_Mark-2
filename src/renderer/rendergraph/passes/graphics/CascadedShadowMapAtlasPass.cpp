@@ -38,7 +38,7 @@ void RegisterDirectionalCSMPass(
 						AttachmentDesc depth{};
 						depth.imageView = atlas.m_imageView;
 						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depth.clearValue.depthStencil.depth = 1.0f;
+						depth.SetDepth(1.0f);
 
 						pso.UpdateRenderInfo(
 							{
@@ -53,7 +53,7 @@ void RegisterDirectionalCSMPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return ctx.profiler->debugToggles.enableShadows &&
-							ctx.frameState->bIsOpaqueVisible;
+							ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(
@@ -72,6 +72,9 @@ void RegisterDirectionalCSMPass(
 
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
 
@@ -99,19 +102,17 @@ void RegisterDirectionalCSMPass(
 							pso.ApplyViewport(cmd);
 							pso.SetPush(ctx.scene->GetCSMData().cascadeVP[cascadeIdx]);
 
-							const auto& drawRange = frameCtx->GetCSMDrawRange(cascadeIdx);
+							uint32_t cascadeIndex = RD::VIS_SLOT_CSM0 + cascadeIdx;
+							ASSERT(cascadeIndex < RD::VIS_SLOT_COUNT);
 
-							ctx.profiler->AddCSMIndirect(
-								1,
-								drawRange.commandCount);
-
-							pso.DrawIndexedIndirect(
+							pso.DrawIndexedIndirectCount(
 								cmd,
+								cascadeIndex,
 								indirectBuffer,
-								drawRange,
+								indirectCountBuffer,
 								pipeline,
 								pass.pushWriter);
-						}
+							}
 
 						pso.EndRendering(cmd);
 					});

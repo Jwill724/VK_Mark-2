@@ -11,18 +11,12 @@
 
 static constexpr size_t PIPE_ID_MAIN = 0;
 
-static struct alignas(16) OBBPush
-{
-	VkDeviceAddress vertexBuffer;
-	uint32_t pad0[2];
-};
-
-void RegisterOBBLineDebugPass(
+void RegisterLineDebugPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
-		"OBB_Line_Debug",
+		"Debug_Line",
 		pipelines,
 		[&](RenderPassBuilder& builder)
 		{
@@ -52,8 +46,7 @@ void RegisterOBBLineDebugPass(
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.clearValue.depthStencil.depth = 0.0f;
+						depthAttach.SetDepth(0.0f);
 
 						pso.UpdateRenderInfo(
 							{
@@ -66,8 +59,7 @@ void RegisterOBBLineDebugPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bHasVisibles &&
-							ctx.profiler->debugToggles.enableOBBs;
+						return ctx.frameState->activeInstanceCount > 0 && ctx.frameState->bDebugLine;
 					})
 
 				.SetRecord(
@@ -76,7 +68,7 @@ void RegisterOBBLineDebugPass(
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
-							RD::Renderer_Pass::OBBLineView,
+							RD::Renderer_Pass::DebugLineDraw,
 							pass.passName);
 
 						auto& pso = std::get<GraphicsScope>(pass.scope);
@@ -84,24 +76,17 @@ void RegisterOBBLineDebugPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& obbBuffer   = frameCtx->GetOBBLineDebugBuffer();
-						const auto& drawOffsets = frameCtx->GetOBBDrawOffsets();
-
-						// line topology -> TrianglesFromNonIndexed would return 0 anyway
-						ctx.profiler->AddDirect(
-							static_cast<uint32_t>(drawOffsets.size()),
-							0u);
-
-						OBBPush obbPush{ .vertexBuffer = obbBuffer.m_address };
-						pso.SetPush(obbPush);
+						const auto& debugDrawBuffer = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DebugDraw);
+						const auto& debugVertexBuffer = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DebugVertex);
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawVertexPull(
+						pso.DrawIndirect(
 							cmd,
-							obbBuffer.m_buffer,
-							0,
-							drawOffsets,
+							debugDrawBuffer.m_buffer,
+							debugVertexBuffer.m_buffer,
+							0u, // Offsets
+							0u,
 							pass.pipelines[PIPE_ID_MAIN]);
 
 						pso.EndRendering(cmd);

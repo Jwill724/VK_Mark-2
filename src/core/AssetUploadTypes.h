@@ -85,6 +85,7 @@ struct MeshDesc
 	uint32_t shadowIndexCount = 0;
 
 	AABB localAABB;
+	float localBoundingRadius = 0.0f;
 
 	// LOD mesh indices into the scene's mesh desc array (UINT32_MAX = fallback to lod0)
 	uint32_t lod0 = UINT32_MAX;

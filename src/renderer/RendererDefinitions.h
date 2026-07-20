@@ -40,31 +40,134 @@ namespace RendererDefinitions
 	inline constexpr uint32_t PUSH_BINDING_WRITE_4 = 10u;
 	inline constexpr uint32_t PUSH_BINDING_WRITE_5 = 11u;
 
-	inline constexpr uint32_t VERTS_LINE_COUNT         = 24u;
-	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES = 16u;
-
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_LIGHTS         = 0u;  // args[0]
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS       = 1u;  // args[1]
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES   = 2u;  // args[2]
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED = 3u;  // args[3]
-
-	// Lights or clusters?
-	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES         = INDIRECT_DISPATCH_SLOT_LIGHTS         * DISPATCH_SLOT_STRIDE_BYTES;
-	// Cluster count info
-	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_CLUSTERS       * DISPATCH_SLOT_STRIDE_BYTES;
-
-	inline constexpr uint64_t DISPATCH_CMAA2_SHAPES_OFFSET_BYTES   = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES   * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_CMAA2_DEFERRED_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint32_t DEBUG_VERTS_PER_OBB     = 24u;
+	inline constexpr uint32_t DEBUG_VERTS_PER_SPHERE  = 72u;      // 3 rings x 12 segments x 2
+	inline constexpr uint32_t DEBUG_MAX_ITEMS         = 131072u;  // max debug items per frame
+	inline constexpr uint32_t DEBUG_MAX_VERTS         = DEBUG_MAX_ITEMS * DEBUG_VERTS_PER_OBB;
 
 	// -------------------
 	// Renderer constants
 	// -------------------
-	inline constexpr uint32_t MAX_FRAME_INSTANCES_TOTAL     = 262144u;
+	inline constexpr uint32_t MAX_FRAME_INSTANCES_TOTAL     = 1048576u;
 	inline constexpr uint32_t MAX_FRAME_DRAW_COMMANDS_TOTAL = 65536u;
 	inline constexpr uint32_t MAX_INSTANCE_TRANSFORMS       = 200000u;
 	inline constexpr uint32_t MAX_FRAMES_IN_FLIGHT          = 3u;
-	inline constexpr uint32_t MAX_LIGHTS                    = 4096u; // standard
+	inline constexpr uint32_t MAX_LIGHTS                    = 4096u;
 	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 128u;
+	inline constexpr uint32_t MAX_INSTANCES_PER_STREAM      = 262144u;
+	inline constexpr uint32_t MAX_DRAW_BINS                 = 16384u;
+	inline constexpr uint32_t BIN_TABLE_SIZE                = 32768u;
+	inline constexpr uint32_t INVALID_U32                   = 0xFFFFFFFFu;
+
+	// -------------------------
+	// Indirect Dispatch Slots
+	// -------------------------
+	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES = 16u; // uvec4
+
+	// Draw-build pipeline — stream dispatch args
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE      = 0u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT = 1u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT  = 2u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM0        = 3u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM1        = 4u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM2        = 5u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM3        = 6u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_SCATTER            = 7u;  // total-visible dispatch
+
+	// Other systems
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_DEBUG_BUILD        = 8u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_LIGHTS             = 9u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS           = 10u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES       = 11u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED     = 12u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_COUNT              = 13u;
+
+	// Byte offsets — multiply slot by stride
+	inline constexpr uint64_t DISPATCH_STREAM_OPAQUE_BYTES            = INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE       * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_TRANSPARENT_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT  * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_FLASHLIGHT_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT   * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM0_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM0         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM1_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM1         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM2_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM2         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM3_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM3         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_SCATTER_OFFSET_BYTES           = INDIRECT_DISPATCH_SLOT_SCATTER             * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_DEBUG_BUILD_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_DEBUG_BUILD         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES            = INDIRECT_DISPATCH_SLOT_LIGHTS              * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES          = INDIRECT_DISPATCH_SLOT_CLUSTERS            * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CMAA2_SHAPES_OFFSET_BYTES      = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES        * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CMAA2_DEFERRED_OFFSET_BYTES    = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED      * DISPATCH_SLOT_STRIDE_BYTES;
+
+	// -------------------------
+	// Visibility Stream Slots
+	// -------------------------
+	inline constexpr uint32_t VIS_SLOT_OPAQUE      = 0u;
+	inline constexpr uint32_t VIS_SLOT_TRANSPARENT = 1u;
+	inline constexpr uint32_t VIS_SLOT_FLASHLIGHT  = 2u;
+	inline constexpr uint32_t VIS_SLOT_CSM0        = 3u;
+	inline constexpr uint32_t VIS_SLOT_CSM1        = 4u;
+	inline constexpr uint32_t VIS_SLOT_CSM2        = 5u;
+	inline constexpr uint32_t VIS_SLOT_CSM3        = 6u;
+	inline constexpr uint32_t VIS_SLOT_COUNT       = 7u;
+
+	inline constexpr uint32_t VIS_PRIMARY_OPAQUE      = 1u << 0;
+	inline constexpr uint32_t VIS_PRIMARY_TRANSPARENT = 1u << 1;
+	inline constexpr uint32_t VIS_FLASHLIGHT          = 1u << 2;
+	inline constexpr uint32_t VIS_CSM0                = 1u << 3;
+	inline constexpr uint32_t VIS_CSM1                = 1u << 4;
+	inline constexpr uint32_t VIS_CSM2                = 1u << 5;
+	inline constexpr uint32_t VIS_CSM3                = 1u << 6;
+
+	// -------------------------
+	// Draw Region Offsets
+	// -------------------------
+	inline constexpr uint32_t INDIRECT_CMD_SIZE      = 20u; // VkDrawIndexedIndirectCommand
+
+	inline constexpr uint32_t MAX_DRAWS_OPAQUE       = 32768u;
+	inline constexpr uint32_t MAX_DRAWS_TRANSPARENT  = 8192u;
+	inline constexpr uint32_t MAX_DRAWS_FLASHLIGHT   = 4096u;
+	inline constexpr uint32_t MAX_DRAWS_CSM0         = 4096u;
+	inline constexpr uint32_t MAX_DRAWS_CSM1         = 4096u;
+	inline constexpr uint32_t MAX_DRAWS_CSM2         = 4096u;
+	inline constexpr uint32_t MAX_DRAWS_CSM3         = 4096u;
+
+	// Struct-unit offsets (for GPU indexing: indirectDraws[DRAW_OFFSET_* + drawIdx])
+	inline constexpr uint32_t DRAW_OFFSET_OPAQUE      = 0u;
+	inline constexpr uint32_t DRAW_OFFSET_TRANSPARENT = DRAW_OFFSET_OPAQUE      + MAX_DRAWS_OPAQUE;
+	inline constexpr uint32_t DRAW_OFFSET_FLASHLIGHT  = DRAW_OFFSET_TRANSPARENT + MAX_DRAWS_TRANSPARENT;
+	inline constexpr uint32_t DRAW_OFFSET_CSM0        = DRAW_OFFSET_FLASHLIGHT  + MAX_DRAWS_FLASHLIGHT;
+	inline constexpr uint32_t DRAW_OFFSET_CSM1        = DRAW_OFFSET_CSM0        + MAX_DRAWS_CSM0;
+	inline constexpr uint32_t DRAW_OFFSET_CSM2        = DRAW_OFFSET_CSM1        + MAX_DRAWS_CSM1;
+	inline constexpr uint32_t DRAW_OFFSET_CSM3        = DRAW_OFFSET_CSM2        + MAX_DRAWS_CSM2;
+	inline constexpr uint32_t DRAW_OFFSET_TOTAL       = DRAW_OFFSET_CSM3        + MAX_DRAWS_CSM3; // = 65536
+
+	// Byte offsets (for vkCmdDrawIndexedIndirectCount buffer offset param)
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_OPAQUE      = DRAW_OFFSET_OPAQUE      * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_TRANSPARENT = DRAW_OFFSET_TRANSPARENT * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_FLASHLIGHT  = DRAW_OFFSET_FLASHLIGHT  * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM0        = DRAW_OFFSET_CSM0        * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM1        = DRAW_OFFSET_CSM1        * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM2        = DRAW_OFFSET_CSM2        * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM3        = DRAW_OFFSET_CSM3        * INDIRECT_CMD_SIZE;
+
+	inline constexpr uint32_t DRAW_BYTE_OFFSET_BY_SLOT[VIS_SLOT_COUNT] = {
+		DRAW_BYTE_OFFSET_OPAQUE,
+		DRAW_BYTE_OFFSET_TRANSPARENT,
+		DRAW_BYTE_OFFSET_FLASHLIGHT,
+		DRAW_BYTE_OFFSET_CSM0,
+		DRAW_BYTE_OFFSET_CSM1,
+		DRAW_BYTE_OFFSET_CSM2,
+		DRAW_BYTE_OFFSET_CSM3,
+	};
+
+	inline constexpr uint32_t MAX_DRAWS_BY_SLOT[VIS_SLOT_COUNT] = {
+		MAX_DRAWS_OPAQUE,
+		MAX_DRAWS_TRANSPARENT,
+		MAX_DRAWS_FLASHLIGHT,
+		MAX_DRAWS_CSM0,
+		MAX_DRAWS_CSM1,
+		MAX_DRAWS_CSM2,
+		MAX_DRAWS_CSM3,
+	};
 
 	// Static lights in global list
 	inline constexpr uint32_t LIGHT_LIST_STATIC_COUNT     = 1u;
@@ -77,7 +180,7 @@ namespace RendererDefinitions
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_X         = 32u;
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Y         = 32u;
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Z         = 24u;
-	//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = RD::MAX_LIGHTS * sizeof(uint32_t);
+	//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = MAX_LIGHTS * sizeof(uint32_t);
 	inline constexpr uint32_t MAX_LIGHTS_PER_CLUSTER        = 512u;
 	inline constexpr uint32_t MAX_VISIBLE_LIGHTS            = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
 
@@ -148,6 +251,9 @@ namespace RendererDefinitions
 
 	enum class Renderer_Pass
 	{
+		ShadowBounds,
+		InstanceCull,
+		DrawBuild,
 		Prepass,
 		HiZGeneration,
 		LightCulling,
@@ -158,9 +264,10 @@ namespace RendererDefinitions
 		ScreenSpaceContactShadows,
 		Skybox,
 		OpaqueForward,
-		OBBLineView,
 		TransparentForward,
 		TransparentResolve,
+		DebugDrawBuild,
+		DebugLineDraw,
 		VolumetricLighting,
 		TAA,
 		LuminanceExposure,
@@ -194,14 +301,23 @@ namespace RendererDefinitions
 
 		Wireframe_v,
 		Wireframe_f,
-		ObbLine_v,
-		ObbLine_f,
 
-		//Visibility_c,
+		ShadowBounds_c,
+		InstanceCull_c,
+		DrawArgs_c,
+		DrawScatter_c,
+		DrawEmit_c,
+		DrawPlace_c,
 
 		ExposureReduce_c,
 		ExposureFinalize_c,
 		FinalComposite_c,
+
+		DebugCount_c,
+		DebugArgs_c,
+		DebugBuild_c,
+		LineDebug_v,
+		LineDebug_f,
 
 		HDRToCubemap_c,
 		SpecularPrefilter_c,
@@ -263,18 +379,26 @@ namespace RendererDefinitions
 		Skybox,
 
 		Wireframe,
-		OBBLine,
 
-		//Visibility,
+		ShadowBounds,
+		InstanceCull,
+		DrawArgs,
+		DrawScatter,
+		DrawEmit,
+		DrawPlace,
 
 		ExposureReduce,
 		ExposureFinalize,
 		FinalComposite,
 
+		DebugCount,
+		DebugArgs,
+		DebugBuild,
+		LineDebug,
+
 		HDRToCubemap,
 		SpecularPrefilter,
 		DiffuseIrradiance,
-
 		BRDFLUT,
 
 		Prepass,
@@ -336,6 +460,7 @@ namespace RendererDefinitions
 		DepthRaw,
 		HiZ,
 		LinearizedMinHiZ,
+		Visibility,
 		AORaw,
 		AOTemp,
 		AoEdgeInfo,
@@ -408,43 +533,58 @@ namespace RendererDefinitions
 	// ssbo buffers inside the bindless address table
 	enum class Renderer_Buffer
 	{
-	// Frame context owned
-		VisibleInstances,
-		IndirectDraws,
+		// Global — persistent
+		InstanceInputs,
+		DrawBinKeys,
+		Mesh,
+		Material,
+		Vertex,
+		Index,
+		Luminance,
 
+		// Frame — transient
+		Transforms,
+		PrevTransforms,
+		Lights,
+		InstanceVisibility,
+		VisibleCount,
+		VisibleInstances,
+		InstanceCursors,
+		InstanceStreams,
+		DrawInstanceIDs,
+		IndirectDraws,
+		IndirectDrawCounts,
+		DrawBins,
+		DrawBinCounters,
+		ShadowCullData,
+		DrawStats,
+		DispatchIndirectArgs,
+		DebugCounts,
+		DebugItems,
+		DebugVertex,
+		DebugDraw,
 		VisibleLightCount,
 		VisibleLightIDs,
-
 		ClusterCounts,
 		ClusterOffsets,
 		ClusterCursors,
 		ClusterLightIDs,
 		ClusterTileSliceRanges,
 		ClusterScanScratch,
-
 		Cmaa2Control,
 		Cmaa2ShapeCandidates,
 		Cmaa2DeferredLocations,
 		Cmaa2DeferredItems,
 		Cmaa2DeferredHeads,
 
-		DispatchIndirectArgs,
-
-		Lights,
-		Transforms,
-		PrevTransforms,
-
-	// Global access
-		Material,
-		Mesh,
-		Vertex,
-		Index,
-		Luminance,
-
 		Count
 	};
 
 	inline constexpr size_t ADDRESS_TABLE_BUFFER_COUNT = static_cast<size_t>(Renderer_Buffer::Count);
+
+	inline constexpr uint32_t DEBUG_MASK_OBB     = 1u << 0;
+	inline constexpr uint32_t DEBUG_MASK_SPHERE  = 1u << 1; // unused
+	inline constexpr uint32_t DEBUG_MASK_AABB    = 1u << 2; // unused
 
 	// Instance drawing counts and transforms
 	enum class InstancingMethod
@@ -480,35 +620,30 @@ namespace RendererDefinitions
 	// Define this somewhere
 	struct alignas(4) RenderToggles
 	{
-		uint32_t enableOBBs                = 0;
 		uint32_t enableLensFlare           = 0;
 		uint32_t enableChromaticAberration = 0;
 		uint32_t enableSSS                 = 0;
+		uint32_t enableFlashlight          = 0;
 
 		uint32_t aaMode                    = 0;
 		uint32_t aoMode                    = 0;
 		uint32_t enableShadows             = 0;
 		uint32_t enableVolumetrics         = 0;
 
-		uint32_t showAlbedo                = 0;
-		uint32_t showNormals               = 0;
-		uint32_t showRoughness             = 0;
-		uint32_t showMetallic              = 0;
-
-		uint32_t showAmbientOcclusion      = 0;
-		uint32_t showSpecular              = 0;
-		uint32_t showDiffuse               = 0;
-		uint32_t showEmissive              = 0;
-
-		uint32_t showBentNormals           = 0;
-		uint32_t showCascadeSplits         = 0;
-		uint32_t showSSS                   = 0;
 		uint32_t activeEnvMap              = 0;
+		uint32_t disableOcclusionCull      = 0;
+		uint32_t pad0;
+		uint32_t pad1;
 
 		uint32_t enableProfilerView        = 0;
 		uint32_t enableSettings            = 0;
 		uint32_t enableBloom               = 0;
 		float bloomIntensity               = 0.0;
+
+		uint32_t showOpaqueOBBs            = 0;
+		uint32_t showTransparentOBBs       = 0;
+		uint32_t activeInstanceCount       = 0;
+		uint32_t activeLightCount          = 0;
 	};
 
 	enum class ImageAccess
@@ -566,14 +701,14 @@ namespace RendererDefinitions
 
 	struct RenderStateInfo
 	{
-		bool bIsOpaqueVisible      = false;
-		bool bIsTransparentVisible = false;
-		bool bHasVisibles          = bIsOpaqueVisible || bIsTransparentVisible;
 		bool bTemporalValid        = false;
+		bool bHiZValid             = false;
 		bool bStateChanged         = false;
 		bool bFlashlightOn         = false;
+		bool bDebugLine            = false;
 		bool bCopyPostAAImage      = false;
 		bool bShowImgui            = false;
-		uint32_t activeLightCount = 0u;
+		uint32_t activeLightCount    = 0u;
+		uint32_t activeInstanceCount = 0u;
 	};
 }

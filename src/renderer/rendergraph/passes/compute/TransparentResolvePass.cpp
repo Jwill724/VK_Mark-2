@@ -58,7 +58,7 @@ void RegisterTransparentResolvePass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsTransparentVisible;
+						return ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

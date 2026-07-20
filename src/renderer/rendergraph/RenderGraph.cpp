@@ -35,6 +35,11 @@ void RenderGraph::Build(
 
 	SetDrawExtent(drawExtent);
 
+	// --- Visibility ---
+	RegisterShadowBoundsPass(*this,        pipeManager.GetBundle<ShadowBoundsPipelineSlot>());
+	RegisterInstanceCullPass(*this,        pipeManager.GetBundle<InstanceCullPipelineSlot>());
+	RegisterDrawBuildPass(*this,           pipeManager.GetBundle<DrawBuildPipelineSlot>());
+
 	// --- Prepass & HiZ ---
 	RegisterTemporalCopyPass(*this,        {});
 	RegisterThePrepass(*this,              pipeManager.GetBundle<BasePrepassPipelineSlot>());
@@ -55,11 +60,14 @@ void RenderGraph::Build(
 	// --- Opaque + Skybox ---
 	RegisterSkyboxPass(*this,              pipeManager.GetBundle<SkyboxPipelineSlot>());
 	RegisterOpaqueForwardPass(*this,       pipeManager.GetBundle<OpaqueForwardPipelineSlot>());
-	RegisterOBBLineDebugPass(*this,        pipeManager.GetBundle<ObbDebugPipelineSlot>());
 
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
 	RegisterTransparentResolvePass(*this,  pipeManager.GetBundle<TransparentResolvePipelineSlot>());
+
+	// --- Debug Line ---
+	RegisterDebugDrawBuildPass(*this,      pipeManager.GetBundle<DebugBuildPipelineSlot>());
+	RegisterLineDebugPass(*this,           pipeManager.GetBundle<LineDebugPipelineSlot>());
 
 	// --- Volumetrics ---
 	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
@@ -98,14 +106,14 @@ void RenderGraph::Shutdown()
 void RenderGraph::Sync(const RD::RenderStateInfo& frameState)
 {
 	bool stateChanged =
-		(m_recentFrameState.activeLightCount      != frameState.activeLightCount)      ||
 		(m_recentFrameState.bCopyPostAAImage      != frameState.bCopyPostAAImage)      ||
-		(m_recentFrameState.bHasVisibles          != frameState.bHasVisibles)          ||
-		(m_recentFrameState.bIsOpaqueVisible      != frameState.bIsOpaqueVisible)      ||
-		(m_recentFrameState.bIsTransparentVisible != frameState.bIsTransparentVisible) ||
 		(m_recentFrameState.bFlashlightOn         != frameState.bFlashlightOn)         ||
+		(m_recentFrameState.bDebugLine            != frameState.bDebugLine)            ||
 		(m_recentFrameState.bTemporalValid        != frameState.bTemporalValid)        ||
-		(m_recentFrameState.bShowImgui            != frameState.bShowImgui);
+		(m_recentFrameState.bHiZValid             != frameState.bHiZValid)             ||
+		(m_recentFrameState.bShowImgui            != frameState.bShowImgui)            ||
+		(m_recentFrameState.activeInstanceCount != frameState.activeInstanceCount && frameState.activeInstanceCount == 0u) ||
+		(m_recentFrameState.activeLightCount != frameState.activeLightCount && frameState.activeLightCount == 0u);
 
 	m_recentFrameState.bStateChanged = stateChanged;
 

@@ -16,13 +16,13 @@ layout(location = 4) in vec3 inNormal;
 layout(location = 5) in vec3 inTangent;
 layout(location = 6) in float inTangentW;
 layout(location = 7) flat in uint inMaterialID;
+layout(location = 8) flat in uint inBHasNormalMap;
 
 layout(location = 0) out vec4  outAccum;
 layout(location = 1) out float outReveal;
 
 layout(push_constant) uniform ForwardPush
 {
-	uint activeLightCount;
 	uint diffuseID;
 	uint specularID;
 	uint brdfID;
@@ -45,7 +45,8 @@ void main()
 	const vec3 geometricNormalWS = normalize(inNormal);
 	vec3 N = geometricNormalWS;
 
-	if ((mat.flags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0u) {
+	if (inBHasNormalMap == 1u)
+	{
 		vec3 normalTex = SampleTextureBias(mat.normalID, inUV, scene.viewportSize.w).rgb;
 
 		vec3 T   = normalize(inTangent - geometricNormalWS * dot(geometricNormalWS, inTangent));
@@ -100,7 +101,7 @@ void main()
 
 	// Cluster local lights
 	vec3 localLightColor = vec3(0.0);
-	if (pc.activeLightCount > 0u) {
+	if (debug.activeLightCount > 0u) {
 		LightBuffer       lightBuf           = getLightBuffer();
 		VisibleLightCount visibleCountBuf    = getVisibleLightCountBuffer();
 		VisibleLightIDs   visibleIDsBuf      = getVisibleLightIDsBuffer();

@@ -51,7 +51,7 @@ void RegisterClusteredLightsPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->activeLightCount > 0 && ctx.frameState->bHasVisibles;
+						return ctx.frameState->activeLightCount > 0 && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(
@@ -91,7 +91,6 @@ void RegisterClusteredLightsPass(
 						//passScope.WriteSubPass(RD::Renderer_Pass::LightsIndirectDispatchArgs, "Indirect_Args");
 
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
-						pso.FillIndirectDispatch(cmd, RD::DISPATCH_SLOT_STRIDE_BYTES + RD::DISPATCH_SLOT_STRIDE_BYTES);
 						B::CmdFillToComputeRW(cmd, indirectArgs);
 						pso.ClearIndirect();
 
@@ -99,7 +98,7 @@ void RegisterClusteredLightsPass(
 						pso.UpdateExtent({1, 1});
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INDIRECT_ARGS], pass.pushWriter);
-						B::ComputeWriteToIndirectDispatchRead(cmd, indirectArgs);
+						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 
 						// ===============
 						// Cluster counts

@@ -3,344 +3,434 @@
 #include "DrawPreparation.h"
 #include "Material.h"
 #include "Mesh.h"
-#include "Bounds.h"
 #include "../backend/Device.h"
 #include "../backend/memory/ResourceAllocator.h"
 #include "../backend/BufferBarriers.h"
+#include "../../core/AssetUploadTypes.h"
+#include "../../common/ResourceTypes.h"
 #include "../frame/FrameContext.h"
 #include "renderer/RendererDefinitions.h"
 
 namespace RD = RendererDefinitions;
 
-// -----------------------------------------------------------------------
-// Internal batch helpers
-// -----------------------------------------------------------------------
+static constexpr uint32_t TransformIDFor(const VirtualInstance& gi, uint32_t copy, uint32_t localSlot) {
+	return gi.firstTransform + copy * gi.transformCount + localSlot;
+}
 
-struct BatchKey
+static constexpr bool IsDynamicMethod(const VirtualInstance& gi)
 {
-	uint32_t meshID;
-	uint32_t materialID;
-	bool operator==(const BatchKey& o) const
-	{ return meshID == o.meshID && materialID == o.materialID; }
-};
-struct BatchKeyHash
+	return gi.instancingMethod == RD::InstancingMethod::DrawDynamic ||
+	       gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+}
+
+// Creates the initial rows (mesh X copies)
+static void BakeInstanceData(
+	InstanceState& vs,
+	const VirtualInstance& gi,
+	const ModelAsset& asset,
+	const std::vector<Mesh>& meshData,
+	const std::vector<MeshLODs>& meshLods,
+	const std::vector<glm::mat4>& transforms,
+	const std::vector<uint32_t>&  materialFlags,
+	uint32_t& outFirst,
+	uint32_t& outCount)
 {
-	size_t operator()(const BatchKey& k) const
+	const uint32_t stride = gi.perInstanceStride;
+	const uint32_t copies = gi.usedCopies;
+
+	ASSERT(stride > 0);
+	ASSERT(copies >= 1);
+	ASSERT(gi.transformCount > 0);
+	ASSERT(gi.capacityCopies >= copies);
+	ASSERT(stride == static_cast<uint32_t>(asset.instances.size()));
+
+	const uint32_t slabTransformCount = gi.transformCount * gi.capacityCopies;
+	const uint32_t slabBegin = gi.firstTransform;
+	const uint32_t slabEnd   = slabBegin + slabTransformCount;
+	ASSERT(slabBegin < transforms.size());
+	ASSERT(slabEnd  <= transforms.size());
+
+	outFirst = static_cast<uint32_t>(vs.gpuInputs.size());
+	outCount = copies * stride;
+
+	const size_t newSize = static_cast<size_t>(outFirst + outCount);
+	vs.gpuInputs.resize(newSize);
+
+	uint32_t writeIndex = outFirst;
+	const uint32_t usedEnd = slabBegin + gi.transformCount * copies;
+
+	for (uint32_t copyIndex = 0; copyIndex < copies; ++copyIndex)
 	{
-		size_t h1 = std::hash<uint32_t>{}(k.meshID);
-		size_t h2 = std::hash<uint32_t>{}(k.materialID);
-		return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2));
-	}
-};
-
-using BatchMap = std::unordered_map<BatchKey, std::vector<uint32_t>, BatchKeyHash>;
-
-// LOD selection + batching into BatchMap
-static void BuildBatches(
-	BatchMap&                       outBatches,
-	std::vector<Instance>&          outInstances,
-	const std::vector<Instance>&    input,
-	const std::vector<AABB>&        worldAABBs,
-	const std::vector<MeshLODs>&    meshLods,
-	const glm::vec3&                camPos,
-	const glm::mat4&                proj)
-{
-	outInstances.clear();
-	outInstances.reserve(input.size());
-
-	for (uint32_t i = 0; i < static_cast<uint32_t>(input.size()); ++i)
-	{
-		Instance inst = input[i];
-
-		if (inst.meshID < static_cast<uint32_t>(meshLods.size()))
+		for (uint32_t localIndex = 0; localIndex < stride; ++localIndex, ++writeIndex)
 		{
-			const MeshLODs& lods     = meshLods[inst.meshID];
-			const AABB& aabb         = worldAABBs[i];
-			const glm::vec3 origin   = 0.5f * (aabb.vmin + aabb.vmax);
-			const glm::vec3 extent   = 0.5f * (aabb.vmax - aabb.vmin);
-			const float sphereRadius = glm::length(extent);
-			float dist               = glm::length(origin - camPos) - sphereRadius;
-			dist                     = std::max(0.0f, dist);
+			const InstanceDesc& instDesc = asset.instances[localIndex];
 
-			const float projScaleY = proj[1][1];
-			const float screenRadius = (sphereRadius * projScaleY) / dist;
+			// localToNodeSlot maps primitive -> node slot in transform slab
+			const uint32_t nodeSlot = asset.localToNodeSlot[localIndex];
+			ASSERT(nodeSlot < gi.transformCount);
 
-			if      (screenRadius < 0.02f) inst.meshID = lods.lod3;
-			else if (screenRadius < 0.05f) inst.meshID = lods.lod2;
-			else if (screenRadius < 0.10f) inst.meshID = lods.lod1;
-			else                           inst.meshID = lods.lod0;
+			const uint32_t transformID = TransformIDFor(gi, copyIndex, nodeSlot);
+			ASSERT(transformID >= slabBegin && transformID < usedEnd);
+
+			// meshID is already the global MeshRegistry ID
+			const uint32_t meshID = instDesc.localMeshIdx;
+			ASSERT(meshID < meshData.size());
+
+			MeshLODs lods = meshLods[meshID];
+
+			const uint32_t matID    = instDesc.localMaterialIdx;
+			const uint32_t matFlags = (matID < materialFlags.size()) ? materialFlags[matID] : 0u;
+
+			uint32_t flags = 0;
+
+			// --- Layer 1: pass routing (from primitive) ---
+			if (instDesc.passType == static_cast<uint32_t>(MaterialPass::Opaque))
+				flags |= InstanceFlags::PASS_OPAQUE;
+			else
+				flags |= InstanceFlags::PASS_TRANSPARENT;
+
+			// --- Layer 1: material-driven ---
+			if (matFlags & MATERIAL_FLAG_ALPHA_MASKED)
+				flags |= InstanceFlags::ALPHA_TESTED;
+
+			if (matFlags & MATERIAL_FLAG_IS_TREE)
+				flags |= InstanceFlags::IS_TREE;
+
+			if (matFlags & MATERIAL_FLAG_HAS_NORMAL_MAP)
+				flags |= InstanceFlags::HAS_NORMALS;
+
+			// shadow casting — opaque only, stripped from blend materials
+			if ((flags & InstanceFlags::PASS_OPAQUE) &&
+				(matFlags & MATERIAL_FLAG_CASTS_SHADOWS))
+			{
+				flags |= InstanceFlags::CAST_CSM;
+				flags |= InstanceFlags::CAST_FLASHLIGHT;
+			}
+
+			// shadow receiving — all opaque geometry
+			if (flags & InstanceFlags::PASS_OPAQUE)
+				flags |= InstanceFlags::RECEIVE_SHADOW;
+
+			// --- Layer 1: mesh-driven ---
+			if (lods.flags & MESH_FLAG_IS_LOD)
+				flags |= InstanceFlags::LOD_ENABLED;
+
+			if (lods.flags & MESH_FLAG_GOOD_OCCLUDEE)
+				flags |= InstanceFlags::OCCLUDABLE;
+
+			// --- Layer 2: placement-driven ---
+			if (gi.instancingMethod == RD::InstancingMethod::DrawStatic ||
+				gi.instancingMethod == RD::InstancingMethod::DrawMultiStatic)
+				flags |= InstanceFlags::STATIC_OBJECT;
+			else
+				flags |= InstanceFlags::DYNAMIC_OBJECT;
+
+			// all instances start active; lazy shrink clears this
+			flags |= InstanceFlags::INSTANCE_ACTIVE;
+
+			// --- Layer 3: runtime override from VirtualInstance ---
+			flags = (flags & gi.flagsMask) | gi.flagsForce;
+
+			InstanceInput row{};
+			row.meshID      = meshID;
+			row.materialID  = instDesc.localMaterialIdx;
+			row.transformID = transformID;
+			row.lod0        = lods.lod0;
+			row.lod1        = lods.lod1;
+			row.lod2        = lods.lod2;
+			row.lod3        = lods.lod3;
+			row.shadowLod0  = lods.shadowLod0;
+			row.shadowLod1  = lods.shadowLod1;
+			row.shadowLod2  = lods.shadowLod2;
+			row.flags       = flags;
+
+			vs.gpuInputs[writeIndex] = row;
 		}
+	}
 
-		const uint32_t idx = static_cast<uint32_t>(outInstances.size());
-		outInstances.push_back(inst);
-		outBatches[{inst.meshID, inst.materialID}].push_back(idx);
+	vs.slabs[static_cast<ModelID>(gi.sceneID)] = {
+		.first      = outFirst,
+		.stride     = stride,
+		.usedCopies = copies
+	};
+}
+
+// Toggles INSTANCE_ACTIVE when a dynamic placement's copy count changes
+// Returns true if any row changed (caller must re-upload instance inputs).
+static bool SyncCopyCount(InstanceState& vs, CoreSlab& slab, const VirtualInstance& gi)
+{
+	if (slab.usedCopies == gi.usedCopies)
+		return false;
+
+	ASSERT(gi.usedCopies <= gi.capacityCopies);
+
+	const uint32_t stride = slab.stride;
+
+	for (uint32_t c = 0; c < gi.capacityCopies; ++c)
+	{
+		const bool shouldBeActive = (c < gi.usedCopies);
+		uint32_t idx = slab.first + c * stride;
+
+		for (uint32_t local = 0; local < stride; ++local, ++idx)
+		{
+			uint32_t& flags = vs.gpuInputs[idx].flags;
+
+			if (shouldBeActive)
+				flags |= InstanceFlags::INSTANCE_ACTIVE;
+			else
+				flags &= ~InstanceFlags::INSTANCE_ACTIVE;
+		}
+	}
+
+	slab.usedCopies = gi.usedCopies;
+	return true;
+}
+
+//static bool UpdateWorldAABBsForDynamic(
+//	InstanceState& vs,
+//	const VirtualInstance& gi,
+//	const std::vector<Mesh>& meshData,
+//	const std::vector<glm::mat4>& transforms)
+//{
+//	if (!IsDynamicMethod(gi))
+//		return false;
+//
+//	const auto it = vs.slabs.find(static_cast<ModelID>(gi.sceneID));
+//	if (it == vs.slabs.end()) return false;
+//
+//	const CoreSlab& slab = it->second;
+//	if (slab.usedCopies == 0) return false;
+//
+//	// Only the active (used) copies need fresh AABBs; inactive tail rows are
+//	// gated out of the active list and by INSTANCE_ACTIVE anyway.
+//	const uint32_t rowCount = slab.usedCopies * slab.stride;
+//	uint32_t idx = slab.first;
+//
+//	for (uint32_t i = 0; i < rowCount; ++i, ++idx)
+//	{
+//		const uint32_t meshID = vs.gpuInputs[idx].meshID;
+//		const uint32_t tid    = vs.gpuInputs[idx].transformID;
+//
+//		ASSERT(meshID < meshData.size());
+//		ASSERT(tid < transforms.size());
+//
+//		vs.worldAABBs[idx] = AABBtoWorldSpace(
+//			meshData[meshID].localAABB, transforms[tid]);
+//	}
+//
+//	return rowCount > 0;
+//}
+
+static void RebuildActive(InstanceState& vs)
+{
+	vs.active.clear();
+	for (auto& [sid, slab] : vs.slabs)
+	{
+		const uint32_t stride = slab.stride;
+		for (uint32_t c = 0; c < slab.usedCopies; ++c)
+		{
+			for (uint32_t local = 0; local < stride; ++local)
+			{
+				vs.active.push_back(slab.first + c * stride + local);
+			}
+		}
 	}
 }
 
-
-DrawBuildOutput DrawPreparation::BuildAndSortIndirectDraws(
-	const std::vector<Instance>&                                      inputVisible,
-	const std::vector<AABB>&                                          worldAABBs,
-	const std::vector<Mesh>&                                          meshes,
-	const std::vector<MeshLODs>&                                      meshLods,
-	const glm::vec4&                                                  cameraPos,
-	const glm::mat4&                                                  cameraProj,
-	const std::array<std::vector<Instance>, RD::MAX_SHADOW_CASCADES>& csmCasters,
-	const std::vector<Instance>&                                      flashlightCasters,
-	const std::vector<uint32_t>&                                      materialFlags,
-	bool                                                              shadowsEnabled,
-	bool                                                              flashlightOn)
+static uint32_t RegisterBin(BinTableBuild& table, uint32_t meshID, uint32_t materialID)
 {
-	DrawBuildOutput out;
-	ASSERT(!inputVisible.empty());
+	uint32_t h = BinHash(meshID, materialID);
 
-	const glm::vec3 camPos = glm::vec3(cameraPos);
-
-	// LOD selection + dedup batching over camera-visible instances
-	BatchMap batches;
-	std::vector<Instance> lod_instances;
-	BuildBatches(batches, lod_instances, inputVisible, worldAABBs, meshLods, camPos, cameraProj);
-
-	// =========================================================
-	// OPAQUE PASS
-	// =========================================================
+	for (uint32_t probe = 0; probe < RD::BIN_TABLE_SIZE; ++probe)
 	{
-		InstanceWriteScope instScope(out.visibleInstances);
-		IndirectDrawScope  drawScope(out.indirectDraws);
+		BinKey& slot = table.binKeys.hashTable[h];
 
-		for (auto& [key, inds] : batches)
+		if (slot.meshID == meshID && slot.materialID == materialID) return slot.binID;
+
+		if (slot.meshID == RD::INVALID_U32)
 		{
-			if (lod_instances[inds[0]].passType != static_cast<uint32_t>(MaterialPass::Opaque)) continue;
+			ASSERT(table.binCount < RD::MAX_DRAW_BINS, "Exceeded MAX_DRAW_BINS");
 
-			if (key.meshID >= static_cast<uint32_t>(meshes.size())) continue;
-			const Mesh& mesh = meshes[key.meshID];
+			slot.meshID     = meshID;
+			slot.materialID = materialID;
+			slot.binID      = table.binCount;
 
-			drawScope.Add({
-				mesh.indexCount,
-				static_cast<uint32_t>(inds.size()),
-				mesh.firstIndex,
-				static_cast<int32_t>(mesh.vertexOffset),
-				static_cast<uint32_t>(out.visibleInstances.size())
-			});
-			for (uint32_t i : inds) instScope.Add(lod_instances[i]);
-		}
-		instScope.End();
-		drawScope.End();
-
-		out.opaqueInstances = instScope.GetRange();
-		out.opaqueDraws     = drawScope.GetRange();
-	}
-
-	// =========================================================
-	// TRANSPARENT PASS
-	// =========================================================
-	{
-		InstanceWriteScope instScope(out.visibleInstances);
-		IndirectDrawScope  drawScope(out.indirectDraws);
-
-		for (auto& [key, inds] : batches)
-		{
-			if (lod_instances[inds[0]].passType !=
-				static_cast<uint32_t>(MaterialPass::Transparent)) continue;
-
-			if (key.meshID >= static_cast<uint32_t>(meshes.size())) continue;
-			const Mesh& mesh = meshes[key.meshID];
-
-			drawScope.Add({
-				mesh.indexCount,
-				static_cast<uint32_t>(inds.size()),
-				mesh.firstIndex,
-				static_cast<int32_t>(mesh.vertexOffset),
-				static_cast<uint32_t>(out.visibleInstances.size())
-			});
-			for (uint32_t i : inds) instScope.Add(lod_instances[i]);
-		}
-		instScope.End();
-		drawScope.End();
-
-		out.transparentInstances = instScope.GetRange();
-		out.transparentDraws     = drawScope.GetRange();
-	}
-
-	// =========================================================
-	// CSM SHADOW PASSES
-	// =========================================================
-	if (shadowsEnabled)
-	{
-		for (uint32_t cascade = 0; cascade < RD::MAX_SHADOW_CASCADES; ++cascade)
-		{
-			const auto& casters = csmCasters[cascade];
-
-			InstanceWriteScope instScope(out.visibleInstances);
-			IndirectDrawScope  drawScope(out.indirectDraws);
-
-			if (!casters.empty())
-			{
-				// Batch shadow casters by shadow mesh ID
-				std::unordered_map<uint32_t, std::vector<uint32_t>> shadowBatches;
-				shadowBatches.reserve(casters.size());
-
-				for (uint32_t i = 0; i < static_cast<uint32_t>(casters.size()); ++i)
-				{
-					const Instance& inst = casters[i];
-					uint32_t shadowID = inst.meshID;
-
-					if (shadowID < static_cast<uint32_t>(meshLods.size()))
-					{
-						const MeshLODs& lods = meshLods[shadowID];
-						uint32_t slot = MeshRegistry::GetShadowSlotForCascade(lods, cascade);
-
-						// Apply foliage bias — alpha-masked materials use higher quality
-						if (materialFlags[inst.materialID] & MATERIAL_FLAG_ALPHA_MASKED)
-						{
-							slot =  MeshRegistry::ApplyFoliageBias(slot, cascade);
-						}
-
-						shadowID = (slot == 0u) ? lods.shadowLod0
-								 : (slot == 1u) ? lods.shadowLod1
-												: lods.shadowLod2;
-					}
-
-					shadowBatches[shadowID].push_back(i);
-				}
-
-				for (auto& [shadowID, inds] : shadowBatches)
-				{
-					if (shadowID >= static_cast<uint32_t>(meshes.size())) continue;
-					const Mesh& mesh = meshes[shadowID];
-
-					drawScope.Add({
-						mesh.shadowIndexCount,
-						static_cast<uint32_t>(inds.size()),
-						mesh.shadowFirstIndex,
-						static_cast<int32_t>(mesh.vertexOffset),
-						static_cast<uint32_t>(out.visibleInstances.size())
-					});
-
-					for (uint32_t i : inds)
-					{
-						Instance inst    = casters[i];
-						inst.meshID      = shadowID;
-						instScope.Add(inst);
-					}
-				}
-			}
-
-			instScope.End();
-			drawScope.End();
-
-			out.csm[cascade].instanceRange = instScope.GetRange();
-			out.csm[cascade].drawRange     = drawScope.GetRange();
-		}
-	}
-
-	// =========================================================
-	// FLASHLIGHT SHADOW PASS
-	// =========================================================
-	{
-		InstanceWriteScope instScope(out.visibleInstances);
-		IndirectDrawScope  drawScope(out.indirectDraws);
-
-		if (flashlightOn && !flashlightCasters.empty())
-		{
-			std::unordered_map<uint32_t, std::vector<uint32_t>> shadowBatches;
-			shadowBatches.reserve(flashlightCasters.size());
-
-			for (uint32_t i = 0; i < static_cast<uint32_t>(flashlightCasters.size()); ++i)
-			{
-				uint32_t shadowID = flashlightCasters[i].meshID;
-				if (shadowID < static_cast<uint32_t>(meshLods.size()))
-					shadowID = meshLods[shadowID].shadowLod0;
-				shadowBatches[shadowID].push_back(i);
-			}
-
-			for (auto& [shadowID, inds] : shadowBatches)
-			{
-				if (shadowID >= static_cast<uint32_t>(meshes.size())) continue;
-				const Mesh& mesh = meshes[shadowID];
-
-				drawScope.Add({
-					mesh.shadowIndexCount,
-					static_cast<uint32_t>(inds.size()),
-					mesh.shadowFirstIndex,
-					static_cast<int32_t>(mesh.vertexOffset),
-					static_cast<uint32_t>(out.visibleInstances.size())
-				});
-
-				for (uint32_t i : inds)
-				{
-					Instance inst = flashlightCasters[i];
-					inst.meshID   = shadowID;
-					instScope.Add(inst);
-				}
-			}
+			table.binKeys.denseKeys[table.binCount] = { meshID, materialID };
+			return table.binCount++;
 		}
 
-		instScope.End();
-		drawScope.End();
-
-		out.flashlight.instanceRange = instScope.GetRange();
-		out.flashlight.drawRange     = drawScope.GetRange();
+		h = (h + 1u) & (RD::BIN_TABLE_SIZE - 1u);
 	}
 
-	return out;
+	ASSERT(false, "Bin hash table full");
+	return RD::INVALID_U32;
 }
+
+BinTableBuild DrawPreparation::BuildDrawBinTable(const std::vector<InstanceInput>& instances)
+{
+	BinTableBuild table;
+	table.binKeys.hashTable.resize(RD::BIN_TABLE_SIZE, { RD::INVALID_U32, 0u, 0u });
+	table.binKeys.denseKeys.resize(RD::MAX_DRAW_BINS, glm::uvec2(RD::INVALID_U32));
+
+	for (const InstanceInput& inst : instances)
+	{
+		const uint32_t mat = inst.materialID;
+
+		// primary LOD chain — exactly what selectLOD can return
+		if (inst.flags & LOD_ENABLED)
+		{
+			RegisterBin(table, inst.lod0, mat);
+			RegisterBin(table, inst.lod1, mat);
+			RegisterBin(table, inst.lod2, mat);
+			RegisterBin(table, inst.lod3, mat);
+		}
+		else
+		{
+			RegisterBin(table, inst.meshID, mat);
+		}
+
+		// shadow LOD chain — exactly what selectShadowLOD / flashlight can return
+		if (inst.flags & (CAST_CSM | CAST_FLASHLIGHT))
+		{
+			RegisterBin(table, inst.shadowLod0, mat);
+			RegisterBin(table, inst.shadowLod1, mat);
+			RegisterBin(table, inst.shadowLod2, mat);
+		}
+	}
+
+	return table;
+}
+
+bool DrawPreparation::SyncInstanceInputs(
+	InstanceState& vs,
+	const std::vector<VirtualInstance>& virtualInstances,
+	const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
+	const std::vector<Mesh>& meshData,
+	const std::vector<MeshLODs>& meshLods,
+	const std::vector<glm::mat4>& transforms,
+	const std::vector<uint32_t>&  materialFlags)
+{
+	bool gpuInputsDirty = false;
+
+	for (const auto& gi : virtualInstances)
+	{
+		const ModelID sid = static_cast<ModelID>(gi.sceneID);
+		auto assetIt = loaded.find(sid);
+		if (assetIt == loaded.end()) continue;
+
+		const ModelAsset& asset = *assetIt->second;
+		if (!asset.IsLoaded()) continue;
+
+		ASSERT(gi.perInstanceStride == static_cast<uint32_t>(asset.instances.size()));
+
+		auto slabIt = vs.slabs.find(sid);
+
+		if (slabIt == vs.slabs.end())
+		{
+			// First sighting — bake full-capacity slab. For the asteroid field
+			// this is every loaded copy, all pointing at dynamic transform slots.
+			uint32_t f = 0, c = 0;
+			BakeInstanceData(vs, gi, asset, meshData, meshLods, transforms, materialFlags, f, c);
+			gpuInputsDirty = true;
+			continue;
+		}
+
+		// Slab exists — keep it in sync with the live placement.
+		CoreSlab& slab = slabIt->second;
+
+		// Copy count moved (spawn/despawn within capacity)
+		if (SyncCopyCount(vs, slab, gi)) gpuInputsDirty = true;
+
+		//// Dynamic placements (asteroid field) get fresh world AABBs every frame
+		//// from the simulation-updated transforms, so culling follows them.
+		//UpdateWorldAABBsForDynamic(vs, gi, meshData, transforms);
+	}
+
+	if (gpuInputsDirty) RebuildActive(vs);
+
+	return gpuInputsDirty;
+}
+
 
 void DrawPreparation::UploadGPUBuffersForFrame(
-	FrameContext&                    frameCtx,
-	Device&                          device,
-	Allocator&                       allocator,
-	const std::vector<glm::mat4>&    transforms,
-	const std::vector<LocalLight>&   lights,
-	bool                             isTemporalValid)
+	FrameContext&                     frameCtx,
+	BindlessBDATable&                 globalBDATable,
+	const DrawBinKeys&                drawBinKeys,
+	Device&                           device,
+	Allocator&                        allocator,
+	const std::vector<InstanceInput>& instanceInputs,
+	const std::vector<glm::mat4>&     transforms,
+	const std::vector<LocalLight>&    lights,
+	bool                              isTemporalValid)
 {
 	auto& frameStaging = allocator.FrameStaging;
 
-	const bool uploadInstances  = frameCtx.IsThereVisibles();
+	auto& addrTable = frameCtx.GetBindlessBDATable();
+
+	const bool uploadInstances  = frameCtx.IsInstanceInputsUploadNeeded();
 	const bool uploadTransforms = frameCtx.IsTransformsUploadNeeded();
 	const bool uploadLights     = frameCtx.IsLightsUploadNeeded();
 
-	if (!uploadInstances && !uploadTransforms && !uploadLights) return;
+	if (!uploadInstances && !uploadTransforms && !uploadLights && !addrTable.IsTableDirty()) return;
 
 	// Stage everything into FrameStaging before recording the command
 	struct UploadPlan
 	{
-		StagedWrite instances{};
-		StagedWrite indirect{};
+		StagedWrite instanceInputs{};
+		StagedWrite drawBinKeys{};
+		StagedWrite drawBinKeysDense{};
+		StagedWrite globalAddrTable{};
 		StagedWrite transforms{};
 		StagedWrite prevTransforms{};
 		StagedWrite lights{};
-		StagedWrite addrTable{};
+		StagedWrite addrTable{}; // frame address table
 		uint32_t addrVersion = UINT32_MAX;
 
-		bool hasInstances   = false;
+		// Assumes draw bins and global table as well
+		bool instanceUploadNeeded = false;
+
 		bool hasTransforms  = false;
 		bool hasPrevTf      = false;
 		bool hasLights      = false;
 		bool hasAddrTable   = false;
 	} plan;
 
-	auto& addrTable = frameCtx.GetBindlessBDATable();
-
-	const auto& indirectDraws = frameCtx.GetIndirectCmds();
-
-	// Instances + indirect draws
-	if (uploadInstances)
+	// Global buffers for instance inputs and draw bin keys
+	if (frameCtx.IsInstanceInputsUploadNeeded() &&
+		!instanceInputs.empty() &&
+		!drawBinKeys.hashTable.empty() &&
+		!drawBinKeys.denseKeys.empty())
 	{
-		const auto& visInst = frameCtx.GetVisibleInstances(); // full flat list
-		const size_t instBytes = visInst.size() * sizeof(Instance);
-		const size_t indBytes  = indirectDraws.size()
-								 * sizeof(VkDrawIndexedIndirectCommand);
+		const size_t instBytes     = instanceInputs.size()        * sizeof(InstanceInput);
+		const size_t hashBytes     = drawBinKeys.hashTable.size() * sizeof(BinKey);
+		const size_t denseBytes    = drawBinKeys.denseKeys.size() * sizeof(glm::uvec2);
 
-		plan.instances = frameStaging.Stage(
-			visInst.data(), instBytes,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::VisibleInstances).m_buffer);
+		VkBuffer binKeyBuf = globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys).m_buffer;
 
-		plan.indirect = frameStaging.Stage(
-			indirectDraws.data(), indBytes,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer);
+		plan.instanceInputs = frameStaging.Stage(
+			instanceInputs.data(),
+			instBytes,
+			globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs).m_buffer);
 
-		plan.hasInstances = true;
+		// hash table at offset 0
+		plan.drawBinKeys = frameStaging.Stage(
+			drawBinKeys.hashTable.data(),
+			hashBytes,
+			binKeyBuf,
+			0);
+
+		plan.drawBinKeysDense = frameStaging.Stage(
+			drawBinKeys.denseKeys.data(),
+			denseBytes,
+			binKeyBuf,
+			hashBytes);  // offset = end of hash table
+
+		plan.globalAddrTable = frameStaging.Stage(
+			globalBDATable.GetAddrPtrTable().data(),
+			globalBDATable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
+			globalBDATable.GetTableBuffer().m_buffer);
+
+		plan.instanceUploadNeeded = true;
 	}
 
 	// Transforms
@@ -392,18 +482,24 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	// Record transfer command
 	device.RecordDeferredCommand([&](VkCommandBuffer cmd)
 	{
-		if (plan.hasInstances)
+		if (plan.instanceUploadNeeded)
 		{
-			frameStaging.CopyCommand(cmd, plan.instances);
-			frameStaging.CopyCommand(cmd, plan.indirect);
+			frameStaging.CopyCommand(cmd, plan.instanceInputs);
+			frameStaging.CopyCommand(cmd, plan.drawBinKeys);
+			frameStaging.CopyCommand(cmd, plan.drawBinKeysDense);
+			frameStaging.CopyCommand(cmd, plan.globalAddrTable);
 
-			BufferBarriers::TransferReleaseOnCompute(
+			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,
-				addrTable.GetGPUBuffer(RD::Renderer_Buffer::VisibleInstances),
+				globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs),
 				device.GetContext());
-			BufferBarriers::TransferReleaseOnIndirect(
+			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,
-				addrTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws),
+				globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys),
+				device.GetContext());
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd,
+				globalBDATable.GetTableBuffer(),
 				device.GetContext());
 		}
 

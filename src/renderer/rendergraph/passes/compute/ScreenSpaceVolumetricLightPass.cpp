@@ -55,7 +55,7 @@ void RegisterVolumetricLightPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						const auto& debug = ctx.profiler->debugToggles;
-						return ctx.frameState->bIsOpaqueVisible &&
+						return ctx.frameState->activeInstanceCount > 0 &&
 							debug.enableVolumetrics && debug.enableShadows;
 					})
 

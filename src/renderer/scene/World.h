@@ -1,7 +1,6 @@
 #pragma once
 
 #include <unordered_map>
-#include <vector>
 #include <memory>
 
 class Scene;
@@ -11,9 +10,7 @@ class Profiler;
 class BindlessImageTable;
 struct ModelAsset;
 struct GLFWwindow;
-struct Mesh;
-struct MeshLODs;
-struct RenderToggles;
+struct InstanceState;
 
 enum class ModelID // TODO: This goes somewhere else, not here
 {
@@ -37,6 +34,7 @@ enum class ModelID // TODO: This goes somewhere else, not here
 namespace World
 {
 	Scene& GetScene(); // Scary global reference
+	InstanceState& GetInstanceState();
 
 	inline std::unordered_map<ModelID, std::shared_ptr<ModelAsset>> _loadedScenes;
 
@@ -50,11 +48,4 @@ namespace World
 		Allocator& allocator,
 		Profiler& profiler,
 		GLFWwindow* window);
-
-	void UpdateDrawData(
-		FrameContext&                frameCtx,
-		const std::vector<Mesh>&     meshes,
-		const std::vector<MeshLODs>& meshLODs,
-		const Profiler&              profiler,
-		std::vector<uint32_t>&       materialFlags);
 }

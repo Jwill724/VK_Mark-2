@@ -1,6 +1,8 @@
 #ifndef COMMON_GLSL
 #define COMMON_GLSL
 
+#extension GL_GOOGLE_include_directive : require
+
 #extension GL_EXT_buffer_reference : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_ARB_gpu_shader_int64 : require
@@ -13,8 +15,15 @@
 
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "bindings.glsl"
+#include "instances.glsl"
+#include "draws.glsl"
+
 const float PI      = 3.1415926535897932384626433832795;
 const float HALF_PI = 1.5707963267948966192313216916398;
+
+const uint MAX_CASCADES = 4u;
+const uint MAX_CASCADES_INDEX = MAX_CASCADES - 1u;
 
 const uint MAX_ENV_SETS = 8u;
 
@@ -31,107 +40,34 @@ const uint AO_OFF               = 0u;
 const uint AO_VBAO              = 1u;
 const uint AO_VBAO_BENT_NORMALS = 2u;
 
-const uint PASS_OPAQUE      = 0u;
-const uint PASS_TRANSPARENT = 1u;
-
-const uint MATERIAL_FLAG_ALPHA_MASKED   = (1u << 0u);
-const uint MATERIAL_FLAG_CASTS_SHADOWS  = (1u << 1u);
-const uint MATERIAL_FLAG_HAS_NORMAL_MAP = (1u << 2u);
-const uint MATERIAL_FLAG_IS_TREE        = (1u << 3u);
-
 const uint MAX_LUMINANCE_GROUPS = 65536u;
 
 const float GTAO_RADIUS_MULTIPLIER = 1.457;
-
-// =============================
-// === SET_BINDINGS_BINDINGS ===
-// =============================
-
-const uint GLOBAL_SET = 0u;
-const uint FRAME_SET  = 1u;
-const uint PUSH_SET   = 2u;
-
-// both global and frame owned
-const uint ADDRESS_TABLE_BINDING            = 0u;
-
-// global set specific
-const uint GLOBAL_BINDING_DEBUG_INLINE      = 1u;
-const uint GLOBAL_BINDING_SAMPLER_CUBE      = 2u;
-const uint GLOBAL_BINDING_COMBINED_SAMPLER  = 3u;
-
-// Frame set specific UBOs
-const uint FRAME_BINDING_SCENE      = 1u;
-const uint FRAME_BINDING_CSM        = 2u;
-const uint FRAME_BINDING_CLUSTERED  = 3u;
-
-// Push bindings for images
-const uint PUSH_BINDING_READ_1   = 0u;
-const uint PUSH_BINDING_READ_2   = 1u;
-const uint PUSH_BINDING_READ_3   = 2u;
-const uint PUSH_BINDING_READ_4   = 3u;
-const uint PUSH_BINDING_READ_5   = 4u;
-const uint PUSH_BINDING_READ_6   = 5u;
-const uint PUSH_BINDING_READ_7   = 6u;
-const uint PUSH_BINDING_WRITE_1  = 7u;
-const uint PUSH_BINDING_WRITE_2  = 8u;
-const uint PUSH_BINDING_WRITE_3  = 9u;
-const uint PUSH_BINDING_WRITE_4  = 10u;
-const uint PUSH_BINDING_WRITE_5  = 11u;
-
-// =================================
-// === ADDRESS TABLE BUFFER IDS  ===
-// =================================
-
-const uint ABT_VisibleInstances  = 0u;
-const uint ABT_IndirectDraws     = 1u;
-
-const uint ABT_VisibleLightCount  = 2u;
-const uint ABT_VisibleLightIDs    = 3u;
- 
-const uint ABT_ClusterCounts           = 4u;
-const uint ABT_ClusterOffsets          = 5u;
-const uint ABT_ClusterCursors          = 6u;
-const uint ABT_ClusterLightIDs         = 7u;
-const uint ABT_ClusterTileSliceRanges  = 8u;
-const uint ABT_ClusterScanScratch      = 9u;
-
-const uint ABT_Cmaa2Control            = 10u;
-const uint ABT_Cmaa2ShapeCandidates    = 11u;
-const uint ABT_Cmaa2DeferredLocations  = 12u;
-const uint ABT_Cmaa2DeferredItems      = 13u;
-const uint ABT_Cmaa2DeferredHeads      = 14u;
-
-const uint ABT_DispatchIndirectArgs    = 15u;
-
-const uint ABT_Lights                  = 16u;
-const uint ABT_Transforms              = 17u;
-const uint ABT_PrevTransforms          = 18u;
-const uint ABT_Material                = 19u;
-const uint ABT_Mesh                    = 20u;
-const uint ABT_Vertex                  = 21u;
-const uint ABT_Index                   = 22u;
-const uint ABT_Luminance               = 23u;
-
-const uint ABT_Count                   = 24u;
-
-const uint INDIRECT_DISPATCH_SLOT_LIGHTS          = 0u;  // args[0]
-const uint INDIRECT_DISPATCH_SLOT_CLUSTERS        = 1u;  // args[1]
-const uint INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES    = 2u;  // args[2]
-const uint INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED  = 3u;  // args[3]
-
-// All defined as VkDrawIndexedIndirectCommand
-const uint DRAW_STATIC        = 0u;
-const uint DRAW_MULTI_STATIC  = 1u;
-const uint DRAW_DYNAMIC       = 2u;
-const uint DRAW_MULTI_DYNAMIC = 3u;
 
 // debug helpers
 #define DBG(x) (debug.x != 0u)
 #define RET(rgb, a) { outFragColor = vec4((rgb), (a)); return; }
 
-struct SceneData {
+struct GPUStats
+{
+	uint visibleOpaque;
+
+	uint visibleTransparent;
+
+	uint visibleShadowCasters;
+
+	uint opaqueDrawCount;
+	uint transparentDrawCount;
+	uint shadowDrawCount;
+
+	uint triangleCount; // Doesnt count shadows
+};
+
+struct SceneData
+{
 	mat4 view;
 	mat4 proj;
+	mat4 projUnjittered;
 	mat4 invView;
 	mat4 invProj;
 	mat4 viewProj;
@@ -150,25 +86,12 @@ struct SceneData {
 	vec4 cameraClips;         // .x near and .y far, .z invScreenWidth, .w invScreenHeight
 	vec4 viewportSize;        // .x and .y for width and height, .z for pixel count
 	vec4 pixelSizes;          // .x/.y = 1 / full extent .z/.w = = 1 / half extent
+	mat4 flashlightVP;
 };
 
-struct GPUAddressTable {
+struct GPUAddressTable
+{
 	uint64_t addrs[ABT_Count];
-};
-
-struct IndirectDrawCmd {
-	uint indexCount;
-	uint instanceCount;
-	uint firstIndex;
-	int vertexOffset;
-	uint firstInstance;
-};
-
-struct Instance {
-	uint meshID;
-	uint materialID;
-	uint transformID;
-	uint passType;
 };
 
 struct AABB {
@@ -179,15 +102,13 @@ struct AABB {
 struct Material
 {
 	vec4 colorFactor;
+
 	vec2 metalRoughFactors;
+	float normalScale;
+	float alphaCutoff;
 
 	vec3 emissiveColor;
 	float emissiveStrength;
-
-	float normalScale;
-	float alphaCutoff;
-	uint passType;
-	uint flags;
 
 	uint albedoID;
 	uint metalRoughnessID;
@@ -198,6 +119,7 @@ struct Material
 struct Mesh
 {
 	AABB localAABB;
+	float localBoundingRadius;
 	uint firstIndex;
 	uint indexCount;
 	uint vertexOffset;
@@ -257,6 +179,29 @@ vec2 unpackUV(uint16_t uvX, uint16_t uvY) {
 
 vec4 unpackRGBA8(uint packedRGBA8) {
 	return unpackUnorm4x8(packedRGBA8);
+}
+
+AABB TransformAABB(AABB localAABB, mat4 transform)
+{
+	AABB worldAABB;
+
+	vec3 center = 0.5 * (localAABB.vmin + localAABB.vmax);
+	vec3 extent = 0.5 * (localAABB.vmax - localAABB.vmin);
+
+	vec3 worldCenter = (transform * vec4(center, 1.0)).xyz;
+
+	mat3 rotationScale = mat3(transform);
+	mat3 absMatrix = mat3(
+		abs(rotationScale[0]),
+		abs(rotationScale[1]),
+		abs(rotationScale[2]));
+
+	vec3 worldExtent = absMatrix * extent;
+
+	worldAABB.vmin = worldCenter - worldExtent;
+	worldAABB.vmax = worldCenter + worldExtent;
+
+	return worldAABB;
 }
 
 float luminance(vec3 color) {
@@ -344,18 +289,18 @@ float hash(vec2 p) {
 	return float((u.x ^ u.y) * 3141592653u) / 4294967295.0;
 }
 
-const uint MAX_CASCADES = 4u;
-const uint MAX_CASCADES_INDEX = MAX_CASCADES - 1u;
-struct ShadowCSM {
-	mat4 cascadeVP[MAX_CASCADES];
-	vec4 cascadeSplits;
-	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize(1/atlasHeight)
-	vec4 params;
-	// xy = uvScale, zw = uvOffset (per cascade)
-	vec4 atlasUV[MAX_CASCADES];
-	vec4 maxFilterRadiusTexels;
-	vec4 cascadeWorldTexels;
-};
+mat2 createHash(vec2 pixelCoord)
+{
+	float ang = interleavedGradientNoise(pixelCoord) * 6.2831853;
+	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
+
+mat2 createHashTemporal(vec2 pixelCoord, uint frameIndex)
+{
+	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
+	float ang = interleavedGradientNoise(jitteredPixel) * 6.2831853;
+	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
 
 // Lighting struct
 struct LocalLight {
@@ -374,6 +319,26 @@ struct LocalLight {
 	uint flags;
 };
 
+struct ShadowCSM {
+	mat4 cascadeVP[MAX_CASCADES];
+	mat4 cascadeLightViews[MAX_CASCADES];
+	vec4 cascadeSplits;
+	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize(1/atlasHeight)
+	vec4 params;
+	// xy = uvScale, zw = uvOffset (per cascade)
+	vec4 atlasUV[MAX_CASCADES];
+	vec4 maxFilterRadiusTexels;
+	vec4 cascadeWorldTexels;
+};
+
+struct ShadowCullData {
+	vec4 receiverLSMin[MAX_CASCADES];   // xyz used, w = pad
+	vec4 receiverLSMax[MAX_CASCADES];
+
+	// per-cascade active flag — 0 means no visible receivers, skip entirely
+	uvec4 cascadeActive;                // .x=c0 .y=c1 .z=c2 .w=c3
+};
+
 struct ClusteredData {
 	uint tileSizeX;
 	uint tileSizeY;
@@ -383,42 +348,40 @@ struct ClusteredData {
 	uint tileCountY;
 	uint clusterCount;
 	uint maxVisibleLights;
+
 	vec4 pad0[6];
 };
 
 // inline uniform block
 struct DebugToggles
 {
-	uint enableOBBs;
 	uint enableLensFlare;
 	uint enableChromaticAberration;
 	uint enableSSS;
+	uint enableFlashlight;
 
 	uint aaMode;
 	uint aoMode;
 	uint enableShadows;
 	uint enableVolumetrics;
 
-	uint showAlbedo;
-	uint showNormals;
-	uint showRoughness;
-	uint showMetallic;
-
-	uint showAmbientOcclusion;
-	uint showSpecular;
-	uint showDiffuse;
-	uint showEmissive;
-
-	uint showBentNormals;
-	uint showCascadeSplits;
-	uint showSSS;
 	uint activeEnvMap;
+	uint disableOcclusionCull;
+	uint pad0;
+	uint pad1;
 
 	uint enableProfilerView;
 	uint enableSettings;
 	uint enableBloom;
 	float bloomIntensity;
+
+	uint showOpaqueOBBs;
+	uint showTransparentOBBs;
+	uint activeInstanceCount;
+	uint activeLightCount;
 };
+
+bool uintBool(uint x) { return x != 0u; }
 
 
 // =================================
@@ -443,6 +406,40 @@ DebugToggles getDebugToggles() { return debug; }
 // ============================================
 // === GLOBAL ADDRESSS TABLE BUFFER GETTERS ===
 // ============================================
+
+// instance inputs
+layout(buffer_reference, scalar) readonly buffer InstanceInputsBuffer {
+	InstanceInput instanceInputs[];
+};
+// pass gl_InstanceIndex
+InstanceInputsBuffer getInstanceInputBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_InstanceInputs);
+	return InstanceInputsBuffer(addr);
+}
+
+layout(buffer_reference, scalar) readonly buffer DrawBinKeysBuffer {
+	BinKey keys[BIN_TABLE_SIZE];
+	uvec2  dense[MAX_DRAW_BINS];
+};
+DrawBinKeysBuffer getDrawBinKeyBuffer() {
+	return DrawBinKeysBuffer(getABTGlobalAddress(ABT_DrawBinKeys));
+}
+
+uint binLookup(uint meshID, uint materialID)
+{
+	uint h = (meshID * 2654435761u) ^ (materialID * 2246822519u);
+	h &= (BIN_TABLE_SIZE - 1u);
+
+	// open addressing, table built CPU-side so termination is guaranteed
+	for (uint probe = 0u; probe < 64u; ++probe)
+	{
+		BinKey key = getDrawBinKeyBuffer().keys[h];
+		if (key.meshID == meshID && key.materialID == materialID) return key.binID;
+		if (key.meshID == INVALID_U32) return INVALID_U32; // unregistered pair
+		h = (h + 1u) & (BIN_TABLE_SIZE - 1u);
+	}
+	return INVALID_U32;
+}
 
 // materials, vertices, indices, all ready at render time and uploaded at end of asset loading
 layout(buffer_reference, scalar) readonly buffer MaterialBuffer {
@@ -519,24 +516,140 @@ ClusteredData getClusteredData() { return clusteredData; }
 // === FRAME ADDRESSS TABLE BUFFER GETTERS ===
 // ===========================================
 
-
-// instances
-layout(buffer_reference, scalar) buffer VisibleInstances {
-	Instance instances[];
+// visible instances
+layout(buffer_reference, scalar) buffer VisibleInstanceBuffer {
+	VisibleInstance visibles[];
 };
-// pass gl_InstanceIndex
-VisibleInstances getInstanceBuffer() {
+VisibleInstanceBuffer getVisibleInstanceBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_VisibleInstances);
-	return VisibleInstances(addr);
+	return VisibleInstanceBuffer(addr);
 }
 
 // indirect draws
-layout(buffer_reference, scalar) buffer IndirectDraws {
-	IndirectDrawCmd indirectDraws[];
+layout(buffer_reference, scalar) buffer IndirectDrawBuffer {
+	IndirectIndexedDrawCmd indirectDraws[];
 };
-IndirectDraws getIndirectDrawBuffer() {
+IndirectDrawBuffer getIndirectDrawBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_IndirectDraws);
-	return IndirectDraws(addr);
+	return IndirectDrawBuffer(addr);
+}
+
+// pass gl_InstanceIndex
+layout(buffer_reference, scalar) buffer DrawInstanceIDsBuffer {
+	uint ids[];
+};
+DrawInstanceIDsBuffer getDrawInstanceIDsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DrawInstanceIDs);
+	return DrawInstanceIDsBuffer(addr);
+}
+
+// draw bin
+layout(buffer_reference, scalar) buffer DrawBinBuffer {
+	DrawBin drawBins[];
+};
+DrawBinBuffer getDrawBinBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DrawBins);
+	return DrawBinBuffer(addr);
+}
+
+// draw bin counter
+layout(buffer_reference, scalar) buffer DrawBinCounterBuffer {
+	uint drawBinCounters[];
+};
+DrawBinCounterBuffer getDrawBinCounterBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DrawBinCounters);
+	return DrawBinCounterBuffer(addr);
+}
+
+struct VisibilityCounters
+{
+	uint counts[VIS_SLOT_COUNT];
+};
+
+// instance visibility counters
+layout(buffer_reference, scalar) buffer InstanceVisibilityBuffer {
+	VisibilityCounters counters;
+};
+InstanceVisibilityBuffer getInstanceVisibilityBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_InstanceVisibility);
+	return InstanceVisibilityBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer InstanceCursorsBuffer {
+	InstanceCursors cursors;
+};
+InstanceCursorsBuffer getInstanceCursorsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_InstanceCursors);
+	return InstanceCursorsBuffer(addr);
+}
+
+// instance visible count
+layout(buffer_reference, scalar) buffer VisibleCountBuffer {
+	uint count;
+};
+VisibleCountBuffer getVisibleCountBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_VisibleCount);
+	return VisibleCountBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer InstanceStreamsBuffer {
+	StreamEntry entries[];
+};
+InstanceStreamsBuffer getInstanceStreamsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_InstanceStreams);
+	return InstanceStreamsBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer IndirectDrawCountsBuffer {
+	uint counts[VIS_SLOT_COUNT];
+};
+IndirectDrawCountsBuffer getIndirectDrawCountsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_IndirectDrawCounts);
+	return IndirectDrawCountsBuffer(addr);
+}
+
+bool hasPrimaryVisibles()
+{
+	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
+	return (c.counts[VIS_SLOT_OPAQUE] + c.counts[VIS_SLOT_TRANSPARENT]) > 0u;
+}
+
+bool hasOpaqueVisibles()
+{
+	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_OPAQUE] > 0u;
+}
+
+bool hasCSMCasters()
+{
+	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
+	return (c.counts[VIS_SLOT_CSM0] +
+			c.counts[VIS_SLOT_CSM1] +
+			c.counts[VIS_SLOT_CSM2] +
+			c.counts[VIS_SLOT_CSM3]) > 0u;
+}
+
+bool hasCascadeCasters(uint cascadeSlot)
+{
+	return getInstanceVisibilityBuffer().counters.counts[cascadeSlot] > 0u;
+}
+
+bool hasFlashlightCasters()
+{
+	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_FLASHLIGHT] > 0u;
+}
+
+bool hasAnyVisibles()
+{
+	return getVisibleCountBuffer().count > 0u;
+}
+
+
+layout(buffer_reference, scalar) buffer ShadowCullDataBuffer {
+	ShadowCullData data;
+};
+ShadowCullDataBuffer getShadowCullDataBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_ShadowCullData);
+	return ShadowCullDataBuffer(addr);
 }
 
 layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
@@ -555,14 +668,56 @@ PrevTransformsBuffer getPrevTransformBuffer() {
 	return PrevTransformsBuffer(addr);
 }
 
+// gpu stats
+
+layout(buffer_reference, scalar) buffer GPUStatsBuffer {
+	GPUStats gpuStats;
+};
+GPUStatsBuffer getGPUStatsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DrawStats);
+	return GPUStatsBuffer(addr);
+}
+
 
 // Indirect dispatch arguments
 layout(buffer_reference, scalar) buffer DispatchIndirectArgsBuffer {
-	uvec4 args[16]; // args[i].xyz used
+	uvec4 args[INDIRECT_DISPATCH_SLOT_COUNT]; // args[i].xyz used
 };
 DispatchIndirectArgsBuffer getIndirectDispatchBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_DispatchIndirectArgs);
 	return DispatchIndirectArgsBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer DebugCountersBuffer {
+	DebugCounters counters;
+};
+DebugCountersBuffer getDebugCountersBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DebugCounts);
+	return DebugCountersBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer DebugItemsBuffer {
+	DebugItem items[];
+};
+DebugItemsBuffer getDebugItemsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DebugItems);
+	return DebugItemsBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer DebugVertexBuffer {
+	DebugVertex vertices[];
+};
+DebugVertexBuffer getDebugVertexBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DebugVertex);
+	return DebugVertexBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer DebugDrawBuffer {
+	IndirectDrawCmd draw;
+};
+DebugDrawBuffer getDebugDrawBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DebugDraw);
+	return DebugDrawBuffer(addr);
 }
 
 // =====================
@@ -687,7 +842,6 @@ ClusterScanScratch getClusterScratchBuffer() {
 }
 
 
-
 // ==============================
 // === GLOBAL BINDLESS IMAGES ===
 // ==============================
@@ -787,7 +941,7 @@ void unpackVertex(
 	int ty = int(vtx.tangentY);
 	tangentHandedness = (ty >= 0) ? 1.0 : -1.0;
 	tangent = octDecode(vec2(snorm16ToFloat(int(vtx.tangentX)),
-							 snorm16ToFloat(abs(ty))));
+							snorm16ToFloat(abs(ty))));
 }
 
 void unpackVertexPrepass(

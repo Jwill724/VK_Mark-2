@@ -8,7 +8,7 @@
 #include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
-#include "../../../scene/LightingSystem.h"
+#include "../../../scene/Scene.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
 
@@ -38,11 +38,9 @@ void RegisterFlashlightShadowMapPass(
 						AttachmentDesc depth{};
 						depth.imageView = shadowmap.m_imageView;
 						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-						depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-						depth.clearValue.depthStencil.depth = 1.0f;
+						depth.SetDepth(1.0f);
 
-						pso.SetPush(LightingSystem::_mainFlashLight.ViewProj);
+						pso.SetPush(ctx.scene->GetSceneData().flashlightVP);
 
 						pso.UpdateRenderInfo(
 							{
@@ -57,7 +55,7 @@ void RegisterFlashlightShadowMapPass(
 					{
 						return ctx.profiler->debugToggles.enableShadows &&
 							ctx.frameState->bFlashlightOn &&
-							ctx.frameState->bIsOpaqueVisible;
+							ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(
@@ -77,17 +75,18 @@ void RegisterFlashlightShadowMapPass(
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 
-						const auto& drawRange = frameCtx->GetFlashlightDrawRange();
-						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
-						ctx.profiler->AddFlashlightIndirect(1, drawRange.commandCount);
+						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawIndexedIndirect(
+						pso.DrawIndexedIndirectCount(
 							cmd,
+							RD::VIS_SLOT_FLASHLIGHT,
 							indirectBuffer,
-							drawRange,
+							indirectCountBuffer,
 							pipeline,
 							pass.pushWriter);
 

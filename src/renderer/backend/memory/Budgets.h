@@ -4,17 +4,82 @@
 
 namespace RD = RendererDefinitions;
 
-// Can get risky? Keep this updated at all cost!
-inline constexpr size_t INSTANCE_SIZE     = 16;
-inline constexpr size_t INDIRECT_CMD_SIZE = 20;
-inline constexpr size_t LOCAL_LIGHT_SIZE  = 60;
-inline constexpr size_t MAT4_SIZE         = 64;
+inline constexpr size_t SIZEOF_INSTANCE_INPUT    = 44u;   // 11 x uint
+inline constexpr size_t SIZEOF_VISIBLE_INSTANCE  = 12u;   // 3 x uint
+inline constexpr size_t SIZEOF_STREAM_ENTRY      = 8u;    // 2 x uint (visibleID, binID)
+inline constexpr size_t SIZEOF_DRAW_BIN          = 16u;   // 4 x uint
+inline constexpr size_t SIZEOF_DISPATCH_ARG      = 16u;   // uvec4
+inline constexpr size_t SIZEOF_LOCAL_LIGHT       = 60u;
+inline constexpr size_t SIZEOF_MAT4              = 64u;
+inline constexpr size_t SIZEOF_BIN_KEY           = 12u;   // 3 x uint (meshID, materialID, binID)
 
-inline constexpr size_t MAX_INSTANCE_SIZE_GPU_BYTES        = RD::MAX_FRAME_INSTANCES_TOTAL       * INSTANCE_SIZE;
-inline constexpr size_t MAX_INDIRECT_SIZE_GPU_BYTES        = RD::MAX_FRAME_DRAW_COMMANDS_TOTAL   * INDIRECT_CMD_SIZE;
-inline constexpr size_t MAX_VISIBLE_IDS_SIZE_GPU_BYTES     = RD::MAX_FRAME_INSTANCES_TOTAL       * sizeof(uint32_t);
-inline constexpr size_t MAX_TRANSFORMS_SIZE_GPU_BYTES      = RD::MAX_INSTANCE_TRANSFORMS         * MAT4_SIZE;
-inline constexpr size_t MAX_LIGHTS_SIZE_GPU_BYTES          = RD::MAX_LIGHTS                      * LOCAL_LIGHT_SIZE;
-inline constexpr size_t MAX_LIGHT_IDS_SIZE_GPU_BYTES       = static_cast<size_t>(RD::MAX_LIGHTS) * sizeof(uint32_t);
-inline constexpr size_t MIN_SSBO_ALIGNMENT_BYTES           = 256;
-inline constexpr size_t LUMINANCE_GROUPS_SIZE_GPU_BYTES    = static_cast<size_t>(RD::MAX_LUMINANCE_GROUPS) * sizeof(glm::vec4);
+// GPU buffer byte sizes
+inline constexpr size_t GPU_BYTES_INSTANCE_INPUT
+	= RD::MAX_FRAME_INSTANCES_TOTAL * SIZEOF_INSTANCE_INPUT;
+
+inline constexpr size_t GPU_BYTES_VISIBLE_INSTANCES
+	= RD::MAX_FRAME_INSTANCES_TOTAL * SIZEOF_VISIBLE_INSTANCE;
+
+inline constexpr size_t GPU_BYTES_INSTANCE_VISIBILITY
+	= RD::VIS_SLOT_COUNT * sizeof(uint32_t);
+
+inline constexpr size_t GPU_BYTES_INSTANCE_CURSORS
+	= RD::VIS_SLOT_COUNT * sizeof(uint32_t);
+
+// Per-stream routing records — scatter writes, place reads
+inline constexpr size_t GPU_BYTES_INSTANCE_STREAMS
+	= RD::VIS_SLOT_COUNT * RD::MAX_INSTANCES_PER_STREAM * SIZEOF_STREAM_ENTRY;
+
+// Final placed instance IDs — VS reads via gl_InstanceIndex
+inline constexpr size_t GPU_BYTES_DRAW_INSTANCE_IDS
+	= RD::VIS_SLOT_COUNT * RD::MAX_INSTANCES_PER_STREAM * sizeof(uint32_t);
+
+// Flat indirect draw command buffer — all streams concatenated
+inline constexpr size_t GPU_BYTES_INDIRECT_DRAWS
+	= RD::DRAW_OFFSET_TOTAL * RD::INDIRECT_CMD_SIZE;
+
+// One draw count per stream — feeds DrawIndexedIndirectCount
+inline constexpr size_t GPU_BYTES_INDIRECT_DRAW_COUNTS
+	= RD::VIS_SLOT_COUNT * sizeof(uint32_t);
+
+// Draw bins: slots x bins x struct
+inline constexpr size_t GPU_BYTES_DRAW_BINS
+	= RD::VIS_SLOT_COUNT * RD::MAX_DRAW_BINS * SIZEOF_DRAW_BIN;
+
+// Bin counters: reused as intra-bin cursors in place pass (fill 0 each frame)
+inline constexpr size_t GPU_BYTES_DRAW_BIN_COUNTERS
+	= RD::VIS_SLOT_COUNT * RD::MAX_DRAW_BINS * sizeof(uint32_t);
+
+// Static bin key hash table + dense binID -> {mesh, material} side table
+inline constexpr size_t GPU_BYTES_DRAW_BIN_KEYS
+	= RD::BIN_TABLE_SIZE * SIZEOF_BIN_KEY
+	+ RD::MAX_DRAW_BINS * sizeof(glm::uvec2);
+
+// Shadow cull data — receiverLSMin/Max vec4 pairs + cascadeActive uvec4
+inline constexpr size_t GPU_BYTES_SHADOW_CULL_DATA
+	= (RD::MAX_SHADOW_CASCADES * 2 * sizeof(float) * 4)
+	+ sizeof(uint32_t) * 4;
+
+// Dispatch indirect args — one uvec4 per slot
+inline constexpr size_t GPU_BYTES_DISPATCH_INDIRECT_ARGS
+	= RD::INDIRECT_DISPATCH_SLOT_COUNT * SIZEOF_DISPATCH_ARG;
+
+inline constexpr size_t GPU_BYTES_TRANSFORMS
+	= RD::MAX_INSTANCE_TRANSFORMS * SIZEOF_MAT4;
+
+inline constexpr size_t GPU_BYTES_LIGHTS
+	= RD::MAX_LIGHTS * SIZEOF_LOCAL_LIGHT;
+
+inline constexpr size_t GPU_BYTES_VISIBLE_LIGHT_IDS
+	= RD::MAX_LIGHTS * sizeof(uint32_t);
+
+inline constexpr size_t GPU_BYTES_LUMINANCE
+	= RD::MAX_LUMINANCE_GROUPS * sizeof(float) * 4;
+
+inline constexpr size_t GPU_BYTES_DEBUG_COUNTERS = 8u;
+
+inline constexpr size_t GPU_BYTES_DEBUG_ITEMS = RD::DEBUG_MAX_ITEMS * 12u;
+
+inline constexpr size_t GPU_BYTES_DEBUG_VERTEX = RD::DEBUG_MAX_VERTS * 16u;
+
+inline constexpr size_t MIN_SSBO_ALIGNMENT_BYTES = 256u;

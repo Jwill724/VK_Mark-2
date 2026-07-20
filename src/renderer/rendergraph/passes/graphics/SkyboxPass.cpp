@@ -51,9 +51,9 @@ void RegisterSkyboxPass(
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.clearValue.depthStencil.depth = 0.0f;
+						depthAttach.SetDepth(0.0f);
 
-						if (!ctx.frameState->bHasVisibles || ctx.profiler->enableWireframeView) // Need depth write since no prepass occured
+						if (!ctx.frameState->activeInstanceCount == 0 || ctx.profiler->enableWireframeView) // Need depth write since no prepass occured
 						{
 							depthAttach.imageView = depthRaw.m_imageView;
 							depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
@@ -72,7 +72,7 @@ void RegisterSkyboxPass(
 						const auto& projUnjittered = ctx.scene->GetCurrentProjUnjittered();
 
 						glm::mat4 proj{};
-						if (ctx.frameState->bHasVisibles &&
+						if (ctx.frameState->activeInstanceCount > 0 &&
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA))
 						{
 							proj = sceneData.proj;
@@ -111,8 +111,6 @@ void RegisterSkyboxPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
-
-						ctx.profiler->AddDirect(1, TrianglesFromNonIndexed(pipeline.topology, 3));
 
 						pso.BeginRendering(cmd);
 

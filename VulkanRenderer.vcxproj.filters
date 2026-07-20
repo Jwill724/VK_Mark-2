@@ -94,7 +94,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\DebugOrientedBoundingBoxPass.cpp">
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\LineDebugPass.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
@@ -196,9 +196,6 @@
       <Filter>src\renderer\scene</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\scene\LightingSystem.cpp">
-      <Filter>src\renderer\scene</Filter>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\Visibility.cpp">
       <Filter>src\renderer\scene</Filter>
     </ClCompile>
     <!-- renderer / backend -->
@@ -345,6 +342,18 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\InstanceCullPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\DrawBuildPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -456,9 +465,6 @@
     <ClInclude Include="src\renderer\scene\World.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\scene\Visibility.h">
-      <Filter>src\renderer\scene</Filter>
-    </ClInclude>
     <ClInclude Include="src\renderer\scene\DrawPreparation.h">
       <Filter>src\renderer\scene</Filter>
     </ClInclude>
@@ -473,9 +479,6 @@
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\Shader.h">
-      <Filter>src\renderer\backend</Filter>
-    </ClInclude>
-    <ClInclude Include="src\renderer\backend\Sync.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h">
@@ -552,6 +555,9 @@
     <ClInclude Include="src\core\AssetUploadTypes.h">
       <Filter>src\core</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\backend\Sync.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
@@ -613,10 +619,10 @@
       <Filter>res\shaders\core</Filter>
     </None>
     <!-- debug -->
-    <None Include="res\shaders\debug\obb_lineVS.vert">
+    <None Include="res\shaders\debug\line_debugVS.vert">
       <Filter>res\shaders\debug</Filter>
     </None>
-    <None Include="res\shaders\debug\obb_lineFS.frag">
+    <None Include="res\shaders\debug\line_debugFS.frag">
       <Filter>res\shaders\debug</Filter>
     </None>
     <!-- environment -->
@@ -720,7 +726,7 @@
       <Filter>res\shaders\shadows</Filter>
     </None>
     <!-- visibility -->
-    <None Include="res\shaders\visibility\visibility.comp">
+    <None Include="res\shaders\visibility\instance_cull.comp">
       <Filter>res\shaders\visibility</Filter>
     </None>
     <None Include="res\shaders\debug\wireframeVS.vert">
@@ -734,6 +740,42 @@
     </None>
     <None Include="res\shaders\post_process\bloom_upsample.comp">
       <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\include\culling.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\bindings.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\instances.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\draws.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\shadows\shadow_bounds.comp">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\visibility\draw_args.comp">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\visibility\draw_emit.comp">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\visibility\draw_scatter.comp">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\visibility\draw_place.comp">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\debug\debug_count.comp">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\debug\debug_args.comp">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\debug\debug_build.comp">
+      <Filter>res\shaders\debug</Filter>
     </None>
   </ItemGroup>
 </Project>

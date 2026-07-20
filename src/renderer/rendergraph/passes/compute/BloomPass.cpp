@@ -34,7 +34,7 @@ void RegisterBloomPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.profiler->debugToggles.enableBloom && ctx.frameState->bHasVisibles;
+						return ctx.profiler->debugToggles.enableBloom && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

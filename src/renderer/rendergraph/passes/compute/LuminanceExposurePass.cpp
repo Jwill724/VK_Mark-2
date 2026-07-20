@@ -41,7 +41,6 @@ void RegisterLuminanceExposurePass(
 							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x)));
 
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
-						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
 
 						pso.BindReadImage(
@@ -50,22 +49,11 @@ void RegisterLuminanceExposurePass(
 							opaque,
 							linearSampler);
 
-						if (ctx.frameState->bIsTransparentVisible)
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								transparent,
-								linearSampler);
-						}
-						else
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								dummy,
-								linearSampler);
-						}
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
+							transparent,
+							linearSampler);
 					})
 
 				.DisableCulling()

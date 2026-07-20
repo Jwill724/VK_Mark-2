@@ -13,9 +13,11 @@ namespace BufferBarriers
 	void ComputeWriteToRW(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
+	void ComputeWriteToTransferRead(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
 
-	// After an indirect dispatch is preformed
-	void ComputeWriteToIndirectDispatchRead(
+	void ComputeWriteToIndirectRead(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
 
@@ -27,21 +29,21 @@ namespace BufferBarriers
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
 
+	void ComputeWriteToVertexRead(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
+
+	void TransferWriteToComputeRead(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf,
+		const DeviceContext& dCtx);
+
 	void TransferWriteToGraphicsRead(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf,
 		const DeviceContext& dCtx);
 
-	void TransferWriteToIndirectRead(
-		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		const DeviceContext& dCtx);
-
 	// Transfer queue buffer releases
-	void TransferReleaseOnIndirect(
-		VkCommandBuffer cmd,
-		const AllocatedBuffer& buf,
-		const DeviceContext& dCtx);
 	void TransferReleaseOnCompute(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf,

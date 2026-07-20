@@ -3,12 +3,14 @@
 #include "Bounds.h"
 #include "Vertex.h"
 
-constexpr uint32_t MESH_LOD_FLAG_FORCE_SHADOW_LOD0 = 1u << 0;
-constexpr uint32_t MESH_FLAG_IS_LOD                = 1u << 1; 
+inline constexpr uint32_t MESH_FLAG_IS_LOD                = 1u << 0;
+inline constexpr uint32_t MESH_FLAG_GOOD_OCCLUDEE         = 1u << 1;
+inline constexpr uint32_t MESH_LOD_FLAG_FORCE_SHADOW_LOD0 = 1u << 2;
 
 struct Mesh
 {
 	AABB localAABB;
+	float localBoundingRadius = 0.0f;
 	uint32_t firstIndex = UINT32_MAX;
 	uint32_t indexCount = UINT32_MAX;
 	uint32_t vertexOffset = UINT32_MAX;
@@ -109,6 +111,68 @@ public:
 		if (cascade == 0u) return 0u;
 		if (cascade == 1u && baseSlot > 0u) return baseSlot - 1u;
 		return baseSlot;
+	}
+
+	// Computes a tight local-space bounding sphere for a mesh's vertices.
+	static float ComputeLocalBoundingRadius(
+		const Vertex* verts,
+		uint32_t      vertexCount,
+		const glm::vec3& aabbMin,
+		const glm::vec3& aabbMax)
+	{
+		if (vertexCount == 0) return 0.0f;
+
+		const glm::vec3 center = 0.5f * (aabbMin + aabbMax);
+		float radiusSq = 0.0f;
+
+		for (uint32_t i = 0; i < vertexCount; ++i)
+		{
+			const glm::vec3 d = verts[i].position - center;
+			radiusSq = std::max(radiusSq, glm::dot(d, d));
+		}
+
+		float radius = std::sqrt(radiusSq);
+
+		// Find point furthest from an arbitrary vertex (v0), then find point
+		// furthest from that — approximates the diameter endpoints.
+		glm::vec3 p0 = verts[0].position;
+		glm::vec3 pA = p0;
+		float maxDSq = 0.0f;
+
+		for (uint32_t i = 1; i < vertexCount; ++i)
+		{
+			const glm::vec3 d = verts[i].position - p0;
+			const float dSq = glm::dot(d, d);
+			if (dSq > maxDSq) { maxDSq = dSq; pA = verts[i].position; }
+		}
+
+		glm::vec3 pB = pA;
+		maxDSq = 0.0f;
+		for (uint32_t i = 0; i < vertexCount; ++i)
+		{
+			const glm::vec3 d = verts[i].position - pA;
+			const float dSq = glm::dot(d, d);
+			if (dSq > maxDSq) { maxDSq = dSq; pB = verts[i].position; }
+		}
+
+		glm::vec3 ritterCenter = 0.5f * (pA + pB);
+		float ritterRadius = 0.5f * glm::length(pB - pA);
+
+		// Grow the Ritter sphere to enclose any outliers it missed
+		for (uint32_t i = 0; i < vertexCount; ++i)
+		{
+			const glm::vec3 d = verts[i].position - ritterCenter;
+			const float dist = glm::length(d);
+			if (dist > ritterRadius)
+			{
+				const float newRadius = 0.5f * (ritterRadius + dist);
+				const float k = (newRadius - ritterRadius) / dist;
+				ritterCenter += d * k;
+				ritterRadius = newRadius;
+			}
+		}
+
+		return std::min(radius, ritterRadius);
 	}
 
 private:

@@ -30,12 +30,6 @@ private:
 	bool m_initialized = false;
 };
 
-struct IndirectStats
-{
-	uint32_t commands = 0;
-	uint32_t subdraws = 0;
-};
-
 struct VRAMStats
 {
 	uint64_t used = 0;
@@ -45,8 +39,6 @@ struct VRAMStats
 struct FrameStats
 {
 	std::string gpuName;
-
-	uint64_t triangleCount = 0;
 
 	float deltaSecondsRaw = 1.0f / 60.0f;
 	float vramQueryTimerSeconds = 0.0f;
@@ -65,12 +57,6 @@ struct FrameStats
 
 	bool capFramerate = true;
 	float targetFrameRate = RD::TARGET_FPS_60;
-
-	uint32_t directDraws = 0;
-	IndirectStats opaqueIndirect;
-	IndirectStats transparentIndirect;
-	IndirectStats directionalCSMIndirect;
-	IndirectStats flashlightShadowIndirect;
 };
 
 struct TotalAssetDataCounts
@@ -79,6 +65,14 @@ struct TotalAssetDataCounts
 	uint32_t totalIndexCount = 0u;
 	uint32_t totalMaterialCount = 0u;
 	uint32_t totalMeshCount = 0u;
+
+	void Clear() noexcept
+	{
+		totalVertexCount = 0u;
+		totalIndexCount = 0u;
+		totalMaterialCount = 0u;
+		totalMeshCount = 0u;
+	}
 };
 
 struct PassTimingStats

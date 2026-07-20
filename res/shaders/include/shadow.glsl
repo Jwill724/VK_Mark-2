@@ -1,6 +1,10 @@
 #ifndef SHADOW_GLSL
 #define SHADOW_GLSL
 
+#extension GL_GOOGLE_include_directive : require
+
+#include "common.glsl"
+
 const float FLASHLIGHT_TEXEL_SIZE = 1.0 / 512.0;
 
 // The only number that works
@@ -33,19 +37,6 @@ const vec2 poisson16[16] = vec2[](
 	vec2( 0.19984126, -0.78641367),
 	vec2( 0.14383161, -0.14100790)
 );
-
-mat2 createHash(vec2 pixelCoord)
-{
-	float ang = interleavedGradientNoise(pixelCoord) * 6.2831853;
-	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-}
-
-mat2 createHashTemporal(vec2 pixelCoord, uint frameIndex)
-{
-	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
-	float ang = interleavedGradientNoise(jitteredPixel) * 6.2831853;
-	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
-}
 
 float gaussianWeight(vec2 diskPos)
 {
@@ -208,6 +199,31 @@ vec3 cascadeColor(uint i)
 		vec3(1, 1, 0)
 	);
 	return C[min(i, 3u)];
+}
+
+bool casterOverlapsReceivers(
+	vec3 casterCenterWS, vec3 casterExtentWS,
+	mat4 lightView,
+	vec3 receiverLSMin, vec3 receiverLSMax,
+	float lsEpsilon)
+{
+	mat3 rot = mat3(lightView);
+	mat3 absRot = mat3(abs(rot[0]), abs(rot[1]), abs(rot[2]));
+
+	vec3 centerLS = (lightView * vec4(casterCenterWS, 1.0)).xyz;
+	vec3 extentLS = absRot * casterExtentWS;
+
+	vec3 cMin = centerLS - extentLS;
+	vec3 cMax = centerLS + extentLS;
+
+	// X/Y: shadow projects down light-space Z, need footprint overlap
+	if (cMin.x > receiverLSMax.x + lsEpsilon || cMax.x < receiverLSMin.x - lsEpsilon) return false;
+	if (cMin.y > receiverLSMax.y + lsEpsilon || cMax.y < receiverLSMin.y - lsEpsilon) return false;
+
+	// Z: keep everything toward the light, reject only fully behind receivers
+	if (cMax.z < receiverLSMin.z - lsEpsilon) return false;
+
+	return true;
 }
 
 #endif

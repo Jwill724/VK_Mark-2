@@ -1,0 +1,112 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#include "../include/common.glsl"
+#include "../include/culling.glsl"
+
+layout(local_size_x = 256) in;
+
+shared uint sChunkTotal;
+shared uint sScan[256];
+
+uint exclusiveScan256(uint value)
+{
+	uint tid = gl_LocalInvocationIndex;
+	sScan[tid] = value;
+	barrier();
+
+	for (uint offset = 1u; offset < 256u; offset <<= 1u)
+	{
+		uint n = 0u;
+		if (tid >= offset) n = sScan[tid - offset];
+		barrier();
+		sScan[tid] += n;
+		barrier();
+	}
+
+	return sScan[tid] - value; // inclusive -> exclusive
+}
+
+void addDrawStats(uint mask, uint triangleCount)
+{
+	switch(mask)
+	{
+		case VIS_SLOT_OPAQUE:
+			atomicAdd(getGPUStatsBuffer().gpuStats.opaqueDrawCount, 1u);
+			atomicAdd(getGPUStatsBuffer().gpuStats.triangleCount, triangleCount);
+			return;
+		case VIS_SLOT_TRANSPARENT:
+			atomicAdd(getGPUStatsBuffer().gpuStats.transparentDrawCount, 1u);
+			atomicAdd(getGPUStatsBuffer().gpuStats.triangleCount, triangleCount);
+			return;
+
+		case VIS_SLOT_FLASHLIGHT:
+		case VIS_SLOT_CSM0:
+		case VIS_SLOT_CSM1:
+		case VIS_SLOT_CSM2:
+		case VIS_SLOT_CSM3:
+			atomicAdd(getGPUStatsBuffer().gpuStats.shadowDrawCount, 1u);
+			return;
+	}
+}
+
+void main()
+{
+	uint slot = gl_WorkGroupID.y;
+	uint tid  = gl_LocalInvocationIndex;
+
+	DrawBinCounterBuffer binCounters       = getDrawBinCounterBuffer();
+	DrawBinBuffer        bins              = getDrawBinBuffer();
+	IndirectDrawBuffer   draws             = getIndirectDrawBuffer();
+	IndirectDrawCountsBuffer drawCounts    = getIndirectDrawCountsBuffer();
+	MeshBuffer           meshes            = getMeshBuffer();
+	DrawBinKeysBuffer    keyTable          = getDrawBinKeyBuffer();
+	DebugToggles         debug             = getDebugToggles();
+
+	bool isShadowStream = (slot >= VIS_SLOT_CSM0) || (slot == VIS_SLOT_FLASHLIGHT);
+
+	if (tid == 0u) sChunkTotal = 0u;
+	barrier();
+
+	for (uint chunk = 0u; chunk < MAX_DRAW_BINS; chunk += 256u)
+	{
+		uint binID    = chunk + tid;
+		uint flatIdx  = slot * MAX_DRAW_BINS + binID;
+		uint count    = binCounters.drawBinCounters[flatIdx];
+
+		uint offsetInChunk = exclusiveScan256(count);
+		uint binOffset     = sChunkTotal + offsetInChunk;
+
+		if (count > 0u)
+		{
+			bins.drawBins[flatIdx].instanceOffset = binOffset;
+			bins.drawBins[flatIdx].instanceCount  = count;
+
+			// reset counter -> becomes intra-bin cursor for place pass
+			binCounters.drawBinCounters[flatIdx] = 0u;
+
+			uint  drawIdx = atomicAdd(drawCounts.counts[slot], 1u);
+			uvec2 mm      = keyTable.dense[binID];
+			Mesh  mesh    = meshes.meshes[mm.x];
+
+			IndirectIndexedDrawCmd cmd;
+			cmd.indexCount    = isShadowStream ? mesh.shadowIndexCount : mesh.indexCount;
+			cmd.firstIndex    = isShadowStream ? mesh.shadowFirstIndex : mesh.firstIndex;
+			cmd.instanceCount = count;
+			cmd.vertexOffset  = int(mesh.vertexOffset);
+			cmd.firstInstance = streamInstanceBase(slot) + binOffset;
+
+			draws.indirectDraws[streamDrawBase(slot) + drawIdx] = cmd;
+
+			// stats
+			if (DBG(enableProfilerView))
+			{
+				addDrawStats(slot, (cmd.indexCount / 3u) * count);
+			}
+		}
+
+		barrier();
+		if (tid == 255u) sChunkTotal += offsetInChunk + count;
+		barrier();
+	}
+}

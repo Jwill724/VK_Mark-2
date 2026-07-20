@@ -93,7 +93,6 @@ void Engine::Run()
 			continue; // This condition shouldn't occur, but try again?
 		}
 
-		_renderer.ResetFrameStats();
 		_renderer.StartTimer();
 		_renderer.UpdateRendererContext(_mainWindow.GetWindowHandle());
 		_renderer.EndSceneUpdateTimer();

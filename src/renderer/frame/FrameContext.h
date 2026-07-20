@@ -39,40 +39,19 @@ public:
 	void SetPendingAddrTableVersion(uint32_t version) { m_pendingAddressTableVersion = version; }
 	uint32_t GetPendingAddrTableVersion() const noexcept { return m_pendingAddressTableVersion; }
 
-	const std::vector<Instance>& GetVisibleInstances() const { return m_visibleInstances; }
-	std::vector<Instance>& GetVisibleInstances() { return m_visibleInstances; }
-
-	const std::vector<VkDrawIndexedIndirectCommand>& GetIndirectCmds() const { return m_indirectDraws; }
-	std::vector<VkDrawIndexedIndirectCommand>& GetIndirectCmds() { return m_indirectDraws; }
-
 	std::vector<VkCommandBuffer>& GetTransferCommands() { return m_transferCommands; }
 
 	void CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue);
 	void StashSubmitted(QueueType queue);
 	void FreeStashedCmds(const DeviceContext& deviceCtx);
 
-	void ClearDrawData()
-	{
-		m_visibleInstances.clear();
-		m_indirectDraws.clear();
-		m_opaqueDrawRange = {};
-		m_opaqueInstanceRange = {};
-		m_transparentDrawRange = {};
-		m_transparentInstanceRange = {};
-		m_flashlightShadowDrawRange = {};
-		m_flashlightShadowInstanceRange = {};
-
-		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
-		{
-			m_csmDrawRanges[i] = {};
-			m_csmInstanceRanges[i] = {};
-		}
-	}
-
 	void ClusterReset(Allocator& allocator);
 	void CreateClusterBuffers(
 		const ClusterBufferSizes& clusterBufSizes,
 		Allocator& allocator);
+
+	void DestroyDebugBuffers(Allocator& allocator);
+	void CreateDebugBuffers(Allocator& allocator);
 
 	void CreateCMAA2Buffers(
 		const Cmaa2BufferSizes& cmaa2BufSizes,
@@ -87,79 +66,15 @@ public:
 		return m_passTimestampRanges[static_cast<uint32_t>(pass)];
 	}
 
-	bool IsOpaqueVisible() const noexcept
-	{
-		return m_opaqueDrawRange.commandCount > 0 && m_opaqueInstanceRange.visibleCount > 0;
-	}
-	bool IsTransparentVisible() const noexcept
-	{
-		return m_transparentDrawRange.commandCount > 0 && m_transparentInstanceRange.visibleCount > 0;
-	}
-
-	bool IsThereVisibles() const noexcept
-	{
-		return IsOpaqueVisible() || IsTransparentVisible();
-	}
-
 	bool IsTemporalValid() const noexcept { return m_bIsTemporalValid; }
-
-	const IndirectDrawRange& GetOpaqueDrawRange() const { return m_opaqueDrawRange; }
-	IndirectDrawRange& GetOpaqueDrawRange() { return m_opaqueDrawRange; }
-
-	const InstanceRange& GetOpaqueInstanceRange() const { return m_opaqueInstanceRange; }
-	InstanceRange& GetOpaqueInstanceRange() { return m_opaqueInstanceRange; }
-
-	const IndirectDrawRange& GetTransparentDrawRange() const { return m_transparentDrawRange; }
-	IndirectDrawRange& GetTransparentDrawRange() { return m_transparentDrawRange; }
-
-	const InstanceRange& GetTransparentInstanceRange() const { return m_transparentInstanceRange; }
-	InstanceRange& GetTransparentInstanceRange() { return m_transparentInstanceRange; }
-
-	const IndirectDrawRange& GetCSMDrawRange(uint32_t cascade) const;
-	IndirectDrawRange& GetCSMDrawRange(uint32_t cascade);
-
-	const InstanceRange& GetCSMInstanceRange(uint32_t cascade) const;
-	InstanceRange& GetCSMInstanceRange(uint32_t cascade);
-
-	const IndirectDrawRange& GetFlashlightDrawRange() const { return m_flashlightShadowDrawRange; }
-
-	IndirectDrawRange& GetFlashlightDrawRange() { return m_flashlightShadowDrawRange; }
-
-	const InstanceRange& GetFlashlightInstanceRange() const { return m_flashlightShadowInstanceRange; }
-
-	InstanceRange& GetFlashlightInstanceRange() { return m_flashlightShadowInstanceRange; }
-
-	void SetDrawData(DrawBuildOutput&& out)
-	{
-		m_visibleInstances = std::move(out.visibleInstances);
-		m_indirectDraws = std::move(out.indirectDraws);
-
-		m_opaqueInstanceRange = out.opaqueInstances;
-		m_opaqueDrawRange = out.opaqueDraws;
-
-		m_transparentInstanceRange = out.transparentInstances;
-		m_transparentDrawRange = out.transparentDraws;
-
-		for (uint32_t i = 0; i < RD::MAX_SHADOW_CASCADES; ++i)
-		{
-			m_csmDrawRanges[i] = out.csm[i].drawRange;
-			m_csmInstanceRanges[i] = out.csm[i].instanceRange;
-		}
-
-		m_flashlightShadowDrawRange = out.flashlight.drawRange;
-		m_flashlightShadowInstanceRange = out.flashlight.instanceRange;
-	}
-
-	void ValidateOpaque() const;
-	void ValidateTransparent() const;
-	void ValidateCSM(uint32_t cascade) const;
-	void ValidateFlashlight() const;
+	bool IsHiZValid()      const noexcept { return m_bIsHiZValid && m_bIsTemporalValid; }
 
 	VkCommandPool  GetTransferPool()  const { return m_transferPool; }
 	uint64_t&      GetTransferWaitValue()   { return transferWaitValue; }
 
-	bool IsTransformsUploadNeeded()  const noexcept { return m_bTransformsBufferUploadNeeded; }
-	bool IsLightsUploadNeeded()      const noexcept { return m_bLightsBufferUploadNeeded; }
+	bool IsInstanceInputsUploadNeeded() const noexcept { return m_bInstanceInputUploadNeeded; }
+	bool IsTransformsUploadNeeded()     const noexcept { return m_bTransformsBufferUploadNeeded; }
+	bool IsLightsUploadNeeded()         const noexcept { return m_bLightsBufferUploadNeeded; }
 
 	void ClearTransformsUploadFlag() noexcept { m_bTransformsBufferUploadNeeded = false; }
 	void ClearLightsUploadFlag()     noexcept { m_bLightsBufferUploadNeeded = false; }
@@ -233,16 +148,14 @@ public:
 		}
 	}
 
-	void SetVisibilityResult(VisibilitySyncResult result) { m_visibilitySyncResult = std::move(result); }
+	void FlagInstanceInputUpload(bool flag) { m_bInstanceInputUploadNeeded = flag; }
+	void ClearInstanceInputUploadFlag() { m_bInstanceInputUploadNeeded = false; }
 
 	CMAA2Push& GetCMAA2Push() { return m_cmaa2Push; }
 
 	const LightClustersData& GetClusterData() const { return m_clusterData; }
 
-	const AllocatedBuffer& GetOBBLineDebugBuffer() const { return m_obbLineDebug_GPU; }
-	const std::vector<uint32_t>& GetOBBDrawOffsets() const { return m_obbDrawOffsets; }
-
-	const VisibilitySyncResult& GetVisibilitySyncResult() const { return m_visibilitySyncResult; }
+	const AllocatedBuffer& GetStatsReadbackBuffer() const { return m_statsReadback; }
 
 private:
 	uint32_t m_frameIndex = 0u;
@@ -266,10 +179,6 @@ private:
 	std::vector<VkCommandBuffer> m_computeCommandsToFree;
 	std::vector<VkCommandBuffer> m_secondaryCommandsToFree;
 
-	// Flattened instance + command buffers
-	std::vector<Instance> m_visibleInstances;
-	std::vector<VkDrawIndexedIndirectCommand> m_indirectDraws;
-
 	uint32_t m_recentLightListCount = 0u;
 	uint32_t m_uploadedFlashlightVersion = 0u;
 
@@ -279,21 +188,6 @@ private:
 	std::array<uint64_t, PASS_TIMESTAMP_QUERY_COUNT> m_timestampResults{};
 	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsed{};
 
-	// Visible instances from directional light perspective
-	std::array<IndirectDrawRange, RD::MAX_SHADOW_CASCADES> m_csmDrawRanges;
-	std::array<InstanceRange, RD::MAX_SHADOW_CASCADES> m_csmInstanceRanges;
-
-	// Shadow casters for flashlight
-	IndirectDrawRange m_flashlightShadowDrawRange;
-	InstanceRange m_flashlightShadowInstanceRange;
-
-	IndirectDrawRange m_opaqueDrawRange;
-	InstanceRange m_opaqueInstanceRange;
-	IndirectDrawRange m_transparentDrawRange;
-	InstanceRange m_transparentInstanceRange;
-
-	VisibilitySyncResult m_visibilitySyncResult;
-
 	Extents2D m_cachedDrawExtent;
 
 	// Takes renderer descriptor writer
@@ -302,12 +196,17 @@ private:
 	void SetTemporalResult(bool result) { m_bIsTemporalValid = result; }
 	bool m_bIsTemporalValid = false;
 
+	void SetHiZValidResult(bool result) { m_bIsHiZValid = result; }
+	bool m_bIsHiZValid = false;
+
 	CMAA2Push m_cmaa2Push;
 
 	LightClustersData m_clusterData;
 
-	// Culling data
-	//VisibilityPush m_visibilityPush{};
+	bool m_bDebugLineRendering = false;
+
+	// Handles both draw bin keys and instance inputs since they are directly tied together
+	bool m_bInstanceInputUploadNeeded = false;
 
 	bool m_bTransformsInitialized = false;
 	bool m_bTransformsBufferUploadNeeded = false;
@@ -320,9 +219,8 @@ private:
 	BindlessBDATable m_gpuAddressTable;
 	uint32_t m_pendingAddressTableVersion = 0u;
 
-	// Vertex buffer, address is pulled via push constant
-	AllocatedBuffer m_obbLineDebug_GPU;
-	std::vector<uint32_t> m_obbDrawOffsets;
+	AllocatedBuffer m_statsReadback;
+	const GPUStats* m_statsMapped = nullptr;
 
 	AllocatedBuffer m_directionalCSM_UBO;
 

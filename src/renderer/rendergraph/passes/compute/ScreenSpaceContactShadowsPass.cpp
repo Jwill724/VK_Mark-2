@@ -48,7 +48,7 @@ void RegisterContactShadowsPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						const auto& debug = ctx.profiler->debugToggles;
-						return debug.enableShadows && debug.enableSSS && ctx.frameState->bIsOpaqueVisible;
+						return debug.enableShadows && debug.enableSSS && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

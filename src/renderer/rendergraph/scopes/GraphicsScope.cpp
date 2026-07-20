@@ -2,10 +2,7 @@
 
 #include "GraphicsScope.h"
 #include "../../backend/DescriptorWriter.h"
-#include "../../frame/FrameResources.h"
 #include "EngineTypes.h"
-
-static constexpr VkDeviceSize DRAW_CMD_SIZE = sizeof(VkDrawIndexedIndirectCommand);
 
 static void DefineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent) noexcept
 {
@@ -137,10 +134,11 @@ void GraphicsScope::EndRendering(VkCommandBuffer cmd)
 // Draw functions
 // ---------------
 
-void GraphicsScope::DrawIndexedIndirect(
+void GraphicsScope::DrawIndexedIndirectCount(
 	VkCommandBuffer cmd,
-	VkBuffer indirectBuffer,
-	const IndirectDrawRange& drawRange,
+	uint32_t drawIndex,
+	VkBuffer indirectDrawBuffer,
+	VkBuffer indirectCountBuffer,
 	const PipelineHandle& pipeHandle,
 	PushDescriptorWriter& pushWriter)
 {
@@ -156,19 +154,22 @@ void GraphicsScope::DrawIndexedIndirect(
 		pipeHandle.bindPoint,
 		pipeHandle.layout.pipelineLayout);
 
-	vkCmdDrawIndexedIndirect(
+	vkCmdDrawIndexedIndirectCount(
 		cmd,
-		indirectBuffer,
-		drawRange.firstCommand * DRAW_CMD_SIZE,
-		drawRange.commandCount,
-		DRAW_CMD_SIZE);
+		indirectDrawBuffer,
+		RD::DRAW_BYTE_OFFSET_BY_SLOT[drawIndex],
+		indirectCountBuffer,
+		static_cast<uint64_t>(drawIndex * 4u),
+		RD::MAX_DRAWS_BY_SLOT[drawIndex],
+		RD::INDIRECT_CMD_SIZE);
 }
 
-void GraphicsScope::DrawVertexPull(
+void GraphicsScope::DrawIndirect(
 	VkCommandBuffer cmd,
+	VkBuffer indirectDrawBuffer,
 	VkBuffer vertexBuffer,
+	const VkDeviceSize indirectOffset,
 	const VkDeviceSize vertexOffset,
-	const std::vector<uint32_t>& drawOffsets,
 	const PipelineHandle& pipeHandle)
 {
 	vkCmdBindPipeline(
@@ -176,14 +177,11 @@ void GraphicsScope::DrawVertexPull(
 		pipeHandle.bindPoint,
 		pipeHandle.pipeline);
 
-	BindPushConstant(cmd, pipeHandle); // Address pull through push constant
+	BindPushConstant(cmd, pipeHandle);
 
 	vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, &vertexOffset);
 
-	for (const auto& drawOffset : drawOffsets)
-	{
-		vkCmdDraw(cmd, RendererDefinitions::VERTS_LINE_COUNT, 1, drawOffset, 0);
-	}
+	vkCmdDrawIndirect(cmd, indirectDrawBuffer, indirectOffset, 1, RD::INDIRECT_CMD_SIZE);
 }
 
 void GraphicsScope::DrawTriangle(

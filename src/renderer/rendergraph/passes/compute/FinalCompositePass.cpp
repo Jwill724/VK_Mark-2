@@ -83,26 +83,13 @@ void RegisterFinalCompositePass(
 							opaque,
 							linearSampler);
 
+						scope.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
+							transparent,
+							linearSampler);
 
-						if (ctx.frameState->bIsTransparentVisible)
-						{
-							scope.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								transparent,
-								linearSampler);
-						}
-						else
-						{
-							scope.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								dummy,
-								linearSampler);
-						}
-
-						if (ctx.frameState->bIsOpaqueVisible &&
-							ctx.profiler->debugToggles.enableVolumetrics &&
+						if (ctx.profiler->debugToggles.enableVolumetrics &&
 							ctx.profiler->debugToggles.enableShadows)
 						{
 							scope.BindReadImage(
@@ -120,8 +107,7 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 
-						if (ctx.frameState->bHasVisibles &&
-							ctx.profiler->debugToggles.enableLensFlare)
+						if (ctx.profiler->debugToggles.enableLensFlare)
 						{
 							scope.BindReadImage(
 								pass.pushWriter,
@@ -138,8 +124,7 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 
-						if (ctx.profiler->debugToggles.enableBloom &&
-							ctx.frameState->bHasVisibles)
+						if (ctx.profiler->debugToggles.enableBloom)
 						{
 							scope.BindReadImage(
 								pass.pushWriter,

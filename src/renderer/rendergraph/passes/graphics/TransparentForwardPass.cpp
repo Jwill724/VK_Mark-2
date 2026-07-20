@@ -48,21 +48,21 @@ void RegisterTransparentForwardPass(
 						AttachmentDesc tAccumAttach{};
 						tAccumAttach.imageView = transparentAccum.m_imageView;
 						tAccumAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-						tAccumAttach.clearValue.color = { 0.0f, 0.0f, 0.0f, 0.0f };
+						tAccumAttach.SetColor({0.0f});
 
 						AttachmentDesc tRevealAttach{};
 						tRevealAttach.imageView = transparentReveal.m_imageView;
 						tRevealAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-						tRevealAttach.clearValue.color = { 1.0f, 0.0f, 0.0f, 0.0f };
+						tRevealAttach.SetColor({ 1.0f, 0.0f, 0.0f, 0.0f });
 
 						AttachmentDesc depthAttach{};
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.clearValue.depthStencil.depth = 0.0f;
+						depthAttach.SetDepth(0.0f);
 
-						if (!ctx.frameState->bIsOpaqueVisible)
+						if (!ctx.frameState->activeInstanceCount > 0)
 						{
 							const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
 							depthAttach.imageView = depthRaw.m_imageView;
@@ -80,7 +80,7 @@ void RegisterTransparentForwardPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsTransparentVisible;
+						return ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(
@@ -100,26 +100,18 @@ void RegisterTransparentForwardPass(
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 
-						const auto& drawRange = frameCtx->GetTransparentDrawRange();
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
+
 						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
-
-						const uint64_t triangles = SumTrianglesIndirectRange(
-							frameCtx->GetIndirectCmds(),
-							drawRange.firstCommand,
-							drawRange.commandCount,
-							pipeline.topology);
-
-						ctx.profiler->AddTransparentIndirect(
-							1,
-							drawRange.commandCount,
-							triangles);
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawIndexedIndirect(
+						pso.DrawIndexedIndirectCount(
 							cmd,
+							RD::VIS_SLOT_TRANSPARENT,
 							indirectBuffer,
-							drawRange,
+							indirectCountBuffer,
 							pipeline,
 							pass.pushWriter);
 

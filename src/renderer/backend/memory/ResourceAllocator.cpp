@@ -78,16 +78,20 @@ AllocatedBuffer Allocator::AllocateGPUBuffer(
 	switch (slot)
 	{
 		case RD::Renderer_Buffer::IndirectDraws:
+		case RD::Renderer_Buffer::IndirectDrawCounts:
 		case RD::Renderer_Buffer::DispatchIndirectArgs:
+		case RD::Renderer_Buffer::DebugDraw:
 			desc.usage = Vulkan_BufferUsage::INDIRECT;
 			break;
 		case RD::Renderer_Buffer::Vertex:
+		case RD::Renderer_Buffer::DebugVertex:
 			desc.usage = Vulkan_BufferUsage::VERTEX;
 			break;
 		case RD::Renderer_Buffer::Index:
 			desc.usage = Vulkan_BufferUsage::INDEX;
 			break;
 		case RD::Renderer_Buffer::Transforms:
+		case RD::Renderer_Buffer::DrawStats:
 			desc.usage = Vulkan_BufferUsage::BDA_SRC_COPY;
 			break;
 	}

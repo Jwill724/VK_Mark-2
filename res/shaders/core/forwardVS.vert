@@ -14,10 +14,13 @@ layout(location = 4) out vec3 outNormal;
 layout(location = 5) out vec3 outTangent;
 layout(location = 6) out float outTangentW;
 layout(location = 7) flat out uint outMaterialID;
+layout(location = 8) flat out uint outBHasNormalMap;
 
 void main() {
-	Instance inst = getInstanceBuffer().instances[gl_InstanceIndex];
-	outMaterialID = inst.materialID;
+	uint instanceID     = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	InstanceInput inst  = getInstanceInputBuffer().instanceInputs[instanceID];
+	outMaterialID       = inst.materialID;
+	outBHasNormalMap    = uint((inst.flags & HAS_NORMALS) != 0u);
 
 	vec2 uv;
 	vec4 color;

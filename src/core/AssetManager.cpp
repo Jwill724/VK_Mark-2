@@ -8,10 +8,10 @@
 
 static const std::unordered_map<ModelID, std::string> AssetPaths
 {
-	{ ModelID::Sponza,            "sponza.glb"               },
+	//{ ModelID::Sponza,            "sponza.glb"               },
 	//{ ModelID::Bistro,            "Bistro.glb"               },
 	//{ ModelID::MRSpheres,         "MetalRoughSpheres.glb"    },
-	//{ ModelID::Duck,              "Duck.glb"                 },
+	{ ModelID::Duck,              "Duck.glb"                 },
 	//{ ModelID::DamagedHelmet,     "DamagedHelmet.glb"        },
 	//{ ModelID::DragonAttenuation, "DragonAttenuation.glb"    },
 	//{ ModelID::City,              "city/town4new.glb"        },
@@ -556,12 +556,13 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 
 				// --- MeshDesc ---
 				MeshDesc meshDesc{};
-				meshDesc.firstIndex     = static_cast<uint32_t>(idxCursor);
-				meshDesc.indexCount     = iCnt;
-				meshDesc.vertexOffset   = static_cast<uint32_t>(vtxCursor);
-				meshDesc.vertexCount    = vCnt;
-				meshDesc.localAABB.vmin = vmin;
-				meshDesc.localAABB.vmax = vmax;
+				meshDesc.firstIndex          = static_cast<uint32_t>(idxCursor);
+				meshDesc.indexCount          = iCnt;
+				meshDesc.vertexOffset        = static_cast<uint32_t>(vtxCursor);
+				meshDesc.vertexCount         = vCnt;
+				meshDesc.localAABB.vmin      = vmin;
+				meshDesc.localAABB.vmax      = vmax;
+				meshDesc.localBoundingRadius = MeshRegistry::ComputeLocalBoundingRadius(vtxPtr, vCnt, vmin, vmax);
 
 				const uint32_t lod0Idx = static_cast<uint32_t>(batch.meshes.size());
 				meshDesc.lod0 = lod0Idx;
@@ -604,7 +605,7 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 					MeshDesc lodMesh   = meshDesc;
 					lodMesh.firstIndex = static_cast<uint32_t>(batch.indices.size());
 					lodMesh.indexCount = static_cast<uint32_t>(lodCount);
-					lodMesh.flags     |= MESH_FLAG_IS_LOD;
+					//lodMesh.flags     |= MESH_FLAG_IS_LOD;
 					const uint32_t lodIdx = static_cast<uint32_t>(batch.meshes.size());
 					batch.indices.insert(batch.indices.end(), lodIdxPtr, lodIdxPtr + lodCount);
 					batch.meshes.push_back(lodMesh);
@@ -613,14 +614,9 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 
 				if ((iCnt % 3u) == 0u)
 				{
-					uint32_t lod1 = buildLOD(0.60f, 0.005f);
-					uint32_t lod2 = buildLOD(0.35f, 0.010f);
-					uint32_t lod3 = buildLOD(0.20f, 0.020f);
-
-					auto& md = batch.meshes[lod0Idx];
-					md.lod1 = lod1 != UINT32_MAX ? lod1 : lod0Idx;
-					md.lod2 = lod2 != UINT32_MAX ? lod2 : md.lod1;
-					md.lod3 = lod3 != UINT32_MAX ? lod3 : md.lod2;
+					const uint32_t lod1 = buildLOD(0.60f, 0.005f);
+					const uint32_t lod2 = buildLOD(0.35f, 0.010f);
+					const uint32_t lod3 = buildLOD(0.20f, 0.020f);
 
 					const bool thinMesh = MeshRegistry::IsThinMeshForShadows(
 						Mesh{ .localAABB = { vmin, vmax } });
@@ -628,25 +624,42 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 					// Pin shadow-LOD0 for geometry where simplification leaks light:
 					// thin slivers, tiny meshes, and alpha-tested foliage.
 					const bool isFoliage = (matFlags & MATERIAL_FLAG_ALPHA_MASKED)
-										 || (matFlags & MATERIAL_FLAG_IS_TREE);
+										|| (matFlags & MATERIAL_FLAG_IS_TREE);
 
 					const bool forceLod0 = thinMesh || iCnt < 300u || isFoliage;
 
-					if (forceLod0)
+					const glm::vec3 extent = vmax - vmin;
+					const bool isGoodOccludee =
+						!thinMesh &&
+						!isFoliage &&
+						iCnt >= 300u &&
+						(extent.x * extent.y * extent.z) > 0.001f;
+
+					uint32_t shadowLod0 = lod0Idx;
+					uint32_t shadowLod1 = lod0Idx;
+					uint32_t shadowLod2 = lod0Idx;
+
+					if (!forceLod0)
 					{
-						md.shadowLod0 = lod0Idx;
-						md.shadowLod1 = lod0Idx;
-						md.shadowLod2 = lod0Idx;
-						md.flags |= MESH_LOD_FLAG_FORCE_SHADOW_LOD0;
+						shadowLod1 = buildLOD(0.40f, 0.006f);
+						shadowLod2 = buildLOD(0.18f, 0.012f);
+						if (shadowLod1 == UINT32_MAX) shadowLod1 = lod0Idx;
+						if (shadowLod2 == UINT32_MAX) shadowLod2 = shadowLod1;
 					}
-					else
-					{
-						md.shadowLod0 = lod0Idx;
-						md.shadowLod1 = buildLOD(0.40f, 0.006f);
-						md.shadowLod2 = buildLOD(0.18f, 0.012f);
-						if (md.shadowLod1 == UINT32_MAX) md.shadowLod1 = lod0Idx;
-						if (md.shadowLod2 == UINT32_MAX) md.shadowLod2 = md.shadowLod1;
-					}
+
+					auto& md = batch.meshes[lod0Idx];
+					md.flags |= MESH_FLAG_IS_LOD;
+
+					md.lod1 = (lod1 != UINT32_MAX) ? lod1 : lod0Idx;
+					md.lod2 = (lod2 != UINT32_MAX) ? lod2 : md.lod1;
+					md.lod3 = (lod3 != UINT32_MAX) ? lod3 : md.lod2;
+
+					md.shadowLod0 = shadowLod0;
+					md.shadowLod1 = shadowLod1;
+					md.shadowLod2 = shadowLod2;
+
+					if (forceLod0)      md.flags |= MESH_LOD_FLAG_FORCE_SHADOW_LOD0;
+					if (isGoodOccludee) md.flags |= MESH_FLAG_GOOD_OCCLUDEE;
 				}
 
 				batch.instances.emplace_back(InstanceDesc{

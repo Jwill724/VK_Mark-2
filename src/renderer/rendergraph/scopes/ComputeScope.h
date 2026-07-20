@@ -49,8 +49,6 @@ public:
 		m_indirect = {};
 		m_bSkipGroups = false;
 	}
-	// MUST call SetIndirect() first
-	void FillIndirectDispatch(VkCommandBuffer cmd, size_t stride);
 
 	void FillGpuBuffer(VkCommandBuffer cmd, const AllocatedBuffer& buf, uint32_t value = 0u);
 

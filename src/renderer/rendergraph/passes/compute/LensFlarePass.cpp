@@ -94,25 +94,13 @@ void RegisterLensFlarePass(
 							opaque,
 							linearSampler);
 
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
+							transparent,
+							linearSampler);
 
-						if (ctx.frameState->bIsTransparentVisible)
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								transparent,
-								linearSampler);
-						}
-						else
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_2,
-								dummy,
-								linearSampler);
-						}
-
-						if (ctx.frameState->bIsOpaqueVisible &&
+						if (ctx.frameState->activeInstanceCount > 0 &&
 							ctx.profiler->debugToggles.enableVolumetrics &&
 							ctx.profiler->debugToggles.enableShadows)
 						{
@@ -135,7 +123,7 @@ void RegisterLensFlarePass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.profiler->debugToggles.enableLensFlare && ctx.frameState->bHasVisibles;
+						return ctx.profiler->debugToggles.enableLensFlare && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

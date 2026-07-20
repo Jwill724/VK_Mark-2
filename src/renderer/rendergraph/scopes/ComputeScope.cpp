@@ -45,14 +45,3 @@ void ComputeScope::FillGpuBuffer(VkCommandBuffer cmd, const AllocatedBuffer& buf
 		buf.m_bytesSize,
 		value);
 }
-
-void ComputeScope::FillIndirectDispatch(VkCommandBuffer cmd, size_t stride)
-{
-	ASSERT(m_indirect.IsSet());
-	vkCmdFillBuffer(
-		cmd,
-		m_indirect.buffer,
-		m_indirect.offset,
-		stride,
-		0u);
-}

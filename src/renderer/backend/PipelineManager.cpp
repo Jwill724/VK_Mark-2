@@ -40,8 +40,8 @@ void PM::RegisterPipelines()
 	reg(RP::Transparent, {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
 						  { RS::Transparent_f, SS::FRAGMENT_STAGE }});
 
-	reg(RP::OBBLine,     {{ RS::ObbLine_v,     SS::VERTEX_STAGE   },
-						  { RS::ObbLine_f,     SS::FRAGMENT_STAGE }});
+	reg(RP::LineDebug,   {{ RS::LineDebug_v,     SS::VERTEX_STAGE   },
+						  { RS::LineDebug_f,     SS::FRAGMENT_STAGE }});
 
 	// === Compute ===
 	auto regC = [&](RP id, RS shader) {
@@ -83,7 +83,16 @@ void PM::RegisterPipelines()
 	regC(RP::LightCulling,              RS::LightCulling_c);
 	regC(RP::IndirectArgsLight,         RS::IndirectArgsLight_c);
 	regC(RP::ScreenSpaceContactShadows, RS::ScreenSpaceContactShadows_c);
+	regC(RP::ShadowBounds,              RS::ShadowBounds_c);
 	regC(RP::ChromaticAberration,       RS::ChromaticAberration_c);
+	regC(RP::InstanceCull,              RS::InstanceCull_c);
+	regC(RP::DrawArgs,                  RS::DrawArgs_c);
+	regC(RP::DrawEmit,                  RS::DrawEmit_c);
+	regC(RP::DrawScatter,               RS::DrawScatter_c);
+	regC(RP::DrawPlace,                 RS::DrawPlace_c);
+	regC(RP::DebugCount,                RS::DebugCount_c);
+	regC(RP::DebugArgs,                 RS::DebugArgs_c);
+	regC(RP::DebugBuild,                RS::DebugBuild_c);
 
 	// === Presets ===
 	m_pipelinePresets[static_cast<size_t>(RP::Opaque)].cullMode            = VK_CULL_MODE_BACK_BIT;
@@ -92,13 +101,13 @@ void PM::RegisterPipelines()
 	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].depthCompareOp   = VK_COMPARE_OP_GREATER;
 	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].enableDepthWrite = true;
 
-	m_pipelinePresets[static_cast<size_t>(RP::OBBLine)].polygonMode      = VK_POLYGON_MODE_LINE;
-	m_pipelinePresets[static_cast<size_t>(RP::OBBLine)].topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	m_pipelinePresets[static_cast<size_t>(RP::OBBLine)].enableDepthWrite = true;
-	m_pipelinePresets[static_cast<size_t>(RP::OBBLine)].depthCompareOp   = VK_COMPARE_OP_GREATER;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].polygonMode      = VK_POLYGON_MODE_LINE;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].enableDepthWrite = true;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].depthCompareOp   = VK_COMPARE_OP_GREATER;
 
 	auto& prepass                    = m_pipelinePresets[static_cast<size_t>(RP::Prepass)];
-	prepass.colorFormats             = { Vulkan_Format::ABGRpacked, Vulkan_Format::RG16F };
+	prepass.colorFormats             = { Vulkan_Format::RG32U, Vulkan_Format::ABGRpacked, Vulkan_Format::RG16F };
 	prepass.depthFormat              = Vulkan_Format::D32;
 	prepass.depthCompareOp           = VK_COMPARE_OP_GREATER;
 	prepass.cullMode                 = VK_CULL_MODE_BACK_BIT;

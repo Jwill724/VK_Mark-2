@@ -17,6 +17,9 @@
 #include "core/Environment.h"
 #include "core/AssetUploadTypes.h"
 
+static_assert(sizeof(InstanceInput)   == SIZEOF_INSTANCE_INPUT);
+static_assert(sizeof(DrawBin)         == SIZEOF_DRAW_BIN);
+
 void Renderer::Init(
 	const Window& window,
 	JobSystem& jobSystem)
@@ -103,10 +106,10 @@ void Renderer::Init(
 	InitFrameResources();
 
 	const size_t totalFrameStaging =
-		MAX_INSTANCE_SIZE_GPU_BYTES +
-		MAX_INDIRECT_SIZE_GPU_BYTES +
-		MAX_TRANSFORMS_SIZE_GPU_BYTES +
-		MAX_LIGHTS_SIZE_GPU_BYTES +
+		GPU_BYTES_INSTANCE_INPUT +
+		GPU_BYTES_DRAW_BIN_KEYS + 
+		GPU_BYTES_TRANSFORMS +
+		GPU_BYTES_LIGHTS +
 		m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES;
 
 	m_allocator.InitFrameStaging(totalFrameStaging, m_device->GetNonCoherentAtomSize());
@@ -122,8 +125,19 @@ void Renderer::Init(
 
 	m_globalAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::Luminance,
-		LUMINANCE_GROUPS_SIZE_GPU_BYTES,
+		GPU_BYTES_LUMINANCE,
 		m_allocator);
+
+	m_globalAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::InstanceInputs,
+		GPU_BYTES_INSTANCE_INPUT,
+		m_allocator);
+
+	m_globalAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::DrawBinKeys,
+		GPU_BYTES_DRAW_BIN_KEYS,
+		m_allocator);
+
 
 	m_clusterBufferSizes.UpdateClusterBufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
 	m_cmaa2BufferSizes.UpdateCmaa2BufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
@@ -201,7 +215,7 @@ void Renderer::Init(
 
 		auto stageCopyLuminance = m_allocator.GlobalStaging.Stage(
 			m_luminanceSums,
-			LUMINANCE_GROUPS_SIZE_GPU_BYTES,
+			GPU_BYTES_LUMINANCE,
 			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Luminance).m_buffer);
 
 		auto stageCopyGlobalAddrTable = m_allocator.GlobalStaging.Stage(
@@ -275,7 +289,8 @@ void Renderer::Init(
 // Only called after swapchain presented and queue wait
 void Renderer::CheckCSMAtlasExtentUpdate()
 {
-	if (m_currentShadowQuality != m_profiler.shadowQuality) {
+	if (m_currentShadowQuality != m_profiler.shadowQuality)
+	{
 		StallDevice();
 		m_currentShadowQuality = m_profiler.shadowQuality;
 		m_bindlessImageTable.UpdateCSMAtlasExtent(m_currentShadowQuality, m_allocator);
@@ -415,49 +430,6 @@ void Renderer::InitRenderSettings(
 
 	m_currentShadowQuality = shadowQuality;
 	m_profiler.shadowQuality = shadowQuality;
-}
-
-void Renderer::CreateOBBLineBuffer(FrameContext& frameCtx)
-{
-	const auto& meshes = m_registeredMeshes.GetMeshes();
-	const auto& transforms = World::GetScene().GetTransforms();
-
-	auto& drawOffsets = frameCtx.m_obbDrawOffsets;
-
-	std::vector<glm::vec3> allVerts;
-	auto emitOBBVerts = [&](const Instance& inst) {
-		const auto& aabb = meshes[inst.meshID].localAABB;
-		const auto& matrix = transforms[inst.transformID];
-		auto verts = GetOBBVertices(aabb, matrix);
-		uint32_t offset = static_cast<uint32_t>(allVerts.size());
-		drawOffsets.push_back(offset);
-		allVerts.insert(allVerts.end(), verts.begin(), verts.end());
-	};
-	uint32_t instanceIndex = 0;
-	uint32_t transparentInstEnd = frameCtx.m_transparentInstanceRange.firstInstance + frameCtx.m_transparentInstanceRange.visibleCount;
-	for (const auto& inst : frameCtx.m_visibleInstances)
-	{
-		// Only wanna cover the opaque and transparent range of instances, rest of vector is for shadows
-		if (instanceIndex == transparentInstEnd) break;
-		emitOBBVerts(inst);
-		instanceIndex++;
-	}
-
-	const size_t totalSize = allVerts.size() * sizeof(glm::vec3);
-
-	frameCtx.m_obbLineDebug_GPU = m_allocator.AllocateBuffer({
-		.size = totalSize,
-		.usage = Vulkan_BufferUsage::VERTEX_PULL,
-		.heap = HeapType::Upload
-		});
-
-	memcpy(frameCtx.m_obbLineDebug_GPU.m_mappedPtr, allVerts.data(), totalSize);
-
-	auto buffer = frameCtx.m_obbLineDebug_GPU;
-	frameCtx.m_cpuDeletionQueue.PushFunction([this, buffer, &drawOffsets]() mutable {
-		m_allocator.FreeBuffer(buffer);
-		drawOffsets.clear();
-	});
 }
 
 void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
@@ -659,13 +631,14 @@ void Renderer::BatchUploadMeshes(
 			md.shadowFirstIndex += localIndexBase;
 
 			Mesh gpuMesh{};
-			gpuMesh.firstIndex       = md.firstIndex;
-			gpuMesh.indexCount       = md.indexCount;
-			gpuMesh.vertexOffset     = md.vertexOffset;
-			gpuMesh.vertexCount      = md.vertexCount;
-			gpuMesh.shadowFirstIndex = md.shadowFirstIndex;
-			gpuMesh.shadowIndexCount = md.shadowIndexCount;
-			gpuMesh.localAABB        = md.localAABB;
+			gpuMesh.firstIndex          = md.firstIndex;
+			gpuMesh.indexCount          = md.indexCount;
+			gpuMesh.vertexOffset        = md.vertexOffset;
+			gpuMesh.vertexCount         = md.vertexCount;
+			gpuMesh.shadowFirstIndex    = md.shadowFirstIndex;
+			gpuMesh.shadowIndexCount    = md.shadowIndexCount;
+			gpuMesh.localAABB           = md.localAABB;
+			gpuMesh.localBoundingRadius = md.localBoundingRadius;
 
 			const uint32_t globalID = m_registeredMeshes.RegisterMesh(gpuMesh);
 			md.globalMeshID = globalID;
@@ -780,8 +753,6 @@ void Renderer::BatchUploadMaterials(
 			mat.emissiveStrength = desc.emissiveStrength;
 			mat.alphaCutoff      = desc.alphaCutoff;
 			mat.normalScale      = desc.normalScale;
-			mat.flags            = desc.flags;
-			mat.passType         = desc.passType;
 
 			const uint32_t globalID = static_cast<uint32_t>(m_materials.size());
 			desc.globalMaterialID   = globalID;
@@ -834,35 +805,56 @@ void Renderer::UpdateGlobalBufferTable(VkCommandBuffer cmd)
 }
 
 
+
+// ===============================================
+// ===============================================
+// ===============================================
+// ===============================================
+// ============= RUNTIME RENDERING ===============
+
 void Renderer::UpdateRendererContext(GLFWwindow* window)
 {
 	auto& frameCtx = GetCurrentFrame();
 
 	auto& debug = m_profiler.debugToggles;
 
+	const auto& scene = World::GetScene();
+
 	World::UpdateWorldState(frameCtx, m_allocator, m_profiler, window);
 
-	World::UpdateDrawData(
-		frameCtx,
+	frameCtx.SetTemporalResult(scene.GetTemporalResult() && !IsFirstFrame());
+	frameCtx.SetHiZValidResult(scene.GetSceneData().temporal.z);
+
+	bool instanceUploadNeeded = false;
+	instanceUploadNeeded = DrawPreparation::SyncInstanceInputs(
+		World::GetInstanceState(),
+		scene.GetVirtualInstances(),
+		World::_loadedScenes,
 		m_registeredMeshes.GetMeshes(),
 		m_registeredMeshes.GetLods(),
-		m_profiler,
+		scene.GetTransforms(),
 		m_materialFlagsIDs);
+
+	frameCtx.FlagInstanceInputUpload(instanceUploadNeeded);
+
+	if (frameCtx.IsInstanceInputsUploadNeeded())
+	{
+		m_drawBinTableBuild = DrawPreparation::BuildDrawBinTable(World::GetInstanceState().gpuInputs);
+	}
 
 	DrawPreparation::UploadGPUBuffersForFrame(
 		frameCtx,
+		m_globalAddressTable,
+		m_drawBinTableBuild.binKeys,
 		*m_device,
 		m_allocator,
-		World::GetScene().GetTransforms(),
+		World::GetInstanceState().gpuInputs,
+		scene.GetTransforms(),
 		LightingSystem::_globalLightList,
 		frameCtx.IsTemporalValid());
 
-	if (debug.enableOBBs && frameCtx.IsThereVisibles())
-	{
-		CreateOBBLineBuffer(frameCtx);
-	}
-
-	const auto& scene = World::GetScene();
+	// Updates inline uniform flashtoggle for instance culling shader
+	m_profiler.debugToggles.enableFlashlight = LightingSystem::_mainFlashLight.IsFlashLightOn();
 
 	auto& forwardPush = m_profiler.forwardPush;
 	auto& lumaPush = m_profiler.lumaExposureSettings;
@@ -886,25 +878,25 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		forwardPush.specularID = envSet.specular.m_bindlessID;
 	}
 
-	forwardPush.flashlightVP = LightingSystem::_mainFlashLight.ViewProj;
-	forwardPush.activeLightCount = LightingSystem::GetActiveLightCount();
-
 	bool postAACopyNeeded =
 		(debug.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF) &&
 		debug.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA));
 
-	frameCtx.SetTemporalResult(scene.GetTemporalResult() && !IsFirstFrame());
-
-	m_renderGraphState.bIsOpaqueVisible = frameCtx.IsOpaqueVisible();
-	m_renderGraphState.bIsTransparentVisible = frameCtx.IsTransparentVisible();
-	m_renderGraphState.bHasVisibles = frameCtx.IsThereVisibles();
-	m_renderGraphState.bTemporalValid = frameCtx.IsTemporalValid() && frameCtx.IsThereVisibles();
-	m_renderGraphState.bCopyPostAAImage = postAACopyNeeded && frameCtx.IsThereVisibles();
+	m_renderGraphState.bHiZValid = frameCtx.IsHiZValid();
+	m_renderGraphState.bTemporalValid = frameCtx.IsTemporalValid();
+	m_renderGraphState.bCopyPostAAImage = postAACopyNeeded;
 	m_renderGraphState.bShowImgui = ShouldRenderImgui();
+	m_renderGraphState.bDebugLine = frameCtx.m_bDebugLineRendering
+		&& (debug.showOpaqueOBBs || debug.showTransparentOBBs);
+
+	m_renderGraphState.activeInstanceCount = World::GetInstanceState().gpuInputs.size();
 
 	// These two are implied together
-	m_renderGraphState.activeLightCount = forwardPush.activeLightCount;
+	m_renderGraphState.activeLightCount = LightingSystem::GetActiveLightCount();
 	m_renderGraphState.bFlashlightOn = LightingSystem::_mainFlashLight.IsFlashLightOn();
+
+	debug.activeInstanceCount = m_renderGraphState.activeInstanceCount;
+	debug.activeLightCount = m_renderGraphState.activeLightCount;
 
 	new (&m_renderPassExecutionContext) RenderPassExecutionContext
 	{
@@ -923,6 +915,7 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 
 // =============================================
+// // Start of the frame
 // === CLEAR DATA AND AQUIRE SWAPCHAIN INDEX ===
 bool Renderer::PrepareFrame()
 {
@@ -942,7 +935,7 @@ bool Renderer::PrepareFrame()
 			frameCtx.m_timestampPassUsed,
 			m_device->GetTimestampPeriod());
 
-		for (uint32_t passIndex = 1; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
+		for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
 		{
 			if (!results.passResults[passIndex].valid) continue;
 
@@ -986,6 +979,10 @@ bool Renderer::PrepareFrame()
 	// Primarly uniform buffer cleanup
 	frameCtx.m_cpuDeletionQueue.Flush();
 
+	// =================================
+	// The safe zone now to do whatever
+	// =================================
+
 	const auto curWidth = m_drawExtent.Width();
 	const auto curHeight = m_drawExtent.Height();
 
@@ -1011,10 +1008,32 @@ bool Renderer::PrepareFrame()
 			m_allocator);
 	}
 
+	const auto& debug = m_profiler.debugToggles;
+
+	const bool wantsDebug =
+		debug.showOpaqueOBBs ||
+		debug.showTransparentOBBs;
+
+	if (wantsDebug != frameCtx.m_bDebugLineRendering)
+	{
+		if (wantsDebug)
+			frameCtx.CreateDebugBuffers(m_allocator);
+		else
+			frameCtx.DestroyDebugBuffers(m_allocator);
+
+		frameCtx.m_bDebugLineRendering = wantsDebug;
+	}
+
 	// Handles initialization and any updates during runtime
 	if (frameCtx.m_gpuAddressTable.IsTableDirty())
 	{
 		frameCtx.m_gpuAddressTable.UpdateCpuVersion();
+	}
+
+	if (m_profiler.debugToggles.enableProfilerView && frameCtx.m_statsMapped)
+	{
+		vmaInvalidateAllocation(m_allocator.GetVma(), frameCtx.m_statsReadback.m_allocation, 0, sizeof(GPUStats));
+		m_profiler.gpuStats = *frameCtx.m_statsMapped;
 	}
 
 	return m_bHasDrawExtentResized; // Should be false
@@ -1040,7 +1059,7 @@ bool Renderer::SubmitFrame()
 	waitInfos.emplace_back(VkSemaphoreSubmitInfo{
 		.sType =  VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
 		.semaphore = presentSem,
-		.stageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT
+		.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
 		});
 
 	const auto curTransferSignal = transferQ.GetCurrentSignalValue();
@@ -1053,10 +1072,7 @@ bool Renderer::SubmitFrame()
 			.sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
 			.semaphore = transferQ.GetTimelineSemaphore(),
 			.value     = frameCtx.transferWaitValue,
-			.stageMask =
-				VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT |
-				VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT |
-				VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT // earliest consumers of uploaded data
+			.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT // Buffers needed during visibility stage
 			});
 	}
 
@@ -1182,13 +1198,13 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 	{
 		if (frameCtx.IsTemporalValid())
 		{
-			BufferBarriers::TransferWriteToGraphicsRead(
+			BufferBarriers::TransferWriteToComputeRead(
 				frameCtx.m_commandBuffer,
 				addrTable.GetGPUBuffer(RD::Renderer_Buffer::PrevTransforms),
 				m_device->GetContext());
 		}
 
-		BufferBarriers::TransferWriteToGraphicsRead(
+		BufferBarriers::TransferWriteToComputeRead(
 			frameCtx.m_commandBuffer,
 			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms),
 			m_device->GetContext());
@@ -1198,29 +1214,37 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 
 	if (frameCtx.m_bLightsBufferUploadNeeded)
 	{
-		// Compute always reads this first
-		BufferBarriers::ComputeWriteToRead(
+		BufferBarriers::TransferWriteToComputeRead(
 			frameCtx.m_commandBuffer,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights));
+			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights),
+			m_device->GetContext());
 
 		frameCtx.ClearLightsUploadFlag();
 	}
 
-	if (frameCtx.IsThereVisibles())
+	if (frameCtx.m_bInstanceInputUploadNeeded)
 	{
-		BufferBarriers::TransferWriteToGraphicsRead(
+		BufferBarriers::TransferWriteToComputeRead(
 			frameCtx.m_commandBuffer,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::VisibleInstances),
+			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs),
 			m_device->GetContext());
-		BufferBarriers::TransferWriteToIndirectRead(
+
+		BufferBarriers::TransferWriteToComputeRead(
 			frameCtx.m_commandBuffer,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws),
+			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys),
 			m_device->GetContext());
+
+		BufferBarriers::TransferWriteToComputeRead(
+			frameCtx.m_commandBuffer,
+			m_globalAddressTable.GetTableBuffer(),
+			m_device->GetContext());
+
+		frameCtx.ClearInstanceInputUploadFlag();
 	}
 
 	if (frameCtx.m_gpuAddressTable.IsTableDirty())
 	{
-		BufferBarriers::TransferWriteToGraphicsRead(
+		BufferBarriers::TransferWriteToComputeRead(
 			frameCtx.m_commandBuffer,
 			frameCtx.m_gpuAddressTable.GetTableBuffer(),
 			m_device->GetContext());
@@ -1260,7 +1284,9 @@ void Renderer::RecordRenderCommand()
 		frameCtx.m_frameSet,
 		m_pipelineManager->GetGlobalLayout());
 
-	if (frameCtx.IsThereVisibles())
+	if (m_profiler.assetCounts.totalIndexCount > 0 &&
+		m_renderGraphState.activeInstanceCount > 0 &&
+		!World::_loadedScenes.empty())
 	{
 		const auto indexBuffer = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;
 		vkCmdBindIndexBuffer(frameCtx.m_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
@@ -1316,6 +1342,8 @@ void Renderer::UnloadAllScenes()
 	clearIfExists(RD::Renderer_Buffer::Index);
 	clearIfExists(RD::Renderer_Buffer::Mesh);
 	clearIfExists(RD::Renderer_Buffer::Material);
+
+	m_profiler.assetCounts.Clear();
 
 	fmt::println("[Renderer] All scenes unloaded.");
 }

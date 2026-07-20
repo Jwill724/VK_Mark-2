@@ -58,7 +58,7 @@ void RegisterOpaqueForwardPass(
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.clearValue.depthStencil.depth = 0.0f;
+						depthAttach.SetDepth(0.0f);
 
 						if (ctx.profiler->enableWireframeView)
 						{
@@ -84,7 +84,7 @@ void RegisterOpaqueForwardPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsOpaqueVisible;
+						return ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(
@@ -104,28 +104,20 @@ void RegisterOpaqueForwardPass(
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
+
 						uint32_t pipeID = !ctx.profiler->enableWireframeView ? PIPE_ID_MAIN : PIPE_ID_WIREFRAME;
 
-						const auto& drawRange = frameCtx->GetOpaqueDrawRange();
 						const auto& pipeline  = pass.pipelines[pipeID];
-
-						const uint64_t triangles = SumTrianglesIndirectRange(
-							frameCtx->GetIndirectCmds(),
-							drawRange.firstCommand,
-							drawRange.commandCount,
-							pipeline.topology);
-
-						ctx.profiler->AddOpaqueIndirect(
-							1,
-							frameCtx->GetOpaqueDrawRange().commandCount,
-							triangles);
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawIndexedIndirect(
+						pso.DrawIndexedIndirectCount(
 							cmd,
+							RD::VIS_SLOT_OPAQUE,
 							indirectBuffer,
-							drawRange,
+							indirectCountBuffer,
 							pipeline,
 							pass.pushWriter);
 

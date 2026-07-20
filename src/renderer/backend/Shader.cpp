@@ -10,8 +10,11 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::Opaque_f,                    "core/opaque_forward.spv"                   },
 	{ RD::Renderer_Shader::Transparent_f,               "core/transparent_forward.spv"              },
 	{ RD::Renderer_Shader::TransparentResolve_c,        "core/transparent_resolve.spv"              },
-	{ RD::Renderer_Shader::ObbLine_v,                   "debug/obb_lineVS.spv"                      },
-	{ RD::Renderer_Shader::ObbLine_f,                   "debug/obb_lineFS.spv"                      },
+	{ RD::Renderer_Shader::LineDebug_v,                 "debug/line_debugVS.spv"                    },
+	{ RD::Renderer_Shader::LineDebug_f,                 "debug/line_debugFS.spv"                    },
+	{ RD::Renderer_Shader::DebugCount_c,                "debug/debug_count.spv"                     },
+	{ RD::Renderer_Shader::DebugArgs_c,                 "debug/debug_args.spv"                      },
+	{ RD::Renderer_Shader::DebugBuild_c,                "debug/debug_build.spv"                     },
 	{ RD::Renderer_Shader::Wireframe_v,                 "debug/wireframeVS.spv"                     },
 	{ RD::Renderer_Shader::Wireframe_f,                 "debug/wireframeFS.spv"                     },
 	{ RD::Renderer_Shader::Skybox_v,                    "environment/skyboxVS.spv"                  },
@@ -52,8 +55,14 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::ClusterScatterIDs_c,         "clustered/cluster_scatter_ids.spv"         },
 	{ RD::Renderer_Shader::LightCulling_c,              "clustered/light_culling.spv"               },
 	{ RD::Renderer_Shader::IndirectArgsLight_c,         "clustered/lights_indirect_args.spv"        },
+	{ RD::Renderer_Shader::ShadowBounds_c,              "shadows/shadow_bounds.spv"                 },
 	{ RD::Renderer_Shader::ScreenSpaceContactShadows_c, "shadows/bend_sss.spv"                      },
-	{ RD::Renderer_Shader::ChromaticAberration_c,       "post_process/chromatic_aberration.spv"     }
+	{ RD::Renderer_Shader::ChromaticAberration_c,       "post_process/chromatic_aberration.spv"     },
+	{ RD::Renderer_Shader::InstanceCull_c,              "visibility/instance_cull.spv"              },
+	{ RD::Renderer_Shader::DrawArgs_c,                  "visibility/draw_args.spv"                  },
+	{ RD::Renderer_Shader::DrawEmit_c,                  "visibility/draw_emit.spv"                  },
+	{ RD::Renderer_Shader::DrawScatter_c,               "visibility/draw_scatter.spv"               },
+	{ RD::Renderer_Shader::DrawPlace_c,                 "visibility/draw_place.spv"                 },
 };
 
 const std::string& GetShaderPath(RD::Renderer_Shader id)

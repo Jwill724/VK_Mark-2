@@ -208,7 +208,7 @@ namespace
 			"Render",
 			"Lighting",
 			"Post FX",
-			"Pipelines"
+			"Debug"
 		};
 
 		static_assert(
@@ -231,6 +231,9 @@ namespace
 		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 		FrameStats& stats = *ui.stats;
+
+		auto& forwardPush = profiler.forwardPush;
+
 		{
 			UI::separatorText("Camera");
 			auto& camera = World::GetScene().GetCamera();
@@ -272,7 +275,7 @@ namespace
 
 		bool shadows = dbg.enableShadows != 0u;
 		bool contact = dbg.enableSSS != 0u;
-		bool cascadeSplitView = dbg.showCascadeSplits != 0u;
+		bool cascadeSplitView = forwardPush.showCascadeSplits != 0u;
 
 		if (ImGui::Checkbox("Enable Shadows##rt", &shadows)) {
 			dbg.enableShadows = shadows ? 1u : 0u;
@@ -295,7 +298,7 @@ namespace
 			}
 
 			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) {
-				dbg.showCascadeSplits = cascadeSplitView ? 1u : 0u;
+				forwardPush.showCascadeSplits = cascadeSplitView ? 1u : 0u;
 			}
 
 			bool depthHack = shadowControl.enableShadowDepthExtendHack;
@@ -381,43 +384,43 @@ namespace
 
 		auto pickFromToggles = [&]() -> int
 			{
-				if (dbg.showNormals)            return O_Normals;
-				if (dbg.showAlbedo)             return O_Albedo;
-				if (dbg.showEmissive)           return O_Emissive;
-				if (dbg.showBentNormals)        return O_IrradianceNormal;
-				if (dbg.showAmbientOcclusion)   return O_AO;
-				if (dbg.showSpecular)           return O_Specular;
-				if (dbg.showDiffuse)            return O_Diffuse;
-				if (dbg.showMetallic)           return O_Metallic;
-				if (dbg.showRoughness)          return O_Roughness;
-				if (dbg.showSSS)                return O_SSS;
+				if (forwardPush.showNormals)            return O_Normals;
+				if (forwardPush.showAlbedo)             return O_Albedo;
+				if (forwardPush.showEmissive)           return O_Emissive;
+				if (forwardPush.showBentNormals)        return O_IrradianceNormal;
+				if (forwardPush.showAmbientOcclusion)   return O_AO;
+				if (forwardPush.showSpecular)           return O_Specular;
+				if (forwardPush.showDiffuse)            return O_Diffuse;
+				if (forwardPush.showMetallic)           return O_Metallic;
+				if (forwardPush.showRoughness)          return O_Roughness;
+				if (forwardPush.showSSS)                return O_SSS;
 				return O_Complete;
 			};
 
 		auto applyOverlay = [&](int overlay)
 			{
-				dbg.showNormals = 0;
-				dbg.showAlbedo = 0;
-				dbg.showEmissive = 0;
-				dbg.showBentNormals = 0;
-				dbg.showAmbientOcclusion = 0;
-				dbg.showSpecular = 0;
-				dbg.showDiffuse = 0;
-				dbg.showMetallic = 0;
-				dbg.showRoughness = 0;
-				dbg.showSSS = 0;
+				forwardPush.showNormals = 0;
+				forwardPush.showAlbedo = 0;
+				forwardPush.showEmissive = 0;
+				forwardPush.showBentNormals = 0;
+				forwardPush.showAmbientOcclusion = 0;
+				forwardPush.showSpecular = 0;
+				forwardPush.showDiffuse = 0;
+				forwardPush.showMetallic = 0;
+				forwardPush.showRoughness = 0;
+				forwardPush.showSSS = 0;
 
 				switch (overlay) {
-				case O_Normals:              dbg.showNormals = 1; break;
-				case O_Albedo:               dbg.showAlbedo = 1; break;
-				case O_Emissive:             dbg.showEmissive = 1; break;
-				case O_IrradianceNormal:     dbg.showBentNormals = 1; break;
-				case O_AO:                   dbg.showAmbientOcclusion = 1; break;
-				case O_Specular:             dbg.showSpecular = 1; break;
-				case O_Diffuse:              dbg.showDiffuse = 1; break;
-				case O_Metallic:             dbg.showMetallic = 1; break;
-				case O_Roughness:            dbg.showRoughness = 1; break;
-				case O_SSS:                  dbg.showSSS = 1; break;
+				case O_Normals:              forwardPush.showNormals = 1; break;
+				case O_Albedo:               forwardPush.showAlbedo = 1; break;
+				case O_Emissive:             forwardPush.showEmissive = 1; break;
+				case O_IrradianceNormal:     forwardPush.showBentNormals = 1; break;
+				case O_AO:                   forwardPush.showAmbientOcclusion = 1; break;
+				case O_Specular:             forwardPush.showSpecular = 1; break;
+				case O_Diffuse:              forwardPush.showDiffuse = 1; break;
+				case O_Metallic:             forwardPush.showMetallic = 1; break;
+				case O_Roughness:            forwardPush.showRoughness = 1; break;
+				case O_SSS:                  forwardPush.showSSS = 1; break;
 				default: break;
 				}
 			};
@@ -637,21 +640,31 @@ namespace
 		}
 	}
 
-	static void drawCategoryPipelines(UIContext& ui)
+	static void drawCategoryDebug(UIContext& ui)
 	{
 		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
-		UI::separatorText("Pipeline Views");
+		UI::separatorText("Debug Views");
 		{
-			bool obb = dbg.enableOBBs != 0u;
-			if (ImGui::Checkbox("Enable OBB##pipes", &obb)) {
-				dbg.enableOBBs = obb ? 1u : 0u;
+			bool occlusion = dbg.disableOcclusionCull != 0u;
+			if (ImGui::Checkbox("Disable Occlusion Culling##rt", &occlusion)) {
+				dbg.disableOcclusionCull = occlusion ? 1u : 0u;
+			}
+
+			bool opauque_obb = dbg.showOpaqueOBBs != 0u;
+			if (ImGui::Checkbox("Show Opaque OBB##pipes", &opauque_obb)) {
+				dbg.showOpaqueOBBs = opauque_obb ? 1u : 0u;
+			}
+
+			bool transparent_obb = dbg.showTransparentOBBs != 0u;
+			if (ImGui::Checkbox("Show Transparent OBB##pipes", &transparent_obb)) {
+				dbg.showTransparentOBBs = transparent_obb ? 1u : 0u;
 			}
 		}
 
 		bool wireframeView = profiler.enableWireframeView;
-		if (ImGui::Checkbox("Wireframe View", &wireframeView))
+		if (ImGui::Checkbox("Show Wireframe", &wireframeView))
 		{
 			profiler.enableWireframeView = wireframeView;
 		}
@@ -665,8 +678,6 @@ namespace
 		FrameStats& stats = *ui.stats;
 
 		UI::separatorText("Frame");
-
-		//ImGui::Text("Delta Raw: %.3f ms", stats.deltaSecondsRaw * 1000.0f);
 
 		ImGui::Text("Frame Time True: %.3f ms", stats.frameTimeRaw.Get());
 		ImGui::Text("Frame Time Capped: %.3f ms", stats.frameTime.Get());
@@ -731,93 +742,50 @@ namespace
 		ImGui::Text("Materials:  %u", profiler.assetCounts.totalMaterialCount);
 		ImGui::Text("Vertices:   %u", profiler.assetCounts.totalVertexCount);
 		ImGui::Text("Indices:    %u", profiler.assetCounts.totalIndexCount);
-		ImGui::Text("Triangles: %llu", (unsigned long long)stats.triangleCount);
 
 		ImGui::Separator();
-		ImGui::TextUnformatted("Draw Calls");
+		ImGui::TextUnformatted("Draw Stats");
 
-		const uint32_t indirectTotal =
-			stats.opaqueIndirect.commands +
-			stats.transparentIndirect.commands +
-			stats.directionalCSMIndirect.commands +
-			stats.flashlightShadowIndirect.commands;
+		// GPU driven rendering statistics
 
+		const GPUStats& gpu = profiler.gpuStats;
+
+		ImGui::SeparatorText("Visibility");
+
+		const uint32_t totalVisible = gpu.visibleOpaque + gpu.visibleTransparent;
+		const uint32_t totalInstances = World::GetInstanceState().gpuInputs.size();
+
+		ImGui::Text("Visible Opaque: %u", gpu.visibleOpaque);
+		ImGui::Text("Visible Transparent: %u", gpu.visibleTransparent);
+		ImGui::Text("Shadow Casters: %u", gpu.visibleShadowCasters);
+
+		if (totalInstances > 0)
 		{
-			UI::TableScope table(
-				"DrawPathsTop",
-				2,
-				ImGuiTableFlags_SizingFixedFit |
-				ImGuiTableFlags_BordersInnerV |
-				ImGuiTableFlags_RowBg
-			);
-
-			if (table) {
-				ImGui::TableSetupColumn("API");
-				ImGui::TableSetupColumn("Commands");
-				ImGui::TableHeadersRow();
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("vkCmdDraw");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", stats.directDraws);
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("vkCmdDrawIndirect");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", indirectTotal);
-			}
+			const uint32_t culled = (totalInstances >= totalVisible)
+				? totalInstances - totalVisible : 0u;
+			const float cullRatio = 100.0f * float(culled) / float(totalInstances);
+			ImGui::Text("Instances Culled: %.1f%% (%u / %u)",
+				cullRatio, culled, totalInstances);
 		}
 
-		{
-			UI::TableScope table(
-				"IndirectBreakdown",
-				3,
-				ImGuiTableFlags_SizingFixedFit |
-				ImGuiTableFlags_BordersInnerV |
-				ImGuiTableFlags_RowBg
-			);
+		ImGui::SeparatorText("Draw Commands");
 
-			if (table) {
-				ImGui::TableSetupColumn("Pass");
-				ImGui::TableSetupColumn("Commands");
-				ImGui::TableSetupColumn("Subdraws");
-				ImGui::TableHeadersRow();
+		ImGui::Text("Opaque Draws: %u", gpu.opaqueDrawCount);
+		ImGui::Text("Transparent Draws: %u", gpu.transparentDrawCount);
+		ImGui::Text("Shadow Draws: %u", gpu.shadowDrawCount);
+		//ImGui::Text("Total Draws: %u",
+		//	gpu.opaqueDrawCount + gpu.transparentDrawCount + gpu.shadowDrawCount);
 
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("Opaque");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", stats.opaqueIndirect.commands);
-				ImGui::TableSetColumnIndex(2);
-				ImGui::Text("%u", stats.opaqueIndirect.subdraws);
+		ImGui::SeparatorText("Geometry");
 
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("Transparent");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", stats.transparentIndirect.commands);
-				ImGui::TableSetColumnIndex(2);
-				ImGui::Text("%u", stats.transparentIndirect.subdraws);
+		const uint32_t tris = gpu.triangleCount;
+		if (tris >= 1000000u)
+			ImGui::Text("Triangles: %.2fM", double(tris) / 1000000.0);
+		else if (tris >= 1000u)
+			ImGui::Text("Triangles: %.1fK", double(tris) / 1000.0);
+		else
+			ImGui::Text("Triangles: %u", tris);
 
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("Directional CSM");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", stats.directionalCSMIndirect.commands);
-				ImGui::TableSetColumnIndex(2);
-				ImGui::Text("%u", stats.directionalCSMIndirect.subdraws);
-
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted("Flashlight Shadow");
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%u", stats.flashlightShadowIndirect.commands);
-				ImGui::TableSetColumnIndex(2);
-				ImGui::Text("%u", stats.flashlightShadowIndirect.subdraws);
-			}
-		}
 
 		if (profiler.IsTracyCompiledIn()) {
 			ImGui::Text(
@@ -848,7 +816,7 @@ namespace
 
 				const auto& allPassStats = profiler.GetAllPassStats();
 
-				for (size_t passIndex = 1; passIndex < allPassStats.size(); ++passIndex) {
+				for (size_t passIndex = 0; passIndex < allPassStats.size(); ++passIndex) {
 					const RD::Renderer_Pass passID = static_cast<RD::Renderer_Pass>(passIndex);
 					const PassTimingStats& passStats = allPassStats[passIndex];
 
@@ -922,7 +890,7 @@ namespace
 				break;
 
 			case Editor::SettingsCategory::Pipelines:
-				drawCategoryPipelines(ui);
+				drawCategoryDebug(ui);
 				break;
 
 			default:

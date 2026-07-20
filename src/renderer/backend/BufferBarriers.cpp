@@ -57,7 +57,29 @@ void BufferBarriers::ComputeWriteToRW(
 	vkCmdPipelineBarrier2(cmd, &di);
 }
 
-void BufferBarriers::ComputeWriteToIndirectDispatchRead(
+void BufferBarriers::ComputeWriteToTransferRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	b.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers = &b;
+
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::ComputeWriteToIndirectRead(
 	VkCommandBuffer cmd,
 	const AllocatedBuffer& buf)
 {
@@ -68,6 +90,33 @@ void BufferBarriers::ComputeWriteToIndirectDispatchRead(
 	b.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers = &b;
+
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::TransferWriteToComputeRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf,
+	const DeviceContext& dCtx)
+{
+	uint32_t srcFamilyIndex = dCtx.queueIndices.transferFamily.value();
+	uint32_t dstFamilyIndex = dCtx.queueIndices.graphicsFamily.value();
+	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
+
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	b.srcQueueFamilyIndex = srcFamilyIndex;
+	b.dstQueueFamilyIndex = dstFamilyIndex;
 	b.buffer = buf.m_buffer;
 	b.offset = 0;
 	b.size = VK_WHOLE_SIZE;
@@ -111,37 +160,10 @@ void BufferBarriers::TransferWriteToGraphicsRead(
 	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
 
 	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	b.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
-	b.srcAccessMask = VK_ACCESS_2_NONE;
+	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
 	b.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-	b.srcQueueFamilyIndex = srcFamilyIndex;
-	b.dstQueueFamilyIndex = dstFamilyIndex;
-	b.buffer = buf.m_buffer;
-	b.offset = 0;
-	b.size = VK_WHOLE_SIZE;
-
-	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-	di.bufferMemoryBarrierCount = 1;
-	di.pBufferMemoryBarriers = &b;
-
-	vkCmdPipelineBarrier2(cmd, &di);
-}
-
-void BufferBarriers::TransferWriteToIndirectRead(
-	VkCommandBuffer cmd,
-	const AllocatedBuffer& buf,
-	const DeviceContext& dCtx)
-{
-	uint32_t srcFamilyIndex = dCtx.queueIndices.transferFamily.value();
-	uint32_t dstFamilyIndex = dCtx.queueIndices.graphicsFamily.value();
-	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
-
-	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	b.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
-	b.srcAccessMask = VK_ACCESS_2_NONE;
-	b.dstStageMask = VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-	b.dstAccessMask = VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
 	b.srcQueueFamilyIndex = srcFamilyIndex;
 	b.dstQueueFamilyIndex = dstFamilyIndex;
 	b.buffer = buf.m_buffer;
@@ -163,6 +185,28 @@ void BufferBarriers::ComputeWriteToFragmentRead(
 	b.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
 	b.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers = &b;
+
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::ComputeWriteToVertexRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
 	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -204,56 +248,29 @@ void BufferBarriers::TransferReleaseOnGraphics(
 	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
 }
 
-void BufferBarriers::TransferReleaseOnCompute(
-	VkCommandBuffer cmd,
-	const AllocatedBuffer& buf,
-	const DeviceContext& dCtx)
-{
-	uint32_t srcFamilyIndex = dCtx.queueIndices.transferFamily.value();
-	uint32_t dstFamilyIndex = dCtx.queueIndices.computeFamily.value();
-	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
-
-	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-	barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
-	barrier.dstAccessMask = VK_ACCESS_2_NONE;
-	barrier.srcQueueFamilyIndex = srcFamilyIndex;
-	barrier.dstQueueFamilyIndex = dstFamilyIndex;
-	barrier.buffer = buf.m_buffer;
-	barrier.offset = 0;
-	barrier.size = VK_WHOLE_SIZE;
-
-	VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-	dependencyInfo.bufferMemoryBarrierCount = 1;
-	dependencyInfo.pBufferMemoryBarriers = &barrier;
-
-	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
-}
-
-void BufferBarriers::TransferReleaseOnIndirect(
-	VkCommandBuffer cmd,
-	const AllocatedBuffer& buf,
-	const DeviceContext& dCtx)
-{
-	uint32_t srcFamilyIndex = dCtx.queueIndices.transferFamily.value();
-	uint32_t dstFamilyIndex = dCtx.queueIndices.graphicsFamily.value();
-	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
-
-	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-	barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
-	barrier.dstAccessMask = VK_ACCESS_2_NONE;
-	barrier.srcQueueFamilyIndex = srcFamilyIndex;
-	barrier.dstQueueFamilyIndex = dstFamilyIndex;
-	barrier.buffer = buf.m_buffer;
-	barrier.offset = 0;
-	barrier.size = VK_WHOLE_SIZE;
-
-	VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
-	dependencyInfo.bufferMemoryBarrierCount = 1;
-	dependencyInfo.pBufferMemoryBarriers = &barrier;
-
-	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
-}
+//void BufferBarriers::TransferReleaseOnCompute(
+//	VkCommandBuffer cmd,
+//	const AllocatedBuffer& buf,
+//	const DeviceContext& dCtx)
+//{
+//	uint32_t srcFamilyIndex = dCtx.queueIndices.transferFamily.value();
+//	uint32_t dstFamilyIndex = dCtx.queueIndices.computeFamily.value();
+//	ResolveFamilies(srcFamilyIndex, dstFamilyIndex, buf.m_bIsConcurrent);
+//
+//	VkBufferMemoryBarrier2 barrier{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+//	barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+//	barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+//	barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE;
+//	barrier.dstAccessMask = VK_ACCESS_2_NONE;
+//	barrier.srcQueueFamilyIndex = srcFamilyIndex;
+//	barrier.dstQueueFamilyIndex = dstFamilyIndex;
+//	barrier.buffer = buf.m_buffer;
+//	barrier.offset = 0;
+//	barrier.size = VK_WHOLE_SIZE;
+//
+//	VkDependencyInfo dependencyInfo{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+//	dependencyInfo.bufferMemoryBarrierCount = 1;
+//	dependencyInfo.pBufferMemoryBarriers = &barrier;
+//
+//	vkCmdPipelineBarrier2(cmd, &dependencyInfo);
+//}

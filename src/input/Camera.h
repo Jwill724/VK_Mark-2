@@ -18,6 +18,9 @@ public:
 	const glm::vec3& GetPosition() const { return m_position; }
 	const glm::vec3& GetVelocity() const { return m_velocity; }
 	const glm::vec3& GetView() const { return m_currentView; }
+	const glm::quat& GetRotation() const { return m_rotation; }
+	const glm::vec3& GetPreviousPosition() const { return m_prevPosition; }
+	const glm::quat& GetPreviousRotation() const { return m_prevRotation; }
 
 	float GetPitch() const { return m_pitch; }
 	float GetYaw() const { return m_yaw; }
@@ -90,6 +93,10 @@ private:
 
 	float m_acceleration{0.0f};
 	float m_damping{0.0f};
+
+	glm::vec3 m_prevPosition{0.0f};
+	glm::quat m_rotation;
+	glm::quat m_prevRotation;
 
 	glm::vec3 m_currentView{0.0f};
 

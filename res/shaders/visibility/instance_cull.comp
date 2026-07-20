@@ -1,0 +1,177 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/culling.glsl"
+#include "../include/depth.glsl"
+#include "../include/common.glsl"
+#include "../include/shadow.glsl"
+
+layout(local_size_x = 256) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D inHiZ;
+
+void addVisibleStats(uint mask)
+{
+	switch(mask)
+	{
+		case VIS_SLOT_OPAQUE:
+			atomicAdd(getGPUStatsBuffer().gpuStats.visibleOpaque, 1u);
+			return;
+		case VIS_SLOT_TRANSPARENT:
+			atomicAdd(getGPUStatsBuffer().gpuStats.visibleTransparent, 1u);
+			return;
+
+		case VIS_SLOT_FLASHLIGHT:
+		case VIS_SLOT_CSM0:
+		case VIS_SLOT_CSM1:
+		case VIS_SLOT_CSM2:
+		case VIS_SLOT_CSM3:
+			atomicAdd(getGPUStatsBuffer().gpuStats.visibleShadowCasters, 1u);
+			return;
+	}
+}
+
+void markVisible(InstanceVisibilityBuffer visCounters, uint slot, bool statsEnabled)
+{
+	atomicAdd(visCounters.counters.counts[slot], 1u);
+	if (statsEnabled)
+	{
+		addVisibleStats(slot);
+	}
+}
+
+void main()
+{
+	uint instanceID = gl_GlobalInvocationID.x;
+	DebugToggles debug = getDebugToggles();
+	uint instanceCount = debug.activeInstanceCount;
+	if (instanceID >= instanceCount) return;
+
+	InstanceVisibilityBuffer visCounters  = getInstanceVisibilityBuffer();
+	VisibleCountBuffer visibleCount       = getVisibleCountBuffer();
+	InstanceInput instance                = getInstanceInputBuffer().instanceInputs[instanceID];
+	mat4 transform                        = getTransformBuffer().transforms[instance.transformID];
+	Mesh mesh                             = getMeshBuffer().meshes[instance.meshID];
+	AABB worldAABB                        = TransformAABB(mesh.localAABB, transform);
+	SceneData sceneData                   = getSceneData();
+	ShadowCSM csm                         = getShadowCSM();
+
+	vec3  center = 0.5 * (worldAABB.vmin + worldAABB.vmax);
+	float radius = mesh.localBoundingRadius * max_world_scale(transform);
+
+	bool survives = (instance.flags & ALWAYS_VISIBLE) != 0u;
+	bool hiZValid = sceneData.temporal.z != 0u;
+
+	if (!survives)
+	{
+		mat4 vp = sceneData.viewProj;
+		vec4 pl, pr, pb, pt;
+		get_frustum_side_planes(vp, pl, pr, pb, pt);
+
+		// Frustum cull
+		if (sphere_in_side_planes(center, radius, pl, pr, pb, pt))
+			survives = true;
+
+		// Occlusion cull
+		if (survives && hiZValid && !DBG(disableOcclusionCull))
+		{
+			if (!sphere_hiz_visible(inHiZ, center, radius, float(HI_Z_MIP_CLAMPED), vp))
+				survives = false;
+		}
+	}
+
+	uint passFlags = 0u;
+
+	bool statsTracking = DBG(enableProfilerView);
+
+	if (survives)
+	{
+		// primary
+		if ((instance.flags & PASS_OPAQUE) != 0u)
+		{
+			passFlags |= (1u << VIS_SLOT_OPAQUE);
+			markVisible(visCounters, VIS_SLOT_OPAQUE, statsTracking);
+		}
+		else if ((instance.flags & PASS_TRANSPARENT) != 0u)
+		{
+			passFlags |= (1u << VIS_SLOT_TRANSPARENT);
+			markVisible(visCounters, VIS_SLOT_TRANSPARENT, statsTracking);
+		}
+
+		// flashlight — opaque surviving only
+		if (DBG(enableShadows) && DBG(enableFlashlight) &&
+			(instance.flags & PASS_OPAQUE) != 0u &&
+			(instance.flags & CAST_FLASHLIGHT) != 0u)
+		{
+			vec4 fl, fr, fb, ft;
+			get_frustum_side_planes(sceneData.flashlightVP, fl, fr, fb, ft);
+
+			if (sphere_in_side_planes(center, radius, fl, fr, fb, ft))
+			{
+				passFlags |= (1u << VIS_SLOT_FLASHLIGHT);
+				markVisible(visCounters, VIS_SLOT_FLASHLIGHT, statsTracking);
+			}
+		}
+	}
+
+	// CSM — opaque only, test all instances
+	if (DBG(enableShadows) &&
+		(instance.flags & PASS_OPAQUE) != 0u &&
+		(instance.flags & CAST_CSM) != 0u)
+	{
+		ShadowCullDataBuffer shadowCull = getShadowCullDataBuffer();
+
+		bool isAlphaTested = (instance.flags & ALPHA_TESTED) != 0u;
+		bool isTree        = (instance.flags & IS_TREE) != 0u;
+
+		vec3 extentWS = 0.5 * (worldAABB.vmax - worldAABB.vmin);
+		float lsEpsilon = csm.params.w;
+
+		uvec4 activeCascades = shadowCull.data.cascadeActive;
+
+		for (uint c = 0u; c < MAX_CASCADES; ++c)
+		{
+			// cascade deactivation
+			uint isActive = (c == 0u) ? activeCascades.x : (c == 1u) ? activeCascades.y
+						  : (c == 2u) ? activeCascades.z : activeCascades.w;
+			if (isActive == 0u) continue;
+
+			if (isAlphaTested && !isTree && c >= 2u) continue;
+			if (isAlphaTested &&  isTree && c >= 3u) continue;
+
+			// sub-texel rejection — caster smaller than one shadow texel
+			// contributes nothing to this cascade
+			if (radius < csm.cascadeWorldTexels[c]) continue;
+
+			// tight receiver footprint test in light space
+			if (!casterOverlapsReceivers(
+				center, extentWS,
+				csm.cascadeLightViews[c],
+				shadowCull.data.receiverLSMin[c].xyz,
+				shadowCull.data.receiverLSMax[c].xyz,
+				lsEpsilon)) continue;
+
+			uint slot = VIS_SLOT_CSM0 + c;
+			passFlags |= (1u << slot);
+			markVisible(visCounters, slot, statsTracking);
+		}
+	}
+
+	bool needsEntry = survives || (passFlags != 0u);
+
+	if (needsEntry)
+	{
+		uint visId = atomicAdd(visibleCount.count, 1u);
+
+		VisibleInstance visInst;
+		visInst.instanceID   = instanceID;
+		visInst.selectedMesh = survives
+			? selectLOD(instance, center, radius, sceneData.cameraPos.xyz, sceneData.projUnjittered[1][1])
+			: instance.shadowLod0; // shadow-only, use base shadow mesh
+		visInst.passFlags    = passFlags;
+
+		getVisibleInstanceBuffer().visibles[visId] = visInst;
+	}
+}

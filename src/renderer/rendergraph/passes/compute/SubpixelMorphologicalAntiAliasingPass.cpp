@@ -65,7 +65,7 @@ void RegisterSMAAPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bHasVisibles &&
+						return ctx.frameState->activeInstanceCount > 0 &&
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_SMAA);
 					})
 

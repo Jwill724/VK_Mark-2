@@ -18,6 +18,7 @@ layout(location = 4) in vec3 inNormal;
 layout(location = 5) in vec3 inTangent;
 layout(location = 6) in float inTangentW;
 layout(location = 7) flat in uint inMaterialID;
+layout(location = 8) flat in uint inBHasNormalMap;
 
 layout(location = 0) out vec4 outFragColor;
 
@@ -27,15 +28,30 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D bentNorm
 
 layout(push_constant) uniform ForwardPush
 {
-	uint activeLightCount;
 	uint diffuseID;
 	uint specularID;
 	uint brdfID;
 	float oitDepthScale;
+
 	uint flashlightShadowMapID;
 	uint flashlightCookieTexID;
 	uint pad0;
-	mat4 flashlightVP;
+	uint pad1;
+
+	uint showAlbedo;
+	uint showNormals;
+	uint showRoughness;
+	uint showMetallic;
+
+	uint showAmbientOcclusion;
+	uint showSpecular;
+	uint showDiffuse;
+	uint showEmissive;
+
+	uint showBentNormals;
+	uint showCascadeSplits;
+	uint showSSS;
+	uint pad2;
 } pc;
 
 void main()
@@ -58,7 +74,8 @@ void main()
 	const vec3 geometricNormalWS = normalize(inNormal);
 	vec3 N                       = geometricNormalWS;
 
-	if ((mat.flags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0u) {
+	if (inBHasNormalMap == 1u)
+	{
 		vec3 normalTex = SampleTextureBias(mat.normalID, inUV, scene.viewportSize.w).rgb;
 
 		vec3 T   = normalize(inTangent - geometricNormalWS * dot(geometricNormalWS, inTangent));
@@ -72,7 +89,7 @@ void main()
 		N = normalize(tbn * normalTS);
 	}
 
-	if (DBG(showNormals)) RET(N * 0.5 + 0.5, 1.0);
+	if (uintBool(pc.showNormals)) RET(N * 0.5 + 0.5, 1.0);
 
 	vec3 albedo = inColor * base.rgb;
 
@@ -89,10 +106,10 @@ void main()
 	rough = specularAA(rough, N);
 	metal = clamp(metal, 0.0, 1.0);
 
-	if (DBG(showAlbedo))    RET(albedo,      alpha);
-	if (DBG(showEmissive))  RET(emissive,    alpha);
-	if (DBG(showMetallic))  RET(vec3(metal), alpha);
-	if (DBG(showRoughness)) RET(vec3(rough), alpha);
+	if (uintBool(pc.showAlbedo))    RET(albedo,      alpha);
+	if (uintBool(pc.showEmissive))  RET(emissive,    alpha);
+	if (uintBool(pc.showMetallic))  RET(vec3(metal), alpha);
+	if (uintBool(pc.showRoughness)) RET(vec3(rough), alpha);
 
 	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
 	vec3 V = normalize(scene.cameraPos.xyz - inWorldPos);
@@ -107,7 +124,7 @@ void main()
 	float aoTerm = 1.0;
 	if (DBG(aoMode)) {
 		float aoFactor = texture(aoFinal, screenspace_uv).r;
-		if(DBG(showAmbientOcclusion)) {
+		if(uintBool(pc.showAmbientOcclusion)) {
 			RET(vec3(aoFactor), 1.0);
 		}
 		aoTerm *= aoFactor;
@@ -117,7 +134,7 @@ void main()
 	float contactShadows = 1.0;
 	if (DBG(enableSSS) && DBG(enableShadows)) {
 		float sss = texture(contactShadowMask, screenspace_uv).r;
-		if(DBG(showSSS)) {
+		if(uintBool(pc.showSSS)) {
 			RET(vec3(sss), 1.0);
 		}
 		contactShadows = sss;
@@ -136,8 +153,8 @@ void main()
 	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
 	spec *= multiScatterComp;
 
-	if (DBG(showDiffuse))  RET(diff * (sunColor) * NdotL, alpha);
-	if (DBG(showSpecular)) RET(spec * (sunColor) * NdotL, alpha);
+	if (uintBool(pc.showDiffuse))  RET(diff * (sunColor) * NdotL, alpha);
+	if (uintBool(pc.showSpecular)) RET(spec * (sunColor) * NdotL, alpha);
 
 	// cascaded shadow maps
 	float shadow     = 1.0;
@@ -157,7 +174,7 @@ void main()
 		const uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
 		const uint nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
 
-		if (DBG(showCascadeSplits)) {
+		if (uintBool(pc.showCascadeSplits)) {
 			vec3  overlayColor = cascadeColor(cascadeIdx);
 			vec3  finalColor   = mix(albedo, overlayColor, 0.6);
 			RET(finalColor, alpha);
@@ -260,7 +277,7 @@ void main()
 	VisibleLightIDs   visibleIDsBuf   = getVisibleLightIDsBuffer();
 
 	vec3 localLightColor = vec3(0.0);
-	if (pc.activeLightCount > 0u) {
+	if (debug.activeLightCount > 0u) {
 		ClusterCounts   countsBuf          = getClusterCountsBuffer();
 		ClusterOffsets  offsetsBuf         = getClusterOffsetsBuffer();
 		ClusterLightIDs clusterLightIDsBuf = getClusterLightIDsBuffer();
@@ -314,7 +331,7 @@ void main()
 				if (castsShadow && isFlashLight && !isFlashLightOff) {
 
 					// Project world pos into flashlight clip
-					vec4 flashlightSpacePos   = pc.flashlightVP * vec4(inWorldPos, 1.0);
+					vec4 flashlightSpacePos   = scene.flashlightVP * vec4(inWorldPos, 1.0);
 					vec3 flashlightProjCoords = flashlightSpacePos.xyz / flashlightSpacePos.w;
 
 					vec2 flashlightShadowUV = flashlightProjCoords.xy * 0.5 + 0.5;
@@ -384,7 +401,7 @@ void main()
 		float bentBlend = bentDeviation * coneConfidence;
 		bentBlend       = clamp(bentBlend, 0.0, 0.5);
 
-		if (DBG(showBentNormals)) {
+		if (uintBool(pc.showBentNormals)) {
 			RET(vec3(bentBlend), 1.0);
 		}
 

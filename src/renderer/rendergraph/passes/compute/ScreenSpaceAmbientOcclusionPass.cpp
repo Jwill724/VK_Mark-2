@@ -96,7 +96,7 @@ void RegisterSSAOPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsOpaqueVisible &&
+						return ctx.frameState->activeInstanceCount > 0 &&
 							ctx.profiler->debugToggles.aoMode != static_cast<uint32_t>(RD::AmbientOcclusionMethod::AO_OFF);
 					})
 

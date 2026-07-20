@@ -4,6 +4,8 @@
 #include "../../profiler/Profiler.h"
 #include "EngineTypes.h"
 
+constexpr float kMaxHiZTranslation = 1.5f;
+constexpr float kMaxHiZRotationDeg = 15.0f;
 static constexpr uint32_t TAA_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 
 static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex);
@@ -71,6 +73,18 @@ bool Scene::UpdateCamera(
 		drawExtent,
 		isTemporalInvalid);
 
+	// Determines if the camera moves too fast for occlusion culling
+	const glm::vec3 previousPosition = m_camera.GetPreviousPosition();
+	const glm::quat previousRotation = m_camera.GetPreviousRotation();
+
+	const glm::vec3 currentPosition = m_camera.GetPosition();
+	const glm::quat currentRotation = m_camera.GetRotation();
+
+	const float angle         = glm::degrees(glm::angle(glm::inverse(previousRotation) * currentRotation));
+	const float positionDelta = glm::length(currentPosition - previousPosition);
+
+	m_sceneInfo.temporal.z = positionDelta <= kMaxHiZTranslation && angle <= kMaxHiZRotationDeg;
+
 	m_curCamView = m_camera.GetViewMatrix();
 
 	m_curCamProjUnjittered = glm::perspectiveRH_ZO(
@@ -87,7 +101,6 @@ bool Scene::UpdateCamera(
 	{
 		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
 		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
-
 	}
 
 	m_currentJitterNDC = jitterNDC;
@@ -122,11 +135,11 @@ bool Scene::UpdateCamera(
 	}
 	m_sceneInfo.prevViewProj = m_lastViewProjUnjittered;
 
+	m_sceneInfo.projUnjittered = m_curCamProjUnjittered;
+
 	m_sceneInfo.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
 
 	m_sceneInfo.cameraPos = glm::vec4(m_camera.GetPosition(), 0.0f);
-
-	UpdateFrustum(currentViewProjUnjittered);
 
 	m_lastViewProjUnjittered = currentViewProjUnjittered;
 	m_lastViewProjJittered = currentViewProjJittered;
@@ -231,6 +244,7 @@ void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bind
 	m_csmInfo.params.x = static_cast<float>(bindlessID);
 	m_csmInfo.params.y = static_cast<float>(RD::MAX_SHADOW_CASCADES);
 	m_csmInfo.params.z = 1.0f / m_csmAtlasTileRes;
+	m_csmInfo.params.w = m_shadowControl.lsEpsilon;
 	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
 
 	m_bShouldSplitsUpdate = true;
@@ -315,7 +329,7 @@ void Scene::UpdateCSMInfo()
 		// Light view
 		const glm::vec3 lightPos = frustumCenter + lightDir;
 		const glm::mat4 lightView = glm::lookAtRH(lightPos, frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-		m_cascadeLightViews[i] = lightView;
+		m_csmInfo.cascadeLightViews[i] = lightView;
 
 		glm::mat4 shadowMatrix = m_cascadeLightProjs[i] * lightView;
 
@@ -335,8 +349,6 @@ void Scene::UpdateCSMInfo()
 		m_csmInfo.cascadeVP[i]  = shadowMatrix;
 
 		lastSplitDist = curSplit;
-
-		m_cascadeFrustums[i].ExtractNew(m_csmInfo.cascadeVP[i]);
 	}
 }
 

@@ -1,0 +1,31 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+#include "../include/culling.glsl"
+
+layout(local_size_x = 8) in; // >= VIS_SLOT_COUNT + 1
+
+void main()
+{
+	uint tid = gl_LocalInvocationIndex;
+	DispatchIndirectArgsBuffer args = getIndirectDispatchBuffer();
+
+	if (tid < VIS_SLOT_COUNT)
+	{
+		uint count  = getInstanceVisibilityBuffer().counters.counts[tid];
+		uint groups = (count + 255u) / 256u;
+		args.args[tid] = uvec4(max(groups, 1u), 1u, 1u, count); // .w = raw count for early-out
+
+		// reset this stream's scatter cursor
+		getInstanceCursorsBuffer().cursors.cursors[tid] = 0u;
+	}
+	else if (tid == VIS_SLOT_COUNT)
+	{
+		// total-visible dispatch arg — consumed by Scatter+BinCount
+		uint total  = getVisibleCountBuffer().count;
+		uint groups = (total + 255u) / 256u;
+		args.args[INDIRECT_DISPATCH_SLOT_SCATTER] = uvec4(max(groups, 1u), 1u, 1u, total);
+	}
+}

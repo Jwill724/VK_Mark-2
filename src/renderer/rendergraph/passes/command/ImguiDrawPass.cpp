@@ -6,8 +6,12 @@
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../backend/Swapchain.h"
+#include "../../../../profiler/Profiler.h"
+#include "../../../frame/FrameContext.h"
+#include "../../../backend/BufferBarriers.h"
 
 namespace I = ImageUtils;
+namespace B = BufferBarriers;
 
 void RegisterImguiDrawPass(
 	RenderGraph& graph,
@@ -29,6 +33,17 @@ void RegisterImguiDrawPass(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						if (ctx.profiler->debugToggles.enableProfilerView)
+						{
+							const auto& statsBuf = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DrawStats);
+							const auto& statsReadbackBuf = ctx.frameCtx->GetStatsReadbackBuffer();
+
+							B::ComputeWriteToTransferRead(cmd, statsBuf);
+
+							VkBufferCopy region{ 0, 0, sizeof(GPUStats) };
+							vkCmdCopyBuffer(cmd, statsBuf.m_buffer, statsReadbackBuf.m_buffer, 1, &region);
+						}
 
 						const auto& swapchain = ctx.swapchain;
 

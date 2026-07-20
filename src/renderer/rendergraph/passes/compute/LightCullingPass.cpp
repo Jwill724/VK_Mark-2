@@ -4,7 +4,6 @@
 #include "../../../rendergraph/RenderGraphBuilder.h"
 #include "../../scopes/ComputeScope.h"
 #include "../../../backend/BufferBarriers.h"
-#include "../../../scene/Scene.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../../profiler/Profiler.h"
@@ -29,21 +28,12 @@ void RegisterLightCullingPass(
 					{
 						pass.scope = ComputeScope{{ ctx.frameState->activeLightCount, 1u }, { WORKGROUP_256 }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						auto& push = ctx.profiler->lightCullingPush;
-						push.activeLightCount = ctx.frameState->activeLightCount;
-						std::copy(
-							std::begin(ctx.scene->GetFrustum().planes),
-							std::end(ctx.scene->GetFrustum().planes),
-							std::begin(push.planes));
-
-						pso.SetPush(push);
 					})
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->activeLightCount > 0 && ctx.frameState->bHasVisibles;
+						return ctx.frameState->activeLightCount > 0 && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

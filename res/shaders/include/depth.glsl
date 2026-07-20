@@ -45,6 +45,16 @@ float linearizeDepth(float depth, float nearPlane, float farPlane) {
 	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
 }
 
+//bool hiz_has_geometry(usampler2D hiZ)
+//{
+//	// top mip aggregates the full screen — max depth > 0 means
+//	// at least one pixel wrote geometry somewhere
+//	uint packed = textureLod(hiZ, vec2(0.5), float(HI_Z_MIP_CLAMPED)).r;
+//	float minD, maxD;
+//	unpackHZB(packed, minD, maxD);
+//	return maxD > DEPTH_EPSILON_REVERSED_Z;
+//}
+
 float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float nearPlane, float farPlane)
 {
 	// convert to approximate full-res footprint
@@ -53,7 +63,7 @@ float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float near
 	// mip level ~ log2(footprint)
 	float mipLevel = log2(fullResRadius);
 
-	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_COUNT - 1u));
+	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_CLAMPED));
 
 	uvec4 sampleDepth = textureLod(hiZ, uv, mipLevel);
 	float nearRaw = unpackNearRaw(sampleDepth.r);
@@ -105,6 +115,5 @@ ViewReconstructResult reconstructViewSpaceFromDepth(vec2 uv, float depthValue, m
 
 	return result;
 }
-
 
 #endif

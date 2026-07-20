@@ -72,7 +72,7 @@ void RegisterChromaticAberrationPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->bHasVisibles;
+						return ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

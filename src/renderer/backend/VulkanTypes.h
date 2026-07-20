@@ -5,6 +5,7 @@
 #include <string>
 #include <optional>
 #include <fmt/base.h>
+#include <iterator>
 
 constexpr const char* vkResultToString(VkResult result)
 {
@@ -105,6 +106,7 @@ enum class Vulkan_Format
 	RG16F       = VK_FORMAT_R16G16_SFLOAT,
 	R16U        = VK_FORMAT_R16_UINT,
 	R32U        = VK_FORMAT_R32_UINT,
+	RG32U       = VK_FORMAT_R32G32_UINT,
 	R32F        = VK_FORMAT_R32_SFLOAT,
 	R8U         = VK_FORMAT_R8_UINT,
 	Undefined   = VK_FORMAT_UNDEFINED
@@ -315,7 +317,12 @@ struct AttachmentDesc
 		VkImageLayout layout) : imageView(view), imageLayout(layout) {}
 
 	void SetDepth(uint32_t value) { clearValue.depthStencil.depth = static_cast<float>(value); }
+	// Default float
 	void SetColor(VkClearColorValue value) { clearValue.color = value; }
+	void SetColorU32(uint32_t (&value)[4])
+	{
+		std::copy(std::begin(value), std::end(value), std::begin(clearValue.color.uint32));
+	}
 
 	VkResolveModeFlagBits resolveMode = VK_RESOLVE_MODE_NONE;
 	VkImageView resolveView = VK_NULL_HANDLE;
@@ -376,6 +383,8 @@ enum class Vulkan_BufferUsage
 
 	VERTEX_PULL   = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	READ_BACK     = VK_BUFFER_USAGE_TRANSFER_DST_BIT
 };
 
 // -----

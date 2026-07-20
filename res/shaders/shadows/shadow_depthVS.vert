@@ -13,7 +13,8 @@ layout(push_constant) uniform ShadowPush {
 void main()
 {
 	// fetch shadow caster instances
-	Instance inst = getInstanceBuffer().instances[gl_InstanceIndex];
+	uint instanceID     = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	InstanceInput inst  = getInstanceInputBuffer().instanceInputs[instanceID];
 
 	// fetch vertex
 	Vertex vtx = getVertexBuffer().vertices[gl_VertexIndex];

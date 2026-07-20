@@ -10,13 +10,14 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-	Instance inst = getInstanceBuffer().instances[gl_InstanceIndex];
-	Vertex vtx = getVertexBuffer().vertices[gl_VertexIndex];
-	outColor = unpackRGBA8(vtx.colorRGBA8);
+	uint instanceID        = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	InstanceInput instance = getInstanceInputBuffer().instanceInputs[instanceID];
+	mat4 transform         = getTransformBuffer().transforms[instance.transformID];
+	Vertex vtx             = getVertexBuffer().vertices[gl_VertexIndex];
+	outColor               = unpackRGBA8(vtx.colorRGBA8);
 
-	mat4 model = getTransformBuffer().transforms[inst.transformID];
 	SceneData scene = getSceneData();
 
-	vec4 worldPos4 = model * vec4(vtx.position, 1.0);
+	vec4 worldPos4 = transform * vec4(vtx.position, 1.0);
 	gl_Position    = scene.viewProj * worldPos4;
 }

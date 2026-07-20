@@ -12,33 +12,36 @@ class Device;
 class Allocator;
 struct Mesh;
 struct MeshLODs;
-struct AABB;
-struct DrawBuildOutput;
-struct Instance;
+struct InstanceState;
+struct VirtualInstance;
+struct InstanceInput;
+struct BinTableBuild;
+struct DrawBinKeys;
+enum class ModelID;
+struct ModelAsset;
+class BindlessBDATable;
 
 namespace DrawPreparation
 {
-	DrawBuildOutput BuildAndSortIndirectDraws(
-		const std::vector<Instance>&                                      inputVisible,
-		const std::vector<AABB>&                                          worldAABBs,
-		const std::vector<Mesh>&                                          meshes,
-		const std::vector<MeshLODs>&                                      meshLods,
-		const glm::vec4&                                                  cameraPos,
-		const glm::mat4&                                                  cameraProj,
-		const std::array<std::vector<Instance>, RD::MAX_SHADOW_CASCADES>& csmCasters,
-		const std::vector<Instance>&                                      flashlightCasters,
-		const std::vector<uint32_t>&                                      materialFlags,
-		bool                                                              shadowsEnabled,
-		bool                                                              flashlightOn);
+	bool SyncInstanceInputs(
+		InstanceState& vs,
+		const std::vector<VirtualInstance>& virtualInstances,
+		const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
+		const std::vector<Mesh>& meshData,
+		const std::vector<MeshLODs>& meshLods,
+		const std::vector<glm::mat4>& transforms,
+		const std::vector<uint32_t>&  materialFlags);
 
-	// Uploads visible instances, indirect draws, transforms, lights, and
-	// per-frame address table to GPU via transfer queue.
-	// Uses FrameStaging for instances/draws, GlobalStaging for transforms/lights.
+	BinTableBuild BuildDrawBinTable(const std::vector<InstanceInput>& instances);
+
 	void UploadGPUBuffersForFrame(
-		FrameContext&                    frameCtx,
-		Device&                          device,
-		Allocator&                       allocator,
-		const std::vector<glm::mat4>&    transforms,
-		const std::vector<LocalLight>&   lights,
-		bool                             isTemporalValid);
+		FrameContext&                     frameCtx,
+		BindlessBDATable&                 globalBDATable,
+		const DrawBinKeys&                drawBinKeys,
+		Device&                           device,
+		Allocator&                        allocator,
+		const std::vector<InstanceInput>& instanceInputs,
+		const std::vector<glm::mat4>&     transforms,
+		const std::vector<LocalLight>&    lights,
+		bool                              isTemporalValid);
 }

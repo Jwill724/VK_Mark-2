@@ -304,7 +304,6 @@ bool Flashlight::UpdateFlashLight(
 		);
 
 		ViewProj = proj * view;
-		Frustum.ExtractNew(ViewProj);
 	}
  
 	// Push to global list

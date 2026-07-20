@@ -1,0 +1,52 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+
+layout(local_size_x = 256) in;
+
+// 12 edges of a unit box as corner-index pairs (corners = bit pattern xyz)
+const uvec2 kBoxEdges[12] = uvec2[12](
+	uvec2(0u,1u), uvec2(1u,3u), uvec2(3u,2u), uvec2(2u,0u),   // -z face
+	uvec2(4u,5u), uvec2(5u,7u), uvec2(7u,6u), uvec2(6u,4u),   // +z face
+	uvec2(0u,4u), uvec2(1u,5u), uvec2(2u,6u), uvec2(3u,7u));  // pillars
+
+void main()
+{
+	uint itemIdx = gl_GlobalInvocationID.x;
+	uint total = getIndirectDispatchBuffer().args[INDIRECT_DISPATCH_SLOT_DEBUG_BUILD].w;
+	if (itemIdx >= total) return;
+
+	DebugItem item = getDebugItemsBuffer().items[itemIdx];
+
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[item.instanceID];
+	mat4 transform     = getTransformBuffer().transforms[inst.transformID];
+	Mesh mesh          = getMeshBuffer().meshes[inst.meshID];
+
+	vec3 bmin = mesh.localAABB.vmin;
+	vec3 bmax = mesh.localAABB.vmax;
+
+	// 8 corners in world space — transform LOCAL corners = true OBB
+	vec3 corners[8];
+	for (uint c = 0u; c < 8u; ++c)
+	{
+		vec3 p = vec3(
+			(c & 1u) != 0u ? bmax.x : bmin.x,
+			(c & 2u) != 0u ? bmax.y : bmin.y,
+			(c & 4u) != 0u ? bmax.z : bmin.z);
+		corners[c] = (transform * vec4(p, 1.0)).xyz;
+	}
+
+	uint baseVert = itemIdx * DEBUG_VERTS_PER_OBB;
+	DebugVertexBuffer verts = getDebugVertexBuffer();
+
+	for (uint e = 0u; e < 12u; ++e)
+	{
+		DebugVertex a, b;
+		a.position = corners[kBoxEdges[e].x]; a.colorPacked = item.colorPacked;
+		b.position = corners[kBoxEdges[e].y]; b.colorPacked = item.colorPacked;
+		verts.vertices[baseVert + e * 2u + 0u] = a;
+		verts.vertices[baseVert + e * 2u + 1u] = b;
+	}
+}

@@ -102,6 +102,7 @@ void Camera::ProcessInput(GLFWwindow* window, Profiler& profiler, const Extents2
 		m_velocity *= (newSpeed / speed);
 	}
 
+	m_prevPosition = m_position;
 	m_position += m_velocity * dt;
 
 	if (UI::keyboard.isPressed(UI::Keys::R))
@@ -109,6 +110,9 @@ void Camera::ProcessInput(GLFWwindow* window, Profiler& profiler, const Extents2
 		Reset();
 		isTemporalInvalid = true;
 	}
+
+	m_prevRotation = m_rotation;
+	m_rotation = GetRotationMatrix();
 }
 
 glm::mat4 Camera::GetViewMatrix() const

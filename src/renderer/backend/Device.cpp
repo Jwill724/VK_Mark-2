@@ -213,6 +213,7 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	baseFeatures.features.multiDrawIndirect                       = VK_TRUE;  // indirect draws enabled
 	baseFeatures.features.shaderInt64                             = VK_TRUE;  // 64-bit addressing
 	//baseFeatures.features.tessellationShader                      = VK_TRUE;
+	baseFeatures.features.geometryShader                          = VK_TRUE;
 	baseFeatures.features.depthBiasClamp                          = VK_TRUE;
 	baseFeatures.features.depthClamp                              = VK_TRUE;
 	baseFeatures.features.drawIndirectFirstInstance               = VK_TRUE;

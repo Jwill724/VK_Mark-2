@@ -27,17 +27,20 @@ public:
 		const std::vector<AttachmentDesc>& attachments,
 		bool isAtlas = false);
 
-	void DrawIndexedIndirect(
+	void DrawIndexedIndirectCount(
 		VkCommandBuffer cmd,
-		VkBuffer indirectBuffer,
-		const IndirectDrawRange& drawRange,
+		uint32_t drawIndex,
+		VkBuffer indirectDrawBuffer,
+		VkBuffer indirectCountBuffer,
 		const PipelineHandle& pipeHandle,
 		PushDescriptorWriter& pushWriter);
-	void DrawVertexPull(
+
+	void DrawIndirect(
 		VkCommandBuffer cmd,
+		VkBuffer indirectDrawBuffer,
 		VkBuffer vertexBuffer,
+		const VkDeviceSize indirectOffset,
 		const VkDeviceSize vertexOffset,
-		const std::vector<uint32_t>& drawOffsets,
 		const PipelineHandle& pipeHandle);
 
 	// Only used for skybox draw

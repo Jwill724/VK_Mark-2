@@ -34,10 +34,15 @@ void RegisterHiZGenerationPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsOpaqueVisible;
+						return ctx.frameState->activeInstanceCount > 0;
 					})
 
-				.DisableCulling() // Always output a hiz if possible
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->activeInstanceCount > 0;
+					})
+				.DisableCulling()
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -57,8 +62,8 @@ void RegisterHiZGenerationPass(
 						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
 						const auto& dummyUint8 = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::DummyU8);
 						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						auto nearestSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
-						auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+						const auto nearestSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
 						//----------------------------------------
 						// TRANSITION WHOLE CHAIN FOR WRITES

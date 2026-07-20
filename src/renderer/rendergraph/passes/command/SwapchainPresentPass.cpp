@@ -34,7 +34,7 @@ void RegisterSwapchainPresentPass(
 
 						AllocatedImage srcImage;
 
-						if (ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->bHasVisibles)
+						if (ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->activeInstanceCount > 0)
 						{
 							srcImage = postNonAAComposite;
 						}

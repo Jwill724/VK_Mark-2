@@ -197,13 +197,47 @@ enum class TransparentForwardPipelineSlot : uint8_t
 	Count
 };
 
-enum class ObbDebugPipelineSlot : uint8_t
+enum class LineDebugPipelineSlot : uint8_t
 {
 	Line,
 
 	Count
 };
 
+enum class DebugBuildPipelineSlot : uint8_t
+{
+	DebugCount,
+	DebugArgs,
+	DebugBuild,
+
+	Count
+};
+
+
+enum class ShadowBoundsPipelineSlot : uint8_t
+{
+	ShadowBounds,
+
+	Count
+};
+
+
+enum class InstanceCullPipelineSlot : uint8_t
+{
+	Cull,
+
+	Count
+};
+
+enum class DrawBuildPipelineSlot : uint8_t
+{
+	Args,
+	Scatter,
+	Emit,
+	Place,
+
+	Count
+};
 
 
 // =====================================================================================
@@ -448,10 +482,54 @@ struct PipelineBundleTraits<TransparentForwardPipelineSlot>
 
 
 template<>
-struct PipelineBundleTraits<ObbDebugPipelineSlot>
+struct PipelineBundleTraits<LineDebugPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::OBBLine
+		RD::Renderer_Pipeline::LineDebug
+	};
+};
+
+template<>
+struct PipelineBundleTraits<DebugBuildPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::DebugCount,
+		RD::Renderer_Pipeline::DebugArgs,
+		RD::Renderer_Pipeline::DebugBuild,
+	};
+};
+
+
+template<>
+struct PipelineBundleTraits<ShadowBoundsPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::ShadowBounds
+	};
+};
+
+
+template<>
+struct PipelineBundleTraits<InstanceCullPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::InstanceCull
+	};
+};
+
+
+template<>
+struct PipelineBundleTraits<DrawBuildPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::DrawArgs,
+		RD::Renderer_Pipeline::DrawScatter,
+		RD::Renderer_Pipeline::DrawEmit,
+		RD::Renderer_Pipeline::DrawPlace
 	};
 };

@@ -19,7 +19,7 @@ void RegisterTemporalCopyPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bIsOpaqueVisible && ctx.frameState->bTemporalValid;
+						return ctx.frameState->activeInstanceCount > 0 && ctx.frameState->bTemporalValid;
 					})
 
 				.SetRecord(

@@ -27,11 +27,11 @@ public:
 		ScopedPass() = default;
 
 		ScopedPass(
-			Profiler&                 profiler,
-			FrameContext&             frameCtx,
-			VkCommandBuffer           cmd,
+			Profiler&         profiler,
+			FrameContext&     frameCtx,
+			VkCommandBuffer   cmd,
 			RD::Renderer_Pass trackingID,
-			std::string_view          passName);
+			std::string_view  passName);
 
 		ScopedPass(const ScopedPass&)            = delete;
 		ScopedPass& operator=(const ScopedPass&) = delete;
@@ -42,12 +42,12 @@ public:
 		~ScopedPass();
 
 	private:
-		Profiler*                 m_profiler      = nullptr;
-		FrameContext*             m_frameCtx      = nullptr;
-		VkCommandBuffer           m_cmd           = VK_NULL_HANDLE;
-		RD::Renderer_Pass m_trackingID    = RD::Renderer_Pass::Count;
-		void*                     m_gpuZone       = nullptr;
-		int64_t                   m_cpuStartTicks = 0;
+		Profiler*           m_profiler      = nullptr;
+		FrameContext*       m_frameCtx      = nullptr;
+		VkCommandBuffer     m_cmd           = VK_NULL_HANDLE;
+		RD::Renderer_Pass   m_trackingID    = RD::Renderer_Pass::Count;
+		void*               m_gpuZone       = nullptr;
+		int64_t             m_cpuStartTicks = 0;
 	};
 
 	Profiler();
@@ -57,15 +57,14 @@ public:
 	void EndFrame();
 
 	[[nodiscard]] ScopedPass ProfilePass(
-		FrameContext&             frameCtx,
-		VkCommandBuffer           cmd,
+		FrameContext&     frameCtx,
+		VkCommandBuffer   cmd,
 		RD::Renderer_Pass trackingID,
-		std::string_view          passName);
+		std::string_view  passName);
 
 	void AddGpuPassTime(RD::Renderer_Pass trackingID, float milliseconds);
 
 	void ResetPassStats();
-	void ResetDrawCalls();
 
 	const std::array<PassTimingStats, RD::PASS_COUNT>& GetAllPassStats() const { return m_passStats; }
 	const PassTimingStats& GetPassStats(RD::Renderer_Pass trackingID) const;
@@ -100,12 +99,6 @@ public:
 	void SetGPUName(std::string name)  { m_stats.gpuName = std::move(name); }
 	void SetVRAMUsage(VRAMStats stats) { m_stats.vramStats = stats; }
 
-	void AddDirect(uint32_t calls, uint64_t triangles = 0);
-	void AddOpaqueIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
-	void AddTransparentIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
-	void AddCSMIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
-	void AddFlashlightIndirect(uint32_t commands, uint32_t subdraws, uint64_t triangles = 0);
-
 	void EnablePlatformTimerPrecision();
 	void DisablePlatformTimerPrecision();
 
@@ -127,8 +120,9 @@ public:
 	BloomPush           bloomPush;
 	ForwardPush         forwardPush;
 	SkyboxPush          skyboxPush;
-	LightCullingPush    lightCullingPush;
 	BindlessAccessPush  smaaTexturesIds;
+
+	GPUStats            gpuStats; // Draw data
 
 private:
 	void* BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackingID);

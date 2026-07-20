@@ -1,0 +1,54 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+#include "../include/culling.glsl"
+
+layout(local_size_x = 256) in;
+
+void routeToStream(uint slot, uint visibleID, uint meshID, uint materialID)
+{
+	uint binID = binLookup(meshID, materialID);
+	if (binID == INVALID_U32) return;
+
+	uint cursor = atomicAdd(getInstanceCursorsBuffer().cursors.cursors[slot], 1u);
+	if (cursor >= MAX_INSTANCES_PER_STREAM) return;
+
+	atomicAdd(getDrawBinCounterBuffer().drawBinCounters[slot * MAX_DRAW_BINS + binID], 1u);
+
+	StreamEntry e;
+	e.visibleID = visibleID;
+	e.binID     = binID;
+	getInstanceStreamsBuffer().entries[slot * MAX_INSTANCES_PER_STREAM + cursor] = e;
+}
+
+void main()
+{
+	uint visibleID = gl_GlobalInvocationID.x;
+	uint total = getIndirectDispatchBuffer().args[INDIRECT_DISPATCH_SLOT_SCATTER].w;
+	if (visibleID >= total) return;
+
+	VisibleInstance vis    = getVisibleInstanceBuffer().visibles[visibleID];
+	InstanceInput instance = getInstanceInputBuffer().instanceInputs[vis.instanceID];
+
+	if ((vis.passFlags & VIS_PRIMARY_OPAQUE) != 0u)
+	{
+		routeToStream(VIS_SLOT_OPAQUE, visibleID, vis.selectedMesh, instance.materialID);
+	}
+	else if ((vis.passFlags & VIS_PRIMARY_TRANSPARENT) != 0u)
+	{
+		routeToStream(VIS_SLOT_TRANSPARENT, visibleID, vis.selectedMesh, instance.materialID);
+	}
+
+	if ((vis.passFlags & VIS_FLASHLIGHT) != 0u)
+	{
+		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID);
+	}
+
+	for (uint c = 0u; c < MAX_CASCADES; ++c)
+	{
+		if ((vis.passFlags & (VIS_CSM0 << c)) != 0u)
+			routeToStream(VIS_SLOT_CSM0 + c, visibleID, selectShadowLOD(instance, c), instance.materialID);
+	}
+}

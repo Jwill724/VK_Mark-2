@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Bounds.h"
 #include "ResourceTypes.h"
 #include "../../input/Camera.h"
 
@@ -30,12 +29,6 @@ public:
 		m_virtualInstances.clear();
 	}
 
-	const Frustum& GetCascadeFrustum(uint32_t index) const { return m_cascadeFrustums[index]; }
-	glm::mat4& GetCascadeLightView(uint32_t index) { return m_cascadeLightViews[index]; }
-	const glm::mat4& GetCascadeLightView(uint32_t index) const { return m_cascadeLightViews[index]; }
-
-	const Frustum& GetFrustum() const { return m_frustum; }
-
 	const glm::mat4& GetCurrentProjUnjittered() const { return m_curCamProjUnjittered; }
 
 	bool UpdateCamera(
@@ -60,9 +53,11 @@ public:
 	// Returns normalized
 	glm::vec3 GetLightDir();
 
+	const std::vector<VirtualInstance>& GetVirtualInstances() const { return m_virtualInstances; }
 	std::vector<VirtualInstance>& GetVirtualInstances() { return m_virtualInstances; }
+	const std::vector<glm::mat4>& GetTransforms() const { return m_transforms; }
+	std::vector<glm::mat4>& GetTransformsMutable() { return m_transforms; }
 	std::vector<glm::mat4>& GetTransforms() { return m_transforms; }
-	std::vector<AABB>& GetVisibleWorldAABBs() { return m_visibleWorldAABBs; }
 
 	// Verifys for temporal
 	bool VerifyTransformCount()
@@ -81,12 +76,7 @@ private:
 	SceneInfo m_sceneInfo;
 	DirectionalCSMInfo m_csmInfo;
 	Camera m_camera;
-	Frustum m_frustum;
 
-	void UpdateFrustum(const glm::mat4& viewProj) { m_frustum.ExtractNew(viewProj); }
-
-	Frustum m_cascadeFrustums[RD::MAX_SHADOW_CASCADES];
-	glm::mat4 m_cascadeLightViews[RD::MAX_SHADOW_CASCADES];
 	glm::mat4 m_cascadeLightProjs[RD::MAX_SHADOW_CASCADES];
 
 	float m_csmAtlasTileRes = 0.0f;
@@ -112,8 +102,6 @@ private:
 	std::vector<VirtualInstance> m_virtualInstances;
 	std::vector<glm::mat4> m_transforms;
 	uint32_t m_recentTransformCount = 0;
-
-	std::vector<AABB> m_visibleWorldAABBs;
 
 	ShadowControl m_shadowControl;
 

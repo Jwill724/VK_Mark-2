@@ -21,15 +21,13 @@ enum class MaterialPass
 struct Material
 {
 	glm::vec4 colorFactor = glm::vec4(1.0f);
+
 	glm::vec2 metalRoughFactors = glm::vec2(1.0f, 1.0f);
+	float normalScale = 1.0f;
+	float alphaCutoff = 1.0f;
 
 	glm::vec3 emissiveColor = glm::vec3(0.0f);
 	float emissiveStrength = 1.0f;
-
-	float normalScale = 1.0f;
-	float alphaCutoff = 1.0f;
-	uint32_t passType = 0;
-	uint32_t flags = 0;
 
 	uint32_t albedoID = UINT32_MAX;
 	uint32_t metalRoughnessID = UINT32_MAX;

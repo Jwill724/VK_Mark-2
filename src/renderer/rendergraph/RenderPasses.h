@@ -16,6 +16,18 @@ void RegisterDirectionalCSMPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterShadowBoundsPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterInstanceCullPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterDrawBuildPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
 void RegisterChromaticAberrationPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
@@ -60,7 +72,11 @@ void RegisterTAAPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
-void RegisterOBBLineDebugPass(
+void RegisterDebugDrawBuildPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterLineDebugPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 

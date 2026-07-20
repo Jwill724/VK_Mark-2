@@ -1,0 +1,26 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+
+layout(local_size_x = 1) in;
+
+void main()
+{
+	uint items = min(getDebugCountersBuffer().counters.itemCount, DEBUG_MAX_ITEMS);
+
+	uint groups = (items + 255u) / 256u;
+	getIndirectDispatchBuffer().args[INDIRECT_DISPATCH_SLOT_DEBUG_BUILD] =
+		uvec4(max(groups, 1u), 1u, 1u, items);   // .w = item count for early-out
+
+	uint vertCount = items * DEBUG_VERTS_PER_OBB;
+	getDebugCountersBuffer().counters.vertexCount = vertCount;
+
+	IndirectDrawCmd draw;
+	draw.vertexCount   = vertCount;
+	draw.instanceCount = 1u;
+	draw.firstVertex   = 0u;
+	draw.firstInstance = 0u;
+	getDebugDrawBuffer().draw = draw;
+}
