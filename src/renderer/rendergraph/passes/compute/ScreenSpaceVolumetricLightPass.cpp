@@ -25,6 +25,16 @@ void RegisterVolumetricLightPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->IsShadowsOn() &&
+							ctx.frameState->IsVolumetricsOn() &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -49,14 +59,6 @@ void RegisterVolumetricLightPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							volumetricLight);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						const auto& debug = ctx.profiler->debugToggles;
-						return ctx.frameState->activeInstanceCount > 0 &&
-							debug.enableVolumetrics && debug.enableShadows;
 					})
 
 				.SetRecord(

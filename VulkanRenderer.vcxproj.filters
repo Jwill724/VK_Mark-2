@@ -354,6 +354,18 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueTileShadingPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\MaterialResolvePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\GBufferDebugPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -776,6 +788,27 @@
     </None>
     <None Include="res\shaders\debug\debug_build.comp">
       <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\include\barycentric.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\visbuffer.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\core\material_resolve.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\core\opaque_tile_shading.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\include\lighting.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\debug\gbuffer_view.comp">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\include\debug_views.glsl">
+      <Filter>res\shaders\include</Filter>
     </None>
   </ItemGroup>
 </Project>

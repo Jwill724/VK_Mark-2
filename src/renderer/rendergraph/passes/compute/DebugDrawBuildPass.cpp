@@ -36,7 +36,10 @@ void RegisterDebugDrawBuildPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->activeInstanceCount > 0 && ctx.frameState->bDebugLine;
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.frameState->IsObbLineOn() &&
+							!ctx.frameState->DebugRenderFastPath();
 					})
 
 				.SetRecord(

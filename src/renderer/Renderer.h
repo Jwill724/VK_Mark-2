@@ -178,6 +178,7 @@ private:
 	RD::ShadowQuality m_currentShadowQuality;
 
 	void InitRenderSettings(
+		RD::RenderingMode renderMode,
 		bool enableLensFlare,
 		bool enableChromaticAberration,
 		bool enableBloom,

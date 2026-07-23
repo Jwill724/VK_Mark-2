@@ -17,7 +17,7 @@ void main()
 	uint tid = gl_LocalInvocationIndex;
 	SceneData sceneData = getSceneData();
 
-	// -------- 1. reduce lowest Hi-Z mip to global depth range --------
+	// reduce lowest Hi-Z mip to global depth range
 	ivec2 mipSize = textureSize(inHiZ, int(HI_Z_MIP_CLAMPED));
 	uint texelCount = uint(mipSize.x * mipSize.y);
 
@@ -54,7 +54,7 @@ void main()
 		barrier();
 	}
 
-	// -------- 2. per-cascade receiver volumes (thread 0..3, one cascade each) --------
+	// per-cascade receiver volumes (thread 0..3, one cascade each)
 	if (tid >= MAX_CASCADES) return;
 
 	float nearPlane = sceneData.cameraClips.x;
@@ -96,9 +96,7 @@ void main()
 		return;
 	}
 
-	// -------- 3. frustum slice corners -> light-space AABB --------
-	// ndc depth for the two slice distances (reverse-z projection)
-	// for standard reverse-z infinite or finite proj: d = proj-transform of view z
+	// frustum slice corners -> light-space AABB
 	float tanHalfFovY = 1.0 / sceneData.proj[1][1];
 	float tanHalfFovX = 1.0 / sceneData.proj[0][0];
 

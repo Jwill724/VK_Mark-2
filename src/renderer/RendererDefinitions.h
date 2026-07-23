@@ -34,11 +34,13 @@ namespace RendererDefinitions
 	inline constexpr uint32_t PUSH_BINDING_READ_5  = 4u;
 	inline constexpr uint32_t PUSH_BINDING_READ_6  = 5u;
 	inline constexpr uint32_t PUSH_BINDING_READ_7  = 6u;
-	inline constexpr uint32_t PUSH_BINDING_WRITE_1 = 7u;
-	inline constexpr uint32_t PUSH_BINDING_WRITE_2 = 8u;
-	inline constexpr uint32_t PUSH_BINDING_WRITE_3 = 9u;
-	inline constexpr uint32_t PUSH_BINDING_WRITE_4 = 10u;
-	inline constexpr uint32_t PUSH_BINDING_WRITE_5 = 11u;
+	inline constexpr uint32_t PUSH_BINDING_READ_8  = 7u;
+	inline constexpr uint32_t PUSH_BINDING_READ_9  = 8u;
+	inline constexpr uint32_t PUSH_BINDING_WRITE_1 = 9u;
+	inline constexpr uint32_t PUSH_BINDING_WRITE_2 = 10u;
+	inline constexpr uint32_t PUSH_BINDING_WRITE_3 = 11u;
+	inline constexpr uint32_t PUSH_BINDING_WRITE_4 = 12u;
+	inline constexpr uint32_t PUSH_BINDING_WRITE_5 = 13u;
 
 	inline constexpr uint32_t DEBUG_VERTS_PER_OBB     = 24u;
 	inline constexpr uint32_t DEBUG_VERTS_PER_SPHERE  = 72u;      // 3 rings x 12 segments x 2
@@ -256,6 +258,7 @@ namespace RendererDefinitions
 		DrawBuild,
 		Prepass,
 		HiZGeneration,
+		MaterialResolve,
 		LightCulling,
 		ClusteredLights,
 		SSAO,
@@ -264,6 +267,7 @@ namespace RendererDefinitions
 		ScreenSpaceContactShadows,
 		Skybox,
 		OpaqueForward,
+		OpaqueTileShading,
 		TransparentForward,
 		TransparentResolve,
 		DebugDrawBuild,
@@ -301,6 +305,9 @@ namespace RendererDefinitions
 
 		Wireframe_v,
 		Wireframe_f,
+
+		MaterialResolve_c,
+		OpaqueTileShading_c,
 
 		ShadowBounds_c,
 		InstanceCull_c,
@@ -366,6 +373,8 @@ namespace RendererDefinitions
 
 		ChromaticAberration_c,
 
+		GBufferDebug_c,
+
 		Count
 	};
 
@@ -386,6 +395,9 @@ namespace RendererDefinitions
 		DrawScatter,
 		DrawEmit,
 		DrawPlace,
+
+		MaterialResolve,
+		OpaqueTileShading,
 
 		ExposureReduce,
 		ExposureFinalize,
@@ -443,6 +455,8 @@ namespace RendererDefinitions
 
 		ChromaticAberration,
 
+		GBufferDebug,
+
 		Count
 	};
 
@@ -476,6 +490,10 @@ namespace RendererDefinitions
 		ViewSpaceNormals,
 		VolumetricLight,
 		VolumetricLightBlur,
+		MaterialAlbedoRough,
+		MaterialNormal,
+		MaterialMetal,
+		MaterialEmissive,
 		PostNonAAComposite,
 		CMAA2WorkingEdges,
 		SMAAEdges,
@@ -611,6 +629,13 @@ namespace RendererDefinitions
 		AA_TAA      // Temporal Anti-Aliasing
 	};
 
+	enum class RenderingMode
+	{
+		FORWARD_PLUS,
+		VISIBILITY_TILE_DEFERRED,
+		UNDEFINED
+	};
+
 	//enum class ToneMapper
 	//{
 	//	TM_ACESFILM,
@@ -632,6 +657,11 @@ namespace RendererDefinitions
 
 		uint32_t activeEnvMap              = 0;
 		uint32_t disableOcclusionCull      = 0;
+		uint32_t renderingMode             = 0;
+		uint32_t debugView                 = 0;
+
+		float depthScale                   = 0.0f;
+		uint32_t enableWireframe           = 0;
 		uint32_t pad0;
 		uint32_t pad1;
 
@@ -699,16 +729,148 @@ namespace RendererDefinitions
 		Count
 	};
 
+	enum class DebugState : uint32_t
+	{
+		Off,
+		Wireframe,
+		OBBLine,
+		ShadedOverlay,
+	};
+
 	struct RenderStateInfo
 	{
-		bool bTemporalValid        = false;
-		bool bHiZValid             = false;
-		bool bStateChanged         = false;
-		bool bFlashlightOn         = false;
-		bool bDebugLine            = false;
-		bool bCopyPostAAImage      = false;
-		bool bShowImgui            = false;
-		uint32_t activeLightCount    = 0u;
-		uint32_t activeInstanceCount = 0u;
+	public:
+		void ResetDebugMask() { m_debugState = DebugState::Off; }
+		void SetDebugMask(DebugState mask) { m_debugState = mask; }
+
+		bool IsWireframeOn() const noexcept { return m_debugState == DebugState::Wireframe; }
+		bool IsObbLineOn() const noexcept { return m_debugState == DebugState::OBBLine; }
+		bool IsShadedOverlayOn() const noexcept { return m_debugState == DebugState::ShadedOverlay; }
+
+		bool InstancesActive() const noexcept { return m_renderToggles.activeInstanceCount > 0; }
+		bool LightsActive() const noexcept { return m_renderToggles.activeLightCount > 0; }
+
+		// Assume else is Forward plus since if undefined rendering doesn't work
+		bool IsVisibilityDeferred() const noexcept
+		{
+			return static_cast<RenderingMode>(m_renderToggles.renderingMode) == RenderingMode::VISIBILITY_TILE_DEFERRED;
+		}
+		uint32_t RenderMode() const noexcept { return m_renderToggles.renderingMode; }
+
+		// Cuts down minimum passes
+		bool DebugRenderFastPath() const noexcept { return IsWireframeOn() || IsShadedOverlayOn(); }
+
+		bool DebugRendering() const noexcept { return DebugRenderFastPath() || IsObbLineOn(); }
+
+		void UpdateToggles(RenderToggles toggles) { m_renderToggles = toggles; }
+
+		bool DrawImgui() const noexcept { return m_renderToggles.enableProfilerView || m_renderToggles.enableSettings; }
+		bool FlashlightOn() const noexcept { return m_renderToggles.enableFlashlight; }
+		bool CopyPostAAImage() const noexcept
+		{
+			return m_renderToggles.aaMode != static_cast<uint32_t>(AntiAliasingMethod::AA_OFF) &&
+				m_renderToggles.aaMode != static_cast<uint32_t>(AntiAliasingMethod::AA_TAA);
+		}
+
+		void UpdateTemporal(bool temporalValid, bool hiZValid)
+		{
+			m_bTemporalValid = temporalValid;
+			m_bHiZValid = hiZValid;
+		}
+
+		bool IsShadowsOn() const noexcept { return m_renderToggles.enableShadows; }
+		bool IsFlashlightOn() const noexcept { return m_renderToggles.enableFlashlight; }
+		bool IsScreenSpaceShadowsOn() const noexcept { return m_renderToggles.enableSSS; }
+		bool IsVolumetricsOn() const noexcept { return m_renderToggles.enableVolumetrics; }
+
+		bool IsTemporalValid() const noexcept { return m_bTemporalValid; }
+		bool IsHiZValid() const noexcept { return m_bHiZValid; }
+
+		void ResetRenderToggles() { m_renderToggles = {}; }
+
+		uint32_t GetLightCount() const noexcept { return m_renderToggles.activeLightCount; }
+		uint32_t GetInstanceCount() const noexcept { return m_renderToggles.activeInstanceCount; }
+
+		bool m_bStateChanged         = false;
+	private:
+
+		bool m_bTemporalValid        = false;
+		bool m_bHiZValid             = false;
+
+		DebugState m_debugState = DebugState::Off;
+
+		RenderToggles m_renderToggles;
 	};
+
+
+	enum class DebugView : uint32_t
+	{
+		Off = 0,
+		Albedo,
+		Normals,
+		Roughness,
+		Metallic,
+		Emissive,
+		SSAO,
+		SSShadows,
+		Cascades,
+		VisInstance,      // deferred only
+		VisTriangle,      // deferred only
+		VisLod,           // deferred only
+		Count
+	};
+
+	inline constexpr uint32_t DebugViewBit(DebugView v)
+	{
+		return 1u << static_cast<uint32_t>(v);
+	}
+
+	inline constexpr uint32_t DBG_CAPS_FORWARD =
+		DebugViewBit(DebugView::Off)       | DebugViewBit(DebugView::Albedo)    |
+		DebugViewBit(DebugView::Normals)   | DebugViewBit(DebugView::Roughness) |
+		DebugViewBit(DebugView::Metallic)  | DebugViewBit(DebugView::Emissive)  |
+		DebugViewBit(DebugView::SSAO)      | DebugViewBit(DebugView::SSShadows) |
+		DebugViewBit(DebugView::Cascades);
+
+	inline constexpr uint32_t DBG_CAPS_DEFERRED =
+		DBG_CAPS_FORWARD                      |
+		DebugViewBit(DebugView::VisInstance)  |
+		DebugViewBit(DebugView::VisTriangle)  |
+		DebugViewBit(DebugView::VisLod);
+
+	inline constexpr uint32_t DebugCapsForMode(RenderingMode mode)
+	{
+		return (mode == RenderingMode::VISIBILITY_TILE_DEFERRED)
+			? DBG_CAPS_DEFERRED : DBG_CAPS_FORWARD;
+	}
+
+	inline constexpr bool DebugViewSupported(uint32_t caps, uint32_t view)
+	{
+		return view < static_cast<uint32_t>(DebugView::Count)
+			&& (caps & (1u << view)) != 0u;
+	}
+
+	struct DebugViewEntry
+	{
+		DebugView   view;
+		const char* label;
+	};
+
+	inline constexpr DebugViewEntry DEBUG_VIEW_TABLE[] = {
+		{ DebugView::Off,         "Complete"        },
+		{ DebugView::Albedo,      "Albedo"          },
+		{ DebugView::Normals,     "Normals"         },
+		{ DebugView::Roughness,   "Roughness"       },
+		{ DebugView::Metallic,    "Metallic"        },
+		{ DebugView::Emissive,    "Emissive"        },
+		{ DebugView::SSAO,        "SSAO"            },
+		{ DebugView::SSShadows,   "Contact Shadows" },
+		{ DebugView::Cascades,    "Cascade Splits"  },
+		{ DebugView::VisInstance, "Vis: Instance"   },
+		{ DebugView::VisTriangle, "Vis: Triangle"   },
+		{ DebugView::VisLod,      "Vis: LOD"        }
+	};
+
+	static_assert(std::size(DEBUG_VIEW_TABLE) == static_cast<size_t>(DebugView::Count),
+		"DEBUG_VIEW_TABLE must cover every DebugView");
 }

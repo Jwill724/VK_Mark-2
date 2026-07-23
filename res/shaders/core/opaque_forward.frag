@@ -9,6 +9,8 @@
 #include "../include/shadow.glsl"
 #include "../include/pbr.glsl"
 #include "../include/shading_functions.glsl"
+#include "../include/lighting.glsl"
+#include "../include/debug_views.glsl"
 
 layout(location = 0) in vec3 inColor;
 layout(location = 1) in vec2 inUV;
@@ -35,23 +37,6 @@ layout(push_constant) uniform ForwardPush
 
 	uint flashlightShadowMapID;
 	uint flashlightCookieTexID;
-	uint pad0;
-	uint pad1;
-
-	uint showAlbedo;
-	uint showNormals;
-	uint showRoughness;
-	uint showMetallic;
-
-	uint showAmbientOcclusion;
-	uint showSpecular;
-	uint showDiffuse;
-	uint showEmissive;
-
-	uint showBentNormals;
-	uint showCascadeSplits;
-	uint showSSS;
-	uint pad2;
 } pc;
 
 void main()
@@ -89,7 +74,7 @@ void main()
 		N = normalize(tbn * normalTS);
 	}
 
-	if (uintBool(pc.showNormals)) RET(N * 0.5 + 0.5, 1.0);
+	if (debug.debugView == DBG_NORMALS) RET(N * 0.5 + 0.5, 1.0);
 
 	vec3 albedo = inColor * base.rgb;
 
@@ -106,10 +91,10 @@ void main()
 	rough = specularAA(rough, N);
 	metal = clamp(metal, 0.0, 1.0);
 
-	if (uintBool(pc.showAlbedo))    RET(albedo,      alpha);
-	if (uintBool(pc.showEmissive))  RET(emissive,    alpha);
-	if (uintBool(pc.showMetallic))  RET(vec3(metal), alpha);
-	if (uintBool(pc.showRoughness)) RET(vec3(rough), alpha);
+	if (debug.debugView == DBG_ALBEDO)    RET(albedo,      alpha);
+	if (debug.debugView == DBG_EMISSIVE)  RET(emissive,    alpha);
+	if (debug.debugView == DBG_METALLIC)  RET(vec3(metal), alpha);
+	if (debug.debugView == DBG_ROUGHNESS) RET(vec3(rough), alpha);
 
 	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
 	vec3 V = normalize(scene.cameraPos.xyz - inWorldPos);
@@ -124,9 +109,7 @@ void main()
 	float aoTerm = 1.0;
 	if (DBG(aoMode)) {
 		float aoFactor = texture(aoFinal, screenspace_uv).r;
-		if(uintBool(pc.showAmbientOcclusion)) {
-			RET(vec3(aoFactor), 1.0);
-		}
+		if (debug.debugView == DBG_SSAO) RET(vec3(aoFactor), 1.0);
 		aoTerm *= aoFactor;
 	}
 
@@ -134,9 +117,7 @@ void main()
 	float contactShadows = 1.0;
 	if (DBG(enableSSS) && DBG(enableShadows)) {
 		float sss = texture(contactShadowMask, screenspace_uv).r;
-		if(uintBool(pc.showSSS)) {
-			RET(vec3(sss), 1.0);
-		}
+		if (debug.debugView == DBG_SS_SHADOWS) RET(vec3(sss),      1.0);
 		contactShadows = sss;
 	}
 
@@ -153,10 +134,8 @@ void main()
 	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
 	spec *= multiScatterComp;
 
-	if (uintBool(pc.showDiffuse))  RET(diff * (sunColor) * NdotL, alpha);
-	if (uintBool(pc.showSpecular)) RET(spec * (sunColor) * NdotL, alpha);
-
 	// cascaded shadow maps
+	ShadowCSM csm    = getShadowCSM();
 	float shadow     = 1.0;
 	mat2  shadowHash = mat2(1.0);
 	if (debug.aaMode != AA_TAA) {
@@ -165,20 +144,17 @@ void main()
 	else {
 		shadowHash = createHashTemporal(gl_FragCoord.xy, scene.temporal.x);
 	}
+
+	const uint  cascadeCount = uint(csm.params.y);
+	const uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
+	if (debug.debugView == DBG_CASCADES)
+		RET(debugCascadeOverlay(albedo, cascadeIdx), alpha);
+
 	if (DBG(enableShadows)) {
-		ShadowCSM   csm          = getShadowCSM();
 		const uint  shadowMapID  = uint(csm.params.x);
-		const uint  cascadeCount = uint(csm.params.y);
 		const float texel        = csm.params.z;
 
-		const uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
 		const uint nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
-
-		if (uintBool(pc.showCascadeSplits)) {
-			vec3  overlayColor = cascadeColor(cascadeIdx);
-			vec3  finalColor   = mix(albedo, overlayColor, 0.6);
-			RET(finalColor, alpha);
-		}
 
 		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
 		const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
@@ -400,10 +376,6 @@ void main()
 
 		float bentBlend = bentDeviation * coneConfidence;
 		bentBlend       = clamp(bentBlend, 0.0, 0.5);
-
-		if (uintBool(pc.showBentNormals)) {
-			RET(vec3(bentBlend), 1.0);
-		}
 
 		vec3 blended = normalize(mix(N, bentWS, bentBlend));
 		irradianceN  = blended;

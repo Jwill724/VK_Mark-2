@@ -1,0 +1,109 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+#include "../include/pbr.glsl"
+#include "../include/lighting.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D visBuffer;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outAlbedoRough;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2) writeonly uniform image2D outNormal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_3) writeonly uniform image2D outMetal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_4, r11f_g11f_b10f) writeonly uniform image2D outEmissive;
+
+vec3 InterpolateDdx(BarycentricDeriv d, vec3 v0, vec3 v1, vec3 v2)
+{
+	return vec3(
+		dot(vec3(v0.x, v1.x, v2.x), d.m_ddx),
+		dot(vec3(v0.y, v1.y, v2.y), d.m_ddx),
+		dot(vec3(v0.z, v1.z, v2.z), d.m_ddx)
+	);
+}
+
+vec3 InterpolateDdy(BarycentricDeriv d, vec3 v0, vec3 v1, vec3 v2)
+{
+	return vec3(
+		dot(vec3(v0.x, v1.x, v2.x), d.m_ddy),
+		dot(vec3(v0.y, v1.y, v2.y), d.m_ddy),
+		dot(vec3(v0.z, v1.z, v2.z), d.m_ddy)
+	);
+}
+
+void main()
+{
+	uvec2 gid = gl_GlobalInvocationID.xy;
+	SceneData scene = getSceneData();
+	uvec2 vpSize = uvec2(scene.viewportSize.xy);
+	if (any(greaterThanEqual(gid, vpSize))) return;
+
+	uvec2 ids = texelFetch(visBuffer, ivec2(gid), 0).xy;
+
+	// Sky / background. Clear targets so stale data never leaks.
+	if (ids.x == VIS_INVALID)
+	{
+		imageStore(outAlbedoRough, ivec2(gid), vec4(0.0));
+		imageStore(outNormal,      ivec2(gid), vec4(0.0));
+		imageStore(outMetal,       ivec2(gid), vec4(0.0));
+		imageStore(outEmissive,    ivec2(gid), vec4(0.0));
+		return;
+	}
+
+	// fetch + barycentrics
+	VisTriangle tri = fetchVisTriangle(ids.x, ids.y);
+
+	vec2 winSize = scene.viewportSize.xy;
+	BarycentricDeriv bary;
+	if (!CalcFullBarySafe(tri.posCS[0], tri.posCS[1], tri.posCS[2], PixelToNdc(gid, winSize), winSize, bary))
+	{
+		imageStore(outAlbedoRough, ivec2(gid), vec4(1.0, 0.0, 1.0, 1.0));
+		return;
+	}
+
+	VisSurface s = interpolateVisSurface(tri, bary);
+	Material mat = getMaterialBuffer().materials[s.materialID];
+
+	float bias = scene.viewportSize.w;
+	vec4 base = SampleVisSurface(mat.albedoID, s, bias) * mat.colorFactor;
+
+	vec3 albedo = s.color.rgb * base.rgb;
+
+	vec3 metalRough = SampleVisSurface(mat.metalRoughnessID, s, bias).rgb;
+	vec3 emissT     = SampleVisSurface(mat.emissiveID,       s, bias).rgb;
+
+	float rough = metalRough.g * mat.metalRoughFactors.y;
+	float metal = metalRough.b * mat.metalRoughFactors.x;
+
+	float emissiveStrength = (mat.emissiveStrength * 15.0);
+	vec3  emissive = emissT * (mat.emissiveColor * emissiveStrength);
+
+	bool hasNM      = (tri.flags & HAS_NORMALS) != 0u;
+
+	bool flatTri = dot(tri.normalOS[0], tri.normalOS[1]) > 0.9999
+			&& dot(tri.normalOS[0], tri.normalOS[2]) > 0.9999;
+
+	vec3 N = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda, s.uvDdx, s.uvDdy);
+	if (hasNM || !flatTri)
+	{
+		vec3 Nx = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddx, s.uvDdx, s.uvDdy);
+		vec3 Ny = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddy, s.uvDdx, s.uvDdy);
+		rough = specularAAAnalytic(rough, Nx - N, Ny - N);
+	}
+	else
+	{
+		rough = clamp(rough, 0.04, 1.0);
+	}
+
+	metal = clamp(metal, 0.0, 1.0);
+
+	imageStore(outAlbedoRough, ivec2(gid), vec4(albedo, rough));
+	imageStore(outNormal,      ivec2(gid), vec4(octEncode(N), 0.0, 0.0));
+	imageStore(outMetal,       ivec2(gid), vec4(metal, 0.0, 0.0, 0.0));
+	imageStore(outEmissive,    ivec2(gid), vec4(emissive, 0.0));
+}

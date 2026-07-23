@@ -26,14 +26,17 @@ void RegisterLightCullingPass(
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						pass.scope = ComputeScope{{ ctx.frameState->activeLightCount, 1u }, { WORKGROUP_256 }};
+						pass.scope = ComputeScope{{ ctx.frameState->GetLightCount(), 1u }, { WORKGROUP_256 }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 					})
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->activeLightCount > 0 && ctx.frameState->activeInstanceCount > 0;
+							return
+								ctx.frameState->InstancesActive() &&
+								ctx.frameState->LightsActive() &&
+								!ctx.frameState->DebugRenderFastPath();
 					})
 
 				.SetRecord(

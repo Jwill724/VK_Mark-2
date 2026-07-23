@@ -12,14 +12,15 @@ layout(location = 2) out vec4 outPrevClip;
 layout(location = 3) out vec2 outUV;
 layout(location = 4) flat out uint outTemporalValidation;
 layout(location = 5) flat out uint outMaterialID;
-layout(location = 6) flat out uint outInstanceID;
+layout(location = 6) flat out uint outPackedID;
 
 void main()
 {
-	uint instanceID     = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint packedID       = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint instanceID     = visInstanceID(packedID);
 	InstanceInput inst  = getInstanceInputBuffer().instanceInputs[instanceID];
 	outMaterialID       = inst.materialID;
-	outInstanceID       = instanceID;
+	outPackedID         = packedID;
 
 	vec2 uv;
 	vec3 position;

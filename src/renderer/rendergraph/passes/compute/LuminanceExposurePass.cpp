@@ -26,6 +26,9 @@ void RegisterLuminanceExposurePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.DisableCulling()
+				.ForceExecution()
+
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -34,7 +37,7 @@ void RegisterLuminanceExposurePass(
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
 
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
@@ -55,9 +58,6 @@ void RegisterLuminanceExposurePass(
 							transparent,
 							linearSampler);
 					})
-
-				.DisableCulling()
-				.ForceExecution()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

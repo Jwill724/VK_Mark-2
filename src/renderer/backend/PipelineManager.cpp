@@ -48,6 +48,8 @@ void PM::RegisterPipelines()
 		reg(id, {{ shader, SS::COMPUTE_STAGE }});
 	};
 
+	regC(RP::MaterialResolve,           RS::MaterialResolve_c);
+	regC(RP::OpaqueTileShading,         RS::OpaqueTileShading_c);
 	regC(RP::TransparentResolve,        RS::TransparentResolve_c);
 	regC(RP::ExposureReduce,            RS::ExposureReduce_c);
 	regC(RP::ExposureFinalize,          RS::ExposureFinalize_c);
@@ -93,6 +95,7 @@ void PM::RegisterPipelines()
 	regC(RP::DebugCount,                RS::DebugCount_c);
 	regC(RP::DebugArgs,                 RS::DebugArgs_c);
 	regC(RP::DebugBuild,                RS::DebugBuild_c);
+	regC(RP::GBufferDebug,              RS::GBufferDebug_c);
 
 	// === Presets ===
 	m_pipelinePresets[static_cast<size_t>(RP::Opaque)].cullMode            = VK_CULL_MODE_BACK_BIT;

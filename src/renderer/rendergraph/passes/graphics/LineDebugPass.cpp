@@ -21,6 +21,15 @@ void RegisterLineDebugPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.frameState->IsObbLineOn() &&
+							!ctx.frameState->DebugRenderFastPath();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -54,12 +63,6 @@ void RegisterLineDebugPass(
 								opaque.Height()
 							},
 							{ opaqueAttach, depthAttach });
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0 && ctx.frameState->bDebugLine;
 					})
 
 				.SetRecord(

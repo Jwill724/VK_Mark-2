@@ -22,6 +22,15 @@ void RegisterDirectionalCSMPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->IsShadowsOn() &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRenderFastPath();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::DirectionalCSMAtlas,
 					RD::ImageAccess::GraphicsDepthWrite,
@@ -47,13 +56,6 @@ void RegisterDirectionalCSMPass(
 							},
 							{ depth },
 							true); // Atlas on
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.profiler->debugToggles.enableShadows &&
-							ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

@@ -1,0 +1,110 @@
+#include "pch.h"
+
+#include "../../RenderPasses.h"
+#include "../../../rendergraph/RenderGraphBuilder.h"
+#include "../../scopes/ComputeScope.h"
+#include "../../RenderGraph.h"
+#include "../../RenderGraphResources.h"
+#include "../../../backend/memory/BindlessImageTable.h"
+#include "../../../../profiler/Profiler.h"
+
+static constexpr size_t PIPE_ID_MAT_RESOLVE = 0;
+
+void RegisterMaterialResolvePass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines)
+{
+	graph.AddPass(
+		"Material_Resolve",
+		pipelines,
+		[&](RenderPassBuilder& builder)
+		{
+			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.frameState->IsVisibilityDeferred() &&
+							!ctx.frameState->IsWireframeOn();
+					})
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::MaterialAlbedoRough,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::MaterialNormal,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::MaterialMetal,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::MaterialEmissive,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.SetSetup(
+					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					{
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
+						auto& scope = std::get<ComputeScope>(pass.scope);
+
+						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough);
+						const auto& normal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal);
+						const auto& metal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialMetal);
+						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialEmissive);
+						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
+						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+
+						scope.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							visibility,
+							nearestClampSampler);
+
+						scope.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_1,
+							albedoRough);
+
+						scope.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_2,
+							normal);
+
+						scope.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_3,
+							metal);
+
+						scope.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_4,
+							emissive);
+
+					})
+
+				.SetRecord(
+					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::MaterialResolve,
+							pass.passName);
+
+						auto& pso = std::get<ComputeScope>(pass.scope);
+						pso.DispatchComputePass(
+							ctx.commandBuffer,
+							pass.pipelines[PIPE_ID_MAT_RESOLVE],
+							pass.pushWriter);
+					});
+		});
+}

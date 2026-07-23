@@ -21,6 +21,9 @@ void RegisterFinalCompositePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.DisableCulling()
+				.ForceExecution()
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::Tonemap,
 					RD::ImageAccess::Write,
@@ -40,7 +43,7 @@ void RegisterFinalCompositePass(
 						auto& scope = std::get<ComputeScope>(pass.scope);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid() && !ctx.frameState->DebugRendering());
 
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
@@ -61,8 +64,9 @@ void RegisterFinalCompositePass(
 							RD::PUSH_BINDING_WRITE_1,
 							tonemap);
 
-						if (ctx.frameState->bCopyPostAAImage &&
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2))
+						if (ctx.frameState->CopyPostAAImage() &&
+							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2) &&
+							!ctx.frameState->DebugRendering())
 						{
 							scope.BindWriteImage(
 								pass.pushWriter,
@@ -90,7 +94,8 @@ void RegisterFinalCompositePass(
 							linearSampler);
 
 						if (ctx.profiler->debugToggles.enableVolumetrics &&
-							ctx.profiler->debugToggles.enableShadows)
+							ctx.profiler->debugToggles.enableShadows &&
+							!ctx.frameState->DebugRendering())
 						{
 							scope.BindReadImage(
 								pass.pushWriter,
@@ -107,7 +112,9 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 
-						if (ctx.profiler->debugToggles.enableLensFlare)
+						if (ctx.profiler->debugToggles.enableLensFlare &&
+							!ctx.profiler->enableWireframeView &&
+							!ctx.frameState->DebugRendering())
 						{
 							scope.BindReadImage(
 								pass.pushWriter,
@@ -124,7 +131,9 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 
-						if (ctx.profiler->debugToggles.enableBloom)
+						if (ctx.profiler->debugToggles.enableBloom &&
+							!ctx.profiler->enableWireframeView &&
+							!ctx.frameState->DebugRendering())
 						{
 							scope.BindReadImage(
 								pass.pushWriter,
@@ -142,9 +151,6 @@ void RegisterFinalCompositePass(
 								linearClampSampler);
 						}
 					})
-
-				.DisableCulling()
-				.ForceExecution()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

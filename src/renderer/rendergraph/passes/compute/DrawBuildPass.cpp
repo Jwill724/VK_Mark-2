@@ -26,6 +26,13 @@ void RegisterDrawBuildPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->InstancesActive();
+					})
+				.DisableCulling()
+
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -33,13 +40,6 @@ void RegisterDrawBuildPass(
 						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.UpdateWorkgroups(WORKGROUP_1, true);
 					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
-					})
-				.DisableCulling()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

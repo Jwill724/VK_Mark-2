@@ -121,6 +121,30 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "AAColor" };
 	}
 
+	inline ImageDesc MaterialAlbedoRough(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialAlbedoRough" };
+	}
+
+	inline ImageDesc MaterialNormal(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RG16unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialNormal" };
+	}
+
+	inline ImageDesc MaterialMetal(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialMetal" };
+	}
+
+	inline ImageDesc MaterialEmissive(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialEmissive" };
+	}
+
 	inline ImageDesc PostNonAAComposite(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,

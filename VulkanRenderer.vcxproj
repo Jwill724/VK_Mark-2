@@ -107,8 +107,12 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DrawBuildPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\GBufferDebugPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\InstanceCullPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\MaterialResolvePass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueTileShadingPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -460,17 +464,24 @@
     <None Include="res\shaders\clustered\lights_indirect_args.comp" />
     <None Include="res\shaders\clustered\light_culling.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="res\shaders\core\material_resolve.comp" />
+    <None Include="res\shaders\core\opaque_tile_shading.comp" />
     <None Include="res\shaders\core\transparent_forward.frag" />
     <None Include="res\shaders\core\transparent_resolve.comp" />
     <None Include="res\shaders\debug\debug_args.comp" />
     <None Include="res\shaders\debug\debug_build.comp" />
     <None Include="res\shaders\debug\debug_count.comp" />
+    <None Include="res\shaders\debug\gbuffer_view.comp" />
     <None Include="res\shaders\debug\wireframeFS.frag" />
     <None Include="res\shaders\debug\wireframeVS.vert" />
+    <None Include="res\shaders\include\barycentric.glsl" />
     <None Include="res\shaders\include\culling.glsl" />
+    <None Include="res\shaders\include\debug_views.glsl" />
     <None Include="res\shaders\include\draws.glsl" />
     <None Include="res\shaders\include\instances.glsl" />
     <None Include="res\shaders\include\bindings.glsl" />
+    <None Include="res\shaders\include\lighting.glsl" />
+    <None Include="res\shaders\include\visbuffer.glsl" />
     <None Include="res\shaders\post_process\bloom_downsample.comp" />
     <None Include="res\shaders\post_process\bloom_upsample.comp" />
     <None Include="res\shaders\post_process\chromatic_aberration.comp" />

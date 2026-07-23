@@ -34,13 +34,7 @@ void RegisterHiZGenerationPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->activeInstanceCount > 0;
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
+						return ctx.frameState->InstancesActive();
 					})
 				.DisableCulling()
 

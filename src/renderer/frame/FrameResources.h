@@ -217,21 +217,6 @@ struct alignas(16) ForwardPush
 	uint32_t flashlightCookieTexID = UINT32_MAX;
 	uint32_t pad0;
 	uint32_t pad1;
-
-	uint32_t showAlbedo                = 0;
-	uint32_t showNormals               = 0;
-	uint32_t showRoughness             = 0;
-	uint32_t showMetallic              = 0;
-
-	uint32_t showAmbientOcclusion      = 0;
-	uint32_t showSpecular              = 0;
-	uint32_t showDiffuse               = 0;
-	uint32_t showEmissive              = 0;
-
-	uint32_t showBentNormals           = 0;
-	uint32_t showCascadeSplits         = 0;
-	uint32_t showSSS                   = 0;
-	uint32_t pad2;
 };
 
 struct alignas(16) SSAOPush

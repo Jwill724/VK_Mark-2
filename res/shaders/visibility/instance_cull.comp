@@ -165,11 +165,14 @@ void main()
 	{
 		uint visId = atomicAdd(visibleCount.count, 1u);
 
+		uint lodIdx = survives
+			? selectLODIndex(instance, center, radius, sceneData.cameraPos.xyz, sceneData.projUnjittered[1][1])
+			: LOD_IDX_SHADOW0;
+
 		VisibleInstance visInst;
 		visInst.instanceID   = instanceID;
-		visInst.selectedMesh = survives
-			? selectLOD(instance, center, radius, sceneData.cameraPos.xyz, sceneData.projUnjittered[1][1])
-			: instance.shadowLod0; // shadow-only, use base shadow mesh
+		visInst.lodIndex     = lodIdx;
+		visInst.selectedMesh = meshFromLODIndex(instance, lodIdx);
 		visInst.passFlags    = passFlags;
 
 		getVisibleInstanceBuffer().visibles[visId] = visInst;

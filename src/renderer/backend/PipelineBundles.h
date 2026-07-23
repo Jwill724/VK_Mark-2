@@ -33,6 +33,20 @@ enum class HiZGenerationPipelineSlot : uint8_t
 	Count
 };
 
+enum class MaterialResolvePipelineSlot : uint8_t
+{
+	Resolve,
+
+	Count
+};
+
+enum class OpaqueTileShadingPipelineSlot : uint8_t
+{
+	TileShading,
+
+	Count
+};
+
 enum class SSAOPipelineSlot : uint8_t
 {
 	DepthPrefilter,
@@ -166,6 +180,13 @@ enum class FXAAPipelineSlot : uint8_t
 	Count
 };
 
+enum class GBufferDebugPipelineSlot : uint8_t
+{
+	Main,
+
+	Count
+};
+
 enum class SkyboxPipelineSlot : uint8_t
 {
 	Main,
@@ -185,6 +206,12 @@ enum class TransparentResolvePipelineSlot : uint8_t
 enum class OpaqueForwardPipelineSlot : uint8_t
 {
 	Opaque,
+
+	Count
+};
+
+enum class OpaqueWireframePipelineSlot : uint8_t
+{
 	Wireframe,
 
 	Count
@@ -282,6 +309,15 @@ struct PipelineBundleTraits<BasePrepassPipelineSlot>
 	static constexpr std::array mappings =
 	{
 		RD::Renderer_Pipeline::Prepass
+	};
+};
+
+template<>
+struct PipelineBundleTraits<GBufferDebugPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::GBufferDebug
 	};
 };
 
@@ -425,6 +461,24 @@ struct PipelineBundleTraits<CMAA2PipelineSlot>
 };
 
 template<>
+struct PipelineBundleTraits<MaterialResolvePipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::MaterialResolve
+	};
+};
+
+template<>
+struct PipelineBundleTraits<OpaqueTileShadingPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::OpaqueTileShading
+	};
+};
+
+template<>
 struct PipelineBundleTraits<TAAPipelineSlot>
 {
 	static constexpr std::array mappings =
@@ -466,7 +520,15 @@ struct PipelineBundleTraits<OpaqueForwardPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Opaque,
+		RD::Renderer_Pipeline::Opaque
+	};
+};
+
+template<>
+struct PipelineBundleTraits<OpaqueWireframePipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
 		RD::Renderer_Pipeline::Wireframe
 	};
 };

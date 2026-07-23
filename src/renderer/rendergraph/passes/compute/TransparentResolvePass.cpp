@@ -3,7 +3,6 @@
 #include "../../RenderPasses.h"
 #include "../../../rendergraph/RenderGraphBuilder.h"
 #include "../../scopes/ComputeScope.h"
-#include "EngineTypes.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
@@ -21,6 +20,12 @@ void RegisterTransparentResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->InstancesActive();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
 					RD::ImageAccess::Write,
@@ -53,12 +58,6 @@ void RegisterTransparentResolvePass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							transparentResolve);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

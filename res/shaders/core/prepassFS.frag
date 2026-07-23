@@ -11,7 +11,7 @@ layout(location = 2) in vec4 inPrevClip;
 layout(location = 3) in vec2 inUV;
 layout(location = 4) flat in uint inTemporalValidation;
 layout(location = 5) flat in uint inMaterialID;
-layout(location = 6) flat in uint inInstanceID;
+layout(location = 6) flat in uint inPackedID;
 
 layout(location = 0) out uvec2 outVisibility;
 layout(location = 1) out vec4 outViewSpaceNormal;
@@ -38,7 +38,8 @@ void main()
 	float alpha = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w).a * mat.colorFactor.a;
 	if (alpha < mat.alphaCutoff) discard;
 
-	outVisibility = uvec2(inInstanceID, gl_PrimitiveID);
+	outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID));
+
 	outViewSpaceNormal = vec4(normalize(inViewNormal) * 0.5 + 0.5, 1.0);
 	outVelocity = computeVelocityUV(scene.viewportSize.xy);
 }

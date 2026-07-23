@@ -20,7 +20,8 @@ void main()
 	vec4  accum  = texelFetch(accumImage,  coord, 0);
 	float reveal = texelFetch(revealImage, coord, 0).r;
 
-	if (reveal >= 0.9999) {
+	if (reveal >= 0.9999)
+	{
 		imageStore(resolvedTransparent, coord, vec4(0.0));
 		return;
 	}

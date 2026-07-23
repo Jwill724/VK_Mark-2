@@ -26,7 +26,7 @@ void RegisterImguiDrawPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bShowImgui && ImGui::GetDrawData() != nullptr;
+						return ctx.frameState->DrawImgui() && ImGui::GetDrawData() != nullptr;
 					})
 
 				.SetRecord(

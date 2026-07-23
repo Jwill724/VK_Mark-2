@@ -20,6 +20,15 @@ void RegisterChromaticAberrationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.profiler->debugToggles.enableChromaticAberration &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::PostNonAAComposite,
 					RD::ImageAccess::Write,
@@ -44,7 +53,7 @@ void RegisterChromaticAberrationPass(
 						//------------------------------------
 						if (aaMode != RD::AntiAliasingMethod::AA_OFF && aaMode != RD::AntiAliasingMethod::AA_TAA)
 						{
-							ASSERT(ctx.frameState->bCopyPostAAImage);
+							ASSERT(ctx.frameState->CopyPostAAImage());
 							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_1,
@@ -67,12 +76,6 @@ void RegisterChromaticAberrationPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							postNonAA);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

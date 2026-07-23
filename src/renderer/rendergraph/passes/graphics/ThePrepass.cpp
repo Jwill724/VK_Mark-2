@@ -20,6 +20,13 @@ void RegisterThePrepass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->InstancesActive();
+					})
+				.DisableCulling()
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::DepthResolved,
 					RD::ImageAccess::GraphicsDepthWrite,
@@ -79,13 +86,6 @@ void RegisterThePrepass(
 							},
 							{ prepassVisibility, prepassNormal, prepassVelocity, prepassDepth });
 					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
-					})
-				.DisableCulling()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

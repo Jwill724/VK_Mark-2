@@ -28,6 +28,15 @@ void RegisterSSAOPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.profiler->debugToggles.aoMode != static_cast<uint32_t>(RD::AmbientOcclusionMethod::AO_OFF) &&
+							!ctx.frameState->IsWireframeOn();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::BentNormals,
 					RD::ImageAccess::Write,
@@ -91,13 +100,6 @@ void RegisterSSAOPass(
 								i);
 							pushWriteBinding++;
 						}
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0 &&
-							ctx.profiler->debugToggles.aoMode != static_cast<uint32_t>(RD::AmbientOcclusionMethod::AO_OFF);
 					})
 
 				.SetRecord(

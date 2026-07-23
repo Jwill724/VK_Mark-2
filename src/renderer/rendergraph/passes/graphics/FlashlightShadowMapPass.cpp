@@ -22,6 +22,16 @@ void RegisterFlashlightShadowMapPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->IsShadowsOn() &&
+							ctx.frameState->IsFlashlightOn() &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRenderFastPath();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::FlashlightShadowMap,
 					RD::ImageAccess::GraphicsDepthWrite,
@@ -48,14 +58,6 @@ void RegisterFlashlightShadowMapPass(
 								shadowmap.Height()
 							},
 							{ depth });
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.profiler->debugToggles.enableShadows &&
-							ctx.frameState->bFlashlightOn &&
-							ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

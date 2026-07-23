@@ -17,7 +17,8 @@ layout(location = 7) flat out uint outMaterialID;
 layout(location = 8) flat out uint outBHasNormalMap;
 
 void main() {
-	uint instanceID     = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint packedID       = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint instanceID     = visInstanceID(packedID);
 	InstanceInput inst  = getInstanceInputBuffer().instanceInputs[instanceID];
 	outMaterialID       = inst.materialID;
 	outBHasNormalMap    = uint((inst.flags & HAS_NORMALS) != 0u);

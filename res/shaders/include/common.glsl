@@ -367,6 +367,11 @@ struct DebugToggles
 
 	uint activeEnvMap;
 	uint disableOcclusionCull;
+	uint renderingMode;
+	uint debugView;
+
+	float depthScale;
+	uint enableWireframe;
 	uint pad0;
 	uint pad1;
 

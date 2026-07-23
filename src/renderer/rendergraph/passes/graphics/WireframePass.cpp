@@ -5,17 +5,16 @@
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
-#include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
+static constexpr size_t PIPE_ID_WIREFRAME = 0;
 
-void RegisterOpaqueForwardPass(
+void RegisterWireframePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
-		"Opaque_Forward",
+		"Wireframe",
 		pipelines,
 		[&](RenderPassBuilder& builder)
 		{
@@ -25,8 +24,7 @@ void RegisterOpaqueForwardPass(
 					{
 						return
 							ctx.frameState->InstancesActive() &&
-							!ctx.frameState->IsVisibilityDeferred() &&
-							!ctx.frameState->IsWireframeOn();
+							ctx.frameState->IsWireframeOn();
 					})
 
 				.WriteResource(
@@ -34,19 +32,19 @@ void RegisterOpaqueForwardPass(
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
+				.WriteResource(
+					RD::Renderer_RenderTarget::DepthRaw,
+					RD::ImageAccess::GraphicsDepthWrite,
+					RD::ImageAccess::GraphicsDepthWrite)
+
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 
-						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
-						const auto& aoRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AORaw);
-						const auto& bentNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormals);
-						const auto& contactShadows = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows);
-						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
-						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 
 						AttachmentDesc opaqueAttach{};
 						opaqueAttach.imageView = opaque.m_imageView;
@@ -57,30 +55,18 @@ void RegisterOpaqueForwardPass(
 						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 						AttachmentDesc depthAttach{};
-						depthAttach.imageView = depthResolved.m_imageView;
-						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+						depthAttach.imageView = depthRaw.m_imageView;
+						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 						depthAttach.SetDepth(0.0f);
 
 						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
-
-						pso.SetPush(ctx.profiler->forwardPush);
-
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, aoRaw, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, contactShadows, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, bentNormals, linearClampSampler);
 					})
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::OpaqueForward,
-							pass.passName);
-
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
 
@@ -99,7 +85,7 @@ void RegisterOpaqueForwardPass(
 							RD::VIS_SLOT_OPAQUE,
 							indirectBuffer,
 							indirectCountBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							pass.pipelines[PIPE_ID_WIREFRAME],
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

@@ -1,0 +1,109 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+#include "../include/depth.glsl"
+#include "../include/shadow.glsl"
+#include "../include/debug_views.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D visBuffer;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D  gbAlbedoRough;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D  gbNormal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D  gbMetal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D  gbEmissive;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6) uniform sampler2D  depthTex;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7) uniform sampler2D  aoFinal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8) uniform sampler2D  contactShadowMask;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1, rgba16f) writeonly uniform image2D outColor;
+
+void main()
+{
+	SceneData    scene = getSceneData();
+	DebugToggles debug = getDebugToggles();
+
+	uvec2 gid    = gl_GlobalInvocationID.xy;
+	uvec2 vpSize = uvec2(scene.viewportSize.xy);
+	if (any(greaterThanEqual(gid, vpSize))) return;
+
+	uint view = debug.debugView;
+	if (view == DBG_OFF || !debugViewSupported(DBG_CAPS_DEFERRED, view)) return;
+
+	ivec2 px = ivec2(gid);
+	vec2  uv = (vec2(gid) + 0.5) / vec2(vpSize);
+
+	uvec2 ids      = texelFetch(visBuffer, px, 0).xy;
+	float rawDepth = texelFetch(depthTex,  px, 0).r;
+	bool  isSky    = (ids.x == VIS_INVALID);
+
+	vec3 result = vec3(0.0);
+
+	if (!isSky)
+	{
+		switch (view)
+		{
+			case DBG_ALBEDO:
+				result = texelFetch(gbAlbedoRough, px, 0).rgb;
+				break;
+
+			case DBG_NORMALS:
+				result = octDecode(texelFetch(gbNormal, px, 0).rg * 2.0 - 1.0) * 0.5 + 0.5;
+				break;
+
+			case DBG_ROUGHNESS:
+				result = vec3(texelFetch(gbAlbedoRough, px, 0).a);
+				break;
+
+			case DBG_METALLIC:
+				result = vec3(texelFetch(gbMetal, px, 0).r);
+				break;
+
+			case DBG_EMISSIVE:
+				result = texelFetch(gbEmissive, px, 0).rgb;
+				break;
+
+			case DBG_SSAO:
+				result = vec3(texture(aoFinal, uv).r);
+				break;
+
+			case DBG_SS_SHADOWS:
+				result = vec3(texture(contactShadowMask, uv).r);
+				break;
+
+			case DBG_CASCADES:
+			{
+				ViewReconstructResult r = reconstructWorldPosFromDepth(
+					uv, rawDepth, scene.invProj, scene.invView);
+
+				ShadowCSM csm = getShadowCSM();
+				uint cascadeIdx = cascadeViewDepthSplit(
+					r.viewDepth, uint(csm.params.y), csm.cascadeSplits);
+
+				result = debugCascadeOverlay(texelFetch(gbAlbedoRough, px, 0).rgb, cascadeIdx);
+				break;
+			}
+
+			case DBG_VIS_INSTANCE:
+				result = debugHashColor(visInstanceID(ids.x));
+				break;
+
+			case DBG_VIS_TRIANGLE:
+				result = debugHashColor(ids.y);
+				break;
+
+			case DBG_VIS_LOD:
+				result = debugLodColor(visLODIndex(ids.x));
+				break;
+
+			default:
+				break;
+		}
+	}
+
+	imageStore(outColor, px, vec4(result, 1.0));
+}

@@ -45,6 +45,11 @@ void RenderGraph::Build(
 	RegisterThePrepass(*this,              pipeManager.GetBundle<BasePrepassPipelineSlot>());
 	RegisterHiZGenerationPass(*this,       pipeManager.GetBundle<HiZGenerationPipelineSlot>());
 
+	RegisterWireframePass(*this,           pipeManager.GetBundle<OpaqueWireframePipelineSlot>());
+
+	// --- Material resolve ---
+	RegisterMaterialResolvePass(*this,     pipeManager.GetBundle<MaterialResolvePipelineSlot>());
+
 	// --- Shadow passes ---
 	RegisterDirectionalCSMPass(*this,      pipeManager.GetBundle<DirectionalCSMPipelineSlot>());
 	RegisterFlashlightShadowMapPass(*this, pipeManager.GetBundle<FlashlightShadowPipelineSlot>());
@@ -59,7 +64,9 @@ void RenderGraph::Build(
 
 	// --- Opaque + Skybox ---
 	RegisterSkyboxPass(*this,              pipeManager.GetBundle<SkyboxPipelineSlot>());
+	// Either one of these occurs
 	RegisterOpaqueForwardPass(*this,       pipeManager.GetBundle<OpaqueForwardPipelineSlot>());
+	RegisterOpaqueTileShadingPass(*this,   pipeManager.GetBundle<OpaqueTileShadingPipelineSlot>());
 
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
@@ -80,6 +87,9 @@ void RenderGraph::Build(
 	RegisterBloomPass(*this,               pipeManager.GetBundle<BloomPipelineSlot>());
 	RegisterLensFlarePass(*this,           pipeManager.GetBundle<LensFlarePipelineSlot>());
 	RegisterFinalCompositePass(*this,      pipeManager.GetBundle<FinalCompositePipelineSlot>());
+
+	// --- Debug gbuffer deferred ---
+	RegisterGBufferDebugPass(*this,        pipeManager.GetBundle<GBufferDebugPipelineSlot>());
 
 	// --- Post AA ---
 	RegisterCMAA2Pass(*this,               pipeManager.GetBundle<CMAA2PipelineSlot>());
@@ -105,17 +115,20 @@ void RenderGraph::Shutdown()
 
 void RenderGraph::Sync(const RD::RenderStateInfo& frameState)
 {
+	ASSERT(frameState.RenderMode() != static_cast<uint32_t>(RD::RenderingMode::UNDEFINED) && "Missing rendering mode.");
 	bool stateChanged =
-		(m_recentFrameState.bCopyPostAAImage      != frameState.bCopyPostAAImage)      ||
-		(m_recentFrameState.bFlashlightOn         != frameState.bFlashlightOn)         ||
-		(m_recentFrameState.bDebugLine            != frameState.bDebugLine)            ||
-		(m_recentFrameState.bTemporalValid        != frameState.bTemporalValid)        ||
-		(m_recentFrameState.bHiZValid             != frameState.bHiZValid)             ||
-		(m_recentFrameState.bShowImgui            != frameState.bShowImgui)            ||
-		(m_recentFrameState.activeInstanceCount != frameState.activeInstanceCount && frameState.activeInstanceCount == 0u) ||
-		(m_recentFrameState.activeLightCount != frameState.activeLightCount && frameState.activeLightCount == 0u);
+		(m_recentFrameState.CopyPostAAImage()       != frameState.CopyPostAAImage())       ||
+		(m_recentFrameState.DebugRenderFastPath()   != frameState.DebugRenderFastPath())   ||
+		(m_recentFrameState.FlashlightOn()          != frameState.FlashlightOn())          ||
+		(m_recentFrameState.IsObbLineOn()           != frameState.IsObbLineOn())           ||
+		(m_recentFrameState.IsTemporalValid()       != frameState.IsTemporalValid())       ||
+		(m_recentFrameState.IsHiZValid()            != frameState.IsHiZValid())            ||
+		(m_recentFrameState.DrawImgui()             != frameState.DrawImgui())             ||
+		(m_recentFrameState.RenderMode()            != frameState.RenderMode())            ||
+		(m_recentFrameState.InstancesActive()       != frameState.InstancesActive() && frameState.InstancesActive() == 0u) ||
+		(m_recentFrameState.LightsActive()          != frameState.LightsActive() && frameState.LightsActive() == 0u);
 
-	m_recentFrameState.bStateChanged = stateChanged;
+	m_recentFrameState.m_bStateChanged = stateChanged;
 
 	if (stateChanged)
 	{

@@ -34,13 +34,16 @@ void RegisterSwapchainPresentPass(
 
 						AllocatedImage srcImage;
 
-						if (ctx.profiler->debugToggles.enableChromaticAberration && ctx.frameState->activeInstanceCount > 0)
+						if (ctx.profiler->debugToggles.enableChromaticAberration &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRendering())
 						{
 							srcImage = postNonAAComposite;
 						}
 						else
 						{
-							srcImage = ctx.frameState->bCopyPostAAImage ? aaColor : tonemap;
+							srcImage = (ctx.frameState->CopyPostAAImage() &&
+								!ctx.frameState->DebugRendering()) ? aaColor : tonemap;
 						}
 
 						I::SwapchainPresentCopy(cmd, *swapchain, srcImage);

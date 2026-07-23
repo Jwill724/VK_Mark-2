@@ -27,6 +27,7 @@ void Renderer::Init(
 	SetDrawExtent(window.GetExtent());
 
 	InitRenderSettings(
+		RD::RenderingMode::VISIBILITY_TILE_DEFERRED,
 		LensFlareOn,
 		ChromaticAberrationOn,
 		BloomOn,
@@ -399,6 +400,7 @@ void Renderer::EndAssetTimer()
 }
 
 void Renderer::InitRenderSettings(
+	RD::RenderingMode renderMode,
 	bool enableLensFlare,
 	bool enableChromaticAberration,
 	bool enableBloom,
@@ -420,6 +422,8 @@ void Renderer::InitRenderSettings(
 	toggles.enableSSS                 = enableSSS                 ? 1u : 0u;
 	toggles.enableVolumetrics         = enableVolumetrics         ? 1u : 0u;
 
+	toggles.renderingMode = static_cast<uint32_t>(renderMode);
+
 	toggles.bloomIntensity = 0.06;
 
 	toggles.aaMode = static_cast<uint32_t>(aaMode);
@@ -430,6 +434,8 @@ void Renderer::InitRenderSettings(
 
 	m_currentShadowQuality = shadowQuality;
 	m_profiler.shadowQuality = shadowQuality;
+
+	toggles.depthScale = 1.0f / World::GetScene().GetCamera().GetFarClip();
 }
 
 void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
@@ -878,25 +884,30 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		forwardPush.specularID = envSet.specular.m_bindlessID;
 	}
 
-	bool postAACopyNeeded =
-		(debug.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF) &&
-		debug.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA));
+	debug.enableWireframe = m_profiler.enableWireframeView;
 
-	m_renderGraphState.bHiZValid = frameCtx.IsHiZValid();
-	m_renderGraphState.bTemporalValid = frameCtx.IsTemporalValid();
-	m_renderGraphState.bCopyPostAAImage = postAACopyNeeded;
-	m_renderGraphState.bShowImgui = ShouldRenderImgui();
-	m_renderGraphState.bDebugLine = frameCtx.m_bDebugLineRendering
-		&& (debug.showOpaqueOBBs || debug.showTransparentOBBs);
+	debug.enableFlashlight = LightingSystem::_mainFlashLight.IsFlashLightOn();
 
-	m_renderGraphState.activeInstanceCount = World::GetInstanceState().gpuInputs.size();
+	debug.activeInstanceCount = World::GetInstanceState().gpuInputs.size();
+	debug.activeLightCount = LightingSystem::GetActiveLightCount();
 
-	// These two are implied together
-	m_renderGraphState.activeLightCount = LightingSystem::GetActiveLightCount();
-	m_renderGraphState.bFlashlightOn = LightingSystem::_mainFlashLight.IsFlashLightOn();
+	m_renderGraphState.UpdateToggles(debug);
+	m_renderGraphState.UpdateTemporal(frameCtx.IsTemporalValid(), frameCtx.IsHiZValid());
 
-	debug.activeInstanceCount = m_renderGraphState.activeInstanceCount;
-	debug.activeLightCount = m_renderGraphState.activeLightCount;
+	m_renderGraphState.ResetDebugMask();
+	// Priority order
+	if (debug.enableWireframe)
+	{
+		m_renderGraphState.SetDebugMask(RD::DebugState::Wireframe);
+	}
+	else if (frameCtx.m_bDebugLineRendering)
+	{
+		m_renderGraphState.SetDebugMask(RD::DebugState::OBBLine);
+	}
+	else if (debug.debugView != 0u)
+	{
+		m_renderGraphState.SetDebugMask(RD::DebugState::ShadedOverlay);
+	}
 
 	new (&m_renderPassExecutionContext) RenderPassExecutionContext
 	{
@@ -1285,7 +1296,7 @@ void Renderer::RecordRenderCommand()
 		m_pipelineManager->GetGlobalLayout());
 
 	if (m_profiler.assetCounts.totalIndexCount > 0 &&
-		m_renderGraphState.activeInstanceCount > 0 &&
+		m_renderGraphState.InstancesActive() &&
 		!World::_loadedScenes.empty())
 	{
 		const auto indexBuffer = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;

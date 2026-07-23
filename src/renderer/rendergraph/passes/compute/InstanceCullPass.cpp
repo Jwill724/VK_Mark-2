@@ -24,10 +24,17 @@ void RegisterInstanceCullPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->InstancesActive();
+					})
+				.DisableCulling()
+
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						pass.scope = ComputeScope{{ ctx.frameState->activeInstanceCount, 1u }, WORKGROUP_256 };
+						pass.scope = ComputeScope{{ ctx.frameState->GetInstanceCount(), 1u }, WORKGROUP_256 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& hiz = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
@@ -39,13 +46,6 @@ void RegisterInstanceCullPass(
 							hiz,
 							hizSampler);
 					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
-					})
-				.DisableCulling()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

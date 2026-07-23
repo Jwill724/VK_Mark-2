@@ -20,6 +20,16 @@ void RegisterFXAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_FXAA) &&
+							ctx.frameState->CopyPostAAImage() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
@@ -46,13 +56,6 @@ void RegisterFXAAPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							aaColor);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0 &&
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_FXAA);
 					})
 
 				.SetRecord(

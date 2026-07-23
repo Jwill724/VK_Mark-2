@@ -10,7 +10,8 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-	uint instanceID        = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint packedID          = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
+	uint instanceID        = visInstanceID(packedID);
 	InstanceInput instance = getInstanceInputBuffer().instanceInputs[instanceID];
 	mat4 transform         = getTransformBuffer().transforms[instance.transformID];
 	Vertex vtx             = getVertexBuffer().vertices[gl_VertexIndex];

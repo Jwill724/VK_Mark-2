@@ -45,9 +45,10 @@ void RegisterShadowBoundsPass(
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
-						return ctx.frameState->bHiZValid &&
-							ctx.profiler->debugToggles.enableShadows &&
-							ctx.frameState->activeInstanceCount > 0;
+						return
+							ctx.frameState->IsHiZValid() &&
+							ctx.frameState->IsShadowsOn() &&
+							ctx.frameState->InstancesActive();
 					})
 
 				.SetRecord(

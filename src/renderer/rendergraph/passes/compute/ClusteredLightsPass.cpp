@@ -30,6 +30,15 @@ void RegisterClusteredLightsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.frameState->LightsActive() &&
+							!ctx.frameState->DebugRenderFastPath();
+					})
+
 				.SetSetup(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -46,12 +55,6 @@ void RegisterClusteredLightsPass(
 							RD::PUSH_BINDING_READ_1,
 							hiZ,
 							hiZSampler);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeLightCount > 0 && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

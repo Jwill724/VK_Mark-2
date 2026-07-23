@@ -20,11 +20,23 @@ void RegisterShadowBoundsPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterMaterialResolvePass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterOpaqueTileShadingPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
 void RegisterInstanceCullPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
 void RegisterDrawBuildPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterWireframePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
@@ -89,6 +101,10 @@ void RegisterBloomPass(
 	const std::vector<PipelineHandle> pipelines);
 
 void RegisterFinalCompositePass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterGBufferDebugPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 

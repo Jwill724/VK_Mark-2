@@ -21,6 +21,12 @@ void RegisterSkyboxPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return !ctx.frameState->DebugRenderFastPath();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -53,7 +59,7 @@ void RegisterSkyboxPass(
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 						depthAttach.SetDepth(0.0f);
 
-						if (!ctx.frameState->activeInstanceCount == 0 || ctx.profiler->enableWireframeView) // Need depth write since no prepass occured
+						if (!ctx.frameState->InstancesActive())
 						{
 							depthAttach.imageView = depthRaw.m_imageView;
 							depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
@@ -72,7 +78,7 @@ void RegisterSkyboxPass(
 						const auto& projUnjittered = ctx.scene->GetCurrentProjUnjittered();
 
 						glm::mat4 proj{};
-						if (ctx.frameState->activeInstanceCount > 0 &&
+						if (ctx.frameState->InstancesActive() &&
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA))
 						{
 							proj = sceneData.proj;
@@ -93,9 +99,6 @@ void RegisterSkyboxPass(
 
 						pso.SetPush(push);
 					})
-
-				.DisableCulling()
-				.ForceExecution()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

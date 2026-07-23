@@ -7,7 +7,7 @@
 
 layout(local_size_x = 256) in;
 
-void routeToStream(uint slot, uint visibleID, uint meshID, uint materialID)
+void routeToStream(uint slot, uint visibleID, uint meshID, uint materialID, uint lodIdx)
 {
 	uint binID = binLookup(meshID, materialID);
 	if (binID == INVALID_U32) return;
@@ -19,7 +19,7 @@ void routeToStream(uint slot, uint visibleID, uint meshID, uint materialID)
 
 	StreamEntry e;
 	e.visibleID = visibleID;
-	e.binID     = binID;
+	e.binID     = packStreamBin(binID, lodIdx);
 	getInstanceStreamsBuffer().entries[slot * MAX_INSTANCES_PER_STREAM + cursor] = e;
 }
 
@@ -34,21 +34,24 @@ void main()
 
 	if ((vis.passFlags & VIS_PRIMARY_OPAQUE) != 0u)
 	{
-		routeToStream(VIS_SLOT_OPAQUE, visibleID, vis.selectedMesh, instance.materialID);
+		routeToStream(VIS_SLOT_OPAQUE, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
 	}
 	else if ((vis.passFlags & VIS_PRIMARY_TRANSPARENT) != 0u)
 	{
-		routeToStream(VIS_SLOT_TRANSPARENT, visibleID, vis.selectedMesh, instance.materialID);
+		routeToStream(VIS_SLOT_TRANSPARENT, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
 	}
 
 	if ((vis.passFlags & VIS_FLASHLIGHT) != 0u)
 	{
-		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID);
+		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID, vis.lodIndex);
 	}
 
 	for (uint c = 0u; c < MAX_CASCADES; ++c)
 	{
 		if ((vis.passFlags & (VIS_CSM0 << c)) != 0u)
-			routeToStream(VIS_SLOT_CSM0 + c, visibleID, selectShadowLOD(instance, c), instance.materialID);
+		{
+			uint sIdx = selectShadowLODIndex(instance, c);
+			routeToStream(VIS_SLOT_CSM0 + c, visibleID, meshFromLODIndex(instance, sIdx), instance.materialID, sIdx);
+		}
 	}
 }

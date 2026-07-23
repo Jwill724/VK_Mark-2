@@ -109,11 +109,13 @@ const uint PUSH_BINDING_READ_4   = 3u;
 const uint PUSH_BINDING_READ_5   = 4u;
 const uint PUSH_BINDING_READ_6   = 5u;
 const uint PUSH_BINDING_READ_7   = 6u;
-const uint PUSH_BINDING_WRITE_1  = 7u;
-const uint PUSH_BINDING_WRITE_2  = 8u;
-const uint PUSH_BINDING_WRITE_3  = 9u;
-const uint PUSH_BINDING_WRITE_4  = 10u;
-const uint PUSH_BINDING_WRITE_5  = 11u;
+const uint PUSH_BINDING_READ_8   = 7u;
+const uint PUSH_BINDING_READ_9   = 8u;
+const uint PUSH_BINDING_WRITE_1  = 9u;
+const uint PUSH_BINDING_WRITE_2  = 10u;
+const uint PUSH_BINDING_WRITE_3  = 11u;
+const uint PUSH_BINDING_WRITE_4  = 12u;
+const uint PUSH_BINDING_WRITE_5  = 13u;
 
 // Indirect dispatch args
 const uint INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE      = 0u;

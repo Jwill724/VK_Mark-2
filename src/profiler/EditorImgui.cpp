@@ -226,6 +226,76 @@ namespace
 		}
 	}
 
+	static void DrawDebugViewSelector(RD::RenderToggles& dbg)
+	{
+		UI::separatorText("Shading Overlay");
+
+		const auto mode = static_cast<RD::RenderingMode>(dbg.renderingMode);
+		const uint32_t caps = RD::DebugCapsForMode(mode);
+
+		// A mode switch can strand the selection on an unsupported view.
+		if (!RD::DebugViewSupported(caps, dbg.debugView)) {
+			dbg.debugView = static_cast<uint32_t>(RD::DebugView::Off);
+		}
+
+		int current = static_cast<int>(dbg.debugView);
+
+		constexpr int columns = 4;
+		int column = 0;
+
+		for (const RD::DebugViewEntry& entry : RD::DEBUG_VIEW_TABLE)
+		{
+			const uint32_t viewIndex = static_cast<uint32_t>(entry.view);
+			const bool supported = RD::DebugViewSupported(caps, viewIndex);
+
+			if (column != 0) {
+				ImGui::SameLine();
+			}
+
+			ImGui::BeginDisabled(!supported);
+
+			const std::string label = fmt::format("{}##dbgview", entry.label);
+			if (ImGui::RadioButton(label.c_str(), &current, static_cast<int>(viewIndex))) {
+				dbg.debugView = static_cast<uint32_t>(current);
+			}
+
+			ImGui::EndDisabled();
+
+			if (!supported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+				ImGui::SetTooltip(
+					"Not available in %s mode",
+					(mode == RD::RenderingMode::VISIBILITY_TILE_DEFERRED)
+						? "Deferred Tile Visibility" : "Forward+");
+			}
+
+			column = (column + 1) % columns;
+			if (column == 0) {
+				ImGui::NewLine();
+			}
+		}
+
+		if (column != 0) {
+			ImGui::NewLine();
+		}
+
+		//if (dbg.debugView == static_cast<uint32_t>(RD::DebugView::Depth))
+		//{
+		//	float maxDistance = (dbg.depthScale > 0.0f)
+		//		? (1.0f / dbg.depthScale) : 100.0f;
+
+		//	if (ImGui::SliderFloat("Depth Range##dbgview", &maxDistance, 5.0f, 2000.0f, "%.0f m")) {
+		//		dbg.depthScale = 1.0f / std::max(maxDistance, 1.0f);
+		//	}
+		//}
+
+		if (dbg.debugView == static_cast<uint32_t>(RD::DebugView::VisLod))
+		{
+			ImGui::TextUnformatted("LOD0 green -> LOD3 red, base blue.");
+			ImGui::TextColored(ImVec4(1.0f, 0.0f, 1.0f, 1.0f),
+				"Magenta = shadow LOD in the opaque stream (routing bug).");
+		}
+	}
+
 	static void DrawCategoryRender(UIContext& ui)
 	{
 		RD::RenderToggles& dbg = *ui.dbg;
@@ -271,11 +341,18 @@ namespace
 			}
 		}
 
+		UI::separatorText("Rendering Mode");
+
+		const char* renderModes[] = { "Forward_Plus", "Deferred_Tile_Visibility" };
+		int currentRenderMode = (int)dbg.renderingMode;
+
+		if (ImGui::Combo("Active##rendermode", &currentRenderMode, renderModes, IM_ARRAYSIZE(renderModes))) {
+			dbg.renderingMode = static_cast<uint32_t>(currentRenderMode);
+		}
 		UI::separatorText("Shadows");
 
 		bool shadows = dbg.enableShadows != 0u;
 		bool contact = dbg.enableSSS != 0u;
-		bool cascadeSplitView = forwardPush.showCascadeSplits != 0u;
 
 		if (ImGui::Checkbox("Enable Shadows##rt", &shadows)) {
 			dbg.enableShadows = shadows ? 1u : 0u;
@@ -295,10 +372,6 @@ namespace
 			{
 				shadowControl.shadowFar = static_cast<float>(shadowFar);
 				World::GetScene().ShouldUpdateCascadeSplits();
-			}
-
-			if (ImGui::Checkbox("Show Cascade splits##rt", &cascadeSplitView)) {
-				forwardPush.showCascadeSplits = cascadeSplitView ? 1u : 0u;
 			}
 
 			bool depthHack = shadowControl.enableShadowDepthExtendHack;
@@ -342,7 +415,7 @@ namespace
 
 		static int selectedEnv = 0;
 
-		if (ImGui::BeginCombo("Active", fmt::format("Image {}", selectedEnv + 1).c_str())) {
+		if (ImGui::BeginCombo("Active##env", fmt::format("Image {}", selectedEnv + 1).c_str())) {
 			for (uint32_t i = 0; i < Environment::_HDRPathCount; ++i) {
 				const bool isSelected = (selectedEnv == static_cast<int>(i));
 				const std::string label = fmt::format("Image {}", i + 1);
@@ -364,95 +437,6 @@ namespace
 
 		ImGui::SliderFloat("OIT Z Scale", &oitScale, 50.0f, 2000.0f, "%.0f");
 		profiler.forwardPush.oitDepthScale = oitScale;
-
-		UI::separatorText("Shading Overlay");
-
-		enum Overlay
-		{
-			O_Complete,
-			O_Normals,
-			O_Albedo,
-			O_Emissive,
-			O_IrradianceNormal,
-			O_AO,
-			O_Specular,
-			O_Diffuse,
-			O_Metallic,
-			O_Roughness,
-			O_SSS
-		};
-
-		auto pickFromToggles = [&]() -> int
-			{
-				if (forwardPush.showNormals)            return O_Normals;
-				if (forwardPush.showAlbedo)             return O_Albedo;
-				if (forwardPush.showEmissive)           return O_Emissive;
-				if (forwardPush.showBentNormals)        return O_IrradianceNormal;
-				if (forwardPush.showAmbientOcclusion)   return O_AO;
-				if (forwardPush.showSpecular)           return O_Specular;
-				if (forwardPush.showDiffuse)            return O_Diffuse;
-				if (forwardPush.showMetallic)           return O_Metallic;
-				if (forwardPush.showRoughness)          return O_Roughness;
-				if (forwardPush.showSSS)                return O_SSS;
-				return O_Complete;
-			};
-
-		auto applyOverlay = [&](int overlay)
-			{
-				forwardPush.showNormals = 0;
-				forwardPush.showAlbedo = 0;
-				forwardPush.showEmissive = 0;
-				forwardPush.showBentNormals = 0;
-				forwardPush.showAmbientOcclusion = 0;
-				forwardPush.showSpecular = 0;
-				forwardPush.showDiffuse = 0;
-				forwardPush.showMetallic = 0;
-				forwardPush.showRoughness = 0;
-				forwardPush.showSSS = 0;
-
-				switch (overlay) {
-				case O_Normals:              forwardPush.showNormals = 1; break;
-				case O_Albedo:               forwardPush.showAlbedo = 1; break;
-				case O_Emissive:             forwardPush.showEmissive = 1; break;
-				case O_IrradianceNormal:     forwardPush.showBentNormals = 1; break;
-				case O_AO:                   forwardPush.showAmbientOcclusion = 1; break;
-				case O_Specular:             forwardPush.showSpecular = 1; break;
-				case O_Diffuse:              forwardPush.showDiffuse = 1; break;
-				case O_Metallic:             forwardPush.showMetallic = 1; break;
-				case O_Roughness:            forwardPush.showRoughness = 1; break;
-				case O_SSS:                  forwardPush.showSSS = 1; break;
-				default: break;
-				}
-			};
-
-		static int overlay = O_Complete;
-		overlay = pickFromToggles();
-
-		if (ImGui::RadioButton("Complete##ov", &overlay, O_Complete))  applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Albedo##ov", &overlay, O_Albedo))      applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Normals##ov", &overlay, O_Normals))    applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Roughness##ov", &overlay, O_Roughness)) applyOverlay(overlay);
-
-		ImGui::NewLine();
-
-		if (ImGui::RadioButton("Metallic##ov", &overlay, O_Metallic))  applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("AO##ov", &overlay, O_AO)) applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Specular##ov", &overlay, O_Specular))  applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Diffuse##ov", &overlay, O_Diffuse))    applyOverlay(overlay);
-
-		ImGui::NewLine();
-
-		if (ImGui::RadioButton("Emissive##ov", &overlay, O_Emissive))   applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Bent Normals##ov", &overlay, O_IrradianceNormal)) applyOverlay(overlay);
-		ImGui::SameLine();
-		if (ImGui::RadioButton("Contact Shadows##ov", &overlay, O_SSS)) applyOverlay(overlay);
 	}
 
 	static void drawCategoryLighting(UIContext& ui)
@@ -668,6 +652,8 @@ namespace
 		{
 			profiler.enableWireframeView = wireframeView;
 		}
+
+		DrawDebugViewSelector(dbg);
 	}
 
 	// For the profiler window

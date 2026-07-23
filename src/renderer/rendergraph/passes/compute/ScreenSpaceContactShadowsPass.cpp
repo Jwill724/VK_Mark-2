@@ -22,6 +22,16 @@ void RegisterContactShadowsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->IsShadowsOn() &&
+							ctx.frameState->IsScreenSpaceShadowsOn() &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->IsWireframeOn();
+					})
+
 				.WriteResource(RD::Renderer_RenderTarget::SSContactShadows,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
@@ -42,13 +52,6 @@ void RegisterContactShadowsPass(
 						sssPush.lightCoords = dispatchList.lightCoords;
 						sssPush.invDepthSize = invSize;
 						pso.SetPush(sssPush);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						const auto& debug = ctx.profiler->debugToggles;
-						return debug.enableShadows && debug.enableSSS && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

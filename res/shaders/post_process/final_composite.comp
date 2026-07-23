@@ -4,6 +4,8 @@
 #extension GL_GOOGLE_include_directive : require
 
 #include "../include/common.glsl"
+#include "../include/shadow.glsl"
+#include "../include/debug_views.glsl"
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
@@ -41,10 +43,19 @@ void main()
 	vec3 hdrTransparent = texelFetch(transparentImage, pid, 0).rgb;
 	vec3 hdrScene = hdrOpaque + hdrTransparent;
 
+	DebugToggles debug = getDebugToggles();
+
+	bool debugViewing = false;
+	if (debug.debugView != DBG_OFF || DBG(enableWireframe))
+	{
+		debugViewing = true;
+		imageStore(toneMapImage, pid, vec4(hdrScene, 1.0));
+	}
+
 	vec3 volumetricLight = texture(volumetricLightImage, uvFull).rgb;
 
 	vec3 lensFlare = vec3(0.0);
-	if (DBG(enableLensFlare)) {
+	if (DBG(enableLensFlare) && !debugViewing) {
 		ivec2 flareDim = textureSize(lensFlareColorImage, 0);
 		vec2 uvFlare = (uvFull * vec2(flareDim) + 0.5) / vec2(flareDim);
 		lensFlare = textureLod(lensFlareColorImage, uvFlare, 0.0).rgb;
@@ -52,7 +63,7 @@ void main()
 
 	vec3 hdr = max(hdrScene + volumetricLight + lensFlare, 0.0);
 
-	if (DBG(enableBloom)) {
+	if (DBG(enableBloom) && !debugViewing) {
 		DebugToggles debug = getDebugToggles();
 		vec3 bloom = texture(bloomImage, uvFull).rgb;
 		hdr = mix(hdr, bloom, debug.bloomIntensity);
@@ -65,7 +76,9 @@ void main()
 	float noise = noiseHash(pid);
 	mapped += (noise - 0.5) / 2048.0;
 
-	imageStore(toneMapImage, pid, vec4(mapped, 1.0));
+	if (!debugViewing) {
+		imageStore(toneMapImage, pid, vec4(mapped, 1.0));
+	}
 
 	if (debug.aaMode == AA_CMAA2) {
 		imageStore(cmaa2ColorImage, pid, vec4(mapped, 1.0));

@@ -27,6 +27,15 @@ void RegisterLensFlarePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.profiler->debugToggles.enableLensFlare &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::LensFlareColor,
 					RD::ImageAccess::Write,
@@ -69,7 +78,7 @@ void RegisterLensFlarePass(
 						pso.SetPush(lensFlarePush);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->bTemporalValid);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
 
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
@@ -100,7 +109,7 @@ void RegisterLensFlarePass(
 							transparent,
 							linearSampler);
 
-						if (ctx.frameState->activeInstanceCount > 0 &&
+						if (ctx.frameState->InstancesActive() &&
 							ctx.profiler->debugToggles.enableVolumetrics &&
 							ctx.profiler->debugToggles.enableShadows)
 						{
@@ -118,12 +127,6 @@ void RegisterLensFlarePass(
 								dummy,
 								linearClampSampler);
 						}
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.profiler->debugToggles.enableLensFlare && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

@@ -20,6 +20,12 @@ void RegisterTransparentForwardPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return ctx.frameState->InstancesActive();
+					})
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -62,7 +68,7 @@ void RegisterTransparentForwardPass(
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 						depthAttach.SetDepth(0.0f);
 
-						if (!ctx.frameState->activeInstanceCount > 0)
+						if (!ctx.frameState->InstancesActive())
 						{
 							const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
 							depthAttach.imageView = depthRaw.m_imageView;
@@ -75,12 +81,6 @@ void RegisterTransparentForwardPass(
 							{ tAccumAttach, tRevealAttach, depthAttach });
 
 						pso.SetPush(ctx.profiler->forwardPush);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

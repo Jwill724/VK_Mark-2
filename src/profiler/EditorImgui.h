@@ -12,7 +12,7 @@ public:
 	static constexpr float SETTINGS_SIZE_Y = 450.0f;
 
 	static constexpr float PROFILER_SIZE_X = 290.0f;
-	static constexpr float PROFILER_SIZE_Y = 900.0f;
+	static constexpr float PROFILER_SIZE_Y = 950.0f;
 
 	void InitImgui(
 		Renderer& renderer,

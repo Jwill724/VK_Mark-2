@@ -78,7 +78,7 @@ void DescriptorManager::InitDescriptors(VkDevice device)
 	ClearBinding();
 
 	// Readable inputs
-	for (uint32_t i = RD::PUSH_BINDING_READ_1; i <= RD::PUSH_BINDING_READ_7; i++) {
+	for (uint32_t i = RD::PUSH_BINDING_READ_1; i <= RD::PUSH_BINDING_READ_9; i++) {
 		AddBinding(i, COMBINED_SAMPLER, IMAGE_STAGES);
 	}
 

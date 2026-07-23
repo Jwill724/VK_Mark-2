@@ -24,17 +24,20 @@ void RegisterBloomPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.profiler->debugToggles.enableBloom &&
+							ctx.frameState->InstancesActive() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.SetSetup(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{ drawExtent, WORKGROUP_8x8 };
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.profiler->debugToggles.enableBloom && ctx.frameState->activeInstanceCount > 0;
 					})
 
 				.SetRecord(

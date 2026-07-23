@@ -31,6 +31,16 @@ void RegisterCMAA2Pass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.frameState->InstancesActive() &&
+							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2) &&
+							ctx.frameState->CopyPostAAImage() &&
+							!ctx.frameState->DebugRendering();
+					})
+
 				.WriteResource(RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
@@ -64,13 +74,6 @@ void RegisterCMAA2Pass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							workingEdges);
-					})
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->activeInstanceCount > 0 &&
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2);
 					})
 
 				.SetRecord(

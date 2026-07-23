@@ -19,12 +19,14 @@ void main()
 
 	StreamEntry e = getInstanceStreamsBuffer().entries[pc.streamSlot * MAX_INSTANCES_PER_STREAM + i];
 
-	uint flatIdx = pc.streamSlot * MAX_DRAW_BINS + e.binID;
+	uint binID  = streamBinID(e.binID);
+	uint lodIdx = streamLODIndex(e.binID);
 
-	uint intra = atomicAdd(getDrawBinCounterBuffer().drawBinCounters[flatIdx], 1u);
-	uint base  = getDrawBinBuffer().drawBins[flatIdx].instanceOffset;
+	uint flatIdx = pc.streamSlot * MAX_DRAW_BINS + binID;
+	uint intra   = atomicAdd(getDrawBinCounterBuffer().drawBinCounters[flatIdx], 1u);
+	uint base    = getDrawBinBuffer().drawBins[flatIdx].instanceOffset;
 
 	uint instanceID = getVisibleInstanceBuffer().visibles[e.visibleID].instanceID;
 
-	getDrawInstanceIDsBuffer().ids[streamInstanceBase(pc.streamSlot) + base + intra] = instanceID;
+	getDrawInstanceIDsBuffer().ids[streamInstanceBase(pc.streamSlot) + base + intra] = packVisID(instanceID, lodIdx);
 }

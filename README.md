@@ -1,5 +1,6 @@
 ## Features
-- Vulkan 1.4 GPU-Driven forward+ renderer
+- Vulkan 1.4 GPU-Driven renderer
+- Visibility Deferred and Forward+ rendering paths
 - GPUAddress table enables a 100% bindless indirect buffer system
 - GPU frustum + hi-z culling and draw building
 - Clustered shading
@@ -28,7 +29,6 @@
 
 ## Future
 -A True Render Graph
--Visibility buffer deferred rendering
 -Runtime asset loading and handling
 -Dynamic meshes, material and light interactions
 -Async compute (compute passes during shadow depth)
