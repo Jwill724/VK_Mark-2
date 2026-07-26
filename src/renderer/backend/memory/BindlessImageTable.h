@@ -6,6 +6,9 @@
 #include "../../../core/AssetUploadTypes.h"
 #include <span>
 
+#define TAA_RESOLVED_A RD::Renderer_RenderTarget::ColorHistoryA
+#define TAA_RESOLVED_B RD::Renderer_RenderTarget::ColorHistoryB
+
 class Allocator;
 class StagingBuffer;
 struct Extents3D;

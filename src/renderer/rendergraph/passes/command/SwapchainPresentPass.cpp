@@ -19,8 +19,21 @@ void RegisterSwapchainPresentPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.DisableCulling()
+				.SetPhase(RenderPhase::Present)
 				.ForceExecution()
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::PostNonAAComposite,
+					RD::ImageAccess::TransferSrc)
+ 
+				.ReadResource(
+					RD::Renderer_RenderTarget::AAColor,
+					RD::ImageAccess::TransferSrc)
+ 
+				.ReadResource(
+					RD::Renderer_RenderTarget::Tonemap,
+					RD::ImageAccess::TransferSrc)
+
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

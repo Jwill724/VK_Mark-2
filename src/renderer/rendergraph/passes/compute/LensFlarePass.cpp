@@ -27,6 +27,8 @@ void RegisterLensFlarePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::PostProcess)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -36,23 +38,72 @@ void RegisterLensFlarePass(
 							!ctx.frameState->DebugRendering();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
+					RD::ImageAccess::Read)
+
+				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
+				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentResolved,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::HiZ,
+					RD::ImageAccess::Read,
+					0,
+					VK_REMAINING_MIP_LEVELS)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::VolumetricLight,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::LensFlareColor,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				// Only setups for the first bright pass
-				.SetSetup(
+				.InternalResource(
+					RD::Renderer_RenderTarget::FlareBright,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::LensFlare,
+							pass.passName);
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
+						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
+						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);
+						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
+						const auto& flareBright = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
+						const auto& lensflareColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor);
+						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
+						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
+						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+
+						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
+						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
+
+						const auto& opaque = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(ctx.scene->GetSceneData().temporal.x));
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent.Width() / 4, drawExtent.Height() / 4 }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						auto& lensFlarePush = ctx.profiler->lensFlareSettings;
 
-						const auto& brightFlare = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
-						lensFlarePush.outputRes = { static_cast<float>(brightFlare.Width()), static_cast<float>(brightFlare.Height()) };
+						lensFlarePush.outputRes = { static_cast<float>(flareBright.Width()), static_cast<float>(flareBright.Height()) };
 						lensFlarePush.invOutputRes = 1.0f / lensFlarePush.outputRes;
 
 						const auto& sceneData = ctx.scene->GetSceneData();
@@ -77,25 +128,10 @@ void RegisterLensFlarePass(
 
 						pso.SetPush(lensFlarePush);
 
-						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
-
-						const auto& opaque = !taaEnabled
-							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
-							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(ctx.scene->GetSceneData().temporal.x));
-
-						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
-						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
-						const auto& flareBright = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
-						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);
-						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
-						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
-
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							flareBright);
-
 
 						pso.BindReadImage(
 							pass.pushWriter,
@@ -127,31 +163,10 @@ void RegisterLensFlarePass(
 								dummy,
 								linearClampSampler);
 						}
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::LensFlare,
-							pass.passName);
-
-						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
-						const auto& flareBright = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
-						const auto& lensflareColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor);
-						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
-						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						// =============
 						// Flare bright
 						// =============
-						I::TransitionLayout(cmd, flareBright, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(
 							cmd,
 							pass.pipelines[PIPE_ID_BRIGHT],

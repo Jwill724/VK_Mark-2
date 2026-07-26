@@ -2,6 +2,8 @@
 
 #include "../backend/VulkanForward.h"
 #include "../RendererDefinitions.h"
+#include "RenderGraphSchedule.h"
+
 namespace RD = RendererDefinitions;
 
 struct RenderResourceUsage
@@ -33,6 +35,8 @@ struct RenderPassExecutionContext
 {
 	VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
 
+	uint32_t threadSlot = UINT32_MAX;
+
 	FrameContext*                    frameCtx    = nullptr;
 	Profiler*                        profiler    = nullptr;
 	BindlessImageTable*              imageTable  = nullptr;
@@ -41,6 +45,8 @@ struct RenderPassExecutionContext
 	const Scene*                     scene       = nullptr;
 	const RD::RenderStateInfo*       frameState  = nullptr;
 	const Swapchain*                 swapchain   = nullptr;
+
+	PassScheduleInfo* scheduleInfo = nullptr;
 
 	RenderGraph* renderGraph = nullptr;
 
@@ -83,12 +89,14 @@ public:
 		uint32_t binding,
 		const AllocatedImage& img,
 		VkSampler sampler,
-		uint32_t miplevel = UINT32_MAX);
+		uint32_t miplevel = UINT32_MAX,
+		RD::ImageAccess declaredAccess = RD::ImageAccess::Read);
 	void BindWriteImage(
 		PushDescriptorWriter& writer,
 		uint32_t binding,
 		const AllocatedImage& img,
-		uint32_t storageViewIndex = UINT32_MAX);
+		uint32_t storageViewIndex = UINT32_MAX,
+		RD::ImageAccess declaredAccess = RD::ImageAccess::Write);
 
 protected:
 	bool m_bSkipPushConstant = false;

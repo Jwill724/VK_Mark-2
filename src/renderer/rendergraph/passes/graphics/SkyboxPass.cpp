@@ -21,11 +21,17 @@ void RegisterSkyboxPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Shading)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return !ctx.frameState->DebugRenderFastPath();
 					})
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
@@ -37,11 +43,21 @@ void RegisterSkyboxPass(
 					RD::ImageAccess::GraphicsDepthWrite,
 					RD::ImageAccess::GraphicsDepthWrite)
 
-				.SetSetup(
+				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::Skybox,
+							pass.passName);
+
 						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& skybox = ctx.imageTable->GetEnvironmentSet(ctx.profiler->debugToggles.activeEnvMap).skybox;
@@ -57,7 +73,7 @@ void RegisterSkyboxPass(
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.SetDepth(0.0f);
+						depthAttach.SetDepth(0);
 
 						if (!ctx.frameState->InstancesActive())
 						{
@@ -98,22 +114,6 @@ void RegisterSkyboxPass(
 						push.skyboxID = skybox.m_bindlessID;
 
 						pso.SetPush(push);
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::Skybox,
-							pass.passName);
-
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-
-						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
 
 						pso.BeginRendering(cmd);
 

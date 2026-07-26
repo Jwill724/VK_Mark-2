@@ -26,15 +26,28 @@ void RegisterLuminanceExposurePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.DisableCulling()
+				.SetPhase(RenderPhase::PostProcess)
 				.ForceExecution()
 
-				.SetSetup(
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
+					RD::ImageAccess::Read)
+
+				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
+				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentResolved,
+					RD::ImageAccess::Read)
+
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
-						auto& pso = std::get<ComputeScope>(pass.scope);
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::LuminanceExposure,
+							pass.passName);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
 						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
@@ -45,6 +58,16 @@ void RegisterLuminanceExposurePass(
 
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
+
+						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
+
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{{ drawExtent }};
+						auto& pso = std::get<ComputeScope>(pass.scope);
+
+						// ==========================
+						// Luminance Exposure Reduce
+						// ==========================
 
 						pso.BindReadImage(
 							pass.pushWriter,
@@ -57,24 +80,7 @@ void RegisterLuminanceExposurePass(
 							RD::PUSH_BINDING_READ_2,
 							transparent,
 							linearSampler);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::LuminanceExposure,
-							pass.passName);
-
-						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						// ==========================
-						// Luminance Exposure Reduce
-						// ==========================
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_LUMA_REDUCE],

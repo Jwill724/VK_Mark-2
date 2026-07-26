@@ -118,15 +118,10 @@ enum class LensFlarePipelineSlot : uint8_t
 	Count
 };
 
-enum class VisibleLightCullPipelineSlot: uint8_t
-{
-	Main,
-
-	Count
-};
-
 enum class ClusteredLightsPipelineSlot : uint8_t
 {
+	LightCull,
+
 	TileSliceRanges,
 
 	IndirectArgs,
@@ -414,20 +409,11 @@ struct PipelineBundleTraits<BloomPipelineSlot>
 };
 
 template<>
-struct PipelineBundleTraits<VisibleLightCullPipelineSlot>
-{
-	static constexpr std::array mappings =
-	{
-		RD::Renderer_Pipeline::LightCulling,
-	};
-};
-
-
-template<>
 struct PipelineBundleTraits<ClusteredLightsPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
+		RD::Renderer_Pipeline::LightCull,
 		RD::Renderer_Pipeline::ClusterTileSliceRanges,
 		RD::Renderer_Pipeline::IndirectArgsLight,
 		RD::Renderer_Pipeline::ClusterCount,

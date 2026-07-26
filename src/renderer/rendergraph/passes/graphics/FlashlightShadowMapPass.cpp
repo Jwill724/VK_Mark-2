@@ -22,6 +22,8 @@ void RegisterFlashlightShadowMapPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::AsyncWindow)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -37,29 +39,6 @@ void RegisterFlashlightShadowMapPass(
 					RD::ImageAccess::GraphicsDepthWrite,
 					RD::ImageAccess::DepthRead)
 
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						pass.scope = GraphicsScope{};
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-
-						const auto& shadowmap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap);
-
-						AttachmentDesc depth{};
-						depth.imageView = shadowmap.m_imageView;
-						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depth.SetDepth(1.0f);
-
-						pso.SetPush(ctx.scene->GetSceneData().flashlightVP);
-
-						pso.UpdateRenderInfo(
-							{
-								shadowmap.Width(),
-								shadowmap.Height()
-							},
-							{ depth });
-					})
-
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -69,10 +48,9 @@ void RegisterFlashlightShadowMapPass(
 							RD::Renderer_Pass::FlashlightShadow,
 							pass.passName);
 
+						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
-
-						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
@@ -81,6 +59,24 @@ void RegisterFlashlightShadowMapPass(
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
+
+						const auto& shadowmap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap);
+
+						AttachmentDesc depth{};
+						depth.imageView = shadowmap.m_imageView;
+						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+						depth.SetDepth(1);
+
+						pso.SetPush(ctx.scene->GetSceneData().flashlightVP);
+
+						pso.UpdateRenderInfo(
+							{
+								shadowmap.Width(),
+								shadowmap.Height()
+							},
+							{ depth });
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						pso.BeginRendering(cmd);
 

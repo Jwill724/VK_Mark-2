@@ -27,7 +27,6 @@ public:
 
 	void WaitIdle() const;
 
-	// Only the transfer and compute queue need this
 	uint64_t SubmitWithTimelineSync(
 		const std::vector<VkCommandBuffer>& cmdBuffers,
 		VkSemaphore                         timelineSemaphore,
@@ -37,7 +36,20 @@ public:
 		VkPipelineStageFlags2               waitStages    = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
 	void WaitTimelineValue(VkSemaphore semaphore, uint64_t waitValue);
 
+	void Submit2(
+		std::span<const VkSemaphoreSubmitInfo> waits,
+		VkCommandBuffer cmd,
+		std::span<const VkSemaphoreSubmitInfo> signals,
+		VkFence fence);
+
 	void SetTimestampBits(uint32_t timestampBits) { m_timestampValidBits = timestampBits; }
+
+	TimestampReadback ReadTimestamps(
+		VkQueryPool                             pool,
+		std::span<const RD::PassTimestampRange> ranges,
+		std::span<const bool>                   passUsed,
+		float                                   timestampPeriod,
+		bool                                    bReadFrameQueries);
 
 	void SubmitCommand(VkCommandBuffer command);
 	void SubmitCommand(std::vector<VkCommandBuffer> commands);
@@ -70,31 +82,20 @@ class GraphicsQueue final : public GPUQueue
 public:
 	bool SupportsTimestamps() const noexcept { return m_timestampValidBits > 0; }
 
-	// Caller builds waitInfos (m_image-available + any timeline waits),
-	// queue owns the vkQueueSubmit2 call.
 	void SubmitFrame(
 		const std::vector<VkSemaphoreSubmitInfo>& waitInfos,
 		VkCommandBuffer                           cmdBuffer,
 		VkSemaphore                               signalSemaphore,
 		VkFence                                   fence);
 
-	// Returns false if any query was VK_NOT_READY — caller retries next frame.
-	struct TimestampResult { float gpuMs = 0.f; bool valid = false; };
+	VkSemaphore GetTimelineSemaphore() const { return m_sync.semaphore; }
+	uint64_t    GetCurrentSignalValue() const { return m_sync.signalValue; }
+	uint64_t AdvanceTimeline() { return m_sync.AdvanceTimeline(); }
+	void InitTimelineSemaphore();
+	void DestroyTimelineSemaphore();
 
-	struct TimestampReadback
-	{
-		bool allReady = true;
-
-		std::span<TimestampResult> passResults;
-
-		TimestampResult frameResult;
-	};
-
-	TimestampReadback ReadTimestamps(
-		VkQueryPool                             pool,
-		std::span<const RD::PassTimestampRange> ranges,
-		std::span<const bool>                   passUsed,
-		float                                   timestampPeriod);
+private:
+	TimelineSync m_sync;
 };
 
 
@@ -113,10 +114,6 @@ public:
 class TransferQueue final : public GPUQueue
 {
 public:
-	// Set device first
-	void InitTimelineSemaphore();
-	void DestroyTimelineSemaphore();
-
 	// Submit work and advance the internal timeline.
 	uint64_t Submit(
 		const std::vector<VkCommandBuffer>& cmdBuffers,
@@ -124,11 +121,13 @@ public:
 		VkSemaphore                         waitSemaphore = VK_NULL_HANDLE,
 		VkPipelineStageFlags2               waitStages    = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
 
-	// The semaphore callers need to embed in their wait lists.
-	VkSemaphore GetTimelineSemaphore() const { return m_sync.semaphore; }
+	void InitTimelineSemaphore();
+	void DestroyTimelineSemaphore();
 
-	// Current signal value — compare against your stored waitValue to guard submits.
+	VkSemaphore GetTimelineSemaphore() const { return m_sync.semaphore; }
 	uint64_t GetCurrentSignalValue() const { return m_sync.signalValue; }
+
+	uint64_t AdvanceTimeline() { return m_sync.AdvanceTimeline(); }
 
 	bool IsValid() const noexcept
 	{
@@ -153,6 +152,9 @@ public:
 
 	VkSemaphore GetTimelineSemaphore() const { return m_sync.semaphore; }
 	uint64_t    GetCurrentSignalValue() const { return m_sync.signalValue; }
+	uint64_t AdvanceTimeline() { return m_sync.AdvanceTimeline(); }
+
+	bool SupportsTimestamps() const noexcept { return m_timestampValidBits > 0; }
 
 	bool IsValid() const noexcept
 	{

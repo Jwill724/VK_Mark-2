@@ -12,9 +12,9 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_HI_Z = 0;
+constexpr size_t PIPE_ID_HI_Z = 0;
 
-static struct alignas(16) DepthPyramidPush
+struct alignas(16) DepthPyramidPush
 {
 	uint32_t mipLevel;
 	float pad0;
@@ -31,12 +31,18 @@ void RegisterHiZGenerationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->InstancesActive();
-					})
-				.DisableCulling()
+				.SetPhase(RenderPhase::Prepass)
+				.ForceExecution()
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.InternalResource(RD::Renderer_RenderTarget::HiZ,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read,
+					0,
+					VK_REMAINING_MIP_LEVELS)
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -60,18 +66,6 @@ void RegisterHiZGenerationPass(
 						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
 						//----------------------------------------
-						// TRANSITION WHOLE CHAIN FOR WRITES
-						//----------------------------------------
-
-						I::TransitionLayout(
-							cmd,
-							hiZ,
-							RD::ImageAccess::Read,
-							RD::ImageAccess::Write,
-							0,
-							hiZ.m_mipLevels);
-
-						//----------------------------------------
 						// MIP GENERATION LOOP
 						//----------------------------------------
 						Extents2D srcExtent = { hiZ.Width(), hiZ.Height() };
@@ -79,14 +73,13 @@ void RegisterHiZGenerationPass(
 
 						for (uint32_t mip = 0; mip < hiZ.m_mipLevels; ++mip)
 						{
-							//------------------------------------
-							// BIND INPUTS
-							//------------------------------------
 							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_1,
 								depth,
-								nearestSampler);
+								nearestSampler,
+								UINT32_MAX,
+								RD::ImageAccess::DepthRead);
 
 							if (mip > 0)
 							{
@@ -106,9 +99,6 @@ void RegisterHiZGenerationPass(
 									hiZSampler);
 							}
 
-							//------------------------------------
-							// BIND OUTPUT
-							//------------------------------------
 							pso.BindWriteImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_WRITE_1,
@@ -124,9 +114,6 @@ void RegisterHiZGenerationPass(
 							};
 							pso.SetPush(push);
 
-							//------------------------------------
-							// DISPATCH SIZE
-							//------------------------------------
 							pso.UpdateExtent(dstExtent);
 
 							pso.DispatchComputePass(
@@ -134,9 +121,6 @@ void RegisterHiZGenerationPass(
 								pass.pipelines[PIPE_ID_HI_Z],
 								pass.pushWriter);
 
-							//------------------------------------
-							// CURRENT MIP BECOMES READABLE
-							//------------------------------------
 							I::TransitionLayout(
 								cmd,
 								hiZ,
@@ -145,9 +129,6 @@ void RegisterHiZGenerationPass(
 								mip,
 								1);
 
-							//------------------------------------
-							// NEXT MIP SIZE
-							//------------------------------------
 							srcExtent = dstExtent;
 							dstExtent.Width() = std::max(1u, dstExtent.Width() >> 1);
 							dstExtent.Height() = std::max(1u, dstExtent.Height() >> 1);

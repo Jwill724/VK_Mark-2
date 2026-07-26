@@ -23,6 +23,8 @@ void RegisterImguiDrawPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Present)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{

@@ -28,6 +28,8 @@ void RegisterSSAOPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.RunOnAsyncCompute()
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -37,15 +39,53 @@ void RegisterSSAOPass(
 							!ctx.frameState->IsWireframeOn();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::ViewSpaceNormals,
+					RD::ImageAccess::ComputeRead)
+
+				.InternalResource(
+					RD::Renderer_RenderTarget::LinearizedMinHiZ,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead,
+					0u, VK_REMAINING_MIP_LEVELS)
+
+				.InternalResource(
+					RD::Renderer_RenderTarget::AORaw,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
+				.InternalResource(
+					RD::Renderer_RenderTarget::AoEdgeInfo,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
+				.InternalResource(
+					RD::Renderer_RenderTarget::AOTemp,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::BentNormals,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
 
-				// Initial Depth prefilter and ssao pass push constant setup
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::SSAO,
+							pass.passName,
+							ctx.threadSlot,
+							ctx.scheduleInfo->queue);
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{ drawExtent };
 						auto& pso = std::get<ComputeScope>(pass.scope);
@@ -79,14 +119,29 @@ void RegisterSSAOPass(
 						pso.SetPush(ssaoPush);
 
 						const auto& linearizedMinHiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ);
+						const auto& rawAO            = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AORaw);
+						const auto& aoTemp           = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AOTemp);
+						const auto& edgeInfo         = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo);
+						const auto& bentNormals      = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormals);
+						const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
 						const auto& depthResolved    = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto depthPyramidSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+						const auto aoSampler           = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearLodClamp);
+						const auto nearSampler         = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Nearest);
+
+						// ======================
+						// HiZ Prefilter
+						// ======================
 
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							depthResolved,
-							nearestClampSampler);
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
 
 						uint32_t pushWriteBinding = RD::PUSH_BINDING_WRITE_1;
 						for (uint32_t i = 0u; i < RD::HI_Z_MIP_COUNT; i++)
@@ -100,50 +155,16 @@ void RegisterSSAOPass(
 								i);
 							pushWriteBinding++;
 						}
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::SSAO,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
-						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto& linearizedMinHiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ);
-						const auto& rawAO            = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AORaw);
-						const auto& aoTemp           = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AOTemp);
-						const auto& edgeInfo         = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo);
-						const auto& bentNormals      = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormals);
-						const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
-
-						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
-						const auto depthPyramidSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
-						const auto aoSampler           = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearLodClamp);
-						const auto nearSampler         = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Nearest);
-
-						// ======================
-						// HiZ Prefilter
-						// ======================
-
-						// Transition all mips to write before dispatch (setup only bound mip 0 writes)
-						I::TransitionLayout(cmd, linearizedMinHiZ, RD::ImageAccess::Read, RD::ImageAccess::Write, 0u, linearizedMinHiZ.m_mipLevels);
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_HI_Z_PREFILTER], pass.pushWriter);
 
-						// Early transition: all mips Write -> Read for SSAO main
-						I::TransitionLayout(cmd, linearizedMinHiZ, RD::ImageAccess::Write, RD::ImageAccess::Read, 0u, linearizedMinHiZ.m_mipLevels);
+						I::TransitionLayoutCompute(cmd, linearizedMinHiZ,
+							RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead,
+							0u, linearizedMinHiZ.m_mipLevels);
 
 						// ======================
 						// SSAO Main
 						// ======================
-
-						I::TransitionLayout(cmd, rawAO,       RD::ImageAccess::Read, RD::ImageAccess::Write);
-						I::TransitionLayout(cmd, edgeInfo,    RD::ImageAccess::Read, RD::ImageAccess::Write);
 
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, linearizedMinHiZ, depthPyramidSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, viewSpaceNormals, nearestClampSampler);
@@ -154,14 +175,13 @@ void RegisterSSAOPass(
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
 
-						I::TransitionLayout(cmd, rawAO,       RD::ImageAccess::Write, RD::ImageAccess::Read);
-						I::TransitionLayout(cmd, edgeInfo,    RD::ImageAccess::Write, RD::ImageAccess::Read);
+						I::TransitionLayoutCompute(cmd, rawAO,    RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+						I::TransitionLayoutCompute(cmd, edgeInfo, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 
 						// ======================
 						// Filter / Denoise setup
 						// (shared bindings for both branches)
 						// ======================
-						I::TransitionLayout(cmd, aoTemp, RD::ImageAccess::Read, RD::ImageAccess::Write);
 
 						pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_1,  rawAO,    aoSampler);
 						pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_2,  edgeInfo, nearSampler);
@@ -176,8 +196,8 @@ void RegisterSSAOPass(
 							// ======================
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_FILTER], pass.pushWriter);
 
-							I::TransitionLayout(cmd, aoTemp, RD::ImageAccess::Write, RD::ImageAccess::Read);
-							I::TransitionLayout(cmd, rawAO,  RD::ImageAccess::Read,  RD::ImageAccess::Write);
+							I::TransitionLayoutCompute(cmd, aoTemp, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+							I::TransitionLayoutCompute(cmd, rawAO,  RD::ImageAccess::ComputeRead,  RD::ImageAccess::ComputeWrite);
 
 							// ======================
 							// Filter Vertical
@@ -202,8 +222,8 @@ void RegisterSSAOPass(
 							pso.UpdateWorkgroups({ 32u, 16u, 1u });
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DENOISE], pass.pushWriter);
 
-							I::TransitionLayout(cmd, aoTemp, RD::ImageAccess::Write, RD::ImageAccess::Read);
-							I::TransitionLayout(cmd, rawAO,  RD::ImageAccess::Read,  RD::ImageAccess::Write);
+							I::TransitionLayoutCompute(cmd, aoTemp, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+							I::TransitionLayoutCompute(cmd, rawAO,  RD::ImageAccess::ComputeRead,  RD::ImageAccess::ComputeWrite);
 
 							// ======================
 							// Denoise Pass 2
@@ -221,7 +241,7 @@ void RegisterSSAOPass(
 						}
 
 						// Final transition, rawAO -> Read for downstream passes
-						I::TransitionLayout(cmd, rawAO, RD::ImageAccess::Write, RD::ImageAccess::Read);
+						I::TransitionLayoutCompute(cmd, rawAO, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 					});
 		});
 }

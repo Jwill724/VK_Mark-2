@@ -15,13 +15,10 @@ public:
 	void SubmitJob(std::function<void(ThreadContext&)> taskFn);
 	void Wait();
 
-	// Render thread — pinned to RENDER_THREAD (1), must be pumped by render loop
 	void SubmitRenderJob(std::function<void(ThreadContext&)> taskFn);
 
-	// Main thread — pinned to MAIN_THREAD (0), pump from main loop
 	void SubmitMainJob(std::function<void(ThreadContext&)> taskFn);
 
-	// Call once per loop tick on the thread that owns the role
 	void PumpMainThread();
 	void PumpRenderThread();
 
@@ -30,7 +27,11 @@ public:
 	ThreadContext& GetThreadContext(uint32_t threadIndex);
 
 	uint32_t GetThreadCount() const noexcept;
-	uint32_t GetWorkerCount() const noexcept;   // excludes main + render
+	uint32_t GetWorkerCount() const noexcept;
+
+	void RunParallel(
+		uint32_t count,
+		const std::function<void(ThreadContext&, uint32_t)>& fn);
 
 	Logging Logger;
 

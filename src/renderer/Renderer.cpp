@@ -27,7 +27,7 @@ void Renderer::Init(
 	SetDrawExtent(window.GetExtent());
 
 	InitRenderSettings(
-		RD::RenderingMode::VISIBILITY_TILE_DEFERRED,
+		RD::RenderingMode::VISIBILITY_DEFERRED,
 		LensFlareOn,
 		ChromaticAberrationOn,
 		BloomOn,
@@ -63,14 +63,23 @@ void Renderer::Init(
 
 #ifdef TRACY_ENABLE
 	const auto& mainThread = jobSystem.GetMainContext();
-	auto mainThreadPool = m_device->GetThreadCommandPool(mainThread.threadID, QueueType::Graphics);
-	m_profiler.SetTracyGraphicsCmd(m_device->CreateCommandBuffer(mainThreadPool));
+	auto mainThreadGraphicsPool = m_device->GetThreadCommandPool(mainThread.threadID, QueueType::Graphics);
+	auto mainThreadComputePool = m_device->GetThreadCommandPool(mainThread.threadID, QueueType::Compute);
+	m_profiler.SetTracyGraphicsCmd(m_device->CreateCommandBuffer(mainThreadGraphicsPool));
+	m_profiler.SetTracyComputeCmd(m_device->CreateCommandBuffer(mainThreadComputePool));
 
-	m_profiler.InitTracyGPU(
+	m_profiler.InitTracyGraphics(
 		m_device->GetContext().physicalDevice,
 		m_device->GetContext().device,
 		m_device->GetGraphicsQueue().GetQueue(),
 		m_profiler.GetTracyGraphicsCmd());
+
+	m_profiler.InitTracyCompute(
+		m_device->GetContext().physicalDevice,
+		m_device->GetContext().device,
+		m_device->GetComputeQueue().GetQueue(),
+		m_profiler.GetTracyComputeCmd(),
+		jobSystem.GetThreadCount());
 #endif
 
 	// -------------------
@@ -104,7 +113,7 @@ void Renderer::Init(
 
 	// ===========================
 	// === Frame context setup ===
-	InitFrameResources();
+	InitFrameResources(jobSystem.GetThreadCount());
 
 	const size_t totalFrameStaging =
 		GPU_BYTES_INSTANCE_INPUT +
@@ -295,6 +304,9 @@ void Renderer::CheckCSMAtlasExtentUpdate()
 		StallDevice();
 		m_currentShadowQuality = m_profiler.shadowQuality;
 		m_bindlessImageTable.UpdateCSMAtlasExtent(m_currentShadowQuality, m_allocator);
+		m_renderGraph.NotifyLayout(
+			RD::Renderer_RenderTarget::DirectionalCSMAtlas,
+			RD::ImageAccess::Undefined);
 		const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
 		World::GetScene().InitCSMInfo(csmAtlas.Width(), csmAtlas.Height(), csmAtlas.m_bindlessID);
 	}
@@ -352,7 +364,7 @@ void Renderer::CheckGlobalDescriptorSetSync()
 	}
 }
 
-void Renderer::InitFrameResources()
+void Renderer::InitFrameResources(uint32_t threadCount)
 {
 	m_framesInFlight = m_swapchain.GetImageCount();
 
@@ -362,6 +374,7 @@ void Renderer::InitFrameResources()
 	{
 		m_frameContexts[i].Init(
 			i,
+			threadCount,
 			m_drawExtent,
 			*m_device,
 			*m_descriptorManager,
@@ -381,7 +394,20 @@ void Renderer::CleanupFrameResources()
 
 void Renderer::CreateRenderGraph()
 {
-	m_renderGraph.Build(*m_pipelineManager, m_drawExtent);
+	const uint32_t gfxFamily     = m_device->GetGraphicsQueue().GetFamilyIndex();
+	const uint32_t computeFamily = m_device->GetComputeQueue().GetFamilyIndex();
+
+	const bool bDedicatedCompute = (gfxFamily != computeFamily);
+
+	if (!bDedicatedCompute)
+	{
+		fmt::println(
+			"[Renderer] No dedicated compute queue family (graphics and compute "
+			"both on family {}). Async compute disabled; the graph will use the "
+			"single-batch path.", gfxFamily);
+	}
+
+	m_renderGraph.Build(*m_pipelineManager, m_drawExtent, bDedicatedCompute);
 }
 
 void Renderer::DestroyRenderGraph()
@@ -911,7 +937,7 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 	new (&m_renderPassExecutionContext) RenderPassExecutionContext
 	{
-		.commandBuffer = frameCtx.m_commandBuffer,
+		.commandBuffer = frameCtx.GetPrimaryCommandBuffer(), // placeholder
 		.frameCtx      = &frameCtx,
 		.profiler      = &m_profiler,
 		.imageTable    = &m_bindlessImageTable,
@@ -921,7 +947,18 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		.swapchain     = &m_swapchain
 	};
 
-	m_renderGraph.Sync(m_renderGraphState);
+	m_renderGraph.SetAsyncComputeEnabled(m_profiler.enableAsyncCompute);
+
+	m_renderGraph.Sync(m_renderGraphState, m_renderPassExecutionContext);
+
+	const auto& schedule = m_renderGraph.GetSchedule();
+	auto& async = m_profiler.asyncStats;
+
+	async.bDedicatedQueue    = m_renderGraph.HasDedicatedComputeQueue();
+	async.bActiveThisFrame   = schedule.bUsesAsyncCompute;
+	async.graphicsBatchCount = schedule.graphicsBatchCount;
+	async.asyncPassCount     = static_cast<uint32_t>(schedule.Get(BatchId::C0).passes.size());
+	async.overlapPassCount   = static_cast<uint32_t>(schedule.Get(BatchId::G1).passes.size());
 }
 
 
@@ -944,7 +981,8 @@ bool Renderer::PrepareFrame()
 			frameCtx.m_graphicsTimestampPool,
 			frameCtx.m_passTimestampRanges,
 			frameCtx.m_timestampPassUsed,
-			m_device->GetTimestampPeriod());
+			m_device->GetTimestampPeriod(),
+			true);
 
 		for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
 		{
@@ -953,19 +991,59 @@ bool Renderer::PrepareFrame()
 			m_profiler.AddGpuPassTime(
 				static_cast<RD::Renderer_Pass>(passIndex),
 				results.passResults[passIndex].gpuMs);
-
-			frameCtx.m_timestampPassUsed[passIndex] = false;
 		}
 
 		if (results.frameResult.valid)
 		{
 			auto& stats = m_profiler.getStats();
-
 			stats.gpuFrameTimeRawMs = results.frameResult.gpuMs;
 			stats.gpuFrameTime.Add(results.frameResult.gpuMs);
 		}
+	}
 
-		frameCtx.m_bHasTimestampResultsPending = !results.allReady;
+	if (m_device->GetComputeQueue().SupportsTimestamps() &&
+		frameCtx.m_computeTimestampPool != VK_NULL_HANDLE &&
+		frameCtx.m_bHasComputeTimestampsPending.load(std::memory_order_relaxed))
+	{
+		auto results = m_device->GetComputeQueue().ReadTimestamps(
+			frameCtx.m_computeTimestampPool,
+			frameCtx.m_passTimestampRanges,
+			frameCtx.m_timestampPassUsedCompute,
+			m_device->GetTimestampPeriod(),
+			false);
+
+		for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
+		{
+			if (!results.passResults[passIndex].valid) continue;
+
+			m_profiler.AddGpuPassTime(
+				static_cast<RD::Renderer_Pass>(passIndex),
+				results.passResults[passIndex].gpuMs);
+		}
+	}
+
+	if (frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
+	{
+		vkResetQueryPool(
+			m_device->GetContext().device,
+			frameCtx.m_graphicsTimestampPool,
+			0u,
+			TIMESTAMP_QUERY_COUNT);
+
+		frameCtx.m_timestampPassUsed.fill(false);
+		frameCtx.m_bHasTimestampResultsPending = false;
+	}
+
+	if (frameCtx.m_computeTimestampPool != VK_NULL_HANDLE)
+	{
+		vkResetQueryPool(
+			m_device->GetContext().device,
+			frameCtx.m_computeTimestampPool,
+			0u,
+			TIMESTAMP_QUERY_COUNT);
+
+		frameCtx.m_timestampPassUsedCompute.fill(false);
+		frameCtx.m_bHasComputeTimestampsPending.store(false, std::memory_order_relaxed);
 	}
 
 	// Next swapchain image
@@ -982,8 +1060,6 @@ bool Renderer::PrepareFrame()
 
 	// In use swapchain image
 	m_swapchain.MarkInFlightFrameIndex(frameCtx.m_frameIndex);
-
-	VK_CHECK(vkResetCommandBuffer(frameCtx.m_commandBuffer, 0));
 
 	frameCtx.FreeStashedCmds(m_device->GetContext());
 
@@ -1058,42 +1134,113 @@ bool Renderer::SubmitFrame()
 
 	auto& graphicsQ = m_device->GetGraphicsQueue();
 	auto& transferQ = m_device->GetTransferQueue();
-	auto& presentQ = m_device->GetPresentQueue();
+	auto& computeQ  = m_device->GetComputeQueue();
+	auto& presentQ  = m_device->GetPresentQueue();
 
 	VkSemaphore presentSem = m_swapchain.GetAvailableSemaphore();
 	VkSemaphore renderSem  = m_swapchain.GetFinishedSemaphore();
 	VkFence     fence      = m_swapchain.GetInFlightFence();
 
-	std::vector<VkSemaphoreSubmitInfo> waitInfos;
+	const auto& schedule = m_renderGraph.GetSchedule();
 
-	// Wait on image acquired semaphore
-	waitInfos.emplace_back(VkSemaphoreSubmitInfo{
-		.sType =  VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-		.semaphore = presentSem,
-		.stageMask = VK_PIPELINE_STAGE_2_BLIT_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
-		});
+	std::vector<VkSemaphoreSubmitInfo> firstBatchWaits;
 
 	const auto curTransferSignal = transferQ.GetCurrentSignalValue();
-
-	// Wait on transfer timeline only up to the first buffer consumers
-	if (frameCtx.transferWaitValue != UINT64_MAX && frameCtx.transferWaitValue <= curTransferSignal)
+	if (frameCtx.transferWaitValue != UINT64_MAX &&
+		frameCtx.transferWaitValue <= curTransferSignal)
 	{
-		INVARIANT(frameCtx.transferWaitValue <= curTransferSignal);
-		waitInfos.emplace_back(VkSemaphoreSubmitInfo{
-			.sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-			.semaphore = transferQ.GetTimelineSemaphore(),
-			.value     = frameCtx.transferWaitValue,
-			.stageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT // Buffers needed during visibility stage
-			});
+		firstBatchWaits.emplace_back(TimelineWait(
+			transferQ.GetTimelineSemaphore(),
+			frameCtx.transferWaitValue,
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT));
 	}
 
-	graphicsQ.SubmitFrame(
-		waitInfos,
-		frameCtx.m_commandBuffer,
-		renderSem,
-		fence);
+	const VkPipelineStageFlags2 kAcquireStages =
+		VK_PIPELINE_STAGE_2_BLIT_BIT |
+		VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-	// Present using the image-indexed renderSem
+	if (!schedule.bUsesAsyncCompute)
+	{
+		// ================= single submit =================
+		ASSERT(schedule.graphicsBatchCount == 1u);
+
+		firstBatchWaits.emplace_back(BinaryWait(presentSem, kAcquireStages));
+
+		graphicsQ.SubmitFrame(
+			firstBatchWaits,
+			frameCtx.GetGraphicsPrimary(0u),
+			renderSem,
+			fence);
+	}
+	else
+	{
+		// ============ G0 -> C0 || G1 -> G2 ============
+		ASSERT(schedule.graphicsBatchCount == MAX_GRAPHICS_PRIMARIES,
+			"Async path expects exactly %u graphics batches, got %u.",
+			MAX_GRAPHICS_PRIMARIES, schedule.graphicsBatchCount);
+
+		// ---- G0: visibility + prepass + HiZ + handoff transitions ----
+		const uint64_t g0 = graphicsQ.AdvanceTimeline();
+		{
+			const VkSemaphoreSubmitInfo signals[] = {
+				TimelineSignal(graphicsQ.GetTimelineSemaphore(), g0)
+			};
+
+			graphicsQ.Submit2(
+				firstBatchWaits,
+				frameCtx.GetGraphicsPrimary(0u),
+				signals,
+				VK_NULL_HANDLE);
+		}
+
+		// ---- C0: SSAO, clustered lights, contact shadows ----
+		const uint64_t c0 = computeQ.AdvanceTimeline();
+		{
+			const VkSemaphoreSubmitInfo waits[] = {
+				TimelineWait(
+					graphicsQ.GetTimelineSemaphore(), g0,
+					VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+			};
+			const VkSemaphoreSubmitInfo signals[] = {
+				TimelineSignal(
+					computeQ.GetTimelineSemaphore(), c0,
+					VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+			};
+
+			computeQ.Submit2(
+				waits,
+				frameCtx.GetAsyncComputePrimary(),
+				signals,
+				VK_NULL_HANDLE);
+		}
+
+		// ---- G1: CSM, flashlight shadow, material resolve ----
+		{
+			graphicsQ.Submit2(
+				{},                                   // no waits
+				frameCtx.GetGraphicsPrimary(1u),
+				{},                                   // no signals
+				VK_NULL_HANDLE);                      // no fence
+		}
+
+		// ---- G2: shading -> transparent -> volumetrics -> post ->
+		{
+			const VkSemaphoreSubmitInfo waits[] = {
+				TimelineWait(
+					computeQ.GetTimelineSemaphore(), c0,
+					VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT),
+				BinaryWait(presentSem, kAcquireStages)
+			};
+
+			graphicsQ.SubmitFrame(
+				std::vector<VkSemaphoreSubmitInfo>(std::begin(waits), std::end(waits)),
+				frameCtx.GetGraphicsPrimary(2u),
+				renderSem,
+				fence);
+		}
+	}
+
+	// ---- present + resize handling: ----
 	auto swapResult = presentQ.Present(
 		m_swapchain.GetSwapchainHandle(),
 		m_swapchain.GetCurrentSwapchainImageIndex(),
@@ -1108,8 +1255,6 @@ bool Renderer::SubmitFrame()
 
 		m_bHasDrawExtentResized = true;
 		CheckCSMAtlasExtentUpdate();
-
-		// Resize swapchain, update window, recreate render targets with new extent
 		return m_bHasDrawExtentResized;
 	}
 	else
@@ -1119,7 +1264,7 @@ bool Renderer::SubmitFrame()
 
 	CheckCSMAtlasExtentUpdate();
 	m_frameNumber++;
-	return m_bHasDrawExtentResized; // Should be false
+	return m_bHasDrawExtentResized;
 }
 
 void Renderer::TickVramUsage()
@@ -1142,7 +1287,7 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 		newWindowExtent);
 
 	m_bindlessImageTable.UpdateRenderTargets({ m_drawExtent.Width(), m_drawExtent.Height(), 1u }, m_allocator);
-
+	m_renderGraph.InvalidateTrackedLayouts();
 	{
 		auto cmdPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Graphics);
 
@@ -1156,52 +1301,39 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 	}
 }
 
-void Renderer::TimestampPoolStart(FrameContext& frameCtx)
+void Renderer::TimestampPoolStart(FrameContext& frameCtx, VkCommandBuffer cmd)
 {
-	if (m_device->GetGraphicsQueue().SupportsTimestamps() && frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
-	{
-		if (!frameCtx.m_bHasTimestampResultsPending)
-		{
-			vkCmdResetQueryPool(
-				frameCtx.m_commandBuffer,
-				frameCtx.m_graphicsTimestampPool,
-				0u,
-				TIMESTAMP_QUERY_COUNT);
+	if (!m_device->GetGraphicsQueue().SupportsTimestamps()) return;
+	if (frameCtx.m_graphicsTimestampPool == VK_NULL_HANDLE)  return;
 
-			frameCtx.m_timestampPassUsed.fill(false);
-		}
-	}
-	if (m_device->GetGraphicsQueue().SupportsTimestamps())
-	{
-		vkCmdWriteTimestamp2(
-			frameCtx.m_commandBuffer,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			frameCtx.m_graphicsTimestampPool,
-			FRAME_BEGIN_QUERY);
-	}
+	vkCmdWriteTimestamp2(
+		cmd,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+		frameCtx.m_graphicsTimestampPool,
+		FRAME_BEGIN_QUERY);
 }
 
-void Renderer::TimestampPoolEnd(FrameContext& frameCtx)
+void Renderer::TimestampPoolEnd(FrameContext& frameCtx, VkCommandBuffer cmd)
 {
 	if (m_device->GetGraphicsQueue().SupportsTimestamps())
 	{
 		vkCmdWriteTimestamp2(
-			frameCtx.m_commandBuffer,
+			cmd,
 			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
 			frameCtx.m_graphicsTimestampPool,
-			FRAME_END_QUERY
-		);
+			FRAME_END_QUERY);
 	}
 
-	m_profiler.CollectTracyGPU(frameCtx.m_commandBuffer);
+	m_profiler.CollectTracyGraphics(cmd);
 
-	if (m_device->GetGraphicsQueue().SupportsTimestamps() && frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
+	if (m_device->GetGraphicsQueue().SupportsTimestamps() &&
+		frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
 	{
 		frameCtx.m_bHasTimestampResultsPending = true;
 	}
 }
 
-void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
+void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx, VkCommandBuffer cmd)
 {
 	auto& addrTable = frameCtx.m_gpuAddressTable;
 
@@ -1210,13 +1342,13 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 		if (frameCtx.IsTemporalValid())
 		{
 			BufferBarriers::TransferWriteToComputeRead(
-				frameCtx.m_commandBuffer,
+				cmd,
 				addrTable.GetGPUBuffer(RD::Renderer_Buffer::PrevTransforms),
 				m_device->GetContext());
 		}
 
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms),
 			m_device->GetContext());
 
@@ -1226,7 +1358,7 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 	if (frameCtx.m_bLightsBufferUploadNeeded)
 	{
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights),
 			m_device->GetContext());
 
@@ -1236,17 +1368,17 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 	if (frameCtx.m_bInstanceInputUploadNeeded)
 	{
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs),
 			m_device->GetContext());
 
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys),
 			m_device->GetContext());
 
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			m_globalAddressTable.GetTableBuffer(),
 			m_device->GetContext());
 
@@ -1256,7 +1388,7 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 	if (frameCtx.m_gpuAddressTable.IsTableDirty())
 	{
 		BufferBarriers::TransferWriteToComputeRead(
-			frameCtx.m_commandBuffer,
+			cmd,
 			frameCtx.m_gpuAddressTable.GetTableBuffer(),
 			m_device->GetContext());
 
@@ -1264,11 +1396,9 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx)
 	}
 }
 
-// All recorded in a single graphics queue
-void Renderer::RecordRenderCommand()
+void Renderer::RecordRenderCommand(JobSystem& jobSystem)
 {
 	auto& frameCtx = GetCurrentFrame();
-
 	auto& frameAddrTable = frameCtx.m_gpuAddressTable;
 
 	CheckGlobalDescriptorSetSync();
@@ -1280,35 +1410,67 @@ void Renderer::RecordRenderCommand()
 	frameCtx.TickDescriptorWrites(m_mainWriter);
 	m_mainWriter.UpdateSet(m_device->GetContext().device, frameCtx.m_frameSet);
 
-	VkCommandBufferBeginInfo cmdBeginInfo{};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	VK_CHECK(vkBeginCommandBuffer(frameCtx.m_commandBuffer, &cmdBeginInfo));
-
-	TimestampPoolStart(frameCtx);
-
-	BarrierDynamicBuffers(frameCtx);
-
-	// All data needed for frame is ready
-	m_descriptorManager->BindDescriptorSets(
-		frameCtx.m_commandBuffer,
-		frameCtx.m_frameSet,
-		m_pipelineManager->GetGlobalLayout());
-
-	if (m_profiler.assetCounts.totalIndexCount > 0 &&
+	const bool bBindIndexBuffer =
+		m_profiler.assetCounts.totalIndexCount > 0 &&
 		m_renderGraphState.InstancesActive() &&
-		!World::_loadedScenes.empty())
+		!World::_loadedScenes.empty();
+
+	RecordHooks hooks;
+
+	hooks.onFrameBegin = [&](VkCommandBuffer cmd)
 	{
-		const auto indexBuffer = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;
-		vkCmdBindIndexBuffer(frameCtx.m_commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-	}
+		TimestampPoolStart(frameCtx, cmd);
+		BarrierDynamicBuffers(frameCtx, cmd);
+	};
 
-	m_renderGraph.ExecutePasses(m_renderPassExecutionContext);
+	hooks.onFrameEnd = [&](VkCommandBuffer cmd)
+	{
+		TimestampPoolEnd(frameCtx, cmd);
+	};
 
-	TimestampPoolEnd(frameCtx);
+	hooks.onAsyncBatchEnd = [&](VkCommandBuffer cmd)
+	{
+		m_profiler.CollectTracyCompute(cmd);
+	};
 
-	VK_CHECK(vkEndCommandBuffer(frameCtx.m_commandBuffer));
+
+	hooks.bindPrologue = [&](VkCommandBuffer cmd, PassQueue queue)
+	{
+		if (queue == PassQueue::Graphics)
+		{
+			m_descriptorManager->BindDescriptorSetsGraphics(
+				cmd,
+				frameCtx.m_frameSet,
+				m_pipelineManager->GetGlobalLayout());
+
+			m_descriptorManager->BindDescriptorSetsCompute(
+				cmd,
+				frameCtx.m_frameSet,
+				m_pipelineManager->GetGlobalLayout());
+		}
+		else
+		{
+			m_descriptorManager->BindDescriptorSetsCompute(
+				cmd,
+				frameCtx.m_frameSet,
+				m_pipelineManager->GetGlobalLayout());
+		}
+
+		if (queue == PassQueue::Graphics && bBindIndexBuffer)
+		{
+			const auto indexBuffer =
+				m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;
+			vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		}
+	};
+
+	m_renderGraph.RecordFrame(
+		m_renderPassExecutionContext,
+		jobSystem,
+		frameCtx,
+		hooks);
 }
+
 
 void Renderer::StallDevice()
 {

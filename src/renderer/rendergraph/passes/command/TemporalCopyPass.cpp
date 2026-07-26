@@ -16,6 +16,8 @@ void RegisterTemporalCopyPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Visibility)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -23,6 +25,24 @@ void RegisterTemporalCopyPass(
 							ctx.frameState->InstancesActive() &&
 							ctx.frameState->IsTemporalValid();
 					})
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::TransferSrc)
+ 
+				.ReadResource(
+					RD::Renderer_RenderTarget::Velocity,
+					RD::ImageAccess::TransferSrc)
+ 
+				.WriteResource(
+					RD::Renderer_RenderTarget::PrevDepthResolved,
+					RD::ImageAccess::TransferDst,
+					RD::ImageAccess::DepthRead)
+ 
+				.WriteResource(
+					RD::Renderer_RenderTarget::PrevVelocity,
+					RD::ImageAccess::TransferDst,
+					RD::ImageAccess::Read)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -34,23 +54,8 @@ void RegisterTemporalCopyPass(
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
 						const auto& prevVelocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity);
 
-						ImageUtils::ImageCopy(
-							cmd,
-							depthResolved,
-							prevDepthResolved,
-							RD::ImageAccess::DepthRead,
-							RD::ImageAccess::DepthRead,
-							RD::ImageAccess::GraphicsDepthWrite,
-							RD::ImageAccess::DepthRead);
-
-						ImageUtils::ImageCopy(
-							cmd,
-							velocity,
-							prevVelocity,
-							RD::ImageAccess::Read,
-							RD::ImageAccess::Read,
-							RD::ImageAccess::GraphicsColorWrite,
-							RD::ImageAccess::Read);
+						ImageUtils::ImageCopyNoBarrier(cmd, depthResolved, prevDepthResolved);
+						ImageUtils::ImageCopyNoBarrier(cmd, velocity,      prevVelocity);
 					});
 		});
 }

@@ -20,6 +20,88 @@ void GPUQueue::CleanupFencePools()
 	m_fencePool.DestroyFences(m_logicalDeviceCopy);
 }
 
+TimestampReadback GPUQueue::ReadTimestamps(
+	VkQueryPool                             pool,
+	std::span<const RD::PassTimestampRange> ranges,
+	std::span<const bool>                   passUsed,
+	float                                   timestampPeriod,
+	bool                                    bReadFrameQueries)
+{
+	ASSERT(pool != VK_NULL_HANDLE);
+	ASSERT(m_qType == QueueType::Compute || m_qType == QueueType::Graphics);
+
+	TimestampReadback result{};
+	for (size_t i = 0; i < ranges.size(); ++i)
+	{
+		if (!passUsed[i]) continue;
+
+		uint64_t queryPair[2]{};
+
+		VkResult res = vkGetQueryPoolResults(
+			m_logicalDeviceCopy,
+			pool,
+			ranges[i].beginQuery,
+			2,
+			sizeof(queryPair),
+			queryPair,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT);
+
+		if (res == VK_NOT_READY)
+		{
+			result.allReady = false;
+			continue;
+		}
+
+		VK_CHECK(res);
+
+		if (queryPair[1] > queryPair[0])
+		{
+			result.passResults[i].gpuMs = static_cast<float>(
+				double(queryPair[1] - queryPair[0]) *
+				double(timestampPeriod) / 1'000'000.0);
+
+			result.passResults[i].valid = true;
+		}
+	}
+
+	if (bReadFrameQueries)
+	{
+		uint64_t queryPair[2]{};
+
+		VkResult res = vkGetQueryPoolResults(
+			m_logicalDeviceCopy,
+			pool,
+			FRAME_BEGIN_QUERY,
+			2,
+			sizeof(queryPair),
+			queryPair,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT);
+
+		if (res == VK_NOT_READY)
+		{
+			result.allReady = false;
+		}
+		else
+		{
+			VK_CHECK(res);
+
+			if (queryPair[1] > queryPair[0])
+			{
+				result.frameResult.gpuMs = static_cast<float>(
+					double(queryPair[1] - queryPair[0]) *
+					double(timestampPeriod) / 1'000'000.0);
+
+				result.frameResult.valid = true;
+			}
+		}
+	}
+
+	return result;
+}
+
+
 // -----------------------------
 // Timeline semaphore functions
 // -----------------------------
@@ -92,6 +174,28 @@ void GPUQueue::WaitTimelineValue(VkSemaphore semaphore, uint64_t waitValue)
 	waitInfo.pValues = &waitValue;
 
 	VK_CHECK(vkWaitSemaphores(m_logicalDeviceCopy, &waitInfo, UINT64_MAX));
+}
+
+void GPUQueue::Submit2(
+	std::span<const VkSemaphoreSubmitInfo> waits,
+	VkCommandBuffer cmd,
+	std::span<const VkSemaphoreSubmitInfo> signals,
+	VkFence fence)
+{
+	VkCommandBufferSubmitInfo cmdInfo{};
+	cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+	cmdInfo.commandBuffer = cmd;
+
+	VkSubmitInfo2 submit{};
+	submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+	submit.waitSemaphoreInfoCount   = static_cast<uint32_t>(waits.size());
+	submit.pWaitSemaphoreInfos      = waits.data();
+	submit.commandBufferInfoCount   = 1u;
+	submit.pCommandBufferInfos      = &cmdInfo;
+	submit.signalSemaphoreInfoCount = static_cast<uint32_t>(signals.size());
+	submit.pSignalSemaphoreInfos    = signals.data();
+
+	VK_CHECK(vkQueueSubmit2(GetQueue(), 1u, &submit, fence));
 }
 
 // -----------------
@@ -252,89 +356,16 @@ void GraphicsQueue::SubmitFrame(
 	VK_CHECK(vkQueueSubmit2(m_queue, 1, &submitInfo, fence));
 }
 
-GraphicsQueue::TimestampReadback GraphicsQueue::ReadTimestamps(
-	VkQueryPool                             pool,
-	std::span<const RD::PassTimestampRange> ranges,
-	std::span<const bool>                   passUsed,
-	float                                   timestampPeriod)
+void GraphicsQueue::InitTimelineSemaphore()
 {
-	ASSERT(pool != VK_NULL_HANDLE);
+	ASSERT(m_logicalDeviceCopy != VK_NULL_HANDLE);
+	m_sync = CreateTimelineSemaphore(m_logicalDeviceCopy);
+}
 
-	TimestampReadback result{};
-	result.passResults = std::span<TimestampResult>(
-		new TimestampResult[ranges.size()],
-		ranges.size());
-
-	for (size_t i = 0; i < ranges.size(); ++i)
-	{
-		result.passResults[i] = {};
-
-		if (!passUsed[i]) continue;
-
-		uint64_t queryPair[2]{};
-
-		VkResult res = vkGetQueryPoolResults(
-			m_logicalDeviceCopy,
-			pool,
-			ranges[i].beginQuery,
-			2,
-			sizeof(queryPair),
-			queryPair,
-			sizeof(uint64_t),
-			VK_QUERY_RESULT_64_BIT);
-
-		if (res == VK_NOT_READY)
-		{
-			result.allReady = false;
-			continue;
-		}
-
-		VK_CHECK(res);
-
-		if (queryPair[1] > queryPair[0])
-		{
-			result.passResults[i].gpuMs = static_cast<float>(
-				double(queryPair[1] - queryPair[0]) *
-				double(timestampPeriod) / 1'000'000.0);
-
-			result.passResults[i].valid = true;
-		}
-	}
-
-	// Frame timing
-	{
-		uint64_t queryPair[2]{};
-
-		VkResult res = vkGetQueryPoolResults(
-			m_logicalDeviceCopy,
-			pool,
-			FRAME_BEGIN_QUERY,
-			2,
-			sizeof(queryPair),
-			queryPair,
-			sizeof(uint64_t),
-			VK_QUERY_RESULT_64_BIT);
-
-		if (res == VK_NOT_READY)
-		{
-			result.allReady = false;
-		}
-		else
-		{
-			VK_CHECK(res);
-
-			if (queryPair[1] > queryPair[0])
-			{
-				result.frameResult.gpuMs = static_cast<float>(
-					double(queryPair[1] - queryPair[0]) *
-					double(timestampPeriod) / 1'000'000.0);
-
-				result.frameResult.valid = true;
-			}
-		}
-	}
-
-	return result;
+void GraphicsQueue::DestroyTimelineSemaphore()
+{
+	DestroySemaphore(m_logicalDeviceCopy, m_sync.semaphore);
+	m_sync = {};
 }
 
 

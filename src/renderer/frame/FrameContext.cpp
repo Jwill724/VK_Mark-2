@@ -10,6 +10,7 @@
 
 void FrameContext::Init(
 	uint32_t frameIndex,
+	uint32_t threadSlotCount,
 	Extents2D drawExtent,
 	Device& device,
 	DescriptorManager& descriptorsManager,
@@ -24,7 +25,22 @@ void FrameContext::Init(
 
 	m_graphicsPool = device.CreateCommandPool(QueueType::Graphics);
 	m_transferPool = device.CreateCommandPool(QueueType::Transfer);
-	m_commandBuffer = device.CreateCommandBuffer(m_graphicsPool);
+	m_computePool  = device.CreateCommandPool(QueueType::Compute);
+
+	device.CreateCommandBuffers(m_graphicsPool, m_graphicsPrimaries.data(), RD::MAX_GRAPHICS_PRIMARIES);
+	m_asyncComputeCmd = device.CreateCommandBuffer(m_computePool);
+
+	const uint32_t gfxFamily     = device.GetGraphicsQueue().GetFamilyIndex();
+	const uint32_t computeFamily = device.GetComputeQueue().GetFamilyIndex();
+
+	if (gfxFamily != computeFamily)
+	{
+		m_secondaryArena.Init(
+			device.GetContext().device,
+			threadSlotCount,
+			computeFamily);
+	}
+
 	m_frameSet = descriptorsManager.AllocateFrameDescriptorSet(logicalDevice);
 
 	// GPU address table
@@ -153,6 +169,13 @@ void FrameContext::Init(
 		&queryPoolInfo,
 		nullptr,
 		&m_graphicsTimestampPool
+	));
+
+	VK_CHECK(vkCreateQueryPool(
+		logicalDevice,
+		&queryPoolInfo,
+		nullptr,
+		&m_computeTimestampPool
 	));
 
 	for (uint32_t passIndex = 0; passIndex < TIMESTAMP_PASS_COUNT; ++passIndex)
@@ -304,28 +327,19 @@ void FrameContext::CreateCMAA2Buffers(
 		allocator);
 }
 
-void FrameContext::CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue)
+void FrameContext::CollectTransferCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue)
 {
-	if (cmds.empty()) return;
+	if (cmds.empty() || queue != QueueType::Transfer) return;
 
-	auto& dstCmds = (queue == QueueType::Transfer) ? m_transferCommands
-		: (queue == QueueType::Compute) ? m_computeCommands
-		: m_secondaryCommands;
-	dstCmds.insert(dstCmds.end(),
+	m_transferCommands.insert(m_transferCommands.end(),
 		std::make_move_iterator(cmds.begin()),
 		std::make_move_iterator(cmds.end()));
 }
 
-void FrameContext::StashSubmitted(QueueType queue)
+void FrameContext::StashTransferCmds()
 {
-	auto& srcCmds = (queue == QueueType::Transfer) ? m_transferCommands
-		: (queue == QueueType::Compute) ? m_computeCommands
-		: m_secondaryCommands;
-	auto& dstCmds = (queue == QueueType::Transfer) ? m_transferCommandsToFree
-		: (queue == QueueType::Compute) ? m_computeCommandsToFree
-		: m_secondaryCommandsToFree;
-	dstCmds.insert(dstCmds.end(), srcCmds.begin(), srcCmds.end());
-	srcCmds.clear();
+	m_transferCommandsToFree.insert(m_transferCommandsToFree.end(), m_transferCommands.begin(), m_transferCommands.end());
+	m_transferCommands.clear();
 }
 
 void FrameContext::FreeStashedCmds(const DeviceContext& deviceCtx)
@@ -338,24 +352,6 @@ void FrameContext::FreeStashedCmds(const DeviceContext& deviceCtx)
 			static_cast<uint32_t>(m_transferCommandsToFree.size()),
 			m_transferCommandsToFree.data());
 		m_transferCommandsToFree.clear();
-	}
-	if (!m_computeCommandsToFree.empty())
-	{
-		vkFreeCommandBuffers(
-			deviceCtx.device,
-			m_computePool,
-			static_cast<uint32_t>(m_computeCommandsToFree.size()),
-			m_computeCommandsToFree.data());
-		m_computeCommandsToFree.clear();
-	}
-	if (!m_secondaryCommandsToFree.empty())
-	{
-		vkFreeCommandBuffers(
-			deviceCtx.device,
-			m_graphicsPool,
-			static_cast<uint32_t>(m_secondaryCommandsToFree.size()),
-			m_secondaryCommandsToFree.data());
-		m_secondaryCommandsToFree.clear();
 	}
 }
 
@@ -425,11 +421,14 @@ void FrameContext::Cleanup(const DeviceContext& deviceCtx, Allocator& allocator)
 	if (m_graphicsTimestampPool != VK_NULL_HANDLE)
 		vkDestroyQueryPool(deviceCtx.device, m_graphicsTimestampPool, nullptr);
 
+	if (m_computeTimestampPool != VK_NULL_HANDLE)
+		vkDestroyQueryPool(deviceCtx.device, m_computeTimestampPool, nullptr);
+
 	FreeStashedCmds(deviceCtx);
 
+	m_secondaryArena.Cleanup();
+
 	m_transferCommands.clear();
-	m_computeCommands.clear();
-	m_secondaryCommands.clear();
 
 	if (m_graphicsPool != VK_NULL_HANDLE)
 		vkDestroyCommandPool(deviceCtx.device, m_graphicsPool, nullptr);

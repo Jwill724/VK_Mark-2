@@ -264,7 +264,7 @@ namespace
 			if (!supported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
 				ImGui::SetTooltip(
 					"Not available in %s mode",
-					(mode == RD::RenderingMode::VISIBILITY_TILE_DEFERRED)
+					(mode == RD::RenderingMode::VISIBILITY_DEFERRED)
 						? "Deferred Tile Visibility" : "Forward+");
 			}
 
@@ -349,6 +349,24 @@ namespace
 		if (ImGui::Combo("Active##rendermode", &currentRenderMode, renderModes, IM_ARRAYSIZE(renderModes))) {
 			dbg.renderingMode = static_cast<uint32_t>(currentRenderMode);
 		}
+
+		UI::separatorText("Async Compute");
+
+		const auto& async = profiler.asyncStats;
+
+		if (!async.bDedicatedQueue)
+		{
+			ImGui::TextDisabled("Unavailable");
+			ImGui::TextWrapped(
+				"This device exposes no compute queue family distinct from "
+				"graphics. The graph always uses the single-submit path.");
+			return;
+		}
+
+		ImGui::Checkbox("Enable Async Compute##async", &profiler.enableAsyncCompute);
+
+		ImGui::Spacing();
+
 		UI::separatorText("Shadows");
 
 		bool shadows = dbg.enableShadows != 0u;
@@ -706,7 +724,49 @@ namespace
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("GPU update timings");
-		ImGui::Text("GPU total:  %.3f ms", stats.gpuFrameTime.Get());
+		ImGui::Text("Total:  %.3f ms", stats.gpuFrameTime.Get());
+
+
+		float    graphicsGpuMs = 0.0f;
+		float    asyncGpuMs    = 0.0f;
+		//float    graphicsCpuMs = 0.0f;
+		//float    asyncCpuMs    = 0.0f;
+		//uint32_t graphicsCount = 0u;
+		uint32_t asyncCount    = 0u;
+
+		const auto& allPassStats = profiler.GetAllPassStats();
+		for (const PassTimingStats& s : allPassStats)
+		{
+			if (!s.activeLastFrame) continue;
+
+			const float gpu = s.gpuMsAverage.IsInitialized() ? s.gpuMsAverage.Get() : 0.0f;
+			//const float cpu = s.cpuMsAverage.IsInitialized() ? s.cpuMsAverage.Get() : 0.0f;
+
+			if (s.asyncQueueLastFrame)
+			{
+				asyncGpuMs += gpu;
+				//asyncCpuMs += cpu;
+				++asyncCount;
+			}
+			else
+			{
+				graphicsGpuMs += gpu;
+				//graphicsCpuMs += cpu;
+				//++graphicsCount;
+			}
+		}
+
+		ImGui::Text("Graphics queue: %.3f ms",
+			graphicsGpuMs);
+
+		if (asyncCount > 0u)
+		{
+			ImGui::TextColored(
+				ImVec4(0.40f, 0.80f, 1.00f, 1.0f),
+				"Async queue: %.3f ms GPU",
+				asyncGpuMs);
+		}
+		ImGui::Separator();
 
 		ImGui::Separator();
 		ImGui::TextUnformatted("CPU update timings");
@@ -754,16 +814,6 @@ namespace
 				cullRatio, culled, totalInstances);
 		}
 
-		ImGui::SeparatorText("Draw Commands");
-
-		ImGui::Text("Opaque Draws: %u", gpu.opaqueDrawCount);
-		ImGui::Text("Transparent Draws: %u", gpu.transparentDrawCount);
-		ImGui::Text("Shadow Draws: %u", gpu.shadowDrawCount);
-		//ImGui::Text("Total Draws: %u",
-		//	gpu.opaqueDrawCount + gpu.transparentDrawCount + gpu.shadowDrawCount);
-
-		ImGui::SeparatorText("Geometry");
-
 		const uint32_t tris = gpu.triangleCount;
 		if (tris >= 1000000u)
 			ImGui::Text("Triangles: %.2fM", double(tris) / 1000000.0);
@@ -772,64 +822,78 @@ namespace
 		else
 			ImGui::Text("Triangles: %u", tris);
 
+		ImGui::SeparatorText("Draw Commands");
 
-		if (profiler.IsTracyCompiledIn()) {
-			ImGui::Text(
-				"Render Pass Timings: %s",
-				profiler.IsTracyGPUActive() ? "Active" : "Inactive"
-			);
-		}
-		else {
-			ImGui::TextUnformatted("Render Pass Timings: Disabled");
-		}
+		ImGui::Text("Opaque Draws: %u", gpu.opaqueDrawCount);
+		ImGui::Text("Transparent Draws: %u", gpu.transparentDrawCount);
+		ImGui::Text("Shadow Draws: %u", gpu.shadowDrawCount);
+		//ImGui::Text("Total Draws: %u",
+		//	gpu.opaqueDrawCount + gpu.transparentDrawCount + gpu.shadowDrawCount);
 
-		static bool showOnlyActivePasses = true;
+		// ============
+		// Gpu timings
+
+		ImGui::SeparatorText("Pass timings");
+
+		static bool bHighlightAsync      = true;
+		ImGui::Checkbox("Highlight async##passes", &bHighlightAsync);
+
+		UI::TableScope table(
+			"PassTimings",
+			3,
+			ImGuiTableFlags_SizingStretchProp |
+			ImGuiTableFlags_BordersInnerV |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollY);
+
+		if (!table) return;
+
+		ImGui::TableSetupColumn("Pass",   ImGuiTableColumnFlags_WidthStretch, 0.45f);
+		//ImGui::TableSetupColumn("Queue",  ImGuiTableColumnFlags_WidthStretch, 0.15f);
+		ImGui::TableSetupColumn("CPU ms", ImGuiTableColumnFlags_WidthStretch, 0.20f);
+		ImGui::TableSetupColumn("GPU ms", ImGuiTableColumnFlags_WidthStretch, 0.20f);
+		ImGui::TableHeadersRow();
+
+		for (size_t passIndex = 0; passIndex < allPassStats.size(); ++passIndex)
 		{
-			UI::TableScope table(
-				"PassTimings",
-				3,
-				ImGuiTableFlags_SizingStretchProp |
-				ImGuiTableFlags_BordersInnerV |
-				ImGuiTableFlags_RowBg |
-				ImGuiTableFlags_ScrollY
-			);
+			const RD::Renderer_Pass passID   = static_cast<RD::Renderer_Pass>(passIndex);
+			const PassTimingStats&  passStats = allPassStats[passIndex];
 
-			if (table) {
-				ImGui::TableSetupColumn("Pass");
-				ImGui::TableSetupColumn("CPU ms");
-				ImGui::TableSetupColumn("GPU ms");
-				ImGui::TableHeadersRow();
+			if (!passStats.activeLastFrame) continue;
 
-				const auto& allPassStats = profiler.GetAllPassStats();
+			ImGui::TableNextRow();
 
-				for (size_t passIndex = 0; passIndex < allPassStats.size(); ++passIndex) {
-					const RD::Renderer_Pass passID = static_cast<RD::Renderer_Pass>(passIndex);
-					const PassTimingStats& passStats = allPassStats[passIndex];
-
-					if (showOnlyActivePasses && !passStats.activeLastFrame) continue;
-
-					ImGui::TableNextRow();
-
-					ImGui::TableSetColumnIndex(0);
-					ImGui::TextUnformatted(profiler.GetPassName(passID));
-
-					ImGui::TableSetColumnIndex(1);
-					if (passStats.cpuMsAverage.IsInitialized()) {
-						ImGui::Text("%.3f", passStats.cpuMsAverage.Get());
-					}
-					else {
-						ImGui::TextUnformatted("--");
-					}
-
-					ImGui::TableSetColumnIndex(2);
-					if (passStats.gpuMsAverage.IsInitialized()) {
-						ImGui::Text("%.3f", passStats.gpuMsAverage.Get());
-					}
-					else {
-						ImGui::TextUnformatted("--");
-					}
-				}
+			if (bHighlightAsync && passStats.asyncQueueLastFrame)
+			{
+				ImGui::TableSetBgColor(
+					ImGuiTableBgTarget_RowBg0,
+					ImGui::GetColorU32(ImVec4(0.10f, 0.24f, 0.34f, 0.55f)));
 			}
+
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(profiler.GetPassName(passID));
+
+			//ImGui::TableSetColumnIndex(1);
+			//if (passStats.asyncQueueLastFrame)
+			//{
+			//	ImGui::TextColored(ImVec4(0.40f, 0.80f, 1.00f, 1.0f), "ASYNC");
+			//}
+			//else
+			//{
+			//	ImGui::TextDisabled("GFX");
+			//}
+
+			ImGui::TableSetColumnIndex(1);
+			if (passStats.cpuMsAverage.IsInitialized())
+				ImGui::Text("%.3f", passStats.cpuMsAverage.Get());
+			else
+				ImGui::TextUnformatted("--");
+
+			ImGui::TableSetColumnIndex(2);
+			if (passStats.gpuMsAverage.IsInitialized())
+				ImGui::Text("%.3f", passStats.gpuMsAverage.Get());
+			else
+				ImGui::TextUnformatted("--");
 		}
 	}
 

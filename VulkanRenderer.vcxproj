@@ -100,6 +100,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer (root) -->
+    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -113,9 +114,10 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueTileShadingPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp" />
-    <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphCompile.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -153,9 +155,6 @@
     </ClCompile>
     <!-- renderer / graph / passes / compute -->
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ChromaticAberrationPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\LightCullingPass.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
@@ -407,6 +406,7 @@
     <ClInclude Include="src\renderer\backend\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
+    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h" />
     <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <!-- renderer / frame -->
@@ -414,6 +414,7 @@
     <ClInclude Include="src\renderer\frame\FrameResources.h" />
     <!-- renderer / rendergraph -->
     <ClInclude Include="src\renderer\rendergraph\RenderGraph.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h" />
     <ClInclude Include="src\renderer\rendergraph\RenderPasses.h" />
     <ClInclude Include="src\renderer\rendergraph\RenderGraphResources.h" />
     <ClInclude Include="src\renderer\rendergraph\RenderGraphBuilder.h" />

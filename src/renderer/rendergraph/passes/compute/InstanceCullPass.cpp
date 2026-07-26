@@ -24,28 +24,12 @@ void RegisterInstanceCullPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->InstancesActive();
-					})
-				.DisableCulling()
+				.SetPhase(RenderPhase::Visibility)
+				.ForceExecution()
 
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						pass.scope = ComputeScope{{ ctx.frameState->GetInstanceCount(), 1u }, WORKGROUP_256 };
-						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						const auto& hiz = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
-						const auto hizSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_1,
-							hiz,
-							hizSampler);
-					})
+				.ReadResource(
+					RD::Renderer_RenderTarget::HiZ,
+					RD::ImageAccess::Read)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -58,6 +42,7 @@ void RegisterInstanceCullPass(
 							RD::Renderer_Pass::InstanceCull,
 							pass.passName);
 
+						pass.scope = ComputeScope{{ ctx.frameState->GetInstanceCount(), 1u }, WORKGROUP_256 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& bdaTable = frameCtx->GetBindlessBDATable();
@@ -66,6 +51,15 @@ void RegisterInstanceCullPass(
 						const auto& drawBinCountersBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinCounters);
 						const auto& indirectDrawCountsBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts);
 						const auto& visibleInstancesBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::VisibleInstances);
+
+						const auto& hiz = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
+						const auto hizSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							hiz,
+							hizSampler);
 
 						pso.FillGpuBuffer(cmd, instanceVisibilityBuffer);
 						pso.FillGpuBuffer(cmd, visibleCountBuffer);

@@ -1,15 +1,18 @@
 #pragma once
 
 #include "RenderGraphBuilder.h"
+#include "RenderGraphSchedule.h"
+
 #include <string>
 #include <vector>
-#include <unordered_map>
-#include <unordered_set>
+#include <array>
 
 class BindlessImageTable;
 struct RenderPassExecutionContext;
 struct PipelineHandle;
 class PipelineManager;
+class JobSystem;
+class FrameContext;
 
 class GraphicsScope;
 class ComputeScope;
@@ -35,23 +38,53 @@ public:
 		return pass;
 	}
 
-	void Sync(const RD::RenderStateInfo& frameState);
+	void Sync(
+		const RD::RenderStateInfo& frameState,
+		const RenderPassExecutionContext& ctx);
 
-	void ExecutePasses(RenderPassExecutionContext& ctx);
+	void RecordFrame(
+		RenderPassExecutionContext& baseCtx,
+		JobSystem& jobSystem,
+		FrameContext& frameCtx,
+		const RecordHooks& hooks);
 
-	void RebuildActiveList();
+	const CompiledSchedule& GetSchedule() const noexcept { return m_schedule; }
 
-	void SetDrawExtent(Extents2D extent)
+	// SubmitFrame uses these two to pick its submit path.
+	bool     UsesAsyncCompute()    const noexcept { return m_schedule.bUsesAsyncCompute; }
+	uint32_t GetGraphicsBatchCount() const noexcept { return m_schedule.graphicsBatchCount; }
+
+	void SetAsyncComputeEnabled(bool enabled)
 	{
-		m_drawExtent = extent;
+		if (m_bAsyncComputeEnabled != enabled)
+		{
+			m_bAsyncComputeEnabled = enabled;
+			m_bBatchesDirty = true;
+		}
+	}
+	bool IsAsyncComputeEnabled() const noexcept { return m_bAsyncComputeEnabled; }
+
+	bool HasDedicatedComputeQueue() const noexcept
+	{
+		return m_bHasDedicatedComputeQueue;
 	}
 
+	// Call after render targets are recreated. The tracker is persistent
+	// across frames (transitioning FROM Undefined discards contents, which
+	// would silently destroy history targets), so resize is the only time
+	// it may be reset.
+	void InvalidateTrackedLayouts()
+	{
+		m_trackedLayouts.fill(RD::ImageAccess::Undefined);
+	}
+
+	void NotifyLayout(RD::Renderer_RenderTarget target, RD::ImageAccess access)
+	{
+		m_trackedLayouts[static_cast<size_t>(target)] = access;
+	}
+
+	void SetDrawExtent(Extents2D extent) { m_drawExtent = extent; }
 	const Extents2D& GetDrawExtent() const noexcept { return m_drawExtent; }
-
-	bool IsFirstGraphicsWrite(RD::Renderer_RenderTarget t) const
-	{
-		return m_writtenThisFrame.find(t) == m_writtenThisFrame.end();
-	}
 
 private:
 	RenderPassDesc& CreatePass(
@@ -60,34 +93,67 @@ private:
 
 	void Build(
 		PipelineManager& pipeManager,
-		Extents2D drawExtent);
+		Extents2D drawExtent,
+		bool bHasDedicatedComputeQueue);
 
 	void Shutdown();
 
-	void ExecuteGraphicsPass(
-		RenderPassExecutionContext& ctx,
-		RenderPassDesc& pass,
-		GraphicsScope& scope);
+	// --- compile stages (RenderGraphCompile.cpp) ---
+	void EvaluateActivePasses(const RenderPassExecutionContext& ctx);
+	void BuildBatches();
+	void BakeBarriers();
 
-	void ExecuteComputePass(
-		RenderPassExecutionContext& ctx,
-		RenderPassDesc& pass,
-		ComputeScope& scope);
+	// Debug: C0 and G1 execute concurrently with nothing ordering them.
+	// Asserts their declared target sets are disjoint.
+	void ValidateConcurrentBatches() const;
 
-	void TransitionResources(
-		RenderPassExecutionContext& ctx,
-		RenderPassDesc& pass);
+	// --- execution (RenderGraphExecute.cpp) ---
+	// Render targets are resolved through ctx.imageTable. The graph owns
+	// no resource pointer and no device handle of its own — the arena
+	// caches the VkDevice it needs.
+	void RecordAsyncSecondaries(
+		RenderPassExecutionContext& baseCtx,
+		JobSystem& jobSystem,
+		FrameContext& frameCtx,
+		const RecordHooks& hooks);
 
-	void PostTransitionResources(
-		RenderPassExecutionContext& ctx,
-		RenderPassDesc& pass);
-	
-	std::unordered_map<RD::Renderer_RenderTarget, RD::ImageAccess> m_trackedLayouts;
-	std::unordered_set<RD::Renderer_RenderTarget> m_writtenThisFrame;
+	void AssembleGraphicsBatch(
+		SubmitBatch& batch,
+		VkCommandBuffer primary,
+		RenderPassExecutionContext& baseCtx,
+		const RecordHooks& hooks,
+		bool bFirstGraphicsBatch,
+		bool bLastGraphicsBatch);
+
+	void AssembleComputeBatch(
+		SubmitBatch& batch,
+		VkCommandBuffer primary,
+		BindlessImageTable& imageTable,
+		const RecordHooks& hooks);
+
+	void FlushBakedBarriers(
+		VkCommandBuffer cmd,
+		PassQueue queue,
+		const std::vector<BakedImageBarrier>& barriers,
+		BindlessImageTable& imageTable) const;
+
+	// Persistent across frames
+	std::array<RD::ImageAccess, RD::RENDER_TARGET_COUNT> m_trackedLayouts{};
 
 	std::vector<RenderPassDesc> m_passes;
 
-	std::vector<size_t> m_activePassIndices;
+	CompiledSchedule m_schedule;
+
+	uint64_t m_activeMask     = 0u;
+	uint64_t m_prevActiveMask = ~0ull; // force first BuildBatches
+
+	bool m_bAsyncComputeEnabled = true;
+	bool m_bBatchesDirty        = true;
+
+	// Set at Build() time: false when the device exposes no queue family
+	// with COMPUTE that is distinct from the graphics family. Async then
+	// degrades to the single-batch path, which is always correct.
+	bool m_bHasDedicatedComputeQueue = false;
 
 	RD::RenderStateInfo m_recentFrameState{};
 

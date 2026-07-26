@@ -22,6 +22,8 @@ void RegisterDirectionalCSMPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::AsyncWindow)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -36,28 +38,6 @@ void RegisterDirectionalCSMPass(
 					RD::ImageAccess::GraphicsDepthWrite,
 					RD::ImageAccess::DepthRead)
 
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						pass.scope = GraphicsScope{};
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-
-						const auto& atlas = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
-
-						AttachmentDesc depth{};
-						depth.imageView = atlas.m_imageView;
-						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depth.SetDepth(1.0f);
-
-						pso.UpdateRenderInfo(
-							{
-								atlas.Width(),
-								atlas.Height()
-							},
-							{ depth },
-							true); // Atlas on
-					})
-
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -67,10 +47,27 @@ void RegisterDirectionalCSMPass(
 							RD::Renderer_Pass::DirectionalCSMAtlas,
 							pass.passName);
 
+						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
+
 						const auto& frameCtx = ctx.frameCtx;
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto& atlas = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
+
+						AttachmentDesc depth{};
+						depth.imageView = atlas.m_imageView;
+						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+						depth.SetDepth(1);
+
+						pso.UpdateRenderInfo(
+							{
+								atlas.Width(),
+								atlas.Height()
+							},
+							{ depth },
+							true); // Atlas on
 
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;

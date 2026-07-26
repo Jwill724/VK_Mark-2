@@ -7,32 +7,13 @@
 
 namespace RD = RendererDefinitions;
 
-static VkImageLayout ResolvePushLayout(PushLayout layout)
-{
-	switch(layout)
-	{
-		case PushLayout::Read:
-			return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-		case PushLayout::Write:
-			return VK_IMAGE_LAYOUT_GENERAL;
-
-		case PushLayout::DepthRead:
-			return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-
-		default:
-			ASSERT(false);
-			return VK_IMAGE_LAYOUT_UNDEFINED;
-	}
-}
-
 // ------------------------
 // Push descriptor writing
 // ------------------------
 void PushDescriptorWriter::WritePushImage(
 	uint32_t binding,
 	const AllocatedImage& image,
-	PushLayout imgLayout,
+	VkImageLayout layout,
 	VkSampler sampler,
 	uint32_t storageViewIndex)
 {
@@ -47,8 +28,6 @@ void PushDescriptorWriter::WritePushImage(
 	VkImageView view = image.m_imageView;
 	if (storageViewIndex != UINT32_MAX && storageViewIndex < image.m_mipLevels)
 		view = image.m_vStorageViews[static_cast<size_t>(storageViewIndex)];
-
-	VkImageLayout layout = ResolvePushLayout(imgLayout);
 
 	m_imageWriteGroups.emplace_back(ImageWriteGroup{
 		.binding     = binding,

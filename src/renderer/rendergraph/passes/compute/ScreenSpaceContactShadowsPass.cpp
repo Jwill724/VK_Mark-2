@@ -22,6 +22,8 @@ void RegisterContactShadowsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.RunOnAsyncCompute()
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -32,16 +34,32 @@ void RegisterContactShadowsPass(
 							!ctx.frameState->IsWireframeOn();
 					})
 
-				.WriteResource(RD::Renderer_RenderTarget::SSContactShadows,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
 
-				.SetSetup(
+				.WriteResource(RD::Renderer_RenderTarget::SSContactShadows,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::ScreenSpaceContactShadows,
+							pass.passName,
+							ctx.threadSlot,
+							ctx.scheduleInfo->queue);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
+
+						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& contactShadows = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows);
+						const auto pointBorderSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::PointBorder);
 
 						const auto& dispatchList = ctx.scene->GetDispatchList();
 
@@ -52,24 +70,7 @@ void RegisterContactShadowsPass(
 						sssPush.lightCoords = dispatchList.lightCoords;
 						sssPush.invDepthSize = invSize;
 						pso.SetPush(sssPush);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::ScreenSpaceContactShadows,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto& contactShadows = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows);
-						const auto pointBorderSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::PointBorder);
-
-						const auto& dispatchList = ctx.scene->GetDispatchList();
 						for (int i = 0; i < dispatchList.dispatchCount; i++)
 						{
 							const auto& disp = dispatchList.dispatch[i];
@@ -89,7 +90,9 @@ void RegisterContactShadowsPass(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_1,
 								depthResolved,
-								pointBorderSampler);
+								pointBorderSampler,
+								UINT32_MAX,
+								RD::ImageAccess::DepthRead);
 
 							pso.BindWriteImage(
 								pass.pushWriter,

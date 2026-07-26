@@ -48,6 +48,8 @@ public:
 
 	VkCommandPool CreateCommandPool(QueueType qType);
 	VkCommandBuffer CreateCommandBuffer(VkCommandPool commandPool) const;
+
+	void CreateCommandBuffers(VkCommandPool commandPool, VkCommandBuffer* commands, uint32_t count) const;
 	VkCommandBuffer CreateSecondaryCommand(VkCommandPool pool, VkCommandBufferInheritanceInfo& inheritance) const;
 	void RecordCommand(
 		std::function<void(VkCommandBuffer)>&& function,
@@ -144,9 +146,20 @@ private:
 	private:
 		VkCommandPool GetPool(uint32_t threadID, QueueType type) const noexcept
 		{
-			VkCommandPool selected = (type == QueueType::Graphics)
-				? m_perThreadPools[threadID].graphicsPool
-				: m_perThreadPools[threadID].transferPool;
+			VkCommandPool selected = VK_NULL_HANDLE;
+			switch(type)
+			{
+			case QueueType::Graphics:
+				selected = m_perThreadPools[threadID].graphicsPool;
+				break;
+			case QueueType::Transfer:
+				selected = m_perThreadPools[threadID].transferPool;
+				break;
+			case QueueType::Compute:
+				selected = m_perThreadPools[threadID].computePool;
+				break;
+			}
+
 			return selected;
 		}
 		void Init(Device& device, uint32_t threadCount);
@@ -200,14 +213,14 @@ private:
 	const std::vector<const char*> m_deviceExtensions
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		//VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME,
-		//VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-		//VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
-		//VK_EXT_CONSERVATIVE_RASTERIZATION_EXTENSION_NAME
-		//VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-		//VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-		//VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-		//VK_KHR_RAY_QUERY_EXTENSION_NAME
+
+		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+		VK_KHR_RAY_QUERY_EXTENSION_NAME,
+		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+		VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+
+		VK_EXT_MESH_SHADER_EXTENSION_NAME
 	};
 
 	std::vector<const char*> GetRequiredExtensions() const;

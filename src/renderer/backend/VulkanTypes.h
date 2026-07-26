@@ -6,6 +6,9 @@
 #include <optional>
 #include <fmt/base.h>
 #include <iterator>
+#include "../RendererDefinitions.h"
+
+namespace RD = RendererDefinitions;
 
 constexpr const char* vkResultToString(VkResult result)
 {
@@ -395,6 +398,8 @@ struct TimelineSync
 {
 	VkSemaphore semaphore = VK_NULL_HANDLE;
 	uint64_t signalValue = UINT64_MAX;
+
+	uint64_t AdvanceTimeline() { return ++signalValue; }
 };
 
 struct ImageBarrierInfo
@@ -403,6 +408,141 @@ struct ImageBarrierInfo
 	VkAccessFlags2 accessMask;
 	VkImageLayout layout;
 };
+
+inline VkSemaphoreSubmitInfo TimelineWait(
+	VkSemaphore sem,
+	uint64_t value,
+	VkPipelineStageFlags2 stageMask)
+{
+	return VkSemaphoreSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+		.semaphore = sem,
+		.value = value,
+		.stageMask = stageMask
+	};
+}
+
+inline VkSemaphoreSubmitInfo TimelineSignal(
+	VkSemaphore sem,
+	uint64_t value,
+	VkPipelineStageFlags2 stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+{
+	return VkSemaphoreSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+		.semaphore = sem,
+		.value = value,
+		.stageMask = stageMask
+	};
+}
+
+inline VkSemaphoreSubmitInfo BinaryWait(
+	VkSemaphore sem,
+	VkPipelineStageFlags2 stageMask)
+{
+	return VkSemaphoreSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+		.semaphore = sem,
+		.stageMask = stageMask
+	};
+}
+
+inline VkSemaphoreSubmitInfo BinarySignal(
+	VkSemaphore sem,
+	VkPipelineStageFlags2 stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
+{
+	return VkSemaphoreSubmitInfo{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+		.semaphore = sem,
+		.stageMask = stageMask
+	};
+}
+
+// Returns false if any query was VK_NOT_READY — caller retries next frame.
+struct TimestampResult { float gpuMs = 0.f; bool valid = false; };
+
+struct TimestampReadback
+{
+	bool allReady = true;
+
+	std::array<TimestampResult, static_cast<uint32_t>(RD::PASS_COUNT)> passResults{};
+
+	TimestampResult frameResult;
+};
+
+
+static constexpr ImageBarrierInfo GetImageSyncScope(RD::ImageAccess access)
+{
+	switch (access)
+	{
+		case RD::ImageAccess::Undefined:
+			return { VK_PIPELINE_STAGE_2_NONE,
+					 VK_ACCESS_2_NONE,
+					 VK_IMAGE_LAYOUT_UNDEFINED };
+
+		case RD::ImageAccess::TransferSrc:
+			return { VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+					 VK_ACCESS_2_TRANSFER_READ_BIT,
+					 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL };
+
+		case RD::ImageAccess::TransferDst:
+			return { VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+					 VK_ACCESS_2_TRANSFER_WRITE_BIT,
+					 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
+
+		case RD::ImageAccess::Read:
+			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+					 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+					 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+		case RD::ImageAccess::Write:
+			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+					 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
+					 VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+					 VK_IMAGE_LAYOUT_GENERAL };
+
+		case RD::ImageAccess::ComputeRead:
+			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+					 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
+
+		case RD::ImageAccess::ComputeWrite:
+			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+					 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+					 VK_IMAGE_LAYOUT_GENERAL };
+
+		case RD::ImageAccess::GraphicsColorWrite:
+			return { VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+					 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
+					 VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
+					 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+
+		case RD::ImageAccess::GraphicsDepthWrite:
+			return { VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+					 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
+					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
+					 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL };
+
+		case RD::ImageAccess::DepthRead:
+			return { VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+					 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT  |
+					 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT       |
+					 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+					 VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
+
+		case RD::ImageAccess::Present:
+			return { VK_PIPELINE_STAGE_2_NONE,
+					 VK_ACCESS_2_NONE,
+					 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR };
+	}
+
+	return { VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			 VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+			 VK_IMAGE_LAYOUT_GENERAL };
+}
 
 // -------------------
 // Devices and queues
@@ -466,6 +606,7 @@ struct ThreadCommandPool
 {
 	VkCommandPool graphicsPool = VK_NULL_HANDLE;
 	VkCommandPool transferPool = VK_NULL_HANDLE;
+	VkCommandPool computePool  = VK_NULL_HANDLE;
 
 	ThreadCommandPool() = default;
 

@@ -20,6 +20,8 @@ void RegisterMaterialResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::AsyncWindow)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -28,6 +30,10 @@ void RegisterMaterialResolvePass(
 							ctx.frameState->IsVisibilityDeferred() &&
 							!ctx.frameState->IsWireframeOn();
 					})
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::Visibility,
+					RD::ImageAccess::Read)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::MaterialAlbedoRough,
@@ -49,12 +55,18 @@ void RegisterMaterialResolvePass(
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::MaterialResolve,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
-						auto& scope = std::get<ComputeScope>(pass.scope);
+						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough);
 						const auto& normal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal);
@@ -63,44 +75,32 @@ void RegisterMaterialResolvePass(
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
-						scope.BindReadImage(
+						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							visibility,
 							nearestClampSampler);
 
-						scope.BindWriteImage(
+						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							albedoRough);
 
-						scope.BindWriteImage(
+						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_2,
 							normal);
 
-						scope.BindWriteImage(
+						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_3,
 							metal);
 
-						scope.BindWriteImage(
+						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_4,
 							emissive);
 
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::MaterialResolve,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_MAT_RESOLVE],

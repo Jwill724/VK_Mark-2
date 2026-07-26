@@ -14,11 +14,12 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_TILE_RANGES     = 0;
-static constexpr size_t PIPE_ID_INDIRECT_ARGS   = 1;
-static constexpr size_t PIPE_ID_CLUSTER_COUNTS  = 2;
-static constexpr size_t PIPE_ID_CLUSTER_OFFSETS = 3;
-static constexpr size_t PIPE_ID_CLUSTER_IDS     = 4;
+static constexpr size_t PIPE_ID_LIGHT_CULL      = 0;
+static constexpr size_t PIPE_ID_TILE_RANGES     = 1;
+static constexpr size_t PIPE_ID_INDIRECT_ARGS   = 2;
+static constexpr size_t PIPE_ID_CLUSTER_COUNTS  = 3;
+static constexpr size_t PIPE_ID_CLUSTER_OFFSETS = 4;
+static constexpr size_t PIPE_ID_CLUSTER_IDS     = 5;
 
 void RegisterClusteredLightsPass(
 	RenderGraph& graph,
@@ -30,6 +31,8 @@ void RegisterClusteredLightsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.RunOnAsyncCompute()
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -39,23 +42,9 @@ void RegisterClusteredLightsPass(
 							!ctx.frameState->DebugRenderFastPath();
 					})
 
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						Extents2D clusterExtent = { ctx.frameCtx->GetClusterData().tileCountX, ctx.frameCtx->GetClusterData().tileCountY };
-						pass.scope = ComputeScope{ clusterExtent, WORKGROUP_8x8 /* only for the first tile pass*/};
-						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
-						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
-
-						// Only needed for tile slice ranges
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_1,
-							hiZ,
-							hiZSampler);
-					})
+				.ReadResource(
+					RD::Renderer_RenderTarget::HiZ,
+					RD::ImageAccess::ComputeRead)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -64,11 +53,16 @@ void RegisterClusteredLightsPass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
 							RD::Renderer_Pass::ClusteredLights,
-							pass.passName);
+							pass.passName,
+							ctx.threadSlot,
+							ctx.scheduleInfo->queue);
 
+						pass.scope = ComputeScope{{ ctx.frameState->GetLightCount(), 1u }, { WORKGROUP_256 }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
+
 						const auto& frameCtx = ctx.frameCtx;
 						VkCommandBuffer cmd = ctx.commandBuffer;
+
 						const auto& indirectArgs        = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DispatchIndirectArgs);
 						const auto& tileSliceRanges     = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterTileSliceRanges);
 						const auto& clusterCounts       = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterCounts);
@@ -76,22 +70,56 @@ void RegisterClusteredLightsPass(
 						const auto& clusterScanScratch  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterScanScratch);
 						const auto& clusterOffsets      = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterOffsets);
 
+						const auto& lightCountBuf       = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightCount);
+						const auto& visibleLightIdsBuf  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightIDs);
+
+						const auto& hiZ       = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
+						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+
+						const bool bAsync =
+							ctx.scheduleInfo->queue == PassQueue::AsyncCompute;
+
 						// Buffers reset to zero
 						pso.FillGpuBuffer(cmd, clusterCursors);
 						pso.FillGpuBuffer(cmd, clusterCounts);
 						pso.FillGpuBuffer(cmd, clusterScanScratch);
 
+						pso.FillGpuBuffer(cmd, lightCountBuf);
+						B::CmdFillToComputeRW(cmd, lightCountBuf);
+
+						// ==============
+						// Light culling
+						// ==============
+
+						pso.DispatchComputePass(
+							cmd,
+							pass.pipelines[PIPE_ID_LIGHT_CULL],
+							pass.pushWriter);
+
+						B::ComputeWriteToRead(cmd, lightCountBuf);
+						B::ComputeWriteToRead(cmd, visibleLightIdsBuf);
+
 
 						// ==========================
 						// Cluster Tile slice ranges
 						// ==========================
+						Extents2D clusterExtent = { ctx.frameCtx->GetClusterData().tileCountX, ctx.frameCtx->GetClusterData().tileCountY };
+						pso.UpdateExtent(clusterExtent);
+						pso.UpdateWorkgroups(WORKGROUP_8x8);
+
+						// Only needed for tile slice ranges
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							hiZ,
+							hiZSampler);
+
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_TILE_RANGES], pass.pushWriter);
 						B::ComputeWriteToRead(cmd, tileSliceRanges);
 
 						// =====================
 						// Indirect arg compute
 						// =====================
-						//passScope.WriteSubPass(RD::Renderer_Pass::LightsIndirectDispatchArgs, "Indirect_Args");
 
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
 						B::CmdFillToComputeRW(cmd, indirectArgs);
@@ -122,7 +150,16 @@ void RegisterClusteredLightsPass(
 						// ====================
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLUSTER_IDS], pass.pushWriter);
-						B::ComputeWriteToFragmentRead(cmd, clusterScanScratch);
+
+						if (bAsync)
+						{
+							// Semaphore carries it to the fragment stage.
+							B::ComputeWriteToRead(cmd, clusterScanScratch);
+						}
+						else
+						{
+							B::ComputeWriteToFragmentRead(cmd, clusterScanScratch);
+						}
 					});
 		});
 }

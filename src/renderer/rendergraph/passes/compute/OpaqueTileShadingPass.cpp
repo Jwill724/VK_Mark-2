@@ -20,6 +20,8 @@ void RegisterOpaqueTileShadingPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Shading)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -29,14 +31,52 @@ void RegisterOpaqueTileShadingPass(
 							!ctx.frameState->IsWireframeOn();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::MaterialAlbedoRough,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::MaterialNormal,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::MaterialMetal,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::MaterialEmissive,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::AORaw,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::BentNormals,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::SSContactShadows,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::OpaqueTileShading,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
@@ -60,25 +100,14 @@ void RegisterOpaqueTileShadingPass(
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, normal, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, metal, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, emissive, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_5, depthResolved, nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_5, depthResolved, nearestClampSampler, UINT32_MAX, RD::ImageAccess::DepthRead);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_6, vsNormals , nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_7, aoRaw, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_8, contactShadows, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_9, bentNormals, linearClampSampler);
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, opaque);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::OpaqueTileShading,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_TILE_SHADE],

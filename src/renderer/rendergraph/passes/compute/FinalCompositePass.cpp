@@ -21,8 +21,33 @@ void RegisterFinalCompositePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.DisableCulling()
+				.SetPhase(RenderPhase::PostProcess)
 				.ForceExecution()
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
+					RD::ImageAccess::Read)
+
+				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
+				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentResolved,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::VolumetricLight,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::BloomMipchain,
+					RD::ImageAccess::Read,
+					0,
+					VK_REMAINING_MIP_LEVELS)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::LensFlareColor,
+					RD::ImageAccess::Read)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::Tonemap,
@@ -35,12 +60,19 @@ void RegisterFinalCompositePass(
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::FinalComposite,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
-						auto& scope = std::get<ComputeScope>(pass.scope);
+						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
 						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid() && !ctx.frameState->DebugRendering());
@@ -59,7 +91,7 @@ void RegisterFinalCompositePass(
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
 
-						scope.BindWriteImage(
+						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							tonemap);
@@ -68,26 +100,26 @@ void RegisterFinalCompositePass(
 							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2) &&
 							!ctx.frameState->DebugRendering())
 						{
-							scope.BindWriteImage(
+							pso.BindWriteImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_WRITE_2,
 								aaColor);
 						}
 						else
 						{
-							scope.BindWriteImage(
+							pso.BindWriteImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_WRITE_2,
 								tonemap);
 						}
 
-						scope.BindReadImage(
+						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							opaque,
 							linearSampler);
 
-						scope.BindReadImage(
+						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_2,
 							transparent,
@@ -97,7 +129,7 @@ void RegisterFinalCompositePass(
 							ctx.profiler->debugToggles.enableShadows &&
 							!ctx.frameState->DebugRendering())
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_3,
 								volumetricLight,
@@ -105,7 +137,7 @@ void RegisterFinalCompositePass(
 						}
 						else
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_3,
 								dummy,
@@ -116,7 +148,7 @@ void RegisterFinalCompositePass(
 							!ctx.profiler->enableWireframeView &&
 							!ctx.frameState->DebugRendering())
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_4,
 								lensflare,
@@ -124,7 +156,7 @@ void RegisterFinalCompositePass(
 						}
 						else
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_4,
 								dummy,
@@ -135,7 +167,7 @@ void RegisterFinalCompositePass(
 							!ctx.profiler->enableWireframeView &&
 							!ctx.frameState->DebugRendering())
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_5,
 								bloom,
@@ -144,24 +176,13 @@ void RegisterFinalCompositePass(
 						}
 						else
 						{
-							scope.BindReadImage(
+							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_5,
 								dummy,
 								linearClampSampler);
 						}
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::FinalComposite,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_COMPOSITE],

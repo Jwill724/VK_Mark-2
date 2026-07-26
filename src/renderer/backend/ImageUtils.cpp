@@ -4,70 +4,6 @@
 #include "memory/AllocatedImage.h"
 #include "../backend/Swapchain.h"
 
-static constexpr ImageBarrierInfo GetImageSyncScope(RD::ImageAccess access)
-{
-	switch (access)
-	{
-		case RD::ImageAccess::Undefined:
-			return { VK_PIPELINE_STAGE_2_NONE,
-					 VK_ACCESS_2_NONE,
-					 VK_IMAGE_LAYOUT_UNDEFINED };
-
-		case RD::ImageAccess::TransferSrc:
-			return { VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-					 VK_ACCESS_2_TRANSFER_READ_BIT,
-					 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL };
-
-		case RD::ImageAccess::TransferDst:
-			return { VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-					 VK_ACCESS_2_TRANSFER_WRITE_BIT,
-					 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL };
-
-		case RD::ImageAccess::Read:
-			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
-					 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-					 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-
-		case RD::ImageAccess::Write:
-			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-					 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT |
-					 VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
-					 VK_IMAGE_LAYOUT_GENERAL };
-
-		case RD::ImageAccess::GraphicsColorWrite:
-			return { VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-					 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
-					 VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
-					 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
-
-		case RD::ImageAccess::GraphicsDepthWrite:
-			return { VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-					 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-					 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL };
-
-		case RD::ImageAccess::DepthRead:
-			return { VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
-					 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT  |
-					 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT       |
-					 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-					 VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
-					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-					 VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL };
-
-		case RD::ImageAccess::Present:
-			return { VK_PIPELINE_STAGE_2_NONE,
-					 VK_ACCESS_2_NONE,
-					 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR };
-	}
-
-	return { VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-			 VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-			 VK_IMAGE_LAYOUT_GENERAL };
-}
-
 static VkImageAspectFlags ResolveAspectMask(ImageAspect imageAspect)
 {
 	VkImageAspectFlags aspectMask = (imageAspect == ImageAspect::Color) ?
@@ -252,52 +188,65 @@ void ImageUtils::TransitionLayout(
 	vkCmdPipelineBarrier2(cmd, &dep);
 }
 
-void ImageUtils::SwapchainPresentCopy(
+void ImageUtils::TransitionLayoutCompute(
 	VkCommandBuffer cmd,
-	const Swapchain& swapchain,
-	const AllocatedImage& srcImage)
+	const AllocatedImage& img,
+	RD::ImageAccess oldAccess,
+	RD::ImageAccess newAccess,
+	uint32_t baseMip,
+	uint32_t mipCount)
 {
-	auto swapImage = swapchain.GetCurrentImage();
+	const FilteredScope src = FilterScopeForCompute(GetImageSyncScope(oldAccess));
+	const FilteredScope dst = FilterScopeForCompute(GetImageSyncScope(newAccess));
 
-	TransitionLayout(
-		cmd,
-		srcImage,
-		RD::ImageAccess::Read,
-		RD::ImageAccess::TransferSrc);
+	ASSERT(dst.stageMask != VK_PIPELINE_STAGE_2_NONE || newAccess == RD::ImageAccess::Undefined);
 
-	TransitionRawImageLayout(
-		cmd,
-		swapImage,
-		ImageAspect::Color,
-		RD::ImageAccess::Undefined,
-		RD::ImageAccess::TransferDst);
+	ASSERT(dst.layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && dst.layout != VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-	VkExtent2D extent
+	VkImageMemoryBarrier2 barrier
 	{
-		srcImage.Width(),
-		srcImage.Height()
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2
 	};
 
-	CopyImageToImageBlit(
-		cmd,
-		srcImage.m_image,
-		swapImage,
-		extent,
-		extent,
-		ImageAspect::Color);
+	if (src.bWasNarrowed)
+	{
+		// Cross-queue: the semaphore carries the memory dependency.
+		barrier.srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		barrier.srcAccessMask = VK_ACCESS_2_NONE;
+	}
+	else
+	{
+		// Intra-batch: masks are exact.
+		barrier.srcStageMask  = src.stageMask;
+		barrier.srcAccessMask = src.accessMask;
+	}
 
-	TransitionLayout(
-		cmd,
-		srcImage,
-		RD::ImageAccess::TransferSrc,
-		RD::ImageAccess::Read);
+	barrier.dstStageMask  = dst.stageMask;
+	barrier.dstAccessMask = dst.accessMask;
 
-	TransitionRawImageLayout(
-		cmd,
-		swapImage,
-		ImageAspect::Color,
-		RD::ImageAccess::TransferDst,
-		RD::ImageAccess::Present);
+	barrier.oldLayout = src.layout;
+	barrier.newLayout = dst.layout;
+
+	barrier.image = img.m_image;
+
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+	barrier.subresourceRange.aspectMask     = ResolveAspectMask(img.m_aspect);
+	barrier.subresourceRange.baseMipLevel   = baseMip;
+	barrier.subresourceRange.levelCount     = mipCount;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount     = VK_REMAINING_ARRAY_LAYERS;
+
+	VkDependencyInfo dep
+	{
+		VK_STRUCTURE_TYPE_DEPENDENCY_INFO
+	};
+
+	dep.imageMemoryBarrierCount = 1;
+	dep.pImageMemoryBarriers = &barrier;
+
+	vkCmdPipelineBarrier2(cmd, &dep);
 }
 
 void ImageUtils::ImageCopy(
@@ -364,6 +313,59 @@ void ImageUtils::ImageCopy(
 		dst,
 		RD::ImageAccess::TransferDst,
 		dstFinalAccess);
+}
+
+void ImageUtils::SwapchainPresentCopy(
+	VkCommandBuffer cmd,
+	const Swapchain& swapchain,
+	const AllocatedImage& srcImage)
+{
+	VkImage swapImage = swapchain.GetCurrentImage();
+	const VkExtent2D swapExtent = swapchain.GetExtent();
+ 
+	TransitionRawImageLayout(
+		cmd,
+		swapImage,
+		ImageAspect::Color,
+		RD::ImageAccess::Undefined,
+		RD::ImageAccess::TransferDst);
+ 
+	CopyImageToImageBlit(
+		cmd,
+		srcImage.m_image,
+		swapImage,
+		{ srcImage.Width(), srcImage.Height() },
+		swapExtent,
+		ImageAspect::Color);
+ 
+	TransitionRawImageLayout(
+		cmd,
+		swapImage,
+		ImageAspect::Color,
+		RD::ImageAccess::TransferDst,
+		RD::ImageAccess::Present);
+}
+
+
+void ImageUtils::ImageCopyNoBarrier(
+	VkCommandBuffer cmd,
+	const AllocatedImage& src,
+	const AllocatedImage& dst)
+{
+	ASSERT(src.m_aspect == dst.m_aspect &&
+		"ImageCopyNoBarrier: source and destination aspects differ");
+ 
+	ASSERT(src.Width() == dst.Width() && src.Height() == dst.Height() &&
+		"ImageCopyNoBarrier: extents differ — use a blit instead");
+
+	// Assumes src is TRANSFER_SRC_OPTIMAL and dst TRANSFER_DST_OPTIMAL.
+	CopyImageToImageBlit(
+		cmd,
+		src.m_image,
+		dst.m_image,
+		{ src.Width(), src.Height() },
+		{ dst.Width(), dst.Height() },
+		src.m_aspect);
 }
 
 uint32_t ImageUtils::CalculateMipLevels(uint32_t width, uint32_t height, uint32_t maxMipCap)

@@ -109,7 +109,7 @@ VkDescriptorSet DescriptorManager::AllocateFrameDescriptorSet(VkDevice device)
 	return AllocateDescriptor(device, frameLayout);
 }
 
-void DescriptorManager::BindDescriptorSets(
+void DescriptorManager::BindDescriptorSetsGraphics(
 	VkCommandBuffer cmd,
 	VkDescriptorSet frameSet,
 	const PipelineLayoutConst& globalLayout)
@@ -119,6 +119,14 @@ void DescriptorManager::BindDescriptorSets(
 	vkCmdBindDescriptorSets(cmd,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		globalLayout.pipelineLayout, 0, 2, sets, 0, nullptr);
+}
+
+void DescriptorManager::BindDescriptorSetsCompute(
+	VkCommandBuffer cmd,
+	VkDescriptorSet frameSet,
+	const PipelineLayoutConst& globalLayout)
+{
+	const VkDescriptorSet sets[2] { GetGlobalSet(), frameSet };
 
 	vkCmdBindDescriptorSets(cmd,
 		VK_PIPELINE_BIND_POINT_COMPUTE,

@@ -11,6 +11,7 @@ namespace RD = RendererDefinitions;
 #include "scopes/ComputeScope.h"
 #include "scopes/GraphicsScope.h"
 #include "RenderGraphResources.h"
+#include "RenderGraphSchedule.h"
 
 using ScopeVariant = std::variant<GraphicsScope, ComputeScope>;
 
@@ -26,24 +27,19 @@ struct RenderPassDesc
 
 	PushDescriptorWriter pushWriter;
 
-	bool bAllowPassCulling = true;
+	// --- scheduling ---
+	RenderPhase phase = RenderPhase::Shading;
+
+	// The single scheduling flag. Implies BOTH:
+	//   - executes on the compute queue (GPU overlap)
+	//   - recorded into a secondary on a worker (CPU overlap)
+	bool bAsyncCompute = false;
+
 	bool bForceExecution = false;
 
-	std::function<bool(
-		const RenderPassExecutionContext&)>
-	shouldExecute;
+	std::function<bool(const RenderPassExecutionContext&)> shouldExecute;
 
-	// setup stage before execution.
-	std::function<void(
-		RenderPassExecutionContext&,
-		RenderPassDesc&)>
-	setup;
-
-	// Main record
-	std::function<void(
-		RenderPassExecutionContext&,
-		RenderPassDesc&)>
-	record;
+	std::function<void(RenderPassExecutionContext&, RenderPassDesc&)> record;
 };
 
 class RenderPassBuilder
@@ -51,43 +47,49 @@ class RenderPassBuilder
 public:
 	RenderPassBuilder(RenderPassDesc& desc) : m_desc(desc) {}
 
-	// Direct first inputs of a possible pass/subpasses
-	// TODO: Figure out how to make this read resource practical, not in use currently.
+	// Graph emits the enter transition; no exit.
 	RenderPassBuilder& ReadResource(
 		RD::Renderer_RenderTarget target,
 		RD::ImageAccess access,
 		uint32_t baseMip = 0,
 		uint32_t mipCount = 1);
 
-	// Only set for a clear "goal" write, has to enter to write ONCE and transition to read at end of pass.
+	// Graph emits BOTH transitions. Use when the pass touches the target
+	// in one uniform state throughout.
 	RenderPassBuilder& WriteResource(
 		RD::Renderer_RenderTarget target,
-			RD::ImageAccess enterAccess,
-			RD::ImageAccess exitAccess,
-			uint32_t baseMip = 0,
-			uint32_t mipCount = 1);
+		RD::ImageAccess enterAccess,
+		RD::ImageAccess exitAccess,
+		uint32_t baseMip = 0,
+		uint32_t mipCount = 1);
 
-	RenderPassBuilder& SetSetup(
-		std::function<void(
-			RenderPassExecutionContext&,
-			RenderPassDesc&)> fn)
+	// Graph emits the ENTER transition only. The pass owns everything in between
+	RenderPassBuilder& InternalResource(
+		RD::Renderer_RenderTarget target,
+		RD::ImageAccess enterAccess,
+		RD::ImageAccess declaredExitAccess,
+		uint32_t baseMip = 0,
+		uint32_t mipCount = 1);
+
+	RenderPassBuilder& SetPhase(RenderPhase phase);
+
+	// Marks the pass async-capable. Sets the phase itself, so async passes never need SetPhase.
+	RenderPassBuilder& RunOnAsyncCompute()
 	{
-		m_desc.setup = std::move(fn);
+		m_desc.bAsyncCompute = true;
+		m_desc.phase         = RenderPhase::AsyncWindow;
 		return *this;
 	}
 
 	RenderPassBuilder& SetRecord(
-		std::function<void(
-			RenderPassExecutionContext&,
-			RenderPassDesc&)> fn)
+		std::function<void(RenderPassExecutionContext&, RenderPassDesc&)> fn)
 	{
 		m_desc.record = std::move(fn);
 		return *this;
 	}
 
 	RenderPassBuilder& SetExecutionCondition(
-		std::function<bool(
-			const RenderPassExecutionContext&)> fn)
+		std::function<bool(const RenderPassExecutionContext&)> fn)
 	{
 		m_desc.shouldExecute = std::move(fn);
 		return *this;
@@ -98,16 +100,6 @@ public:
 		m_desc.bForceExecution = true;
 		return *this;
 	}
-
-	RenderPassBuilder& DisableCulling()
-	{
-		m_desc.bAllowPassCulling = false;
-		return *this;
-	}
-
-	// TODO: Function to add possible compute async work
-	// like compute fill buffers earlier in frame
-	// RenderPassBuilder& MarkAsyncWork()
 
 private:
 	RenderPassDesc& m_desc;

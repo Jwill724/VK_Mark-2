@@ -20,6 +20,8 @@ void RegisterOpaqueForwardPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Shading)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -29,16 +31,48 @@ void RegisterOpaqueForwardPass(
 							!ctx.frameState->IsWireframeOn();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::AORaw,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::BentNormals,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::SSContactShadows,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::OpaqueForward,
+							pass.passName);
+
 						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
+
+						const auto& frameCtx = ctx.frameCtx;
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto indirectBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
@@ -52,8 +86,8 @@ void RegisterOpaqueForwardPass(
 						opaqueAttach.imageView = opaque.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-						const bool firstWrite = ctx.renderGraph->IsFirstGraphicsWrite(RD::Renderer_RenderTarget::Opaque);
-						opaqueAttach.loadOp  = firstWrite ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+						// TODO: If skybox is off add a OP_CLEAR
+						opaqueAttach.loadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
 						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
 						AttachmentDesc depthAttach{};
@@ -61,7 +95,7 @@ void RegisterOpaqueForwardPass(
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-						depthAttach.SetDepth(0.0f);
+						depthAttach.SetDepth(0);
 
 						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
 
@@ -70,27 +104,6 @@ void RegisterOpaqueForwardPass(
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, aoRaw, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, contactShadows, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, bentNormals, linearClampSampler);
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::OpaqueForward,
-							pass.passName);
-
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-						const auto& frameCtx = ctx.frameCtx;
-
-						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto indirectBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
-
-						const auto indirectCountBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						pso.BeginRendering(cmd);
 

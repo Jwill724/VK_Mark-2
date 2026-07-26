@@ -26,20 +26,8 @@ void RegisterDrawBuildPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->InstancesActive();
-					})
-				.DisableCulling()
-
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						pass.scope = ComputeScope{{ 1u, 1u }, WORKGROUP_NONE };
-						auto& pso = std::get<ComputeScope>(pass.scope);
-						pso.UpdateWorkgroups(WORKGROUP_1, true);
-					})
+				.SetPhase(RenderPhase::Visibility)
+				.ForceExecution()
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -52,7 +40,9 @@ void RegisterDrawBuildPass(
 							RD::Renderer_Pass::DrawBuild,
 							pass.passName);
 
+						pass.scope = ComputeScope{{ 1u, 1u }, WORKGROUP_NONE };
 						auto& pso = std::get<ComputeScope>(pass.scope);
+						pso.UpdateWorkgroups(WORKGROUP_1, true);
 
 						const auto& bdaTable                   = frameCtx->GetBindlessBDATable();
 						const auto& drawBinsBuffer             = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBins);

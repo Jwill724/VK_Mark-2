@@ -82,7 +82,7 @@ void PM::RegisterPipelines()
 	regC(RP::ClusterCount,              RS::ClusterCount_c);
 	regC(RP::ClusterScanOffsets,        RS::ClusterScanOffsets_c);
 	regC(RP::ClusterScatterIDs,         RS::ClusterScatterIDs_c);
-	regC(RP::LightCulling,              RS::LightCulling_c);
+	regC(RP::LightCull,                 RS::LightCulling_c);
 	regC(RP::IndirectArgsLight,         RS::IndirectArgsLight_c);
 	regC(RP::ScreenSpaceContactShadows, RS::ScreenSpaceContactShadows_c);
 	regC(RP::ShadowBounds,              RS::ShadowBounds_c);

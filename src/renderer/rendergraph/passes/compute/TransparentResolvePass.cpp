@@ -20,20 +20,36 @@ void RegisterTransparentResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Shading)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return ctx.frameState->InstancesActive();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentAccumulation,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentRevealage,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::TransparentResolve,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
@@ -58,18 +74,7 @@ void RegisterTransparentResolvePass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							transparentResolve);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::TransparentResolve,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_MAIN],

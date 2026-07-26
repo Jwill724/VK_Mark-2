@@ -20,6 +20,8 @@ void RegisterFXAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::PostAA)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -30,14 +32,24 @@ void RegisterFXAAPass(
 							!ctx.frameState->DebugRendering();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::Tonemap,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::FXAA,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{ drawExtent };
 						auto& pso = std::get<ComputeScope>(pass.scope);
@@ -56,18 +68,7 @@ void RegisterFXAAPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							aaColor);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::FXAA,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_FXAA],

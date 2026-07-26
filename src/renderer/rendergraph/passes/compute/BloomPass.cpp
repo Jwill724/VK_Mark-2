@@ -24,6 +24,8 @@ void RegisterBloomPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::PostProcess)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -33,15 +35,23 @@ void RegisterBloomPass(
 							!ctx.frameState->DebugRendering();
 					})
 
-				.SetSetup(
-					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{ drawExtent, WORKGROUP_8x8 };
-					})
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.InternalResource(
+					RD::Renderer_RenderTarget::BloomMipchain,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read,
+					0,
+					VK_REMAINING_MIP_LEVELS)
 
 				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
@@ -49,6 +59,8 @@ void RegisterBloomPass(
 							RD::Renderer_Pass::Bloom,
 							pass.passName);
 
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{ drawExtent, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.SetPush(ctx.profiler->bloomPush);
 
@@ -65,8 +77,6 @@ void RegisterBloomPass(
 						//================================================================
 						// DOWNSAMPLE  (sceneHDR -> mip0 w/ Karis, then mip[i-1] -> mip[i])
 						//================================================================
-						ImageUtils::TransitionLayout(cmd, bloom, RD::ImageAccess::Read, RD::ImageAccess::Write, 0, mips);
-
 						Extents2D dstExtent = { bloom.Width(), bloom.Height() };   // half draw extent
 
 						for (uint32_t mip = 0; mip < mips; ++mip)
@@ -75,13 +85,13 @@ void RegisterBloomPass(
 							if (mip == 0)
 							{
 								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, sceneHDR, linearClamp);
-								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, depth, nearestClamp);
+								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, depth, nearestClamp, UINT32_MAX, RD::ImageAccess::DepthRead);
 								srcExtent = { sceneHDR.Width(), sceneHDR.Height() };
 							}
 							else
 							{
 								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, bloom, linearClamp, mip - 1);
-								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, depth, nearestClamp); // Means nothing
+								pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, depth, nearestClamp, UINT32_MAX, RD::ImageAccess::DepthRead); // Means nothing
 								srcExtent = { std::max(1u, bloom.Width()  >> (mip - 1)),
 											  std::max(1u, bloom.Height() >> (mip - 1)) };
 							}
@@ -97,7 +107,7 @@ void RegisterBloomPass(
 							pso.UpdateExtent(dstExtent);
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLOOM_DOWNSAMPLE], pass.pushWriter);
 
-							ImageUtils::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, mip, 1);
+							I::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, mip, 1);
 
 							dstExtent.Width()  = std::max(1u, dstExtent.Width()  >> 1);
 							dstExtent.Height() = std::max(1u, dstExtent.Height() >> 1);
@@ -114,7 +124,7 @@ void RegisterBloomPass(
 							Extents2D srcExtent = { std::max(1u, bloom.Width()  >> uint32_t(i + 1)),
 													std::max(1u, bloom.Height() >> uint32_t(i + 1)) };
 
-							ImageUtils::TransitionLayout(cmd, bloom, RD::ImageAccess::Read, RD::ImageAccess::Write, i, 1);
+							I::TransitionLayout(cmd, bloom, RD::ImageAccess::Read, RD::ImageAccess::Write, i, 1);
 
 							pso.BindReadImage (pass.pushWriter, RD::PUSH_BINDING_READ_1,  bloom, linearClamp, i + 1); // tent src
 							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, bloom, i);                  // read+add+write
@@ -127,7 +137,7 @@ void RegisterBloomPass(
 							pso.UpdateExtent(dstExtent);
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLOOM_UPSAMPLE], pass.pushWriter);
 
-							ImageUtils::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, i, 1);
+							I::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, i, 1);
 						}
 					});
 		});

@@ -60,6 +60,7 @@ namespace RendererDefinitions
 	inline constexpr uint32_t MAX_DRAW_BINS                 = 16384u;
 	inline constexpr uint32_t BIN_TABLE_SIZE                = 32768u;
 	inline constexpr uint32_t INVALID_U32                   = 0xFFFFFFFFu;
+	inline constexpr uint32_t MAX_GRAPHICS_PRIMARIES        = 3u;
 
 	// -------------------------
 	// Indirect Dispatch Slots
@@ -258,12 +259,11 @@ namespace RendererDefinitions
 		DrawBuild,
 		Prepass,
 		HiZGeneration,
-		MaterialResolve,
-		LightCulling,
-		ClusteredLights,
-		SSAO,
 		DirectionalCSMAtlas,
 		FlashlightShadow,
+		MaterialResolve,
+		ClusteredLights,
+		SSAO,
 		ScreenSpaceContactShadows,
 		Skybox,
 		OpaqueForward,
@@ -431,7 +431,7 @@ namespace RendererDefinitions
 		BloomDownsample,
 		BloomUpsample,
 
-		LightCulling,
+		LightCull,
 
 		ClusterTileSliceRanges,
 		IndirectArgsLight,
@@ -494,7 +494,10 @@ namespace RendererDefinitions
 		MaterialNormal,
 		MaterialMetal,
 		MaterialEmissive,
+
+		// Used as chromatic aberration output
 		PostNonAAComposite,
+
 		CMAA2WorkingEdges,
 		SMAAEdges,
 		SMAAWeights,
@@ -632,7 +635,7 @@ namespace RendererDefinitions
 	enum class RenderingMode
 	{
 		FORWARD_PLUS,
-		VISIBILITY_TILE_DEFERRED,
+		VISIBILITY_DEFERRED,
 		UNDEFINED
 	};
 
@@ -682,6 +685,9 @@ namespace RendererDefinitions
 
 		TransferSrc,
 		TransferDst,
+
+		ComputeRead,
+		ComputeWrite,
 
 		Read,
 		Write,
@@ -753,7 +759,7 @@ namespace RendererDefinitions
 		// Assume else is Forward plus since if undefined rendering doesn't work
 		bool IsVisibilityDeferred() const noexcept
 		{
-			return static_cast<RenderingMode>(m_renderToggles.renderingMode) == RenderingMode::VISIBILITY_TILE_DEFERRED;
+			return static_cast<RenderingMode>(m_renderToggles.renderingMode) == RenderingMode::VISIBILITY_DEFERRED;
 		}
 		uint32_t RenderMode() const noexcept { return m_renderToggles.renderingMode; }
 
@@ -840,7 +846,7 @@ namespace RendererDefinitions
 
 	inline constexpr uint32_t DebugCapsForMode(RenderingMode mode)
 	{
-		return (mode == RenderingMode::VISIBILITY_TILE_DEFERRED)
+		return (mode == RenderingMode::VISIBILITY_DEFERRED)
 			? DBG_CAPS_DEFERRED : DBG_CAPS_FORWARD;
 	}
 

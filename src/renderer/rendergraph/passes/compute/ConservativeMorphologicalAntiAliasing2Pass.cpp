@@ -31,6 +31,8 @@ void RegisterCMAA2Pass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::PostAA)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -41,43 +43,20 @@ void RegisterCMAA2Pass(
 							!ctx.frameState->DebugRendering();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::Tonemap,
+					RD::ImageAccess::Read)
+
+				.InternalResource(RD::Renderer_RenderTarget::CMAA2WorkingEdges,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
 				.WriteResource(RD::Renderer_RenderTarget::AAColor,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
-					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }, { WORKGROUP_NONE } };
-						auto& pso = std::get<ComputeScope>(pass.scope);
-
-						const uint32_t quadCountX = (pso.GetDrawExtent().Width() + 1u) >> 1u;
-						const uint32_t quadCountY = (pso.GetDrawExtent().Height() + 1u) >> 1u;
-						const uint32_t groupsX = (quadCountX + 13u) / 14u; 
-						const uint32_t groupsY = (quadCountY + 13u) / 14u;
-
-						pso.UpdateWorkgroups({ groupsX, groupsY, 1 }, true);
-						pso.SetPush(ctx.frameCtx->GetCMAA2Push());
-
-						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
-						const auto& workingEdges = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::CMAA2WorkingEdges);
-						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_1,
-							tonemap,
-							nearestClampSampler);
-
-						pso.BindWriteImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_WRITE_1,
-							workingEdges);
-					})
-
 				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
@@ -85,9 +64,12 @@ void RegisterCMAA2Pass(
 							RD::Renderer_Pass::CMAA2,
 							pass.passName);
 
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{{ drawExtent }, { WORKGROUP_NONE } };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
 						VkCommandBuffer cmd = ctx.commandBuffer;
+
 						const auto& indirectArgs          = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DispatchIndirectArgs);
 						const auto& deferredHeads         = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::Cmaa2DeferredHeads);
 						const auto& deferredItems         = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::Cmaa2DeferredItems);
@@ -100,6 +82,25 @@ void RegisterCMAA2Pass(
 						const auto& workingEdges          = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::CMAA2WorkingEdges);
 						const auto nearestClampSampler    = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
+						const uint32_t quadCountX = (pso.GetDrawExtent().Width() + 1u) >> 1u;
+						const uint32_t quadCountY = (pso.GetDrawExtent().Height() + 1u) >> 1u;
+						const uint32_t groupsX = (quadCountX + 13u) / 14u; 
+						const uint32_t groupsY = (quadCountY + 13u) / 14u;
+
+						pso.UpdateWorkgroups({ groupsX, groupsY, 1 }, true);
+						pso.SetPush(ctx.frameCtx->GetCMAA2Push());
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							tonemap,
+							nearestClampSampler);
+
+						pso.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_1,
+							workingEdges);
+
 						// Buffers reset to zero
 						pso.FillGpuBuffer(cmd, control);
 						pso.FillGpuBuffer(cmd, deferredHeads, 0x7FFFFFFFu);
@@ -108,7 +109,6 @@ void RegisterCMAA2Pass(
 						// ============
 						// Build Edges
 						// ============
-						I::TransitionLayout(cmd, workingEdges, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BUILD_EDGES], pass.pushWriter);
 						I::TransitionLayout(cmd, workingEdges, RD::ImageAccess::Write, RD::ImageAccess::Read);
 						B::ComputeWriteToRead(cmd, control);

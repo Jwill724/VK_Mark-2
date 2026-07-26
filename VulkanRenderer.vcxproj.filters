@@ -81,7 +81,7 @@
       <Filter>src\renderer</Filter>
     </ClCompile>
     <!-- renderer / graph -->
-    <ClCompile Include="src\renderer\rendergraph\RenderGraph.cpp">
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp">
       <Filter>src\renderer\rendergraph</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp">
@@ -117,9 +117,6 @@
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
-      <Filter>src\renderer\rendergraph\passes\compute</Filter>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\LightCullingPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ConservativeMorphologicalAntiAliasing2Pass.cpp">
@@ -366,6 +363,12 @@
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphCompile.cpp">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp">
+      <Filter>src\renderer\frame</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -569,6 +572,12 @@
     </ClInclude>
     <ClInclude Include="src\renderer\backend\Sync.h">
       <Filter>src\renderer\backend</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h">
+      <Filter>src\renderer\rendergraph</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h">
+      <Filter>src\renderer\frame</Filter>
     </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->

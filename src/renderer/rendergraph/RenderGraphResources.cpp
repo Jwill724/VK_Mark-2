@@ -37,27 +37,35 @@ void RenderScope::BindReadImage(
 	uint32_t binding,
 	const AllocatedImage& img,
 	VkSampler sampler,
-	uint32_t miplevel)
+	uint32_t miplevel,
+	RD::ImageAccess declaredAccess)
 {
 	ASSERT(img.IsValid());
 
-	PushLayout layout = img.m_aspect == ImageAspect::Color ? PushLayout::Read : PushLayout::DepthRead;
-	writer.WritePushImage(
-		binding,
-		img,
-		layout,
-		sampler,
-		miplevel);
+	const VkImageLayout layout = GetImageSyncScope(declaredAccess).layout;
+
+	ASSERT((img.m_aspect == ImageAspect::Color)
+		? (layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+		: (layout == VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL)
+		&& "Declared ImageAccess does not match this image's aspect");
+
+	writer.WritePushImage(binding, img, layout, sampler, miplevel);
 }
 
-void RenderScope::BindWriteImage(PushDescriptorWriter& writer, uint32_t binding, const AllocatedImage& img, uint32_t storageViewIndex)
+void RenderScope::BindWriteImage(
+	PushDescriptorWriter& writer,
+	uint32_t binding,
+	const AllocatedImage& img,
+	uint32_t storageViewIndex,
+	RD::ImageAccess declaredAccess)
 {
 	ASSERT(img.IsValid());
 
-	writer.WritePushImage(
-		binding,
-		img,
-		PushLayout::Write,
-		VK_NULL_HANDLE,
-		storageViewIndex);
+	const VkImageLayout layout = GetImageSyncScope(declaredAccess).layout;
+
+	ASSERT(layout == VK_IMAGE_LAYOUT_GENERAL
+		&& "Storage image bindings require a GENERAL-layout access "
+		   "(Write or ComputeWrite)");
+
+	writer.WritePushImage(binding, img, layout, VK_NULL_HANDLE, storageViewIndex);
 }

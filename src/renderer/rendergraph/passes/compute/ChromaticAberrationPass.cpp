@@ -20,6 +20,8 @@ void RegisterChromaticAberrationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::PostAA)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -29,14 +31,28 @@ void RegisterChromaticAberrationPass(
 							!ctx.frameState->DebugRendering();
 					})
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::AAColor,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::Tonemap,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::PostNonAAComposite,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::ChromaticAberration,
+							pass.passName);
+
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
@@ -46,14 +62,8 @@ void RegisterChromaticAberrationPass(
 						const auto& postNonAA = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PostNonAAComposite);
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 
-						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-
-						//------------------------------------
-						// BIND INPUTS
-						//------------------------------------
-						if (aaMode != RD::AntiAliasingMethod::AA_OFF && aaMode != RD::AntiAliasingMethod::AA_TAA)
+						if (ctx.frameState->CopyPostAAImage())
 						{
-							ASSERT(ctx.frameState->CopyPostAAImage());
 							pso.BindReadImage(
 								pass.pushWriter,
 								RD::PUSH_BINDING_READ_1,
@@ -69,25 +79,11 @@ void RegisterChromaticAberrationPass(
 								linearClampSampler);
 						}
 
-						//------------------------------------
-						// BIND OUTPUT
-						//------------------------------------
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							postNonAA);
-					})
 
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::ChromaticAberration,
-							pass.passName);
-
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
 							pass.pipelines[PIPE_ID_MAIN],

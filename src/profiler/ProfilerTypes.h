@@ -82,9 +82,23 @@ struct PassTimingStats
 	bool activeThisFrame = false;
 	bool activeLastFrame = false;
 
+	bool asyncQueueThisFrame = false;
+	bool asyncQueueLastFrame = false;
+
 	float cpuMsRaw = 0.0f;
 	float gpuMsRaw = 0.0f;
 
 	TimerAverager cpuMsAverage;
 	TimerAverager gpuMsAverage;
+};
+
+struct AsyncComputeStats
+{
+	bool bDedicatedQueue = false;
+
+	bool bActiveThisFrame = false;
+
+	uint32_t graphicsBatchCount = 1u;   // 1 = single submit, 3 = split
+	uint32_t asyncPassCount     = 0u;   // C0
+	uint32_t overlapPassCount   = 0u;   // G1, the passes beside C0
 };

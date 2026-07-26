@@ -2,6 +2,7 @@
 
 #include "Profiler.h"
 #include "renderer/Frame/FrameContext.h"
+#include "../renderer/backend/VulkanTypes.h"
 
 // -----------------------------------------------------------------------------
 // Internal helpers
@@ -157,47 +158,86 @@ void Profiler::EndFrame()
 }
 
 Profiler::ScopedPass::ScopedPass(
-	Profiler&                 profiler,
-	FrameContext&             frameCtx,
-	VkCommandBuffer           cmd,
-	RD::Renderer_Pass         ID,
-	std::string_view          passName)
+	Profiler&         profiler,
+	FrameContext&     frameCtx,
+	VkCommandBuffer   cmd,
+	RD::Renderer_Pass ID,
+	std::string_view  passName,
+	uint32_t          threadSlot,
+	PassQueue         queue)
 	: m_profiler(&profiler)
 	, m_frameCtx(&frameCtx)
 	, m_cmd(cmd)
 	, m_trackingID(ID)
+	, m_threadSlot(threadSlot)
+	, m_queue(queue)
 {
-	auto& stats           = m_profiler->m_passStats[static_cast<size_t>(ID)];
-	stats.activeThisFrame = true;
-	stats.name            = passName;
+	const size_t idx = static_cast<size_t>(ID);
+
+	// Distinct index per concurrent pass — no race between workers.
+	auto& stats               = m_profiler->m_passStats[idx];
+	stats.activeThisFrame     = true;
+	stats.name                = passName;
+	stats.asyncQueueThisFrame = (queue == PassQueue::AsyncCompute);
 
 	m_cpuStartTicks = queryPerformanceCounterTicks();
-	m_gpuZone       = m_profiler->BeginTracyGpuZone(cmd, ID);
+	m_gpuZone       = m_profiler->BeginTracyGpuZone(cmd, ID, threadSlot, queue);
 
-	if (m_frameCtx && m_cmd != VK_NULL_HANDLE)
+	if (m_frameCtx == nullptr || m_cmd == VK_NULL_HANDLE)
+		return;
+
+	const auto& range = m_frameCtx->m_passTimestampRanges[idx];
+	ASSERT(range.beginQuery < range.endQuery);
+
+	const bool bAsync = (queue == PassQueue::AsyncCompute);
+
+	m_timestampPool = bAsync
+		? m_frameCtx->m_computeTimestampPool
+		: m_frameCtx->m_graphicsTimestampPool;
+
+	// Null is legal for the compute pool: some vendors report
+	// timestampValidBits == 0 on compute-only families, in which case the
+	// pass still gets CPU timing and a Tracy zone, just no GPU number.
+	if (m_timestampPool == VK_NULL_HANDLE)
+		return;
+
+	if (bAsync)
 	{
-		const size_t idx   = static_cast<size_t>(ID);
-		const auto&  range = m_frameCtx->m_passTimestampRanges[idx];
+		m_frameCtx->m_timestampPassUsedCompute[idx] = true;
 
-		ASSERT(range.beginQuery < range.endQuery);
-
-		m_frameCtx->m_timestampPassUsed[idx]     = true;
-		m_frameCtx->m_bHasTimestampResultsPending = true;
-
-		vkCmdWriteTimestamp2(
-			m_cmd,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			m_frameCtx->m_graphicsTimestampPool,
-			range.beginQuery);
+		// Written from every recording worker. Relaxed atomic: all
+		// writers store the same value, we only need it to not be a
+		// formal data race.
+		m_frameCtx->m_bHasComputeTimestampsPending.store(
+			true, std::memory_order_relaxed);
 	}
+	else
+	{
+		m_frameCtx->m_timestampPassUsed[idx] = true;
+		m_frameCtx->m_bHasTimestampResultsPending = true;
+	}
+
+	vkCmdWriteTimestamp2(
+		m_cmd,
+		VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+		m_timestampPool,
+		range.beginQuery);
+
+	m_bTimestampWritten = true;
 }
 
 Profiler::ScopedPass::~ScopedPass()
 {
 	if (m_profiler == nullptr) return;
 
-	if (m_frameCtx != nullptr && m_cmd != VK_NULL_HANDLE)
+	// Guarded on the flag, not on the pool handle: if the constructor
+	// skipped the begin write, writing an end here would leave a lone
+	// unmatched query that ReadTimestamps would pair with garbage.
+	if (m_bTimestampWritten)
 	{
+		ASSERT(m_timestampPool != VK_NULL_HANDLE);
+		ASSERT(m_frameCtx != nullptr && m_cmd != VK_NULL_HANDLE);
+
 		const size_t idx   = static_cast<size_t>(m_trackingID);
 		const auto&  range = m_frameCtx->m_passTimestampRanges[idx];
 
@@ -206,7 +246,7 @@ Profiler::ScopedPass::~ScopedPass()
 		vkCmdWriteTimestamp2(
 			m_cmd,
 			VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-			m_frameCtx->m_graphicsTimestampPool,
+			m_timestampPool,
 			range.endQuery);
 	}
 
@@ -232,13 +272,21 @@ Profiler::ScopedPass::ScopedPass(ScopedPass&& other) noexcept
 	, m_trackingID(other.m_trackingID)
 	, m_gpuZone(other.m_gpuZone)
 	, m_cpuStartTicks(other.m_cpuStartTicks)
+	, m_timestampPool(other.m_timestampPool)
+	, m_bTimestampWritten(other.m_bTimestampWritten)
+	, m_threadSlot(other.m_threadSlot)
+	, m_queue(other.m_queue)
 {
-	other.m_profiler      = nullptr;
-	other.m_frameCtx      = nullptr;
-	other.m_cmd           = VK_NULL_HANDLE;
-	other.m_trackingID    = RD::Renderer_Pass::Count;
-	other.m_gpuZone       = nullptr;
-	other.m_cpuStartTicks = 0;
+	other.m_profiler          = nullptr;
+	other.m_frameCtx          = nullptr;
+	other.m_cmd               = VK_NULL_HANDLE;
+	other.m_trackingID        = RD::Renderer_Pass::Count;
+	other.m_gpuZone           = nullptr;
+	other.m_cpuStartTicks     = 0;
+	other.m_timestampPool     = VK_NULL_HANDLE;
+	other.m_bTimestampWritten = false;
+	other.m_threadSlot        = 0u;
+	other.m_queue             = PassQueue::Graphics;
 }
 
 Profiler::ScopedPass& Profiler::ScopedPass::operator=(ScopedPass&& other) noexcept
@@ -247,43 +295,79 @@ Profiler::ScopedPass& Profiler::ScopedPass::operator=(ScopedPass&& other) noexce
 
 	this->~ScopedPass();
 
-	m_profiler      = other.m_profiler;
-	m_frameCtx      = other.m_frameCtx;
-	m_cmd           = other.m_cmd;
-	m_trackingID    = other.m_trackingID;
-	m_gpuZone       = other.m_gpuZone;
-	m_cpuStartTicks = other.m_cpuStartTicks;
+	m_profiler          = other.m_profiler;
+	m_frameCtx          = other.m_frameCtx;
+	m_cmd               = other.m_cmd;
+	m_trackingID        = other.m_trackingID;
+	m_gpuZone           = other.m_gpuZone;
+	m_cpuStartTicks     = other.m_cpuStartTicks;
+	m_timestampPool     = other.m_timestampPool;
+	m_bTimestampWritten = other.m_bTimestampWritten;
+	m_threadSlot        = other.m_threadSlot;
+	m_queue             = other.m_queue;
 
-	other.m_profiler      = nullptr;
-	other.m_frameCtx      = nullptr;
-	other.m_cmd           = VK_NULL_HANDLE;
-	other.m_trackingID    = RD::Renderer_Pass::Count;
-	other.m_gpuZone       = nullptr;
-	other.m_cpuStartTicks = 0;
+	other.m_profiler          = nullptr;
+	other.m_frameCtx          = nullptr;
+	other.m_cmd               = VK_NULL_HANDLE;
+	other.m_trackingID        = RD::Renderer_Pass::Count;
+	other.m_gpuZone           = nullptr;
+	other.m_cpuStartTicks     = 0;
+	other.m_timestampPool     = VK_NULL_HANDLE;
+	other.m_bTimestampWritten = false;
+	other.m_threadSlot        = 0u;
+	other.m_queue             = PassQueue::Graphics;
 
 	return *this;
 }
 
 Profiler::ScopedPass Profiler::ProfilePass(
-	FrameContext&             frameCtx,
-	VkCommandBuffer           cmd,
-	RD::Renderer_Pass         trackingID,
-	std::string_view          passName)
+	FrameContext&     frameCtx,
+	VkCommandBuffer   cmd,
+	RD::Renderer_Pass trackingID,
+	std::string_view  passName,
+	uint32_t          threadSlot,
+	PassQueue         queue)
 {
-	return ScopedPass(*this, frameCtx, cmd, trackingID, passName);
+	return ScopedPass(*this, frameCtx, cmd, trackingID, passName, threadSlot, queue);
 }
 
 // -----------------------------------------------------------------------------
 // Tracy GPU zone — indexed by Renderer_PassTracking
 // -----------------------------------------------------------------------------
-void* Profiler::BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackingID)
+void* Profiler::BeginTracyGpuZone(
+	VkCommandBuffer   cmd,
+	RD::Renderer_Pass trackingID,
+	uint32_t          threadSlot,
+	PassQueue         queue)
 {
 #ifdef TRACY_ENABLE
-	if (m_tracyGpuContext == nullptr || cmd == VK_NULL_HANDLE) return nullptr;
+	if (cmd == VK_NULL_HANDLE) return nullptr;
 
-	const size_t   idx   = static_cast<size_t>(trackingID);
+	void* ctx = nullptr;
+
+	if (queue == PassQueue::AsyncCompute)
+	{
+		// Per-thread: a TracyVkCtx cannot have zones opened on it from
+		// two threads at once, and async passes record in parallel.
+		if (threadSlot >= m_tracyComputeContexts.size())
+			return nullptr;
+
+		ctx = m_tracyComputeContexts[threadSlot];
+	}
+	else
+	{
+		// Single context is fine — graphics records inline on the render
+		// thread only.
+		ctx = m_tracyGraphicsContext;
+	}
+
+	if (ctx == nullptr) return nullptr;
+
+	const size_t    idx   = static_cast<size_t>(trackingID);
 	TracyPassEntry& entry = m_tracySourceLocations[idx];
 
+	// Distinct element per concurrent pass, and a pass is never recorded
+	// twice in a frame, so this lazy init needs no lock.
 	if (!entry.srcLoc)
 	{
 		entry.name   = m_passStats[idx].name;
@@ -293,13 +377,13 @@ void* Profiler::BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackin
 	}
 
 	return new tracy::VkCtxScope(
-		static_cast<TracyVkCtx>(m_tracyGpuContext),
+		static_cast<TracyVkCtx>(ctx),   // the SELECTED context
 		entry.srcLoc.get(),
 		cmd,
 		true
 	);
 #else
-	(void)cmd; (void)trackingID;
+	(void)cmd; (void)trackingID; (void)threadSlot; (void)queue;
 	return nullptr;
 #endif
 }
@@ -311,6 +395,112 @@ void Profiler::EndTracyGpuZone(void* zone)
 	delete static_cast<tracy::VkCtxScope*>(zone);
 #else
 	(void)zone;
+#endif
+}
+
+// =====================================================================
+// Context lifetime
+// =====================================================================
+void Profiler::InitTracyGraphics(
+	VkPhysicalDevice physicalDevice,
+	VkDevice         device,
+	VkQueue          queue,
+	VkCommandBuffer  cmd)
+{
+#ifdef TRACY_ENABLE
+	if (m_tracyGraphicsContext != nullptr) return;
+	m_tracyGraphicsContext = TracyVkContext(physicalDevice, device, queue, cmd);
+#else
+	(void)physicalDevice; (void)device; (void)queue; (void)cmd;
+#endif
+}
+
+void Profiler::InitTracyCompute(
+	VkPhysicalDevice physicalDevice,
+	VkDevice         device,
+	VkQueue          queue,
+	VkCommandBuffer  cmd,
+	uint32_t         threadSlotCount)
+{
+#ifdef TRACY_ENABLE
+	if (!m_tracyComputeContexts.empty()) return;
+
+	ASSERT(threadSlotCount > 0u);
+
+	m_tracyComputeContexts.resize(threadSlotCount, nullptr);
+
+	for (uint32_t i = 0; i < threadSlotCount; ++i)
+	{
+		VK_CHECK(vkResetCommandBuffer(cmd, 0));
+
+		m_tracyComputeContexts[i] =
+			TracyVkContext(physicalDevice, device, queue, cmd);
+	}
+#else
+	(void)physicalDevice; (void)device; (void)queue; (void)cmd; (void)threadSlotCount;
+#endif
+}
+
+void Profiler::CollectTracyGraphics(VkCommandBuffer cmd)
+{
+#ifdef TRACY_ENABLE
+	if (m_tracyGraphicsContext == nullptr) return;
+	TracyVkCollect(static_cast<TracyVkCtx>(m_tracyGraphicsContext), cmd);
+#else
+	(void)cmd;
+#endif
+}
+
+void Profiler::CollectTracyCompute(VkCommandBuffer cmd)
+{
+#ifdef TRACY_ENABLE
+	if (cmd == VK_NULL_HANDLE) return;
+
+	for (void* ctx : m_tracyComputeContexts)
+	{
+		if (ctx == nullptr) continue;
+		TracyVkCollect(static_cast<TracyVkCtx>(ctx), cmd);
+	}
+#else
+	(void)cmd;
+#endif
+}
+
+void Profiler::ShutdownTracyGPU()
+{
+#ifdef TRACY_ENABLE
+	if (m_tracyGraphicsContext != nullptr)
+	{
+		TracyVkDestroy(static_cast<TracyVkCtx>(m_tracyGraphicsContext));
+		m_tracyGraphicsContext = nullptr;
+	}
+
+	for (void*& ctx : m_tracyComputeContexts)
+	{
+		if (ctx == nullptr) continue;
+		TracyVkDestroy(static_cast<TracyVkCtx>(ctx));
+		ctx = nullptr;
+	}
+	m_tracyComputeContexts.clear();
+#endif
+}
+
+bool Profiler::IsTracyGraphicsActive() const noexcept
+{
+#ifdef TRACY_ENABLE
+	return m_tracyGraphicsContext != nullptr;
+#else
+	return false;
+#endif
+}
+
+bool Profiler::IsTracyComputeActive() const noexcept
+{
+#ifdef TRACY_ENABLE
+	return !m_tracyComputeContexts.empty() &&
+		   m_tracyComputeContexts[0] != nullptr;
+#else
+	return false;
 #endif
 }
 
@@ -331,10 +521,12 @@ void Profiler::ResetPassStats()
 {
 	for (auto& stats : m_passStats)
 	{
-		stats.activeLastFrame = stats.activeThisFrame;
-		stats.activeThisFrame = false;
-		stats.cpuMsRaw        = 0.0f;
-		stats.gpuMsRaw        = 0.0f;
+		stats.activeLastFrame     = stats.activeThisFrame;
+		stats.activeThisFrame     = false;
+		stats.cpuMsRaw            = 0.0f;
+		stats.gpuMsRaw            = 0.0f;
+		stats.asyncQueueLastFrame = stats.asyncQueueThisFrame;
+		stats.asyncQueueThisFrame = false;
 	}
 }
 
@@ -383,48 +575,6 @@ bool Profiler::IsTracyCompiledIn() const
 {
 #ifdef TRACY_ENABLE
 	return true;
-#else
-	return false;
-#endif
-}
-
-void Profiler::InitTracyGPU(
-	VkPhysicalDevice physicalDevice,
-	VkDevice         device,
-	VkQueue          queue,
-	VkCommandBuffer  cmd)
-{
-#ifdef TRACY_ENABLE
-	if (m_tracyGpuContext != nullptr) return;
-	m_tracyGpuContext = TracyVkContext(physicalDevice, device, queue, cmd);
-#else
-	(void)physicalDevice; (void)device; (void)queue; (void)cmd;
-#endif
-}
-
-void Profiler::ShutdownTracyGPU()
-{
-#ifdef TRACY_ENABLE
-	if (m_tracyGpuContext == nullptr) return;
-	TracyVkDestroy(static_cast<TracyVkCtx>(m_tracyGpuContext));
-	m_tracyGpuContext = nullptr;
-#endif
-}
-
-void Profiler::CollectTracyGPU(VkCommandBuffer cmd)
-{
-#ifdef TRACY_ENABLE
-	if (m_tracyGpuContext == nullptr) return;
-	TracyVkCollect(static_cast<TracyVkCtx>(m_tracyGpuContext), cmd);
-#else
-	(void)cmd;
-#endif
-}
-
-bool Profiler::IsTracyGPUActive() const noexcept
-{
-#ifdef TRACY_ENABLE
-	return m_tracyGpuContext != nullptr;
 #else
 	return false;
 #endif

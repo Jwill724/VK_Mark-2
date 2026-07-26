@@ -25,6 +25,8 @@ void RegisterVolumetricLightPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Shading)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -35,34 +37,22 @@ void RegisterVolumetricLightPass(
 							!ctx.frameState->DebugRendering();
 					})
 
-				.SetSetup(
-					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent.Width() / 2, drawExtent.Height() / 2 }};
-						auto& pso = std::get<ComputeScope>(pass.scope);
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
 
-						ctx.profiler->volLightSettings.blurDirection = { 1.0f, 0.0f }; // Start horizontal
-						pso.SetPush(ctx.profiler->volLightSettings);
+				.InternalResource(
+					RD::Renderer_RenderTarget::VolumetricLight,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
 
-						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
-						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_1,
-							depthResolved,
-							nearestClampSampler);
-
-						pso.BindWriteImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_WRITE_1,
-							volumetricLight);
-					})
+				.InternalResource(
+					RD::Renderer_RenderTarget::VolumetricLightBlur,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
 
 				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
@@ -70,8 +60,14 @@ void RegisterVolumetricLightPass(
 							RD::Renderer_Pass::VolumetricLighting,
 							pass.passName);
 
-						auto& pso = std::get<ComputeScope>(pass.scope);
 						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{{ drawExtent.Width() / 2, drawExtent.Height() / 2 }};
+						auto& pso = std::get<ComputeScope>(pass.scope);
+
+						ctx.profiler->volLightSettings.blurDirection = { 1.0f, 0.0f }; // Start horizontal
+						pso.SetPush(ctx.profiler->volLightSettings);
 
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
@@ -82,20 +78,34 @@ void RegisterVolumetricLightPass(
 						// ======================
 						// Volumetric Light
 						// ======================
-						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Read, RD::ImageAccess::Write);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							depthResolved,
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
+
+						pso.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_1,
+							volumetricLight);
+
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
 						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ======================
 						// Blur horizontal
 						// ======================
-						I::TransitionLayout(cmd, volumetricBlur, RD::ImageAccess::Read, RD::ImageAccess::Write);
 
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							depthResolved,
-							nearestClampSampler);
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
 
 						pso.BindReadImage(
 							pass.pushWriter,
@@ -119,7 +129,9 @@ void RegisterVolumetricLightPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							depthResolved,
-							nearestClampSampler);
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
 
 						pso.BindReadImage(
 							pass.pushWriter,

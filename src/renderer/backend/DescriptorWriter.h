@@ -6,14 +6,6 @@
 struct AllocatedImage;
 struct AllocatedBuffer;
 
-enum class PushLayout : uint8_t
-{
-	Read,
-	Write,
-	DepthRead,
-	None
-};
-
 class DescriptorWriter
 {
 public:
@@ -81,7 +73,7 @@ public:
 	void WritePushImage(
 		uint32_t binding,
 		const AllocatedImage& image,
-		PushLayout imgLayout,
+		VkImageLayout imgLayout,
 		VkSampler sampler = VK_NULL_HANDLE,
 		uint32_t storageViewIndex = UINT32_MAX);
 

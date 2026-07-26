@@ -23,9 +23,10 @@ void Device::Cleanup()
 	m_graphicsQueue.CleanupFencePools();
 	m_presentQueue.CleanupFencePools();
 	m_transferQueue.CleanupFencePools();
+	m_graphicsQueue.DestroyTimelineSemaphore();
 	m_transferQueue.DestroyTimelineSemaphore();
 	m_computeQueue.CleanupFencePools();
-	//m_computeQueue.DestroyTimelineSemaphore();
+	m_computeQueue.DestroyTimelineSemaphore();
 
 	m_threadCmdPoolManager.Cleanup(*this);
 
@@ -44,7 +45,7 @@ void Device::CreateInstance()
 {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = "Mark-2.5";
+	appInfo.pApplicationName = "Mark-3";
 	appInfo.applicationVersion = VK_MAKE_VERSION(1, 4, 0);
 	appInfo.pEngineName = "Engine";
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -251,6 +252,7 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	features12.shaderInt8                                         = VK_TRUE;
 	features12.storageBuffer8BitAccess                            = VK_TRUE;
 	features12.shaderBufferInt64Atomics                           = VK_TRUE;
+	features12.hostQueryReset                                     = VK_TRUE;
 
 	VkPhysicalDeviceVulkan13Features features13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	features13.dynamicRendering                                   = VK_TRUE;
@@ -266,10 +268,58 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	features14.maintenance5                                       = VK_TRUE;
 	features14.maintenance6                                       = VK_TRUE;
 
-	features14.pNext   = nullptr;
+	// =======================
+	// Ray tracing extensions
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures
+	{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR
+	};
+	accelerationStructureFeatures.accelerationStructure                                 = VK_TRUE;
+	accelerationStructureFeatures.accelerationStructureCaptureReplay                    = VK_TRUE;
+	accelerationStructureFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
+
+	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures
+	{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR
+	};
+	rayTracingPipelineFeatures.rayTracingPipeline                                    = VK_TRUE;
+	rayTracingPipelineFeatures.rayTracingPipelineShaderGroupHandleCaptureReplay      = VK_TRUE;
+	rayTracingPipelineFeatures.rayTracingPipelineTraceRaysIndirect                   = VK_TRUE;
+	rayTracingPipelineFeatures.rayTraversalPrimitiveCulling                          = VK_TRUE;
+
+	VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures
+	{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR
+	};
+	rayQueryFeatures.rayQuery = VK_TRUE;
+
+
+	// =======================
+	// Mesh shaders extension
+	VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures
+	{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT
+	};
+
+	meshShaderFeatures.taskShader                             = VK_TRUE;
+	meshShaderFeatures.meshShader                             = VK_TRUE;
+	meshShaderFeatures.meshShaderQueries                      = VK_TRUE;
+	//meshShaderFeatures.multiviewMeshShader                    = VK_TRUE;
+
+	REQUIRE_HARDWARE(meshShaderFeatures.meshShader && meshShaderFeatures.taskShader, "20 series and up only");
+
+
+	features14.pNext = &accelerationStructureFeatures;
+	accelerationStructureFeatures.pNext = &rayTracingPipelineFeatures;
+	rayTracingPipelineFeatures.pNext = &rayQueryFeatures;
+	rayQueryFeatures.pNext = &meshShaderFeatures;
+	meshShaderFeatures.pNext = nullptr;
+
+	//features14.pNext   = nullptr;
 	features13.pNext   = &features14;
 	features12.pNext   = &features13;
 	features11.pNext   = &features12;
+
 	baseFeatures.pNext = &features11;
 
 	VkDeviceCreateInfo createInfo{};
@@ -291,6 +341,7 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	if (qIndices.graphicsFamily.has_value())
 	{
 		m_graphicsQueue.GetDeviceQueue(m_context);
+		m_graphicsQueue.InitTimelineSemaphore();
 	}
 
 	if (qIndices.presentFamily.has_value())
@@ -307,7 +358,7 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 	if (qIndices.computeFamily.has_value())
 	{
 		m_computeQueue.GetDeviceQueue(m_context);
-		//m_computeQueue.InitTimelineSemaphore();
+		m_computeQueue.InitTimelineSemaphore();
 	}
 }
 
@@ -360,6 +411,17 @@ VkCommandBuffer Device::CreateCommandBuffer(VkCommandPool commandPool) const
 	VK_CHECK(vkAllocateCommandBuffers(m_context.device, &allocInfo, &commandBuffer));
 
 	return commandBuffer;
+}
+
+void Device::CreateCommandBuffers(VkCommandPool commandPool, VkCommandBuffer* commands, uint32_t count) const
+{
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = commandPool;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = count;
+
+	VK_CHECK(vkAllocateCommandBuffers(m_context.device, &allocInfo, commands));
 }
 
 VkCommandBuffer Device::CreateSecondaryCommand(VkCommandPool pool, VkCommandBufferInheritanceInfo& inheritance) const
@@ -476,6 +538,7 @@ void Device::ThreadCommandPoolManager::Init(Device& device, uint32_t threadCount
 		auto& pool = m_perThreadPools[i];
 		pool.graphicsPool = device.CreateCommandPool(QueueType::Graphics);
 		pool.transferPool = device.CreateCommandPool(QueueType::Transfer);
+		pool.computePool = device.CreateCommandPool(QueueType::Compute);
 	}
 }
 void Device::ThreadCommandPoolManager::Cleanup(Device& device)
@@ -492,6 +555,11 @@ void Device::ThreadCommandPoolManager::Cleanup(Device& device)
 		if (pool.transferPool)
 		{
 			vkDestroyCommandPool(device.m_context.device, pool.transferPool, nullptr);
+		}
+
+		if (pool.computePool)
+		{
+			vkDestroyCommandPool(device.m_context.device, pool.computePool, nullptr);
 		}
 	}
 }

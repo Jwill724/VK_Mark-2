@@ -17,7 +17,8 @@ RenderPassBuilder& RenderPassBuilder::ReadResource(
 		.exitAccess = access,
 		.baseMip = baseMip,
 		.mipCount = mipCount,
-		.bIsWrite = false
+		.bIsWrite = false,
+		.bManualExitTransition = false
 	});
 
 	return *this;
@@ -36,8 +37,37 @@ RenderPassBuilder& RenderPassBuilder::WriteResource(
 		.exitAccess = exitAccess,
 		.baseMip = baseMip,
 		.mipCount = mipCount,
-		.bIsWrite = true
+		.bIsWrite = true,
+		.bManualExitTransition = false
 	});
 
+	return *this;
+}
+
+RenderPassBuilder& RenderPassBuilder::InternalResource(
+	RD::Renderer_RenderTarget target,
+	RD::ImageAccess enterAccess,
+	RD::ImageAccess declaredExitAccess,
+	uint32_t baseMip,
+	uint32_t mipCount)
+{
+	m_desc.resources.emplace_back(RenderResourceUsage{
+		.target = target,
+		.enterAccess = enterAccess,
+		.exitAccess = declaredExitAccess,
+		.baseMip = baseMip,
+		.mipCount = mipCount,
+		.bIsWrite = true,
+		.bManualExitTransition = true
+	});
+
+	return *this;
+}
+
+RenderPassBuilder& RenderPassBuilder::SetPhase(RenderPhase phase)
+{
+	ASSERT(!m_desc.bAsyncCompute);
+
+	m_desc.phase = phase;
 	return *this;
 }

@@ -20,12 +20,9 @@ void RegisterThePrepass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return ctx.frameState->InstancesActive();
-					})
-				.DisableCulling()
+				.SetPhase(RenderPhase::Prepass)
+
+				.ForceExecution()
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::DepthResolved,
@@ -47,11 +44,26 @@ void RegisterThePrepass(
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
-				.SetSetup(
+				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::Prepass,
+							pass.passName);
+
 						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
+						const auto& frameCtx = ctx.frameCtx;
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+
+						const auto indirectBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
+
+						const auto indirectCountBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
@@ -61,7 +73,7 @@ void RegisterThePrepass(
 						AttachmentDesc prepassDepth{};
 						prepassDepth.imageView = depthResolved.m_imageView;
 						prepassDepth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						prepassDepth.SetDepth(0.0f);
+						prepassDepth.SetDepth(0);
 
 						AttachmentDesc prepassVisibility{};
 						prepassVisibility.imageView = visibility.m_imageView;
@@ -85,27 +97,6 @@ void RegisterThePrepass(
 								depthResolved.Height()
 							},
 							{ prepassVisibility, prepassNormal, prepassVelocity, prepassDepth });
-					})
-
-				.SetRecord(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						auto passScope = ctx.profiler->ProfilePass(
-							*ctx.frameCtx,
-							ctx.commandBuffer,
-							RD::Renderer_Pass::Prepass,
-							pass.passName);
-
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-						const auto& frameCtx = ctx.frameCtx;
-
-						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto indirectBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
-
-						const auto indirectCountBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						pso.BeginRendering(cmd);
 

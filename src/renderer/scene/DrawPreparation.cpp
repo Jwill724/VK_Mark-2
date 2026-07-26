@@ -327,22 +327,16 @@ bool DrawPreparation::SyncInstanceInputs(
 
 		if (slabIt == vs.slabs.end())
 		{
-			// First sighting — bake full-capacity slab. For the asteroid field
-			// this is every loaded copy, all pointing at dynamic transform slots.
 			uint32_t f = 0, c = 0;
 			BakeInstanceData(vs, gi, asset, meshData, meshLods, transforms, materialFlags, f, c);
 			gpuInputsDirty = true;
 			continue;
 		}
 
-		// Slab exists — keep it in sync with the live placement.
 		CoreSlab& slab = slabIt->second;
 
-		// Copy count moved (spawn/despawn within capacity)
 		if (SyncCopyCount(vs, slab, gi)) gpuInputsDirty = true;
 
-		//// Dynamic placements (asteroid field) get fresh world AABBs every frame
-		//// from the simulation-updated transforms, so culling follows them.
 		//UpdateWorldAABBsForDynamic(vs, gi, meshData, transforms);
 	}
 
@@ -552,12 +546,12 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 
 	}, frameCtx.GetTransferPool(), QueueType::Transfer);
 
-	frameCtx.CollectAndAppendCmds(std::move(device.DeferredCmds.CollectTransfer()), QueueType::Transfer);
+	frameCtx.CollectTransferCmds(std::move(device.DeferredCmds.CollectTransfer()), QueueType::Transfer);
 
 	// Timeline semaphore sync — render waits on this value
 	const uint64_t signalValue = device.GetTransferQueue().Submit(frameCtx.GetTransferCommands());
 
-	frameCtx.StashSubmitted(QueueType::Transfer);
+	frameCtx.StashTransferCmds();
 	frameCtx.GetTransferWaitValue() = signalValue;
 
 	addrTable.SetGpuVersion(frameCtx.GetPendingAddrTableVersion());

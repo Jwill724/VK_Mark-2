@@ -36,7 +36,7 @@ namespace Engine
 
 void Engine::Run()
 {
-	_mainWindow.Init(DEFAULT_WIN_EXTENT_W, DEFAULT_WIN_EXTENT_H, "Mark_2.5");
+	_mainWindow.Init(DEFAULT_WIN_EXTENT_W, DEFAULT_WIN_EXTENT_H, "Mark_3");
 
 	_jobSystem.Init();
 
@@ -59,12 +59,7 @@ void Engine::Run()
 
 	_jobSystem.Wait();
 
-	_jobSystem.SubmitRenderJob([batches = std::move(_pendingBatches)](ThreadContext&) mutable
-	{
-		_renderer.UploadScenes(std::move(batches));
-	});
-	_jobSystem.Wait();
-
+	_renderer.UploadScenes(std::move(_pendingBatches));
 	_renderer.EndAssetTimer();
 	_pendingBatches.clear();
 
@@ -98,7 +93,7 @@ void Engine::Run()
 		_renderer.EndSceneUpdateTimer();
 
 		_renderer.StartTimer();
-		_renderer.RecordRenderCommand();
+		_renderer.RecordRenderCommand(_jobSystem);
 		_renderer.EndDrawTimer();
 
 		hasWindowResized = _renderer.SubmitFrame();

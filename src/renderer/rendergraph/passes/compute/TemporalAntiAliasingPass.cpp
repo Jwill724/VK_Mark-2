@@ -24,6 +24,8 @@ void RegisterTAAPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Temporal)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -34,12 +36,37 @@ void RegisterTAAPass(
 							!ctx.frameState->DebugRendering();
 					})
 
-				.SetSetup(
+				.ReadResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::PrevDepthResolved,
+					RD::ImageAccess::DepthRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::Velocity,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::PrevVelocity,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
+					RD::ImageAccess::Read)
+
+
+				.InternalResource(TAA_RESOLVED_A, RD::ImageAccess::Read, RD::ImageAccess::Read)
+				.InternalResource(TAA_RESOLVED_B, RD::ImageAccess::Read, RD::ImageAccess::Read)
+
+				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
-						auto& pso = std::get<ComputeScope>(pass.scope);
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx, ctx.commandBuffer, RD::Renderer_Pass::TAA, pass.passName);
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto slots = TaaHistory::Resolve(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x));
 						const auto& history = ctx.imageTable->GetRenderTarget(slots.read);
@@ -52,6 +79,11 @@ void RegisterTAAPass(
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 						const auto taaHistorySampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::TaaHistory);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+
+						const auto& drawExtent = graph.GetDrawExtent();
+						pass.scope = ComputeScope{{ drawExtent }};
+						auto& pso = std::get<ComputeScope>(pass.scope);
+						pso.SetPush(ctx.profiler->taaSettings);
 
 						pso.BindReadImage(
 							pass.pushWriter,
@@ -80,36 +112,25 @@ void RegisterTAAPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_5,
 							depthResolved,
-							nearestClampSampler);
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_6,
 							prevDepthResolved,
-							nearestClampSampler);
+							nearestClampSampler,
+							UINT32_MAX,
+							RD::ImageAccess::DepthRead);
 
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							current);
-					})
 
-		.SetRecord(
-			[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-			{
-				auto passScope = ctx.profiler->ProfilePass(
-					*ctx.frameCtx, ctx.commandBuffer, RD::Renderer_Pass::TAA, pass.passName);
-
-				VkCommandBuffer cmd = ctx.commandBuffer;
-
-				const auto slots    = TaaHistory::Resolve(ctx.scene->GetSceneData().temporal.x);
-				const auto& current = ctx.imageTable->GetRenderTarget(slots.write);
-
-				auto& pso = std::get<ComputeScope>(pass.scope);
-				pso.SetPush(ctx.profiler->taaSettings);
-
-				I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
-				pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
-				I::TransitionLayout(cmd, current, RD::ImageAccess::Write, RD::ImageAccess::Read);
-			});
-		});
+						I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
+						I::TransitionLayout(cmd, current, RD::ImageAccess::Write, RD::ImageAccess::Read);
+					});
+				});
 }

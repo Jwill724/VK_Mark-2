@@ -4,10 +4,12 @@
 #include "profiler/ProfilerTypes.h"
 #include "renderer/RendererDefinitions.h"
 #include "renderer/frame/FrameResources.h"
+#include "renderer/rendergraph/RenderGraphSchedule.h"
 
 #include <array>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
@@ -31,7 +33,9 @@ public:
 			FrameContext&     frameCtx,
 			VkCommandBuffer   cmd,
 			RD::Renderer_Pass trackingID,
-			std::string_view  passName);
+			std::string_view  passName,
+			uint32_t          threadSlot = 0u,
+			PassQueue         queue      = PassQueue::Graphics);
 
 		ScopedPass(const ScopedPass&)            = delete;
 		ScopedPass& operator=(const ScopedPass&) = delete;
@@ -42,12 +46,19 @@ public:
 		~ScopedPass();
 
 	private:
-		Profiler*           m_profiler      = nullptr;
-		FrameContext*       m_frameCtx      = nullptr;
-		VkCommandBuffer     m_cmd           = VK_NULL_HANDLE;
-		RD::Renderer_Pass   m_trackingID    = RD::Renderer_Pass::Count;
-		void*               m_gpuZone       = nullptr;
-		int64_t             m_cpuStartTicks = 0;
+		Profiler*         m_profiler      = nullptr;
+		FrameContext*     m_frameCtx      = nullptr;
+		VkCommandBuffer   m_cmd           = VK_NULL_HANDLE;
+		RD::Renderer_Pass m_trackingID    = RD::Renderer_Pass::Count;
+		void*             m_gpuZone       = nullptr;
+		int64_t           m_cpuStartTicks = 0;
+
+		VkQueryPool       m_timestampPool = VK_NULL_HANDLE;
+
+		bool              m_bTimestampWritten = false;
+
+		uint32_t          m_threadSlot = 0u;
+		PassQueue         m_queue      = PassQueue::Graphics;
 	};
 
 	Profiler();
@@ -60,7 +71,9 @@ public:
 		FrameContext&     frameCtx,
 		VkCommandBuffer   cmd,
 		RD::Renderer_Pass trackingID,
-		std::string_view  passName);
+		std::string_view  passName,
+		uint32_t          threadSlot = 0u,
+		PassQueue         queue      = PassQueue::Graphics);
 
 	void AddGpuPassTime(RD::Renderer_Pass trackingID, float milliseconds);
 
@@ -80,14 +93,34 @@ public:
 		return m_passStats[static_cast<size_t>(trackingID)].activeThisFrame;
 	}
 
-	void InitTracyGPU(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue queue, VkCommandBuffer cmd);
+	void InitTracyGraphics(
+		VkPhysicalDevice physicalDevice,
+		VkDevice         device,
+		VkQueue          queue,
+		VkCommandBuffer  cmd);
+
+	void InitTracyCompute(
+		VkPhysicalDevice physicalDevice,
+		VkDevice         device,
+		VkQueue          queue,
+		VkCommandBuffer  cmd,
+		uint32_t         threadSlotCount);
+
+	void CollectTracyGraphics(VkCommandBuffer cmd);
+
+	void CollectTracyCompute(VkCommandBuffer cmd);
+
 	void ShutdownTracyGPU();
-	void CollectTracyGPU(VkCommandBuffer cmd);
-	bool IsTracyGPUActive()  const noexcept;
-	bool IsTracyCompiledIn() const;
+
+	bool IsTracyGraphicsActive() const noexcept;
+	bool IsTracyComputeActive()  const noexcept;
+	bool IsTracyCompiledIn()     const;
 
 	VkCommandBuffer GetTracyGraphicsCmd() const            { return m_tracyGraphicsCmdBuffer; }
 	void            SetTracyGraphicsCmd(VkCommandBuffer c) { m_tracyGraphicsCmdBuffer = c; }
+
+	VkCommandBuffer GetTracyComputeCmd() const             { return m_tracyComputeCmdBuffer; }
+	void            SetTracyComputeCmd(VkCommandBuffer c)  { m_tracyComputeCmdBuffer = c; }
 
 	void  StartTimer();
 	float EndTimerMS()  const;
@@ -107,9 +140,13 @@ public:
 	glm::vec3  cameraPos{};
 	std::mutex camMutex;
 	bool enableWireframeView = false;
+	bool enableAsyncCompute = true;
+	AsyncComputeStats asyncStats;
+
 	RD::ShadowQuality shadowQuality;
 	TotalAssetDataCounts assetCounts;
 	RD::RenderToggles   debugToggles;
+
 	SSAOPush            ssaoSettings;
 	TAAPush             taaSettings;
 	VolumetricPush      volLightSettings;
@@ -122,10 +159,15 @@ public:
 	SkyboxPush          skyboxPush;
 	BindlessAccessPush  smaaTexturesIds;
 
-	GPUStats            gpuStats; // Draw data
+	GPUStats            gpuStats;
 
 private:
-	void* BeginTracyGpuZone(VkCommandBuffer cmd, RD::Renderer_Pass trackingID);
+	void* BeginTracyGpuZone(
+		VkCommandBuffer   cmd,
+		RD::Renderer_Pass trackingID,
+		uint32_t          threadSlot,
+		PassQueue         queue);
+
 	void  EndTracyGpuZone(void* zone);
 
 #ifdef TRACY_ENABLE
@@ -134,12 +176,14 @@ private:
 		std::string name;
 		std::unique_ptr<tracy::SourceLocationData> srcLoc;
 	};
+
 	std::array<TracyPassEntry, RD::PASS_COUNT> m_tracySourceLocations{};
 #endif
 
 	std::array<PassTimingStats, RD::PASS_COUNT> m_passStats{};
 
 	VkCommandBuffer m_tracyGraphicsCmdBuffer = VK_NULL_HANDLE;
+	VkCommandBuffer m_tracyComputeCmdBuffer  = VK_NULL_HANDLE;
 
 	int64_t m_qpcFrequency     = 0;
 	int64_t m_framePeriodTicks = 0;
@@ -150,7 +194,8 @@ private:
 	double m_frameStartTime = 0.0;
 	double m_lastFrameTime  = 0.0;
 
-	void* m_tracyGpuContext = nullptr;
+	void*              m_tracyGraphicsContext = nullptr;
+	std::vector<void*> m_tracyComputeContexts;
 
 	FrameStats m_stats{};
 };

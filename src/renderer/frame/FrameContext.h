@@ -5,6 +5,7 @@
 #include "../backend/memory/BindlessBDATable.h"
 #include "EngineTypes.h"
 #include "FrameResources.h"
+#include "SecondaryCmdArena.h"
 
 namespace RD = RendererDefinitions;
 
@@ -28,6 +29,7 @@ class FrameContext
 public:
 	void Init(
 		uint32_t frameIndex,
+		uint32_t threadSlotCount,
 		Extents2D drawExtent,
 		Device& device,
 		DescriptorManager& descriptorsManager,
@@ -41,8 +43,8 @@ public:
 
 	std::vector<VkCommandBuffer>& GetTransferCommands() { return m_transferCommands; }
 
-	void CollectAndAppendCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue);
-	void StashSubmitted(QueueType queue);
+	void CollectTransferCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue);
+	void StashTransferCmds();
 	void FreeStashedCmds(const DeviceContext& deviceCtx);
 
 	void ClusterReset(Allocator& allocator);
@@ -157,33 +159,55 @@ public:
 
 	const AllocatedBuffer& GetStatsReadbackBuffer() const { return m_statsReadback; }
 
+	VkCommandBuffer GetPrimaryCommandBuffer() const noexcept
+	{
+		return m_graphicsPrimaries[0];
+	}
+
+	VkCommandBuffer GetGraphicsPrimary(uint32_t batchIdx) const noexcept
+	{
+		ASSERT(batchIdx < RD::MAX_GRAPHICS_PRIMARIES);
+		return m_graphicsPrimaries[batchIdx];
+	}
+
+	VkCommandBuffer GetAsyncComputePrimary() const noexcept
+	{
+		return m_asyncComputeCmd;
+	}
+
+	SecondaryCmdArena& GetSecondaryArena() { return m_secondaryArena; }
+
 private:
 	uint32_t m_frameIndex = 0u;
 
 	uint32_t m_swapchainImageIndex = 0u;
 
-	VkCommandBuffer m_commandBuffer = VK_NULL_HANDLE; // primary graphics command
 	VkCommandPool m_graphicsPool = VK_NULL_HANDLE;
-	std::vector<VkCommandBuffer> m_secondaryCommands;
 
 	uint64_t transferWaitValue = UINT64_MAX;
 	VkCommandPool m_transferPool;
 	std::vector<VkCommandBuffer> m_transferCommands;
 
 	// === async compute ===
-	std::vector<VkCommandBuffer> m_computeCommands;
 	VkCommandPool m_computePool = VK_NULL_HANDLE;
-	uint64_t m_computeWaitValue = UINT64_MAX;
 
 	std::vector<VkCommandBuffer> m_transferCommandsToFree;
-	std::vector<VkCommandBuffer> m_computeCommandsToFree;
-	std::vector<VkCommandBuffer> m_secondaryCommandsToFree;
+
+	std::array<VkCommandBuffer, RD::MAX_GRAPHICS_PRIMARIES> m_graphicsPrimaries{};
+
+	VkCommandBuffer m_asyncComputeCmd = VK_NULL_HANDLE; // async compute primary (C0)
+	SecondaryCmdArena m_secondaryArena;
 
 	uint32_t m_recentLightListCount = 0u;
 	uint32_t m_uploadedFlashlightVersion = 0u;
 
 	VkQueryPool m_graphicsTimestampPool = VK_NULL_HANDLE;
 	bool m_bHasTimestampResultsPending = false;
+
+	VkQueryPool m_computeTimestampPool = VK_NULL_HANDLE;
+	std::atomic<bool> m_bHasComputeTimestampsPending = false;
+	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsedCompute{};
+
 	std::array<RD::PassTimestampRange, TIMESTAMP_PASS_COUNT> m_passTimestampRanges{};
 	std::array<uint64_t, PASS_TIMESTAMP_QUERY_COUNT> m_timestampResults{};
 	std::array<bool, TIMESTAMP_PASS_COUNT> m_timestampPassUsed{};
@@ -223,7 +247,6 @@ private:
 	const GPUStats* m_statsMapped = nullptr;
 
 	AllocatedBuffer m_directionalCSM_UBO;
-
 	AllocatedBuffer m_sceneInfo_UBO;
 
 	bool m_bClusterUniformWriteNeeded = false;

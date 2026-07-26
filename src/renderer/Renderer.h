@@ -58,7 +58,7 @@ public:
 	void UploadScenes(std::vector<SceneUploadBatch>&& batches);
 	void UnloadAllScenes();
 
-	void RecordRenderCommand();
+	void RecordRenderCommand(JobSystem& jobSystem);
 
 	bool PrepareFrame(); // Returns false if no resize occured
 	bool SubmitFrame();
@@ -109,7 +109,7 @@ private:
 	void CreateRenderGraph();
 	void DestroyRenderGraph();
 
-	void InitFrameResources();
+	void InitFrameResources(uint32_t threadCount);
 	void CleanupFrameResources();
 
 	void CheckGlobalDescriptorSetSync();
@@ -132,10 +132,10 @@ private:
 
 	void FreeAllAssetTextures();
 
-	void TimestampPoolStart(FrameContext& frameCtx);
-	void TimestampPoolEnd(FrameContext& frameCtx);
+	void TimestampPoolStart(FrameContext& frameCtx, VkCommandBuffer cmd);
+	void TimestampPoolEnd(FrameContext& frameCtx, VkCommandBuffer cmd);
 
-	void BarrierDynamicBuffers(FrameContext& frameCtx);
+	void BarrierDynamicBuffers(FrameContext& frameCtx, VkCommandBuffer cmd);
 
 	FrameContext& GetCurrentFrame()
 	{

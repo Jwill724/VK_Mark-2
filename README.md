@@ -6,7 +6,10 @@
 - Clustered shading
 - Descriptor indexing (bindless rendering)
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
-- GLTF asset pipeline enabled (kinda) with multithreading (EnkiTS)
+- Multithreaded job system (EnkiTS)
+- Retained mode render graph
+- Async compute with multithreaded secondary recording
+- GLTF asset pipeline
 - Debug draw view (OBBs, wireframe, etc)
 - Order-independent-transparency (OIT)
 - ImGui debugging tools
@@ -28,12 +31,12 @@
 - Tracy profiler
 
 ## Future
--A True Render Graph
+-Meshlet culling
+-Mesh shaders
+-Ray traced reflections
 -Runtime asset loading and handling
 -Dynamic meshes, material and light interactions
--Async compute (compute passes during shadow depth)
 -KTX texture format
--Deeper multithreading (texture loading, cmd recording)
 -Auto Exposure
 -Grand Turismo 7 tonemapping
 -Physically based light units
@@ -46,13 +49,13 @@
 -Voxel volumetrics
 -Make TAA work well
 -Improvements to lens flare quality
--Ray traced reflections
+-RTGI
 
 ## Screenshots
 ![Sponza](res/screenshots/sponza.png)
 ![Bistro](res/screenshots/bistro.png)
 ![Helmet](res/screenshots/helmet.png)
-![1000 Ducks](res/screenshots/ducks.png)
+![10000 Ducks](res/screenshots/ducks.png)
 
 ## Controls
 - `W A S D` ‐ Move forward, left, back, right
@@ -66,8 +69,8 @@
 - `Esc` ‐ Exit application
 
 ## Requirements for build
-- Windows 10+
-- Discrete GPU with 4gb+ vram
+- Windows 10/11
+- Miniumum GPU 20 series+ or RDNA2+
 - Vulkan SDK (1.4+)
 - Visual Studio 2026
 

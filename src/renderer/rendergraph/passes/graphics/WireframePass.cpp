@@ -19,6 +19,8 @@ void RegisterWireframePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
+				.SetPhase(RenderPhase::Prepass)
+
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
@@ -37,36 +39,10 @@ void RegisterWireframePass(
 					RD::ImageAccess::GraphicsDepthWrite,
 					RD::ImageAccess::GraphicsDepthWrite)
 
-				.SetSetup(
-					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
-					{
-						pass.scope = GraphicsScope{};
-						auto& pso = std::get<GraphicsScope>(pass.scope);
-
-						const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
-
-						AttachmentDesc opaqueAttach{};
-						opaqueAttach.imageView = opaque.m_imageView;
-						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-						const bool firstWrite = ctx.renderGraph->IsFirstGraphicsWrite(RD::Renderer_RenderTarget::Opaque);
-						opaqueAttach.loadOp  = firstWrite ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-
-						AttachmentDesc depthAttach{};
-						depthAttach.imageView = depthRaw.m_imageView;
-						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-						depthAttach.SetDepth(0.0f);
-
-						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
-					})
-
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
+						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
 
@@ -77,6 +53,25 @@ void RegisterWireframePass(
 
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
+
+						const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
+						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+
+						AttachmentDesc opaqueAttach{};
+						opaqueAttach.imageView = opaque.m_imageView;
+						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+						opaqueAttach.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
+						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+						AttachmentDesc depthAttach{};
+						depthAttach.imageView = depthRaw.m_imageView;
+						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+						depthAttach.SetDepth(0);
+
+						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
 
 						pso.BeginRendering(cmd);
 
