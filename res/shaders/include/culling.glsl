@@ -39,9 +39,11 @@ bool sphere_in_side_planes(vec3 center, float radius, vec4 plane_l, vec4 plane_r
 }
 
 
-// shared mip pick + 4-corner depth gather, the box uvs are in full-texture [0,1] space,
-// dropping the center sample is safe because the chosen mip ensures the box fits in roughly one texel and the four corner
-// reads cover every texel the box can touch after the one-texel border expansion below
+// Shared mip pick + 4-corner depth gather. The box uvs are in full-texture [0,1] space.
+// ceil(log2(...)) guarantees the box is at most ONE texel wide at the chosen mip, so it
+// touches at most a 2x2 block and the four corner reads land exactly on it.
+// Assumes the mip chain runs to 1x1; if max_mip_level clamps
+// before the box fits in a texel, the gather stops being conservative.
 float hiz_min_depth_over_box(usampler2D hiz, vec2 min_uv, vec2 max_uv, float max_mip_level)
 {
 	vec2 render_size = vec2(textureSize(hiz, 0));
@@ -50,10 +52,6 @@ float hiz_min_depth_over_box(usampler2D hiz, vec2 min_uv, vec2 max_uv, float max
 	vec2 size_px   = uv_extent * render_size;
 	float mip      = ceil(log2(max(max(size_px.x, size_px.y), 1.0)));
 	mip            = clamp(mip, 0.0, max_mip_level);
-
-	vec2 mip_texel = exp2(mip) / render_size;
-	min_uv = clamp(min_uv - mip_texel, 0.0, 1.0);
-	max_uv = clamp(max_uv + mip_texel, 0.0, 1.0);
 
 	vec4 uvs = vec4(min_uv, max_uv);
 
@@ -129,7 +127,7 @@ bool sphere_hiz_visible(usampler2D hiz, vec3 center_world, float radius_world, f
 	vec2 max_uv = max(uv_a, uv_b);
 
 	float furthest_z = hiz_min_depth_over_box(hiz, min_uv, max_uv, max_mip_level);
-	return closest_box_z > furthest_z - 0.01;
+	return closest_box_z >= furthest_z * 0.999;
 }
 
 // largest world-axis scale of the upper 3x3, used to lift a local-space radius into world units

@@ -30,9 +30,9 @@ void RegisterTAAPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA) &&
-							ctx.frameState->IsTemporalValid() &&
+							ctx.frameState->IsTaaOn() &&
 							ctx.frameState->InstancesActive() &&
+							ctx.frameState->IsTemporalValid() &&
 							!ctx.frameState->DebugRendering();
 					})
 

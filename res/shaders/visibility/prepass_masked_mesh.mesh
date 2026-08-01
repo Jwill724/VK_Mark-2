@@ -1,0 +1,70 @@
+#version 450
+
+#extension GL_EXT_mesh_shader          : require
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/meshlet_cull.glsl"
+
+layout(local_size_x = TASK_GROUP_SIZE) in;
+layout(triangles, max_vertices = MESHLET_MAX_VERTS, max_primitives = MESHLET_MAX_TRIS) out;
+
+taskPayloadSharedEXT MeshletPayload payload;
+
+layout(location = 0)      out vec3 outViewNormal[];
+layout(location = 1)      out vec2 outUV[];
+layout(location = 2) flat out uint outMaterialID[];
+layout(location = 3) flat out uint outPackedID[];
+
+void main()
+{
+	uint    meshletID = payload.meshletIndices[gl_WorkGroupID.x];
+	Meshlet ml        = getMeshletBuffer().meshlets[meshletID];
+
+	uint vc = uint(ml.vertexCount);
+	uint tc = uint(ml.triangleCount);
+	SetMeshOutputsEXT(vc, tc);
+
+	uint packedID      = payload.packedID;
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(packedID)];
+	SceneData scene    = getSceneData();
+
+	mat4 model        = getInstanceTransform(inst);
+	mat3 normalMatrix = mat3(scene.view * model);
+
+	MeshletVertsBuffer mv = getMeshletVertsBuffer();
+
+	for (uint i = gl_LocalInvocationIndex; i < vc; i += TASK_GROUP_SIZE)
+	{
+		int vtxIdx = int(mv.verts[ml.vertexOffset + i] + payload.vertexOffset);
+
+		Vertex vtx = getVertexBuffer().vertices[vtxIdx];
+		vec3 position = vtx.position;
+		vec3 normal = octDecode(vec2(snorm16ToFloat(int(vtx.normalX)),
+								snorm16ToFloat(int(vtx.normalY))));
+
+		vec2 uv       = unpackUV(vtx.uvX, vtx.uvY);
+		vec4 worldPos = model * vec4(position, 1.0);
+
+		gl_MeshVerticesEXT[i].gl_Position = scene.viewProj * worldPos;
+
+		outViewNormal[i]   = normalMatrix * normal;
+		outUV[i]           = uv;
+		outMaterialID[i]   = inst.materialID;
+		outPackedID[i]     = packedID;
+	}
+
+	MeshletTrisBuffer mt = getMeshletTrisBuffer();
+
+	for (uint t = gl_LocalInvocationIndex; t < tc; t += TASK_GROUP_SIZE)
+	{
+		uint b = ml.triangleOffset + t * 3u;
+
+		gl_PrimitiveTriangleIndicesEXT[t] = uvec3(
+			uint(mt.tris[b + 0u]), uint(mt.tris[b + 1u]), uint(mt.tris[b + 2u]));
+
+		// [meshletID : 24][localTri : 7][facing : 1] — FS fills bit 0
+		gl_MeshPrimitivesEXT[t].gl_PrimitiveID = int((meshletID << 8) | (t << 1));
+	}
+}

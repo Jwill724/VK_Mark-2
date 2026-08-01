@@ -134,6 +134,36 @@ void GraphicsScope::EndRendering(VkCommandBuffer cmd)
 // Draw functions
 // ---------------
 
+void GraphicsScope::DrawMeshTasksIndirectCount(
+	VkCommandBuffer cmd,
+	uint32_t slot,
+	VkBuffer taskDispatchBuffer,
+	VkBuffer countBuffer,
+	const PipelineHandle& pipeline,
+	PushDescriptorWriter& writer)
+{
+	vkCmdBindPipeline(
+		cmd,
+		pipeline.bindPoint,
+		pipeline.pipeline);
+
+	BindPushConstant(cmd, pipeline);
+
+	writer.UpdatePushLayout(
+		cmd,
+		pipeline.bindPoint,
+		pipeline.layout.pipelineLayout);
+
+	vkCmdDrawMeshTasksIndirectCountEXT(
+		cmd,
+		taskDispatchBuffer,
+		RD::TASK_BYTE_OFFSET_BY_SLOT[slot],
+		countBuffer,
+		static_cast<uint64_t>(slot * 4u),
+		RD::MAX_TASK_DISPATCHES_BY_SLOT[slot],
+		RD::TASK_GROUP_SIZE);
+}
+
 void GraphicsScope::DrawIndexedIndirectCount(
 	VkCommandBuffer cmd,
 	uint32_t drawIndex,

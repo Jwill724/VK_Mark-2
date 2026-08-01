@@ -18,7 +18,7 @@ void main()
 
 	Vertex vtx = getVertexBuffer().vertices[gl_VertexIndex];
 
-	mat4 model = getTransformBuffer().transforms[inst.transformID];
+	mat4 model = getInstanceTransform(inst);
 
 	vec4 worldPos = model * vec4(vtx.position, 1.0);
 

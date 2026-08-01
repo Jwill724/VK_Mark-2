@@ -1,9 +1,6 @@
 #ifndef DEPTH_GLSL
 #define DEPTH_GLSL
 
-const uint HI_Z_MIP_COUNT   = 5u;
-const uint HI_Z_MIP_CLAMPED = HI_Z_MIP_COUNT - 1u;
-
 // Depth conventions in renderer are ZERO_TO_ONE and RIGHT_HANDED
 // Reversed Z depth is standard
 #define DEPTH_EPSILON_REVERSED_Z 1e-6
@@ -45,16 +42,6 @@ float linearizeDepth(float depth, float nearPlane, float farPlane) {
 	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
 }
 
-//bool hiz_has_geometry(usampler2D hiZ)
-//{
-//	// top mip aggregates the full screen — max depth > 0 means
-//	// at least one pixel wrote geometry somewhere
-//	uint packed = textureLod(hiZ, vec2(0.5), float(HI_Z_MIP_CLAMPED)).r;
-//	float minD, maxD;
-//	unpackHZB(packed, minD, maxD);
-//	return maxD > DEPTH_EPSILON_REVERSED_Z;
-//}
-
 float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float nearPlane, float farPlane)
 {
 	// convert to approximate full-res footprint
@@ -62,8 +49,8 @@ float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float near
 
 	// mip level ~ log2(footprint)
 	float mipLevel = log2(fullResRadius);
-
-	mipLevel = clamp(mipLevel, 0.0, float(HI_Z_MIP_CLAMPED));
+	float maxMip = float(textureQueryLevels(hiZ) - 1);
+	mipLevel = clamp(mipLevel, 0.0, maxMip);
 
 	uvec4 sampleDepth = textureLod(hiZ, uv, mipLevel);
 	float nearRaw = unpackNearRaw(sampleDepth.r);

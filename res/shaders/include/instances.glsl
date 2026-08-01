@@ -22,13 +22,16 @@ const uint HAS_NORMALS            = 1u << 13;
 const uint INSTANCE_ACTIVE        = 1u << 14;
 
 // Stored in VisibleInstance
-const uint VIS_PRIMARY_OPAQUE      = 1u << 0;
-const uint VIS_PRIMARY_TRANSPARENT = 1u << 1;
-const uint VIS_FLASHLIGHT          = 1u << 2;
-const uint VIS_CSM0                = 1u << 3;
-const uint VIS_CSM1                = 1u << 4;
-const uint VIS_CSM2                = 1u << 5;
-const uint VIS_CSM3                = 1u << 6;
+const uint VIS_PRIMARY_OPAQUE        = 1u << 0;
+const uint VIS_PRIMARY_OPAQUE_MASKED = 1u << 1;
+const uint VIS_PRIMARY_TRANSPARENT   = 1u << 2;
+const uint VIS_FLASHLIGHT            = 1u << 3;
+const uint VIS_CSM0                  = 1u << 4;
+const uint VIS_CSM1                  = 1u << 5;
+const uint VIS_CSM2                  = 1u << 6;
+const uint VIS_CSM3                  = 1u << 7;
+
+const uint VISIBILITY_TYPE_COUNT = 8u;
 
 const uint LOD_IDX_LOD0    = 0u;
 const uint LOD_IDX_LOD1    = 1u;
@@ -44,11 +47,31 @@ const uint LOD_PACK_PAYLOAD = (1u << LOD_PACK_SHIFT) - 1u;   // 0x0FFFFFFF
 const uint LOD_PACK_MASK    = 7u;
 const uint LOD_PACK_TRIP    = 1u << 31u;
 
+uint visMeshletID(uint g)   { return g >> 8u; }
+uint visLocalTri(uint g)    { return (g >> 1u) & 0x7Fu; }
+bool visFrontFacing(uint g) { return (g & 1u) != 0u; }
+
+uint packVisID(uint instanceID, uint lodIdx)
+{
+	return (instanceID & LOD_PACK_PAYLOAD)
+		 | ((lodIdx & LOD_PACK_MASK) << LOD_PACK_SHIFT)
+		 | LOD_PACK_TRIP;
+}
+uint visInstanceID(uint packed) { return packed & LOD_PACK_PAYLOAD; }
+uint visLODIndex(uint packed)   { return (packed >> LOD_PACK_SHIFT) & LOD_PACK_MASK; }
+
+const uint TRANSFORM_DYNAMIC_BIT = 1u << 31;
+const uint TRANSFORM_INDEX_MASK  = ~TRANSFORM_DYNAMIC_BIT;
+
+bool isDynamicTransform(uint transformID) { return (transformID & TRANSFORM_DYNAMIC_BIT) != 0u; }
+uint transformIndex(uint transformID)     { return transformID & TRANSFORM_INDEX_MASK; }
+
 struct InstanceInput
 {
 	uint meshID;
 	uint materialID;
 	uint transformID;
+	uint meshletVisibilityOffset; 
 
 	uint lod0;
 	uint lod1;
@@ -67,7 +90,7 @@ struct VisibleInstance
 	uint instanceID;
 	uint lodIndex;
 	uint selectedMesh;
-	uint passFlags;
+	uint visMask;
 };
 
 struct InstanceCursors
@@ -86,15 +109,6 @@ uint meshFromLODIndex(InstanceInput inst, uint idx)
 	if (idx == LOD_IDX_SHADOW1) return inst.shadowLod1;
 	return inst.shadowLod2;
 }
-
-uint packVisID(uint instanceID, uint lodIdx)
-{
-	return (instanceID & LOD_PACK_PAYLOAD)
-	     | ((lodIdx & LOD_PACK_MASK) << LOD_PACK_SHIFT)
-	     | LOD_PACK_TRIP;
-}
-uint visInstanceID(uint packed) { return packed & LOD_PACK_PAYLOAD; }
-uint visLODIndex(uint packed)   { return (packed >> LOD_PACK_SHIFT) & LOD_PACK_MASK; }
 
 uint packStreamBin(uint binID, uint lodIdx)
 {

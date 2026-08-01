@@ -23,7 +23,6 @@ const float PI      = 3.1415926535897932384626433832795;
 const float HALF_PI = 1.5707963267948966192313216916398;
 
 const uint MAX_CASCADES = 4u;
-const uint MAX_CASCADES_INDEX = MAX_CASCADES - 1u;
 
 const uint MAX_ENV_SETS = 8u;
 
@@ -44,6 +43,10 @@ const uint MAX_LUMINANCE_GROUPS = 65536u;
 
 const float GTAO_RADIUS_MULTIPLIER = 1.457;
 
+const uint RENDERING_MODE_VISIBILITY_DEFERRED = 0u;
+const uint RENDERING_MODE_MESH_SHADERS        = 1u;
+const uint RENDERING_MODE_UNDEFINED           = 2u;
+
 // debug helpers
 #define DBG(x) (debug.x != 0u)
 #define RET(rgb, a) { outFragColor = vec4((rgb), (a)); return; }
@@ -51,16 +54,22 @@ const float GTAO_RADIUS_MULTIPLIER = 1.457;
 struct GPUStats
 {
 	uint visibleOpaque;
-
 	uint visibleTransparent;
-
 	uint visibleShadowCasters;
 
-	uint opaqueDrawCount;
-	uint transparentDrawCount;
-	uint shadowDrawCount;
+//	uint opaqueDrawCount;
+//	uint transparentDrawCount;
+//	uint shadowDrawCount;
 
 	uint triangleCount; // Doesnt count shadows
+
+	uint meshletsSubmitted;
+	uint meshletsDrawnEarly;
+	uint meshletsDrawnLate;
+	uint meshletsCulledFrustum;
+	uint meshletsCulledCone;
+	uint meshletsCulledHiZ;
+	uint meshletTriangles;
 };
 
 struct SceneData
@@ -71,7 +80,7 @@ struct SceneData
 	mat4 invView;
 	mat4 invProj;
 	mat4 viewProj;
-	mat4 prevViewProj;
+	mat4 prevViewProjUnjittered;
 	mat4 prevView;
 	mat4 viewProjUnjittered;
 	uvec4 temporal;           // .x = frameNumber, .y = historyValid (0/1), z = Hi-Z valid(0/1)
@@ -124,8 +133,29 @@ struct Mesh
 	uint indexCount;
 	uint vertexOffset;
 	uint vertexCount;
+	uint meshletOffset;
+	uint meshletCount;
+	uint meshletVisibilityBase;
 	uint shadowFirstIndex;
 	uint shadowIndexCount;
+	uint shadowMeshletOffset;
+	uint shadowMeshletCount;
+};
+
+const uint MESHLET_MAX_VERTS = 64u;
+const uint MESHLET_MAX_TRIS  = 124u;
+
+struct Meshlet
+{
+	vec3     center;
+	float    radius;
+
+	i8vec3   coneAxis;
+	int8_t   coneCutoff;
+	uint     vertexOffset;
+	uint     triangleOffset;
+	uint8_t  vertexCount;   // <= 64
+	uint8_t  triangleCount; // <= 124
 };
 
 struct Vertex
@@ -149,7 +179,8 @@ struct Vertex
 };
 
 vec2 octEncode(vec3 n) {
-	n /= abs(n.x) + abs(n.y) + abs(n.z);
+	float l1 = abs(n.x) + abs(n.y) + abs(n.z);
+	n /= max(l1, 1e-8);
 	if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * sign(n.xy);
 	return n.xy * 0.5 + 0.5;
 }
@@ -322,6 +353,7 @@ struct LocalLight {
 struct ShadowCSM {
 	mat4 cascadeVP[MAX_CASCADES];
 	mat4 cascadeLightViews[MAX_CASCADES];
+	mat4 cascadeInvTransVP[MAX_CASCADES];
 	vec4 cascadeSplits;
 	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize(1/atlasHeight)
 	vec4 params;
@@ -487,6 +519,31 @@ LuminanceBuffer getLuminanceBuffer() {
 	uint64_t addr = getABTGlobalAddress(ABT_Luminance);
 	return LuminanceBuffer(addr);
 }
+
+layout(buffer_reference, scalar) readonly buffer MeshletBuffer { Meshlet meshlets[]; };
+MeshletBuffer getMeshletBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_Meshlet);
+	return MeshletBuffer(addr);
+}
+layout(buffer_reference, scalar) readonly buffer MeshletVertsBuffer { uint verts[]; };
+MeshletVertsBuffer getMeshletVertsBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_MeshletVertices);
+	return MeshletVertsBuffer(addr);
+}
+layout(buffer_reference, scalar) readonly buffer MeshletTrisBuffer  { uint8_t tris[]; };
+MeshletTrisBuffer getMeshletTrisBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_MeshletTriangles);
+	return MeshletTrisBuffer(addr);
+}
+
+layout(buffer_reference, scalar) readonly buffer StaticTransformsBuffer {
+	mat4 transforms[];
+};
+StaticTransformsBuffer getStaticTransformsBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_StaticTransforms);
+	return StaticTransformsBuffer(addr);
+}
+
 
 
 // ================================
@@ -657,25 +714,32 @@ ShadowCullDataBuffer getShadowCullDataBuffer() {
 	return ShadowCullDataBuffer(addr);
 }
 
-layout(buffer_reference, scalar) readonly buffer TransformsBuffer {
+layout(buffer_reference, scalar) readonly buffer DynamicTransformsBuffer {
 	mat4 transforms[];
 };
-TransformsBuffer getTransformBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Transforms);
-	return TransformsBuffer(addr);
+DynamicTransformsBuffer getDynamicTransformsBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_DynamicTransforms);
+	return DynamicTransformsBuffer(addr);
 }
 
-layout(buffer_reference, scalar) readonly buffer PrevTransformsBuffer {
-	mat4 prevTransforms[];
+layout(buffer_reference, scalar) readonly buffer MotionMatricesBuffer {
+	mat4 matrices[];
 };
-PrevTransformsBuffer getPrevTransformBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_PrevTransforms);
-	return PrevTransformsBuffer(addr);
+MotionMatricesBuffer getMotionMatricesBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_MotionMatrices);
+	return MotionMatricesBuffer(addr);
+}
+
+mat4 getInstanceTransform(InstanceInput inst)
+{
+	uint idx = transformIndex(inst.transformID);
+	return isDynamicTransform(inst.transformID)
+		? getDynamicTransformsBuffer().transforms[idx]
+		: getStaticTransformsBuffer().transforms[idx];
 }
 
 // gpu stats
-
-layout(buffer_reference, scalar) buffer GPUStatsBuffer {
+layout(buffer_reference, scalar) writeonly buffer GPUStatsBuffer {
 	GPUStats gpuStats;
 };
 GPUStatsBuffer getGPUStatsBuffer() {
@@ -691,6 +755,31 @@ layout(buffer_reference, scalar) buffer DispatchIndirectArgsBuffer {
 DispatchIndirectArgsBuffer getIndirectDispatchBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_DispatchIndirectArgs);
 	return DispatchIndirectArgsBuffer(addr);
+}
+
+// Task Dispatch
+layout(buffer_reference, scalar) buffer TaskDispatchBuffer {
+	TaskDispatch taskDispatch[];
+};
+TaskDispatchBuffer getTaskDispatchBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_TaskDispatch);
+	return TaskDispatchBuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer MeshletVisibilityABuffer {
+	uint bits[];
+};
+MeshletVisibilityABuffer getMeshletVisibilityABuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_MeshletVisibilityA);
+	return MeshletVisibilityABuffer(addr);
+}
+
+layout(buffer_reference, scalar) buffer MeshletVisibilityBBuffer {
+	uint bits[];
+};
+MeshletVisibilityBBuffer getMeshletVisibilityBBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_MeshletVisibilityB);
+	return MeshletVisibilityBBuffer(addr);
 }
 
 layout(buffer_reference, scalar) buffer DebugCountersBuffer {
@@ -947,20 +1036,6 @@ void unpackVertex(
 	tangentHandedness = (ty >= 0) ? 1.0 : -1.0;
 	tangent = octDecode(vec2(snorm16ToFloat(int(vtx.tangentX)),
 							snorm16ToFloat(abs(ty))));
-}
-
-void unpackVertexPrepass(
-	int vertexId,
-	out vec2 uv,
-	out vec3 position,
-	out vec3 normal)
-{
-	Vertex vtx = getVertexBuffer().vertices[vertexId];
-	position = vtx.position;
-
-	uv     = unpackUV(vtx.uvX, vtx.uvY);
-	normal = octDecode(vec2(snorm16ToFloat(int(vtx.normalX)),
-							snorm16ToFloat(int(vtx.normalY))));
 }
 
 #endif

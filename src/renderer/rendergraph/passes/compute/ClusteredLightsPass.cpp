@@ -44,7 +44,8 @@ void RegisterClusteredLightsPass(
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::ComputeRead)
+					RD::ImageAccess::Read,
+					0u, VK_REMAINING_MIP_LEVELS)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

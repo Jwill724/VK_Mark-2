@@ -32,7 +32,8 @@
 #include <algorithm>
 #include <variant>
 
-#include "vulkan/Vulkan.h"
+#include "Vulkan/vulkan.h"
+#include "../renderer/backend/VulkanExtensionFunctions.h"
 #include "glfw/glfw3.h"
 #include "fmt/core.h"
 #include <vma/vk_mem_alloc.h>

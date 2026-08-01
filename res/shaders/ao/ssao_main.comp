@@ -175,7 +175,7 @@ void main() {
 	imageStore(outEdgeInfo, pix, vec4(packed));
 
 	// View space normal
-	const vec3 N = normalize(texture(inViewSpaceNormals, uv).rgb * 2.0 - 1.0);
+	vec3 N = octDecode(texture(inViewSpaceNormals, uv).rg * 2.0 - 1.0);
 
 	// Per Intel: Moves center pixel a bit to avoid imprecision artifacts.
 	centerZ *= 0.99999; // Good for d32
@@ -222,6 +222,8 @@ void main() {
 
 	// Minimal sample offset to avoid sampling center
 	const float minS = pixelTooCloseThreshold / screenspaceRadius;
+
+	float maxMip = float(textureQueryLevels(inHiZ) - 1);
 
 	bool bentNormalsOn = (debug.aoMode == AO_VBAO_BENT_NORMALS);
 
@@ -281,7 +283,7 @@ void main() {
 			sampleOffset              = round(sampleOffset) * fullPixelSize;
 
 			// Selected mip level in depth pyramid
-			const float mipLevel      = clamp(log2(sampleOffsetLength) - GTAO_DEPTH_MIP_SAMPLING_OFFSET, 0.0, HI_Z_MIP_CLAMPED);
+			const float mipLevel      = clamp(log2(sampleOffsetLength) - GTAO_DEPTH_MIP_SAMPLING_OFFSET, 0.0, maxMip);
 
 			vec2 sampleScreenPos0     = uv + sampleOffset;
 			float SZ0                 = textureLod(inHiZ, sampleScreenPos0, mipLevel).r;

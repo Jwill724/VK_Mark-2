@@ -1,7 +1,8 @@
 #pragma once
 
-#include "Core.h"
 #include <vector>
+#include <unordered_map>
+#include <memory>
 
 #include "renderer/RendererDefinitions.h"
 namespace RD = RendererDefinitions;
@@ -13,23 +14,22 @@ class Allocator;
 struct Mesh;
 struct MeshLODs;
 struct InstanceState;
-struct VirtualInstance;
 struct InstanceInput;
 struct BinTableBuild;
 struct DrawBinKeys;
 enum class ModelID;
 struct ModelAsset;
 class BindlessBDATable;
+class Scene;
 
 namespace DrawPreparation
 {
 	bool SyncInstanceInputs(
 		InstanceState& vs,
-		const std::vector<VirtualInstance>& virtualInstances,
+		const Scene& scene,
 		const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
 		const std::vector<Mesh>& meshData,
 		const std::vector<MeshLODs>& meshLods,
-		const std::vector<glm::mat4>& transforms,
 		const std::vector<uint32_t>&  materialFlags);
 
 	BinTableBuild BuildDrawBinTable(const std::vector<InstanceInput>& instances);
@@ -41,7 +41,7 @@ namespace DrawPreparation
 		Device&                           device,
 		Allocator&                        allocator,
 		const std::vector<InstanceInput>& instanceInputs,
-		const std::vector<glm::mat4>&     transforms,
+		Scene&                            scene,
 		const std::vector<LocalLight>&    lights,
-		bool                              isTemporalValid);
+		bool                              bMotionNeeded);
 }

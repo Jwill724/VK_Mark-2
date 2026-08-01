@@ -56,30 +56,30 @@ struct RenderPassExecutionContext
 class RenderScope
 {
 public:
+	static constexpr size_t PUSH_ALIGNMENT = 16u;
+
 	template<typename T>
 	void SetPush(const T& data) noexcept
 	{
 		static_assert(std::is_trivially_copyable_v<T>);
-		m_pushData = const_cast<T*>(&data);
+		static_assert(sizeof(T) <= RD::MAX_PUSH_CONSTANT_SIZE,
+			"Push constant exceeds the pipeline layout's declared range.");
+		static_assert(alignof(T) <= PUSH_ALIGNMENT,
+			"Push struct alignment exceeds the scope's staging buffer alignment.");
+
+		std::memcpy(m_pushData.data(), &data, sizeof(T));
 		m_pushSize = sizeof(T);
 	}
 
-	void ClearPush() noexcept {
-		m_pushData = nullptr;
-		m_pushSize = 0u;
-	}
+	void ClearPush() noexcept { m_pushSize = 0u; }
 
 	template<typename T, typename Fn>
 	void EditPush(Fn&& fn) noexcept
 	{
 		static_assert(std::is_trivially_copyable_v<T>);
 
-		T* push = static_cast<T*>(
-			GetValidatedPushData(
-				sizeof(T),
-				alignof(T)));
-
-		fn(*push);
+		T* push = static_cast<T*>(GetValidatedPushData(sizeof(T), alignof(T)));
+		if (push) fn(*push);
 	}
 
 	void BindPushConstant(VkCommandBuffer cmd, const PipelineHandle& handle);
@@ -100,7 +100,7 @@ public:
 
 protected:
 	bool m_bSkipPushConstant = false;
-	void* m_pushData = nullptr;
+	alignas(PUSH_ALIGNMENT) std::array<std::byte, RD::MAX_PUSH_CONSTANT_SIZE> m_pushData{};
 	size_t m_pushSize = 0;
 
 	void* GetValidatedPushData(

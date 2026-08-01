@@ -27,7 +27,7 @@ void Renderer::Init(
 	SetDrawExtent(window.GetExtent());
 
 	InitRenderSettings(
-		RD::RenderingMode::VISIBILITY_DEFERRED,
+		RD::RenderingMode::MESH_SHADERS,
 		LensFlareOn,
 		ChromaticAberrationOn,
 		BloomOn,
@@ -118,7 +118,8 @@ void Renderer::Init(
 	const size_t totalFrameStaging =
 		GPU_BYTES_INSTANCE_INPUT +
 		GPU_BYTES_DRAW_BIN_KEYS + 
-		GPU_BYTES_TRANSFORMS +
+		GPU_BYTES_DYNAMIC_TRANSFORMS +
+		GPU_BYTES_DYNAMIC_TRANSFORMS + // Motion matrices
 		GPU_BYTES_LIGHTS +
 		m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES;
 
@@ -141,6 +142,11 @@ void Renderer::Init(
 	m_globalAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::InstanceInputs,
 		GPU_BYTES_INSTANCE_INPUT,
+		m_allocator);
+
+	m_globalAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::StaticTransforms,
+		GPU_BYTES_STATIC_TRANSFORMS,
 		m_allocator);
 
 	m_globalAddressTable.AddGPUBufferToAddressTable(
@@ -486,11 +492,14 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 	}
 
 	// ---- Compute total staging size needed ----
-	size_t totalTexBytes  = 0;
-	size_t totalVtxBytes  = 0;
-	size_t totalIdxBytes  = 0;
-	size_t totalMeshBytes = 0;
-	size_t totalMatBytes  = 0;
+	size_t totalTexBytes     = 0;
+	size_t totalVtxBytes     = 0;
+	size_t totalIdxBytes     = 0;
+	size_t totalMeshBytes    = 0;
+	size_t totalMatBytes     = 0;
+	size_t totalMeshletBytes = 0;
+	size_t totalMLVertBytes  = 0;
+	size_t totalMLTriBytes   = 0;
 
 	auto& assetCounts = m_profiler.assetCounts;
 
@@ -507,15 +516,20 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 		assetCounts.totalMeshCount += static_cast<uint32_t>(batch.meshes.size());
 		assetCounts.totalMaterialCount += static_cast<uint32_t>(batch.materials.size());
 
-		totalVtxBytes  += batch.vertices.size()  * sizeof(Vertex);
-		totalIdxBytes  += batch.indices.size()   * sizeof(uint32_t);
-		totalMeshBytes += batch.meshes.size()    * sizeof(Mesh);
-		totalMatBytes  += batch.materials.size() * sizeof(Material);
+		totalVtxBytes     += batch.vertices.size()         * sizeof(Vertex);
+		totalIdxBytes     += batch.indices.size()          * sizeof(uint32_t);
+		totalMeshBytes    += batch.meshes.size()           * sizeof(Mesh);
+		totalMatBytes     += batch.materials.size()        * sizeof(Material);
+		totalMeshletBytes += batch.meshlets.size()         * sizeof(Meshlet);
+		totalMLVertBytes  += batch.meshletVertices.size()  * sizeof(uint32_t);
+		totalMLTriBytes   += batch.meshletTriangles.size() * sizeof(uint8_t);
 	}
 
-	const size_t totalNeeded = totalTexBytes + totalVtxBytes + totalIdxBytes
-							 + totalMeshBytes + totalMatBytes
-							 + m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES;
+	const size_t totalNeeded =
+		totalTexBytes + totalVtxBytes + totalIdxBytes
+		+ totalMeshBytes + totalMatBytes + totalMeshletBytes
+		+ totalMLTriBytes + totalMLVertBytes
+		+ m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES;
 
 	if (totalNeeded > m_allocator.GlobalStaging.GetCapacity())
 		m_allocator.ResetGlobalStaging(totalNeeded, m_device->GetNonCoherentAtomSize());
@@ -540,6 +554,9 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 		ASSERT(totalVtxBytes > 0);
 		ASSERT(totalIdxBytes > 0);
 		ASSERT(totalMeshBytes > 0);
+		ASSERT(totalMeshletBytes > 0);
+		ASSERT(totalMLVertBytes > 0);
+		ASSERT(totalMLTriBytes > 0);
 
 		// Allocate singular global buffers sized for ALL scenes combined
 		m_globalAddressTable.AddGPUBufferToAddressTable(
@@ -550,6 +567,15 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 
 		m_globalAddressTable.AddGPUBufferToAddressTable(
 			RD::Renderer_Buffer::Mesh, totalMeshBytes, m_allocator);
+
+		m_globalAddressTable.AddGPUBufferToAddressTable(
+			RD::Renderer_Buffer::Meshlet, totalMeshletBytes, m_allocator);
+
+		m_globalAddressTable.AddGPUBufferToAddressTable(
+			RD::Renderer_Buffer::MeshletVertices, totalMLVertBytes, m_allocator);
+
+		m_globalAddressTable.AddGPUBufferToAddressTable(
+			RD::Renderer_Buffer::MeshletTriangles, totalMLTriBytes, m_allocator);
 
 		auto cmdPool = m_device->GetThreadCommandPool(
 			JobSystem::RENDER_THREAD, QueueType::Transfer);
@@ -580,7 +606,13 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 
 		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
 		{
-			UpdateGlobalBufferTable(cmd);
+			auto write = m_allocator.GlobalStaging.Stage(
+				m_globalAddressTable.GetAddrPtrTable().data(),
+				m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
+				m_globalAddressTable.GetTableBuffer().m_buffer);
+
+			m_allocator.GlobalStaging.Flush();
+			m_allocator.GlobalStaging.CopyCommand(cmd, write);
 		}, cmdPool, QueueType::Transfer);
 
 		m_device->SubmitDeferredCommands(QueueType::Transfer);
@@ -625,22 +657,32 @@ void Renderer::BatchUploadMeshes(
 	std::vector<std::shared_ptr<ModelAsset>>&   assets,
 	VkCommandBuffer                             cmd)
 {
-	const auto& vtxBuf  = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Vertex);
-	const auto& idxBuf  = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index);
-	const auto& meshBuf = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Mesh);
+	const auto& vtxBuf          = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Vertex);
+	const auto& idxBuf          = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index);
+	const auto& meshBuf         = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Mesh);
+	const auto& meshletBuf      = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Meshlet);
+	const auto& meshletVertsBuf = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::MeshletVertices);
+	const auto& meshletTrisBuf  = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::MeshletTriangles);
 
 	// Running cursors — each scene appends after the previous
-	uint32_t globalVertexCursor = 0;
-	uint32_t globalIndexCursor  = 0;
-	uint32_t globalMeshCursor   = 0;
+	uint32_t globalVertexCursor       = 0;
+	uint32_t globalIndexCursor        = 0;
+	uint32_t globalMeshCursor         = 0;
+	uint32_t globalMeshletCursor      = 0;
+	uint32_t globalMeshletVertsCursor = 0;
+	uint32_t globalMeshletTrisCursor  = 0;
 
 	// Staging offsets into the single global buffer
-	size_t stagingVtxOffset  = 0;
-	size_t stagingIdxOffset  = 0;
-	size_t stagingMeshOffset = 0;
+	size_t stagingVtxOffset          = 0;
+	size_t stagingIdxOffset          = 0;
+	size_t stagingMeshOffset         = 0;
+	size_t stagingMeshletOffset      = 0;
+	size_t stagingMeshletVertsOffset = 0;
+	size_t stagingMeshletTrisOffset  = 0;
 
 	// Collect all GPU mesh structs into one flat array
 	std::vector<Mesh> allGpuMeshes;
+	std::vector<Meshlet> allMeshlets;
 
 	for (size_t b = 0; b < batches.size(); ++b)
 	{
@@ -649,28 +691,38 @@ void Renderer::BatchUploadMeshes(
 
 		if (batch.meshes.empty()) continue;
 
-		const uint32_t localMeshBase   = globalMeshCursor;
-		const uint32_t localVertBase   = globalVertexCursor;
-		const uint32_t localIndexBase  = globalIndexCursor;
+		const uint32_t localMeshBase         = globalMeshCursor;
+		const uint32_t localVertBase         = globalVertexCursor;
+		const uint32_t localIndexBase        = globalIndexCursor;
+		const uint32_t localMeshletBase      = globalMeshletCursor;
+		const uint32_t localMeshletVertsBase = globalMeshletVertsCursor;
+		const uint32_t localMeshletTrisBase  = globalMeshletTrisCursor;
 
 		asset.meshGlobalIDs.reserve(batch.meshes.size());
 
 		for (auto& md : batch.meshes)
 		{
 			// Adjust to global offsets
-			md.firstIndex       += localIndexBase;
-			md.vertexOffset     += localVertBase;
-			md.shadowFirstIndex += localIndexBase;
+			md.firstIndex          += localIndexBase;
+			md.vertexOffset        += localVertBase;
+			md.shadowFirstIndex    += localIndexBase;
+			md.meshletOffset       += localMeshletBase;
+			md.shadowMeshletOffset += localMeshletBase;
 
 			Mesh gpuMesh{};
-			gpuMesh.firstIndex          = md.firstIndex;
-			gpuMesh.indexCount          = md.indexCount;
-			gpuMesh.vertexOffset        = md.vertexOffset;
-			gpuMesh.vertexCount         = md.vertexCount;
-			gpuMesh.shadowFirstIndex    = md.shadowFirstIndex;
-			gpuMesh.shadowIndexCount    = md.shadowIndexCount;
-			gpuMesh.localAABB           = md.localAABB;
-			gpuMesh.localBoundingRadius = md.localBoundingRadius;
+			gpuMesh.firstIndex                  = md.firstIndex;
+			gpuMesh.indexCount                  = md.indexCount;
+			gpuMesh.vertexOffset                = md.vertexOffset;
+			gpuMesh.vertexCount                 = md.vertexCount;
+			gpuMesh.shadowFirstIndex            = md.shadowFirstIndex;
+			gpuMesh.shadowIndexCount            = md.shadowIndexCount;
+			gpuMesh.localAABB                   = md.localAABB;
+			gpuMesh.localBoundingRadius         = md.localBoundingRadius;
+			gpuMesh.meshletCount                = md.meshletCount;
+			gpuMesh.meshletOffset               = md.meshletOffset;
+			gpuMesh.shadowMeshletCount          = md.shadowMeshletCount;
+			gpuMesh.shadowMeshletOffset         = md.shadowMeshletOffset;
+			gpuMesh.meshletVisibilityBase       = md.meshletVisibilityBase;
 
 			const uint32_t globalID = m_registeredMeshes.RegisterMesh(gpuMesh);
 			md.globalMeshID = globalID;
@@ -678,7 +730,13 @@ void Renderer::BatchUploadMeshes(
 			allGpuMeshes.push_back(gpuMesh);
 		}
 
-		// Wire up LODs using global IDs
+		for (auto& ml : batch.meshlets)
+		{
+			ml.vertexOffset   += localMeshletVertsBase;
+			ml.triangleOffset += localMeshletTrisBase;
+			allMeshlets.push_back(ml);
+		}
+
 		m_registeredMeshes.ResizeMeshLods();
 		for (uint32_t i = 0; i < static_cast<uint32_t>(batch.meshes.size()); ++i)
 		{
@@ -707,20 +765,25 @@ void Renderer::BatchUploadMeshes(
 				inst.localMeshIdx < static_cast<uint32_t>(batch.meshes.size()))
 				inst.localMeshIdx = batch.meshes[inst.localMeshIdx].globalMeshID;
 
-		globalVertexCursor += static_cast<uint32_t>(batch.vertices.size());
-		globalIndexCursor  += static_cast<uint32_t>(batch.indices.size());
-		globalMeshCursor   += static_cast<uint32_t>(batch.meshes.size());
+		globalVertexCursor       += static_cast<uint32_t>(batch.vertices.size());
+		globalIndexCursor        += static_cast<uint32_t>(batch.indices.size());
+		globalMeshCursor         += static_cast<uint32_t>(batch.meshes.size());
+		globalMeshletCursor      += static_cast<uint32_t>(batch.meshlets.size());
+		globalMeshletVertsCursor += static_cast<uint32_t>(batch.meshletVertices.size());
+		globalMeshletTrisCursor  += static_cast<uint32_t>(batch.meshletTriangles.size());
 	}
 
 	// Stage all scenes into the global buffers in one contiguous write per buffer
-	size_t vtxOff = 0, idxOff = 0;
+	size_t vtxOff = 0, idxOff = 0, mlVertOff = 0, mlTrisOff = 0;
 
 	for (auto& batch : batches)
 	{
-		if (batch.vertices.empty()) continue;
+		if (batch.vertices.empty() && batch.meshletVertices.empty()) continue;
 
 		const size_t vBytes = batch.vertices.size() * sizeof(Vertex);
 		const size_t iBytes = batch.indices.size()  * sizeof(uint32_t);
+		const size_t mlVertBytes = batch.meshletVertices.size() * sizeof(uint32_t);
+		const size_t mlTrisBytes = batch.meshletTriangles.size() * sizeof(uint8_t);
 
 		// Stage directly into the correct offset of the global GPU buffer
 		auto vtxWrite = m_allocator.GlobalStaging.Stage(
@@ -728,14 +791,26 @@ void Renderer::BatchUploadMeshes(
 		auto idxWrite = m_allocator.GlobalStaging.Stage(
 			batch.indices.data(), iBytes, idxBuf.m_buffer, idxOff);
 
+		auto mlVertWrite = m_allocator.GlobalStaging.Stage(
+			batch.meshletVertices.data(), mlVertBytes, meshletVertsBuf.m_buffer, mlVertOff);
+		auto mlTrisWrite = m_allocator.GlobalStaging.Stage(
+			batch.meshletTriangles.data(), mlTrisBytes, meshletTrisBuf.m_buffer, mlTrisOff);
+
 		m_allocator.GlobalStaging.CopyCommand(cmd, vtxWrite);
 		m_allocator.GlobalStaging.CopyCommand(cmd, idxWrite);
+		
+		m_allocator.GlobalStaging.CopyCommand(cmd, mlVertWrite);
+		m_allocator.GlobalStaging.CopyCommand(cmd, mlTrisWrite);
 
 		vtxOff += vBytes;
 		idxOff += iBytes;
+		mlVertOff += mlVertBytes;
+		mlTrisOff += mlTrisBytes;
 
 		batch.vertices.clear(); batch.vertices.shrink_to_fit();
 		batch.indices.clear();  batch.indices.shrink_to_fit();
+		batch.meshletVertices.clear(); batch.meshletVertices.shrink_to_fit();
+		batch.meshletTriangles.clear();  batch.meshletTriangles.shrink_to_fit();
 	}
 
 	// Stage the combined mesh array — already adjusted to global offsets
@@ -746,6 +821,15 @@ void Renderer::BatchUploadMeshes(
 			allGpuMeshes.data(), totalMeshBytes, meshBuf.m_buffer);
 		m_allocator.GlobalStaging.Flush();
 		m_allocator.GlobalStaging.CopyCommand(cmd, meshWrite);
+	}
+
+	if (!allMeshlets.empty())
+	{
+		const size_t totalMeshletBytes = allMeshlets.size() * sizeof(Meshlet);
+		auto meshletWrite = m_allocator.GlobalStaging.Stage(
+			allMeshlets.data(), totalMeshletBytes, meshletBuf.m_buffer);
+		m_allocator.GlobalStaging.Flush();
+		m_allocator.GlobalStaging.CopyCommand(cmd, meshletWrite);
 	}
 }
 
@@ -825,16 +909,6 @@ void Renderer::BatchUploadMaterials(
 	m_allocator.GlobalStaging.Reset();
 }
 
-void Renderer::UpdateGlobalBufferTable(VkCommandBuffer cmd)
-{
-	auto write = m_allocator.GlobalStaging.Stage(
-		m_globalAddressTable.GetAddrPtrTable().data(),
-		m_globalAddressTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
-		m_globalAddressTable.GetTableBuffer().m_buffer);
-
-	m_allocator.GlobalStaging.Flush();
-	m_allocator.GlobalStaging.CopyCommand(cmd, write);
-}
 
 
 
@@ -858,13 +932,13 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	frameCtx.SetHiZValidResult(scene.GetSceneData().temporal.z);
 
 	bool instanceUploadNeeded = false;
+
 	instanceUploadNeeded = DrawPreparation::SyncInstanceInputs(
 		World::GetInstanceState(),
-		scene.GetVirtualInstances(),
+		scene,
 		World::_loadedScenes,
 		m_registeredMeshes.GetMeshes(),
 		m_registeredMeshes.GetLods(),
-		scene.GetTransforms(),
 		m_materialFlagsIDs);
 
 	frameCtx.FlagInstanceInputUpload(instanceUploadNeeded);
@@ -873,20 +947,6 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	{
 		m_drawBinTableBuild = DrawPreparation::BuildDrawBinTable(World::GetInstanceState().gpuInputs);
 	}
-
-	DrawPreparation::UploadGPUBuffersForFrame(
-		frameCtx,
-		m_globalAddressTable,
-		m_drawBinTableBuild.binKeys,
-		*m_device,
-		m_allocator,
-		World::GetInstanceState().gpuInputs,
-		scene.GetTransforms(),
-		LightingSystem::_globalLightList,
-		frameCtx.IsTemporalValid());
-
-	// Updates inline uniform flashtoggle for instance culling shader
-	m_profiler.debugToggles.enableFlashlight = LightingSystem::_mainFlashLight.IsFlashLightOn();
 
 	auto& forwardPush = m_profiler.forwardPush;
 	auto& lumaPush = m_profiler.lumaExposureSettings;
@@ -917,6 +977,15 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	debug.activeInstanceCount = World::GetInstanceState().gpuInputs.size();
 	debug.activeLightCount = LightingSystem::GetActiveLightCount();
 
+	{
+		const uint32_t caps = RD::DebugCapsForMode(
+			static_cast<RD::RenderingMode>(debug.renderingMode));
+
+		if (!RD::DebugViewSupported(caps, debug.debugView)) {
+			debug.debugView = static_cast<uint32_t>(RD::DebugView::Off);
+		}
+	}
+
 	m_renderGraphState.UpdateToggles(debug);
 	m_renderGraphState.UpdateTemporal(frameCtx.IsTemporalValid(), frameCtx.IsHiZValid());
 
@@ -934,6 +1003,17 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	{
 		m_renderGraphState.SetDebugMask(RD::DebugState::ShadedOverlay);
 	}
+
+	DrawPreparation::UploadGPUBuffersForFrame(
+		frameCtx,
+		m_globalAddressTable,
+		m_drawBinTableBuild.binKeys,
+		*m_device,
+		m_allocator,
+		World::GetInstanceState().gpuInputs,
+		World::GetScene(), // Needs reference
+		LightingSystem::_globalLightList,
+		frameCtx.IsTemporalValid() && m_renderGraphState.IsTaaOn());
 
 	new (&m_renderPassExecutionContext) RenderPassExecutionContext
 	{
@@ -1049,10 +1129,11 @@ bool Renderer::PrepareFrame()
 	// Next swapchain image
 	auto swapResult = m_swapchain.AcquireNextImage(frameCtx.m_frameIndex);
 
-	// This condition basically never occurs
+	// This condition should basically never occur
 	if (swapResult == VK_ERROR_OUT_OF_DATE_KHR || swapResult == VK_SUBOPTIMAL_KHR)
 	{
 		m_device->GetGraphicsQueue().WaitIdle();
+		StallDevice();
 		m_bHasDrawExtentResized = true;
 		return m_bHasDrawExtentResized;
 	}
@@ -1070,31 +1151,6 @@ bool Renderer::PrepareFrame()
 	// The safe zone now to do whatever
 	// =================================
 
-	const auto curWidth = m_drawExtent.Width();
-	const auto curHeight = m_drawExtent.Height();
-
-	// Only compute buffer sizes once to share with frames contexts
-	if (m_bHasDrawExtentResized)
-	{
-		m_clusterBufferSizes.UpdateClusterBufferSizes(curWidth, curHeight);
-		m_cmaa2BufferSizes.UpdateCmaa2BufferSizes(curWidth, curHeight);
-
-		m_renderGraph.SetDrawExtent(m_drawExtent);
-
-		m_bHasDrawExtentResized = false;
-	}
-
-	// Gpu driven buffers, modify each context at a time
-	if (frameCtx.DoesCachedExtentNeedUpdate(curWidth, curHeight))
-	{
-		frameCtx.CreateClusterBuffers(
-			m_clusterBufferSizes,
-			m_allocator);
-		frameCtx.CreateCMAA2Buffers(
-			m_cmaa2BufferSizes,
-			m_allocator);
-	}
-
 	const auto& debug = m_profiler.debugToggles;
 
 	const bool wantsDebug =
@@ -1109,6 +1165,29 @@ bool Renderer::PrepareFrame()
 			frameCtx.DestroyDebugBuffers(m_allocator);
 
 		frameCtx.m_bDebugLineRendering = wantsDebug;
+	}
+
+	if (m_activeRenderingMode != static_cast<RD::RenderingMode>(debug.renderingMode))
+	{
+		StallDevice();
+		m_activeRenderingMode = static_cast<RD::RenderingMode>(debug.renderingMode);
+
+		for (uint32_t i = 0; i < m_framesInFlight; ++i)
+			m_frameContexts[i].InvalidateMeshletVisibility();
+	}
+
+	const bool bMeshPath =
+		m_activeRenderingMode == RD::RenderingMode::MESH_SHADERS;
+
+	if (bMeshPath)
+	{
+		frameCtx.SwapMeshletVisibility();
+	}
+
+	if (frameCtx.DoesCachedExtentNeedUpdate(m_drawExtent.Width(), m_drawExtent.Height()))
+	{
+		frameCtx.CreateClusterBuffers(m_clusterBufferSizes, m_allocator);
+		frameCtx.CreateCMAA2Buffers(m_cmaa2BufferSizes, m_allocator);
 	}
 
 	// Handles initialization and any updates during runtime
@@ -1153,6 +1232,19 @@ bool Renderer::SubmitFrame()
 			transferQ.GetTimelineSemaphore(),
 			frameCtx.transferWaitValue,
 			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT));
+	}
+
+	if (frameCtx.transferWaitValue != UINT64_MAX)
+	{
+		firstBatchWaits.emplace_back(TimelineWait(
+			transferQ.GetTimelineSemaphore(),
+			frameCtx.transferWaitValue,
+			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT     |
+			VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT      |
+			VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT    |
+			VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT));
+
+		frameCtx.transferWaitValue = UINT64_MAX;
 	}
 
 	const VkPipelineStageFlags2 kAcquireStages =
@@ -1253,6 +1345,9 @@ bool Renderer::SubmitFrame()
 		else
 			graphicsQ.WaitIdle();
 
+		// Extra security
+		StallDevice();
+
 		m_bHasDrawExtentResized = true;
 		CheckCSMAtlasExtentUpdate();
 		return m_bHasDrawExtentResized;
@@ -1280,14 +1375,26 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 {
 	SetDrawExtent(newWindowExtent);
 
+	const uint32_t width  = m_drawExtent.Width();
+	const uint32_t height = m_drawExtent.Height();
+
 	m_swapchain.ResizeSwapchain(
 		m_device->GetContext(),
 		m_device->GetSurface(),
 		m_device->GetSwapchainSupportDetails(),
 		newWindowExtent);
 
-	m_bindlessImageTable.UpdateRenderTargets({ m_drawExtent.Width(), m_drawExtent.Height(), 1u }, m_allocator);
+	ASSERT(m_swapchain.GetImageCount() == m_framesInFlight,
+		"Swapchain image count changed on resize (%u -> %u); frame contexts are not sized for this.",
+		m_framesInFlight, m_swapchain.GetImageCount());
+
+	m_clusterBufferSizes.UpdateClusterBufferSizes(width, height);
+	m_cmaa2BufferSizes.UpdateCmaa2BufferSizes(width, height);
+	m_renderGraph.SetDrawExtent(m_drawExtent);
+
+	m_bindlessImageTable.UpdateRenderTargets({ width, height, 1u }, m_allocator);
 	m_renderGraph.InvalidateTrackedLayouts();
+
 	{
 		auto cmdPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Graphics);
 
@@ -1299,6 +1406,8 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 		m_device->SubmitDeferredCommands(QueueType::Graphics);
 		m_device->GetGraphicsQueue().WaitIdle();
 	}
+
+	m_bHasDrawExtentResized = false;
 }
 
 void Renderer::TimestampPoolStart(FrameContext& frameCtx, VkCommandBuffer cmd)
@@ -1339,17 +1448,17 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx, VkCommandBuffer cmd
 
 	if (frameCtx.m_bTransformsBufferUploadNeeded)
 	{
-		if (frameCtx.IsTemporalValid())
+		if (frameCtx.IsTemporalValid() && m_renderGraphState.IsTaaOn())
 		{
 			BufferBarriers::TransferWriteToComputeRead(
 				cmd,
-				addrTable.GetGPUBuffer(RD::Renderer_Buffer::PrevTransforms),
+				addrTable.GetGPUBuffer(RD::Renderer_Buffer::MotionMatrices),
 				m_device->GetContext());
 		}
 
 		BufferBarriers::TransferWriteToComputeRead(
 			cmd,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms),
+			addrTable.GetGPUBuffer(RD::Renderer_Buffer::DynamicTransforms),
 			m_device->GetContext());
 
 		frameCtx.ClearTransformsUploadFlag();
@@ -1491,31 +1600,11 @@ void Renderer::FreeAllAssetTextures()
 
 void Renderer::UnloadAllScenes()
 {
-	// --- Textures ---
 	FreeAllAssetTextures();
-
-	// --- Mesh registry ---
 	m_registeredMeshes = MeshRegistry{};
-
-	// --- Materials ---
 	m_materials.clear();
 	m_materialFlagsIDs.clear();
-
-	// --- GPU buffers in global address table ---
-	// BDATable::Shutdown handles all slots already,
-	// but these are asset-lifetime buffers we want to clear now
-	// without shutting down the whole table
-	auto clearIfExists = [&](RD::Renderer_Buffer slot)
-	{
-		if (m_globalAddressTable.ContainsGPUBuffer(slot))
-			m_globalAddressTable.ClearGPUAddressBuffer(slot, m_allocator);
-	};
-
-	clearIfExists(RD::Renderer_Buffer::Vertex);
-	clearIfExists(RD::Renderer_Buffer::Index);
-	clearIfExists(RD::Renderer_Buffer::Mesh);
-	clearIfExists(RD::Renderer_Buffer::Material);
-
+	m_globalAddressTable.ClearAssetBuffers(m_allocator);
 	m_profiler.assetCounts.Clear();
 
 	fmt::println("[Renderer] All scenes unloaded.");

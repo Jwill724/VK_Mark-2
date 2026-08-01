@@ -102,7 +102,15 @@ void RegisterDrawBuildPass(
 						}
 
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);
-						B::ComputeWriteToVertexRead(cmd, drawInstanceIDsBuffer);
+
+						if (ctx.frameState->IsMeshShaderPath())
+						{
+							B::ComputeWriteToTaskRead(cmd, drawInstanceIDsBuffer);
+						}
+						else
+						{
+							B::ComputeWriteToVertexRead(cmd, drawInstanceIDsBuffer);
+						}
 					});
 		});
 }

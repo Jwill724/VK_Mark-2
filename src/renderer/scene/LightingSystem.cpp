@@ -96,7 +96,7 @@ namespace LightingSystem
 		const float rand07 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 		const float rand08 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
 
-		const float posRange = 4.0f;
+		const float posRange = 5.0f;
 		randomLight.position = glm::vec3(
 			(rand01 * 2.0f - 1.0f) * (posRange * 2.5f),
 			(rand02 * 2.0f - 1.0f) * (posRange * 1.5f),

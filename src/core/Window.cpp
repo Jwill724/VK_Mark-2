@@ -5,7 +5,18 @@
 
 static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-	auto win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+	(void)width;
+	(void)height;
+
+	if (auto* win = static_cast<Window*>(glfwGetWindowUserPointer(window)))
+		win->FlagResized();
+}
+
+bool Window::IsMinimized() const
+{
+	int width = 0, height = 0;
+	glfwGetFramebufferSize(m_windowHandle, &width, &height);
+	return width == 0 || height == 0;
 }
 
 bool Window::IsOpen() const
@@ -21,19 +32,6 @@ bool Window::ThrottleIfWindowUnfocused(double sleepMs) const
 		return true;
 	}
 	return false;
-}
-
-void Window::UpdateWindowSize() const
-{
-	int width = 0, height = 0;
-	glfwGetFramebufferSize(m_windowHandle, &width, &height);
-	while (width == 0 || height == 0)
-	{
-		glfwGetFramebufferSize(m_windowHandle, &width, &height);
-		glfwWaitEvents();
-	}
-
-	SetExtent(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
 }
 
 void Window::Init(uint32_t width, uint32_t height, std::string name)
@@ -63,14 +61,12 @@ void Window::Init(uint32_t width, uint32_t height, std::string name)
 	glfwSetFramebufferSizeCallback(m_windowHandle, framebufferResizeCallback);
 }
 
-const Extents2D& Window::GetExtent() const
+Extents2D Window::GetExtent() const
 {
-	int width, height;
-	glfwGetWindowSize(m_windowHandle, &width, &height);
-
-	m_extentWidth = static_cast<uint32_t>(width);
-	m_extentHeight = static_cast<uint32_t>(height);
-
+	int w = 0, h = 0;
+	glfwGetFramebufferSize(m_windowHandle, &w, &h);
+	m_extentWidth  = static_cast<uint32_t>(w);
+	m_extentHeight = static_cast<uint32_t>(h);
 	return { m_extentWidth, m_extentHeight };
 }
 

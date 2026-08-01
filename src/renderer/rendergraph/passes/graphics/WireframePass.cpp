@@ -7,7 +7,8 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../frame/FrameContext.h"
 
-static constexpr size_t PIPE_ID_WIREFRAME = 0;
+static constexpr size_t PIPE_ID_WIREFRAME      = 0;
+static constexpr size_t PIPE_ID_WIREFRAME_MESH = 1;
 
 void RegisterWireframePass(
 	RenderGraph& graph,
@@ -39,12 +40,23 @@ void RegisterWireframePass(
 					RD::ImageAccess::GraphicsDepthWrite,
 					RD::ImageAccess::GraphicsDepthWrite)
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::HiZ,
+					RD::ImageAccess::MeshShaderRead)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::DepthResolved,
+					RD::ImageAccess::GraphicsDepthWrite,
+					RD::ImageAccess::DepthRead)
+
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
 						pass.scope = GraphicsScope{};
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
+
+						const bool bMeshPath = ctx.frameState->IsMeshShaderPath();
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
@@ -55,33 +67,62 @@ void RegisterWireframePass(
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
+						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 
 						AttachmentDesc opaqueAttach{};
 						opaqueAttach.imageView = opaque.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-						opaqueAttach.loadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
-						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+						opaqueAttach.SetColor({ 0.0f, 0.0f, 0.0f, 1.0f });
 
 						AttachmentDesc depthAttach{};
-						depthAttach.imageView = depthRaw.m_imageView;
+						depthAttach.imageView = bMeshPath ? depthResolved.m_imageView : depthRaw.m_imageView;
+						depthAttach.loadOp = bMeshPath ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 						depthAttach.SetDepth(0);
 
-						pso.UpdateRenderInfo({ opaque.Width(), opaque.Height() }, { opaqueAttach, depthAttach });
+						if (bMeshPath)
+						{
+							pso.BindReadImage(
+								pass.pushWriter,
+								RD::PUSH_BINDING_READ_1,
+								ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ),
+								ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ),
+								VK_REMAINING_MIP_LEVELS,
+								RD::ImageAccess::MeshShaderRead);
+
+							PrepassTaskPush push{};
+							push.slot  = RD::VIS_SLOT_OPAQUE;
+							push.phase = 2u;
+							pso.SetPush(push);
+						}
+
+						pso.UpdateRenderInfo(
+							{ opaque.Width(), opaque.Height() },
+							{ opaqueAttach, depthAttach });
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawIndexedIndirectCount(
-							cmd,
-							RD::VIS_SLOT_OPAQUE,
-							indirectBuffer,
-							indirectCountBuffer,
-							pass.pipelines[PIPE_ID_WIREFRAME],
-							pass.pushWriter);
+						if (bMeshPath)
+						{
+							pso.DrawMeshTasksIndirectCount(
+								cmd,
+								RD::VIS_SLOT_OPAQUE,
+								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer,
+								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
+								pass.pipelines[PIPE_ID_WIREFRAME_MESH],
+								pass.pushWriter);
+						}
+						else
+						{
+							pso.DrawIndexedIndirectCount(
+								cmd,
+								RD::VIS_SLOT_OPAQUE,
+								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer,
+								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
+								pass.pipelines[PIPE_ID_WIREFRAME],
+								pass.pushWriter);
+						}
 
 						pso.EndRendering(cmd);
 					});

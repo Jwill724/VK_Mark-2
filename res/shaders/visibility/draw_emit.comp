@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
 #include "../include/common.glsl"
 #include "../include/culling.glsl"
 
@@ -8,6 +9,8 @@ layout(local_size_x = 256) in;
 
 shared uint sChunkTotal;
 shared uint sScan[256];
+
+const uint TASK_MAX_TOTAL_WORKGROUPS = 4194304u;
 
 uint exclusiveScan256(uint value)
 {
@@ -32,21 +35,22 @@ void addDrawStats(uint mask, uint triangleCount)
 	switch(mask)
 	{
 		case VIS_SLOT_OPAQUE:
-			atomicAdd(getGPUStatsBuffer().gpuStats.opaqueDrawCount, 1u);
+		case VIS_SLOT_OPAQUE_MASKED:
+			//atomicAdd(getGPUStatsBuffer().gpuStats.opaqueDrawCount, 1u);
 			atomicAdd(getGPUStatsBuffer().gpuStats.triangleCount, triangleCount);
 			return;
 		case VIS_SLOT_TRANSPARENT:
-			atomicAdd(getGPUStatsBuffer().gpuStats.transparentDrawCount, 1u);
+			//atomicAdd(getGPUStatsBuffer().gpuStats.transparentDrawCount, 1u);
 			atomicAdd(getGPUStatsBuffer().gpuStats.triangleCount, triangleCount);
 			return;
 
-		case VIS_SLOT_FLASHLIGHT:
-		case VIS_SLOT_CSM0:
-		case VIS_SLOT_CSM1:
-		case VIS_SLOT_CSM2:
-		case VIS_SLOT_CSM3:
-			atomicAdd(getGPUStatsBuffer().gpuStats.shadowDrawCount, 1u);
-			return;
+//		case VIS_SLOT_FLASHLIGHT:
+//		case VIS_SLOT_CSM0:
+//		case VIS_SLOT_CSM1:
+//		case VIS_SLOT_CSM2:
+//		case VIS_SLOT_CSM3:
+//			atomicAdd(getGPUStatsBuffer().gpuStats.shadowDrawCount, 1u);
+//			return;
 	}
 }
 
@@ -55,24 +59,34 @@ void main()
 	uint slot = gl_WorkGroupID.y;
 	uint tid  = gl_LocalInvocationIndex;
 
-	DrawBinCounterBuffer binCounters       = getDrawBinCounterBuffer();
-	DrawBinBuffer        bins              = getDrawBinBuffer();
-	IndirectDrawBuffer   draws             = getIndirectDrawBuffer();
-	IndirectDrawCountsBuffer drawCounts    = getIndirectDrawCountsBuffer();
-	MeshBuffer           meshes            = getMeshBuffer();
-	DrawBinKeysBuffer    keyTable          = getDrawBinKeyBuffer();
-	DebugToggles         debug             = getDebugToggles();
+	DrawBinCounterBuffer     binCounters = getDrawBinCounterBuffer();
+	DrawBinBuffer            bins        = getDrawBinBuffer();
+	IndirectDrawBuffer       draws       = getIndirectDrawBuffer();
+	IndirectDrawCountsBuffer drawCounts  = getIndirectDrawCountsBuffer();
+	TaskDispatchBuffer       tasks       = getTaskDispatchBuffer();
+	MeshBuffer               meshes      = getMeshBuffer();
+	DrawBinKeysBuffer        keyTable    = getDrawBinKeyBuffer();
+	DebugToggles             debug       = getDebugToggles();
 
 	bool isShadowStream = (slot >= VIS_SLOT_CSM0) || (slot == VIS_SLOT_FLASHLIGHT);
+	bool isTransparent = slot == VIS_SLOT_TRANSPARENT;
+
+	// Region caps — one counter feeds both arrays, so each write is guarded
+	// against its own region. Transparent has a zero-width task region.
+	uint maxDraws = maxDrawsForSlot(slot);
+	uint maxTasks = maxTaskDispatches(slot);
+
+	uint drawBase = streamDrawBase(slot);
+	uint taskBase = streamTaskBase(slot);
 
 	if (tid == 0u) sChunkTotal = 0u;
 	barrier();
 
 	for (uint chunk = 0u; chunk < MAX_DRAW_BINS; chunk += 256u)
 	{
-		uint binID    = chunk + tid;
-		uint flatIdx  = slot * MAX_DRAW_BINS + binID;
-		uint count    = binCounters.drawBinCounters[flatIdx];
+		uint binID   = chunk + tid;
+		uint flatIdx = slot * MAX_DRAW_BINS + binID;
+		uint count   = binCounters.drawBinCounters[flatIdx];
 
 		uint offsetInChunk = exclusiveScan256(count);
 		uint binOffset     = sChunkTotal + offsetInChunk;
@@ -89,19 +103,64 @@ void main()
 			uvec2 mm      = keyTable.dense[binID];
 			Mesh  mesh    = meshes.meshes[mm.x];
 
-			IndirectIndexedDrawCmd cmd;
-			cmd.indexCount    = isShadowStream ? mesh.shadowIndexCount : mesh.indexCount;
-			cmd.firstIndex    = isShadowStream ? mesh.shadowFirstIndex : mesh.firstIndex;
-			cmd.instanceCount = count;
-			cmd.vertexOffset  = int(mesh.vertexOffset);
-			cmd.firstInstance = streamInstanceBase(slot) + binOffset;
+			uint indexCount   = isShadowStream ? mesh.shadowIndexCount : mesh.indexCount;
+			uint firstIndex   = isShadowStream ? mesh.shadowFirstIndex : mesh.firstIndex;
+			uint instanceBase = streamInstanceBase(slot) + binOffset;
 
-			draws.indirectDraws[streamDrawBase(slot) + drawIdx] = cmd;
+			if (drawIdx < maxDraws)
+			{
+				IndirectIndexedDrawCmd cmd;
+				cmd.indexCount    = indexCount;
+				cmd.firstIndex    = firstIndex;
+				cmd.instanceCount = count;
+				cmd.vertexOffset  = int(mesh.vertexOffset);
+				cmd.firstInstance = instanceBase;
+
+				draws.indirectDraws[drawBase + drawIdx] = cmd;
+			}
+
+			// Task dispatch record — mesh shader path
+			if (maxTasks > 0u && drawIdx < maxTasks && debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
+			{
+				uint meshletOffset  = isShadowStream ? mesh.shadowMeshletOffset : mesh.meshletOffset;
+				uint meshletCount   = isShadowStream ? mesh.shadowMeshletCount  : mesh.meshletCount;
+				uint visibilityBase = isShadowStream ? 0u : mesh.meshletVisibilityBase;
+
+				if (DBG(enableProfilerView) && slot == VIS_SLOT_OPAQUE)
+				{
+					atomicAdd(getGPUStatsBuffer().gpuStats.meshletsSubmitted, meshletCount * count);
+				}
+
+				uint groupsX = (meshletCount + TASK_GROUP_SIZE - 1u) / TASK_GROUP_SIZE;
+
+				uint groupsY = count;
+				if (groupsX > 0u)
+				{
+					uint maxY = max(TASK_MAX_TOTAL_WORKGROUPS / groupsX, 1u);
+					groupsY   = min(count, maxY);
+				}
+				else
+				{
+					groupsY = 0u; // meshletless mesh -> dispatch nothing
+				}
+
+				TaskDispatch td;
+				td.groupCountX   = groupsX;
+				td.groupCountY   = groupsY;
+				td.groupCountZ   = (groupsX > 0u && groupsY > 0u) ? 1u : 0u;
+				td.instanceBase  = instanceBase;
+				td.meshletOffset = meshletOffset;
+				td.meshletCount  = meshletCount;
+				td.vertexOffset  = mesh.vertexOffset;
+				td.visibilityBase = visibilityBase;
+
+				tasks.taskDispatch[taskBase + drawIdx] = td;
+			}
 
 			// stats
 			if (DBG(enableProfilerView))
 			{
-				addDrawStats(slot, (cmd.indexCount / 3u) * count);
+				addDrawStats(slot, (indexCount / 3u) * count);
 			}
 		}
 

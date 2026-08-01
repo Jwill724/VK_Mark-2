@@ -7,7 +7,7 @@
 
 void RenderScope::BindPushConstant(VkCommandBuffer cmd, const PipelineHandle& pipeHandle)
 {
-	if (m_pushData && m_pushSize > 0 && !m_bSkipPushConstant)
+	if (m_pushSize > 0 && !m_bSkipPushConstant)
 	{
 		vkCmdPushConstants(
 			cmd,
@@ -15,7 +15,7 @@ void RenderScope::BindPushConstant(VkCommandBuffer cmd, const PipelineHandle& pi
 			pipeHandle.layout.pushConstantDef.stageFlags,
 			pipeHandle.layout.pushConstantDef.offset,
 			static_cast<uint32_t>(m_pushSize),
-			m_pushData);
+			m_pushData.data());
 	}
 }
 
@@ -23,13 +23,13 @@ void* RenderScope::GetValidatedPushData(
 	size_t expectedSize,
 	size_t expectedAlignment) noexcept
 {
-	ASSERT(m_pushData != nullptr);
+	ASSERT(m_pushSize > 0 && "EditPush before SetPush");
 	ASSERT(m_pushSize == expectedSize);
 
-	ASSERT(
-		(reinterpret_cast<uintptr_t>(m_pushData) % expectedAlignment) == 0);
+	ASSERT(expectedAlignment <= PUSH_ALIGNMENT);
+	ASSERT((reinterpret_cast<uintptr_t>(m_pushData.data()) % expectedAlignment) == 0);
 
-	return m_pushData;
+	return m_pushData.data();
 }
 
 void RenderScope::BindReadImage(

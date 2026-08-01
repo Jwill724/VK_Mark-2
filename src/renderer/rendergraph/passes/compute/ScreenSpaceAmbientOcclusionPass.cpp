@@ -144,7 +144,7 @@ void RegisterSSAOPass(
 							RD::ImageAccess::DepthRead);
 
 						uint32_t pushWriteBinding = RD::PUSH_BINDING_WRITE_1;
-						for (uint32_t i = 0u; i < RD::HI_Z_MIP_COUNT; i++)
+						for (uint32_t i = 0u; i < RD::HI_Z_MIN_MIP_COUNT; i++)
 						{
 							ASSERT(pushWriteBinding <= RD::PUSH_BINDING_WRITE_5);
 

@@ -1,0 +1,61 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/depth.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D visBuffer;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D  depthTex;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outVelocity;
+
+void main()
+{
+	SceneData scene = getSceneData();
+
+	uvec2 gid    = gl_GlobalInvocationID.xy;
+	uvec2 vpSize = uvec2(scene.viewportSize.xy);
+	if (any(greaterThanEqual(gid, vpSize))) return;
+
+	ivec2 px = ivec2(gid);
+	vec2  uv = (vec2(gid) + 0.5) / vec2(vpSize);
+
+	float rawDepth = texelFetch(depthTex, px, 0).r;
+	uint  packedID = texelFetch(visBuffer, px, 0).x;
+
+	ViewReconstructResult r = reconstructWorldPosFromDepth(
+		uv, rawDepth, scene.invProj, scene.invView);
+
+	vec4 worldPos = vec4(r.pos, 1.0);
+	vec4 prevWorld = worldPos;
+
+	if (packedID != INVALID_U32)
+	{
+		InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(packedID)];
+
+		if (isDynamicTransform(inst.transformID))
+		{
+			prevWorld = getMotionMatricesBuffer().matrices[transformIndex(inst.transformID)] * worldPos;
+		}
+	}
+
+	vec4 currClip = scene.viewProjUnjittered     * worldPos;
+	vec4 prevClip = scene.prevViewProjUnjittered * prevWorld;
+
+	vec2 velocity = vec2(0.0);
+	if (currClip.w > 0.0 && prevClip.w > 0.0)
+	{
+		vec2 currNdc = currClip.xy / currClip.w;
+		vec2 prevNdc = prevClip.xy / prevClip.w;
+
+		vec2 velocityUV = (currNdc - prevNdc) * 0.5;
+		vec2 viewportSz = max(scene.viewportSize.xy, vec2(1.0));
+		velocity = clamp(velocityUV * viewportSz, vec2(-256.0), vec2(256.0)) / viewportSz;
+	}
+
+	imageStore(outVelocity, px, vec4(velocity, 0.0, 0.0));
+}

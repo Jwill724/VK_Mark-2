@@ -10,7 +10,7 @@ const uint LIGHT_FLAG_FLASHLIGHT        = 1u << 1;
 const uint LIGHT_FLAG_FLASHLIGHT_OFF    = 1u << 2;
 
 // Determines switch between dispatching over clusters or lights
-const uint LIGHT_THRESHOLD = 1300u;
+const uint LIGHT_THRESHOLD = 500u;
 
 //const uint LIGHT_LIST_STATIC_COUNT     = 2u;
 //const uint LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
@@ -19,10 +19,10 @@ const uint LIGHT_THRESHOLD = 1300u;
 const uint LIGHT_LIST_STATIC_COUNT     = 1u;
 const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
 
-//const uint MAX_VISIBLE_LIGHTS = 1024u - LIGHT_LIST_STATIC_COUNT;
-const uint MAX_VISIBLE_LIGHTS = 4096u - LIGHT_LIST_STATIC_COUNT;
-//const uint MAX_VISIBLE_LIGHTS = 8192u - LIGHT_LIST_STATIC_COUNT;
-//const uint MAX_VISIBLE_LIGHTS = 10240u - LIGHT_LIST_STATIC_COUNT;
+//const uint MAX_LIGHTS = 16384u;
+const uint MAX_LIGHTS = 2048u;
+
+const uint MAX_VISIBLE_LIGHTS = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
 
 struct ClusterGrid {
 	uvec2 tileCoord;
@@ -30,6 +30,11 @@ struct ClusterGrid {
 	uint sliceZ;
 	uint clusterIndex;
 };
+
+float sliceToViewDepthLog(float slice, float nearZ, float farZ, uint numSlices)
+{
+	return nearZ * pow(farZ / nearZ, slice / float(numSlices));
+}
 
 uint depthToSliceLog(float Z, float nearZ, float farZ, uint numSlices)
 {
@@ -186,6 +191,83 @@ LightClusterBounds computeLightClusterBounds(
 	bounds.tileMax.x = clampU32(tileMaxX, 0u, maxTileX);
 	bounds.tileMax.y = clampU32(tileMaxY, 0u, maxTileY);
 	return bounds;
+}
+
+struct ClusterAABB
+{
+	vec3 mn;
+	vec3 mx;
+};
+
+ClusterAABB computeClusterAABB(
+	uint tileX,
+	uint tileY,
+	uint sliceZ,
+	mat4 proj,
+	uvec2 viewportSize,
+	uint tileSizeX,
+	uint tileSizeY,
+	uint zSlices,
+	float nearPlane,
+	float farPlane)
+{
+	float vpW = float(viewportSize.x);
+	float vpH = float(viewportSize.y);
+
+	float px0 = min(float(tileX * tileSizeX), vpW);
+	float px1 = min(float((tileX + 1u) * tileSizeX), vpW);
+	float py0 = min(float(tileY * tileSizeY), vpH);
+	float py1 = min(float((tileY + 1u) * tileSizeY), vpH);
+
+	float ndcX0 = 2.0 * (px0 / vpW) - 1.0;
+	float ndcX1 = 2.0 * (px1 / vpW) - 1.0;
+	float ndcY0 = 1.0 - 2.0 * (py1 / vpH);
+	float ndcY1 = 1.0 - 2.0 * (py0 / vpH);
+
+	float zN = max(sliceToViewDepthLog(float(sliceZ),        nearPlane, farPlane, zSlices), nearPlane);
+	float zF = min(sliceToViewDepthLog(float(sliceZ + 1u),   nearPlane, farPlane, zSlices), farPlane);
+	zF = max(zF, zN);
+
+	float invP00 = 1.0 / max(abs(proj[0][0]), 1e-8);
+	float invP11 = 1.0 / max(abs(proj[1][1]), 1e-8);
+
+	vec2 xN = vec2(ndcX0, ndcX1) * (zN * invP00);
+	vec2 xF = vec2(ndcX0, ndcX1) * (zF * invP00);
+	vec2 yN = vec2(ndcY0, ndcY1) * (zN * invP11);
+	vec2 yF = vec2(ndcY0, ndcY1) * (zF * invP11);
+
+	ClusterAABB box;
+	box.mn = vec3(
+		min(min(xN.x, xN.y), min(xF.x, xF.y)),
+		min(min(yN.x, yN.y), min(yF.x, yF.y)),
+		zN);
+	box.mx = vec3(
+		max(max(xN.x, xN.y), max(xF.x, xF.y)),
+		max(max(yN.x, yN.y), max(yF.x, yF.y)),
+		zF);
+	return box;
+}
+
+vec3 clusterAABBCenter(ClusterAABB box)
+{
+	return 0.5 * (box.mn + box.mx);
+}
+
+float sqDistPointAABB(vec3 p, vec3 mn, vec3 mx)
+{
+	vec3 d = max(max(mn - p, vec3(0.0)), p - mx);
+	return dot(d, d);
+}
+
+// (z negative in front of camera).
+vec3 toClusterSpace(vec3 lightPosVS)
+{
+	return vec3(lightPosVS.x, lightPosVS.y, -lightPosVS.z);
+}
+
+bool sphereOverlapsCluster(vec3 lightPosVS, float radius, ClusterAABB box)
+{
+	return sqDistPointAABB(toClusterSpace(lightPosVS), box.mn, box.mx) <= radius * radius;
 }
 
 #endif

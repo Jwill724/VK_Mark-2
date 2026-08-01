@@ -23,11 +23,29 @@ void PM::RegisterPipelines()
 	};
 
 	// === Graphics ===
-	reg(RP::Opaque,      {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
-						  { RS::Opaque_f,      SS::FRAGMENT_STAGE }});
+	reg(RP::Prepass,           {{ RS::Prepass_v,        SS::VERTEX_STAGE   },
+								{ RS::Prepass_f,        SS::FRAGMENT_STAGE }});
+
+	reg(RP::PrepassMasked,     {{ RS::PrepassMasked_v,  SS::VERTEX_STAGE   },
+								{ RS::PrepassMasked_f,  SS::FRAGMENT_STAGE }});
+
+	reg(RP::PrepassMesh,       {{ RS::MeshletCull_t,    SS::TASK_STAGE     },
+								{ RS::Prepass_m,        SS::MESH_STAGE     },
+								{ RS::Prepass_f,        SS::FRAGMENT_STAGE }});
+
+	reg(RP::PrepassMaskedMesh, {{ RS::MeshletCull_t,    SS::TASK_STAGE     },
+								{ RS::PrepassMasked_m,  SS::MESH_STAGE     },
+								{ RS::PrepassMasked_f,  SS::FRAGMENT_STAGE }});
+
+	reg(RP::ShadowMesh,  {{ RS::Shadow_t,  SS::TASK_STAGE },
+						  { RS::Shadow_m,  SS::MESH_STAGE }});
 
 	reg(RP::Wireframe,   {{ RS::Wireframe_v,   SS::VERTEX_STAGE   },
 						  { RS::Wireframe_f,   SS::FRAGMENT_STAGE }});
+
+	reg(RP::WireframeMesh, {{ RS::MeshletCull_t,   SS::TASK_STAGE },
+							{ RS::Wireframe_m,     SS::MESH_STAGE },
+							{ RS::Wireframe_f,     SS::FRAGMENT_STAGE }});
 
 	reg(RP::Prepass,     {{ RS::Prepass_v,     SS::VERTEX_STAGE   },
 						  { RS::Prepass_f,     SS::FRAGMENT_STAGE }});
@@ -37,8 +55,8 @@ void PM::RegisterPipelines()
 	reg(RP::Skybox,      {{ RS::Skybox_v,      SS::VERTEX_STAGE   },
 						  { RS::Skybox_f,      SS::FRAGMENT_STAGE }});
 
-	reg(RP::Transparent, {{ RS::Opaque_v,      SS::VERTEX_STAGE   },
-						  { RS::Transparent_f, SS::FRAGMENT_STAGE }});
+	reg(RP::TransparentForward, {{ RS::Forward_v,     SS::VERTEX_STAGE   },
+								{  RS::Transparent_f, SS::FRAGMENT_STAGE }});
 
 	reg(RP::LineDebug,   {{ RS::LineDebug_v,     SS::VERTEX_STAGE   },
 						  { RS::LineDebug_f,     SS::FRAGMENT_STAGE }});
@@ -49,7 +67,8 @@ void PM::RegisterPipelines()
 	};
 
 	regC(RP::MaterialResolve,           RS::MaterialResolve_c);
-	regC(RP::OpaqueTileShading,         RS::OpaqueTileShading_c);
+	regC(RP::VelocityResolve,           RS::VelocityResolve_c);
+	regC(RP::OpaqueLighting,            RS::OpaqueLighting_c);
 	regC(RP::TransparentResolve,        RS::TransparentResolve_c);
 	regC(RP::ExposureReduce,            RS::ExposureReduce_c);
 	regC(RP::ExposureFinalize,          RS::ExposureFinalize_c);
@@ -98,10 +117,9 @@ void PM::RegisterPipelines()
 	regC(RP::GBufferDebug,              RS::GBufferDebug_c);
 
 	// === Presets ===
-	m_pipelinePresets[static_cast<size_t>(RP::Opaque)].cullMode            = VK_CULL_MODE_BACK_BIT;
-
 	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].polygonMode      = VK_POLYGON_MODE_LINE;
 	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].depthCompareOp   = VK_COMPARE_OP_GREATER;
+	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].cullMode         = VK_CULL_MODE_BACK_BIT;
 	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].enableDepthWrite = true;
 
 	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].polygonMode      = VK_POLYGON_MODE_LINE;
@@ -110,7 +128,7 @@ void PM::RegisterPipelines()
 	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].depthCompareOp   = VK_COMPARE_OP_GREATER;
 
 	auto& prepass                    = m_pipelinePresets[static_cast<size_t>(RP::Prepass)];
-	prepass.colorFormats             = { Vulkan_Format::RG32U, Vulkan_Format::ABGRpacked, Vulkan_Format::RG16F };
+	prepass.colorFormats             = { Vulkan_Format::RG32U, Vulkan_Format::RG8unorm };
 	prepass.depthFormat              = Vulkan_Format::D32;
 	prepass.depthCompareOp           = VK_COMPARE_OP_GREATER;
 	prepass.cullMode                 = VK_CULL_MODE_BACK_BIT;
@@ -121,6 +139,21 @@ void PM::RegisterPipelines()
 	shadow.depthCompareOp            = VK_COMPARE_OP_LESS;
 	shadow.cullMode                  = VK_CULL_MODE_FRONT_BIT;
 	shadow.enableDepthWrite          = true;
+
+	m_pipelinePresets[static_cast<size_t>(RP::ShadowMesh)] = shadow;
+
+	m_pipelinePresets[static_cast<size_t>(RP::PrepassMasked)]     = prepass;
+	m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)]       = prepass;
+	m_pipelinePresets[static_cast<size_t>(RP::PrepassMaskedMesh)] = prepass;
+
+	auto& wireMesh                   = m_pipelinePresets[static_cast<size_t>(RP::WireframeMesh)];
+	wireMesh                         = m_pipelinePresets[static_cast<size_t>(RP::Wireframe)];
+
+	// Adjust for _EQUAL of Prepass
+	wireMesh.enableDepthBias = true;
+	wireMesh.depthBiasConstant = 1.75f;
+	wireMesh.depthBiasSlope = 1.25f;
+
 
 	VkPipelineColorBlendAttachmentState accumBlend{};
 	accumBlend.blendEnable         = VK_TRUE;
@@ -143,7 +176,7 @@ void PM::RegisterPipelines()
 	revealBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 	revealBlend.alphaBlendOp        = VK_BLEND_OP_ADD;
 
-	auto& transparent                = m_pipelinePresets[static_cast<size_t>(RP::Transparent)];
+	auto& transparent                = m_pipelinePresets[static_cast<size_t>(RP::TransparentForward)];
 	transparent.colorFormats         = { Vulkan_Format::RGBA16F, Vulkan_Format::R16F };
 	transparent.depthFormat          = Vulkan_Format::D32;
 	transparent.enableBlending       = true;
@@ -326,7 +359,10 @@ PM::Pipeline& PM::Pipeline::AddShader(RD::Renderer_Shader shader, Vulkan_ShaderS
 	// First time definition of pipeline type
 	if (m_handle.bindPoint == VK_PIPELINE_BIND_POINT_MAX_ENUM)
 	{
-		if (stage == Vulkan_ShaderStage::VERTEX_STAGE || stage == Vulkan_ShaderStage::FRAGMENT_STAGE)
+		if (stage == Vulkan_ShaderStage::VERTEX_STAGE ||
+			stage == Vulkan_ShaderStage::FRAGMENT_STAGE ||
+			stage == Vulkan_ShaderStage::TASK_STAGE ||
+			stage == Vulkan_ShaderStage::MESH_STAGE)
 		{
 			m_handle.bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 		}

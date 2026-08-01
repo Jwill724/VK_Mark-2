@@ -7,11 +7,26 @@
 
 const float FLASHLIGHT_TEXEL_SIZE = 1.0 / 512.0;
 
+const float CASCADE_BLEND_FRACTION = 0.9;
+const float CASCADE_LAST_FADE_FRACTION  = 0.98;
+
 // The only number that works
 const float MIN_SHADOW_BIAS = 0.0001;
 
 const float SHADOW_BASE_BIAS_TEXELS  = 0.5;
 const float SHADOW_SLOPE_BIAS_TEXELS = 0.8;
+
+struct CascadeProj
+{
+	vec2  atlasUV;
+	vec2  atlasMin;
+	vec2  atlasMax;
+	float depth;
+	vec2  depthGrad;
+	float maxPlaneBias;
+	float radius;
+	bool  valid;
+};
 
 // 8-tap Poisson disk in texels
 const vec2 poisson8[8] = vec2[](
@@ -176,6 +191,13 @@ float PCFVogel(
 	return weightSum > 1e-6 ? sum / weightSum : 1.0;
 }
 
+float sampleCascade(CascadeProj p, mat2 hash, uint shadowMapID, float texel)
+{
+	return PCFVogel(
+		hash, shadowMapID, p.atlasUV, p.depth,
+		texel, p.radius, p.atlasMin, p.atlasMax, p.depthGrad, p.maxPlaneBias);
+}
+
 // Right handed view looks down -Z
 uint cascadeViewDepthSplit(float viewDepth, uint cascadeCount, vec4 cascadeSplits)
 {
@@ -224,6 +246,78 @@ bool casterOverlapsReceivers(
 	if (cMax.z < receiverLSMin.z - lsEpsilon) return false;
 
 	return true;
+}
+
+bool cascadeIsActive(uvec4 activeC, uint c)
+{
+	uint flag = (c == 0u) ? activeC.x
+			  : (c == 1u) ? activeC.y
+			  : (c == 2u) ? activeC.z
+						  : activeC.w;
+	return flag != 0u;
+}
+
+// Receiver-plane depth gradient. Ortho cascades are affine, so the
+// inverse-transpose maps the world normal straight to clip space, where the plane
+// gives dz/dxy = -n.xy / n.z exactly.
+vec2 analyticDepthGradient(vec3 nWS, mat4 invTransVP, vec4 atlas)
+{
+	vec3 nClip = mat3(invTransVP) * nWS;
+
+	if (abs(nClip.z) < 1e-6) return vec2(0.0);
+
+	float dzdx = -nClip.x / nClip.z;
+	float dzdy = -nClip.y / nClip.z;
+
+	return vec2(dzdx * ( 2.0 / atlas.x),
+				dzdy * (-2.0 / atlas.y));
+}
+
+void projectToCascade(vec3 worldPos, mat4 cascadeVP, vec4 atlas, out vec2 atlasUV, out float depth01)
+{
+	vec4 lsPos      = cascadeVP * vec4(worldPos, 1.0);
+	vec3 projCoords = lsPos.xyz / lsPos.w;
+	vec2 uv         = projCoords.xy * 0.5 + 0.5;
+	uv.y            = 1.0 - uv.y;
+	atlasUV         = uv * atlas.xy + atlas.zw;
+	depth01         = projCoords.z;
+}
+
+// Builds the projection for cascade `c` and reports whether it can actually be
+// sampled: the tile must have been rendered this frame (active), and the sample
+// point must sit inside the tile with enough margin for the filter footprint.
+CascadeProj buildCascadeProj(
+	ShadowCSM csm, uvec4 activeC, uint c,
+	vec3 worldPos, vec3 geometricNormalWS, vec3 L, float texel)
+{
+	CascadeProj o;
+	o.valid = false;
+
+	if (!cascadeIsActive(activeC, c)) return o;
+
+	const vec4  atlas      = csm.atlasUV[c];
+	const mat4  vp         = csm.cascadeVP[c];
+	const float worldTexel = csm.cascadeWorldTexels[c];
+
+	o.radius       = csm.maxFilterRadiusTexels[c];
+	o.atlasMin     = atlas.zw;
+	o.atlasMax     = atlas.zw + atlas.xy;
+	o.maxPlaneBias = computeMaxPlaneBias(o.radius, worldTexel, ndcDepthPerWorld(vp));
+	o.depthGrad    = analyticDepthGradient(geometricNormalWS, csm.cascadeInvTransVP[c], atlas);
+
+	vec3 offsetPos = worldPos + computeNormalOffset(geometricNormalWS, L, worldTexel * o.radius);
+	projectToCascade(offsetPos, vp, atlas, o.atlasUV, o.depth);
+
+	vec2 shadowUV = (o.atlasUV - atlas.zw) / atlas.xy;
+
+	// Filter footprint in tile-normalized units
+	vec2 margin = (texel * o.radius) / atlas.xy;
+
+	o.valid = all(greaterThanEqual(shadowUV, margin))
+		   && all(lessThanEqual(shadowUV, vec2(1.0) - margin))
+		   && o.depth >= 0.0 && o.depth <= 1.0;
+
+	return o;
 }
 
 #endif

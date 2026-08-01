@@ -38,7 +38,7 @@ void main() {
 		tangentW,
 		position);
 
-	mat4 model = getTransformBuffer().transforms[inst.transformID];
+	mat4 model = getInstanceTransform(inst);
 	SceneData scene = getSceneData();
 
 	vec4 worldPos4 = model * vec4(position, 1.0);

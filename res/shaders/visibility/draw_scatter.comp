@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
 
 #include "../include/common.glsl"
 #include "../include/culling.glsl"
@@ -32,23 +33,27 @@ void main()
 	VisibleInstance vis    = getVisibleInstanceBuffer().visibles[visibleID];
 	InstanceInput instance = getInstanceInputBuffer().instanceInputs[vis.instanceID];
 
-	if ((vis.passFlags & VIS_PRIMARY_OPAQUE) != 0u)
+	if ((vis.visMask & VIS_PRIMARY_OPAQUE) != 0u)
 	{
 		routeToStream(VIS_SLOT_OPAQUE, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
 	}
-	else if ((vis.passFlags & VIS_PRIMARY_TRANSPARENT) != 0u)
+	else if ((vis.visMask & VIS_PRIMARY_OPAQUE_MASKED) != 0u)
+	{
+		routeToStream(VIS_SLOT_OPAQUE_MASKED, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
+	}
+	else if ((vis.visMask & VIS_PRIMARY_TRANSPARENT) != 0u)
 	{
 		routeToStream(VIS_SLOT_TRANSPARENT, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
 	}
 
-	if ((vis.passFlags & VIS_FLASHLIGHT) != 0u)
+	if ((vis.visMask & VIS_FLASHLIGHT) != 0u)
 	{
-		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID, vis.lodIndex);
+		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID, LOD_IDX_SHADOW0);
 	}
 
 	for (uint c = 0u; c < MAX_CASCADES; ++c)
 	{
-		if ((vis.passFlags & (VIS_CSM0 << c)) != 0u)
+		if ((vis.visMask & (VIS_CSM0 << c)) != 0u)
 		{
 			uint sIdx = selectShadowLODIndex(instance, c);
 			routeToStream(VIS_SLOT_CSM0 + c, visibleID, meshFromLODIndex(instance, sIdx), instance.materialID, sIdx);

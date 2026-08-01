@@ -109,7 +109,7 @@ struct alignas(16) SceneInfo
 	glm::mat4 invView{};
 	glm::mat4 invProj{};
 	glm::mat4 viewProj{};
-	glm::mat4 prevViewProj{};
+	glm::mat4 prevViewProjUnjittered{};
 	glm::mat4 prevView{};
 	glm::mat4 viewProjUnjittered{};
 	// x = frameNumber, y = historyValid (0/1), z = Hi-Z valid(0/1)
@@ -133,6 +133,7 @@ struct alignas(16) DirectionalCSMInfo
 {
 	glm::mat4 cascadeVP[RD::MAX_SHADOW_CASCADES]{0.0f};
 	glm::mat4 cascadeLightViews[RD::MAX_SHADOW_CASCADES]{0.0f};
+	glm::mat4 cascadeInvTransVP[RD::MAX_SHADOW_CASCADES]{0.0f};
 	glm::vec4 cascadeSplits{0.0f};
 	// x=shadowAtlasID, y=cascadeCount, z=atlasTexelSize, w=eplison
 	glm::vec4 params{ 0.0f };
@@ -150,4 +151,11 @@ struct ShadowControl
 	float lsEpsilon                  = 1.0f;
 	// Doubles the far depth range
 	bool enableShadowDepthExtendHack = false;
+};
+
+// Some chunk of a flat array that needs to go
+struct DirtyRange
+{
+	uint32_t offset = 0;
+	uint32_t count = 0;
 };

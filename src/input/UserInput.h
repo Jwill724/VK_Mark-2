@@ -86,4 +86,5 @@ namespace UserInput
 	void updateLocalInput(GLFWwindow* window);
 
 	void UpdateCachedWindowExtent(uint32_t w, uint32_t h);
+	void NotifyWindowResized();
 }

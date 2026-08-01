@@ -33,7 +33,11 @@ void Camera::ProcessInput(GLFWwindow* window, Profiler& profiler, const Extents2
 		m_pitch = std::clamp(m_pitch, -maxPitch, maxPitch);
 	}
 
-	const float dt = profiler.getStats().deltaSecondsRaw;
+	// A drag-resize or minimize parks the loop inside glfwPollEvents /
+	// glfwWaitEvents for hundreds of ms.
+	// Prevents feeding bad delta, especially to gpu systems down stream.
+	const float rawDt = static_cast<float>(profiler.getStats().deltaSecondsRaw);
+	const float dt    = std::clamp(rawDt, 1.0f / 1000.0f, 1.0f / 30.0f);
 
 	float baseSpeed = UI::keyboard.isHeld(UI::Keys::LEFT_SHIFT) ? m_maxSpeed : m_minSpeed;
 

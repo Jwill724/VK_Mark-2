@@ -21,7 +21,7 @@ void main()
 	VisibleInstance vis = getVisibleInstanceBuffer().visibles[visibleID];
 
 	// only instances in the requested streams
-	if ((vis.passFlags & pc.streamFilter) == 0u) return;
+	if ((vis.visMask & pc.streamFilter) == 0u) return;
 
 	if ((pc.debugMask & DEBUG_MASK_OBB) != 0u)
 	{
@@ -29,7 +29,7 @@ void main()
 		if (slot >= DEBUG_MAX_ITEMS) return;
 
 		// color by stream membership: red = camera visible, cyan = transparent
-		uint color = ((vis.passFlags & VIS_PRIMARY_TRANSPARENT) != 0u)
+		uint color = ((vis.visMask & VIS_PRIMARY_TRANSPARENT) != 0u)
 			? packDebugColor(vec4(0.0, 1.0, 1.0, 1.0))
 			: packDebugColor(vec4(1.0, 0.0, 0.0, 1.0));
 

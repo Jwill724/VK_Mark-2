@@ -1,8 +1,8 @@
 ## Features
 - Vulkan 1.4 GPU-Driven renderer
-- Visibility Deferred and Forward+ rendering paths
+- Opaque Visibility buffer deferred with meshlet culling through mesh shaders
 - GPUAddress table enables a 100% bindless indirect buffer system
-- GPU frustum + hi-z culling and draw building
+- GPU culling and draw building
 - Clustered shading
 - Descriptor indexing (bindless rendering)
 - PBR + IBL: Cook–Torrance GGX with Disney diffuse; split-sum IBL (prefiltered spec + BRDF LUT, irradiance)
@@ -11,6 +11,7 @@
 - Async compute with multithreaded secondary recording
 - GLTF asset pipeline
 - Debug draw view (OBBs, wireframe, etc)
+- Forward+ transparent rendering
 - Order-independent-transparency (OIT)
 - ImGui debugging tools
 - SMAA
@@ -31,8 +32,6 @@
 - Tracy profiler
 
 ## Future
--Meshlet culling
--Mesh shaders
 -Ray traced reflections
 -Runtime asset loading and handling
 -Dynamic meshes, material and light interactions
@@ -55,7 +54,7 @@
 ![Sponza](res/screenshots/sponza.png)
 ![Bistro](res/screenshots/bistro.png)
 ![Helmet](res/screenshots/helmet.png)
-![10000 Ducks](res/screenshots/ducks.png)
+![200k Ducks](res/screenshots/ducks.png)
 
 ## Controls
 - `W A S D` ‐ Move forward, left, back, right

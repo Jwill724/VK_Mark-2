@@ -100,9 +100,6 @@
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\OpaqueForwardPass.cpp">
-      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
-    </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
@@ -182,6 +179,9 @@
     <ClCompile Include="src\renderer\frame\FrameResources.cpp">
       <Filter>src\renderer\frame</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp">
+      <Filter>src\renderer\frame</Filter>
+    </ClCompile>
     <!-- renderer / scene -->
     <ClCompile Include="src\renderer\scene\Scene.cpp">
       <Filter>src\renderer\scene</Filter>
@@ -203,6 +203,9 @@
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\Queue.cpp">
+      <Filter>src\renderer\backend</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\backend\VulkanExtensionFunctions.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\Sync.cpp">
@@ -351,7 +354,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueTileShadingPass.cpp">
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueLightingPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\MaterialResolvePass.cpp">
@@ -366,8 +369,8 @@
     <ClCompile Include="src\renderer\rendergraph\RenderGraphCompile.cpp">
       <Filter>src\renderer\rendergraph</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp">
-      <Filter>src\renderer\frame</Filter>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\VelocityResolvePass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
@@ -450,6 +453,9 @@
     <ClInclude Include="src\renderer\frame\FrameResources.h">
       <Filter>src\renderer\frame</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h">
+      <Filter>src\renderer\frame</Filter>
+    </ClInclude>
     <!-- renderer / rendergraph -->
     <ClInclude Include="src\renderer\rendergraph\RenderPasses.h">
       <Filter>src\renderer\rendergraph</Filter>
@@ -514,6 +520,9 @@
     <ClInclude Include="src\renderer\backend\PipelineBundles.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
     <ClInclude Include="src\renderer\backend\PipelineBuilder.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
@@ -576,9 +585,6 @@
     <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h">
       <Filter>src\renderer\rendergraph</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h">
-      <Filter>src\renderer\frame</Filter>
-    </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
@@ -630,10 +636,13 @@
     <None Include="res\shaders\core\prepassVS.vert">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\forwardVS.vert">
+    <None Include="res\shaders\core\prepassFS_masked.frag">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\opaque_forward.frag">
+    <None Include="res\shaders\core\prepassVS_masked.vert">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\core\forwardVS.vert">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\core\hi_z_gen.comp">
@@ -667,9 +676,6 @@
     </None>
     <!-- include -->
     <None Include="res\shaders\include\common.glsl">
-      <Filter>res\shaders\include</Filter>
-    </None>
-    <None Include="res\shaders\include\shading_functions.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
     <None Include="res\shaders\include\clustered.glsl">
@@ -807,7 +813,7 @@
     <None Include="res\shaders\core\material_resolve.comp">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\opaque_tile_shading.comp">
+    <None Include="res\shaders\core\opaque_lighting.comp">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\include\lighting.glsl">
@@ -818,6 +824,30 @@
     </None>
     <None Include="res\shaders\include\debug_views.glsl">
       <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\shadows\shadowM.mesh">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\shadows\shadowT.task">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\debug\wireframeM.mesh">
+      <Filter>res\shaders\debug</Filter>
+    </None>
+    <None Include="res\shaders\visibility\prepass_mesh.mesh">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\visibility\meshlet_cull.task">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\include\meshlet_cull.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\visibility\prepass_masked_mesh.mesh">
+      <Filter>res\shaders\visibility</Filter>
+    </None>
+    <None Include="res\shaders\core\velocity_resolve.comp">
+      <Filter>res\shaders\core</Filter>
     </None>
   </ItemGroup>
 </Project>

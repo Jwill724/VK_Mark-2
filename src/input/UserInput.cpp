@@ -20,17 +20,20 @@ namespace UserInput
 	KeyboardState keyboard;
 
 	static glm::vec2 lastPos;
-	static bool firstMouse = false;
+	static bool firstMouse = true;
+	static bool bWindowResizedThisFrame = true;
 
 	Extents2D cachedWindowExtent;
 
 	void UpdateCachedWindowExtent(uint32_t w, uint32_t h)
 	{
-		if (cachedWindowExtent.Width() != w || cachedWindowExtent.Height() != h)
-		{
-			cachedWindowExtent.Width() = w;
-			cachedWindowExtent.Height() = h;
-		}
+		cachedWindowExtent.Width()  = std::max(w, 1u);
+		cachedWindowExtent.Height() = std::max(h, 1u);
+	}
+
+	void NotifyWindowResized()
+	{
+		bWindowResizedThisFrame = true;
 	}
 
 	void SetCursorPos(GLFWwindow* window);
@@ -61,20 +64,39 @@ void UserInput::NormalizeMousePos(GLFWwindow* window)
 
 void UserInput::MouseState::Update(GLFWwindow* window)
 {
-	NormalizeMousePos(window);
+	// On a resize frame the window origin and extent both moved, and while
+	// iconified the framebuffer is 0x0.
+	const bool bSuppressMotion =
+		bWindowResizedThisFrame ||
+		glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0;
 
-	position = glm::vec2(normalizedPos[0], normalizedPos[1]);
-
-	if (firstMouse)
-	{
-		lastPos = position;
-		firstMouse = false;
-	}
-
-	delta = position - lastPos;
-	lastPos = position;
-
+	// Button state is read unconditionally so the cursor hide/show state
+	// machine below can never get stuck hidden across a resize.
 	rightPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+
+	if (bSuppressMotion)
+	{
+		delta = glm::vec2(0.0f);
+
+		// Force the next live frame to re-seed lastPos rather than
+		// differencing against a position from before the resize.
+		firstMouse = true;
+	}
+	else
+	{
+		NormalizeMousePos(window);
+
+		position = glm::vec2(normalizedPos[0], normalizedPos[1]);
+
+		if (firstMouse)
+		{
+			lastPos = position;
+			firstMouse = false;
+		}
+
+		delta = position - lastPos;
+		lastPos = position;
+	}
 
 	// --- Right click: free cam ---
 	if (rightPressed)
@@ -86,7 +108,9 @@ void UserInput::MouseState::Update(GLFWwindow* window)
 			rightHideCursor = true;
 			rightJustClicked = true;
 		}
-		handleMouseCapture(window, rightJustClicked, position, delta);
+
+		if (!bSuppressMotion)
+			handleMouseCapture(window, rightJustClicked, position, delta);
 	}
 	else if (rightHideCursor)
 	{
@@ -166,27 +190,33 @@ void UserInput::updateLocalInput(GLFWwindow* window)
 {
 	mouse.Update(window);
 	keyboard.update(window);
+
+	bWindowResizedThisFrame = false;
 }
 
 void UserInput::KeyboardState::resetKeyStates()
 {
-	for (auto& [key, state] : keyStates) {
+	for (auto& [key, state] : keyStates)
+	{
 		state = KeyState::None;
 	}
 }
 
 // Mouse recentering for consistent deltas, even across frames/resizes
-void UserInput::handleMouseCapture(GLFWwindow* window, bool& justClicked, glm::vec2& position, glm::vec2& delta) {
+void UserInput::handleMouseCapture(GLFWwindow* window, bool& justClicked, glm::vec2& position, glm::vec2& delta)
+{
 	SetCursorPos(window);  // always reset to center
 	NormalizeMousePos(window);
 	position = glm::vec2(mouse.normalizedPos[0], mouse.normalizedPos[1]);
 
-	if (justClicked) {
+	if (justClicked)
+	{
 		lastPos = position;
 		justClicked = false;  // allow delta on next frame
 		delta = glm::vec2(0.0f);  // prevent one-frame spike
 	}
-	else {
+	else
+	{
 		delta = position - lastPos;
 		lastPos = position;
 	}

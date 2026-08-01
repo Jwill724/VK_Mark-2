@@ -4,7 +4,6 @@
 #include "../../backend/VulkanTypes.h"
 
 class PushDescriptorWriter;
-struct IndirectDrawRange;
 
 struct Extents2D;
 
@@ -26,6 +25,14 @@ public:
 		Extents2D extent,
 		const std::vector<AttachmentDesc>& attachments,
 		bool isAtlas = false);
+
+	void DrawMeshTasksIndirectCount(
+		VkCommandBuffer cmd,
+		uint32_t slot,
+		VkBuffer taskDispatchBuffer,
+		VkBuffer countBuffer,
+		const PipelineHandle& pipeline,
+		PushDescriptorWriter& writer);
 
 	void DrawIndexedIndirectCount(
 		VkCommandBuffer cmd,

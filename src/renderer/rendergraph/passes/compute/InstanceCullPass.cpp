@@ -55,6 +55,21 @@ void RegisterInstanceCullPass(
 						const auto& hiz = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
 						const auto hizSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
+						if (ctx.frameState->IsMeshShaderPath())
+						{
+							const auto& visB = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityB);
+							vkCmdFillBuffer(cmd, visB.m_buffer, 0, VK_WHOLE_SIZE, 0u);
+							BufferBarriers::CmdFillToMeshRW(cmd, visB);
+
+							if (!frameCtx->IsMeshletVisibilityBufferInitialized())
+							{
+								const auto& visA = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityA);
+								vkCmdFillBuffer(cmd, visA.m_buffer, 0, VK_WHOLE_SIZE, 0u);
+								BufferBarriers::CmdFillToMeshRW(cmd, visA);
+								frameCtx->MeshletVisibilityBufferValid();
+							}
+						}
+
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,

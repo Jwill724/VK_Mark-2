@@ -45,6 +45,10 @@ public:
 
 	void IsVersionMismatched() const;
 
+	void SwapBufferSlots(RD::Renderer_Buffer a, RD::Renderer_Buffer b);
+
+	void ClearAssetBuffers(Allocator& allocator);
+
 private:
 	void SetAddress(RD::Renderer_Buffer slot, uint64_t address);
 	void RemoveAddress(RD::Renderer_Buffer slot);

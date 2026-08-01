@@ -4,7 +4,7 @@
 
 namespace RD = RendererDefinitions;
 
-inline constexpr size_t SIZEOF_INSTANCE_INPUT    = 44u;   // 11 x uint
+inline constexpr size_t SIZEOF_INSTANCE_INPUT    = 48u;   // 12 x uint
 inline constexpr size_t SIZEOF_VISIBLE_INSTANCE  = 16u;   // 4 x uint
 inline constexpr size_t SIZEOF_STREAM_ENTRY      = 8u;    // 2 x uint (visibleID, binID)
 inline constexpr size_t SIZEOF_DRAW_BIN          = 16u;   // 4 x uint
@@ -64,8 +64,11 @@ inline constexpr size_t GPU_BYTES_SHADOW_CULL_DATA
 inline constexpr size_t GPU_BYTES_DISPATCH_INDIRECT_ARGS
 	= RD::INDIRECT_DISPATCH_SLOT_COUNT * SIZEOF_DISPATCH_ARG;
 
-inline constexpr size_t GPU_BYTES_TRANSFORMS
-	= RD::MAX_INSTANCE_TRANSFORMS * SIZEOF_MAT4;
+inline constexpr size_t GPU_BYTES_STATIC_TRANSFORMS
+	= RD::MAX_STATIC_TRANSFORMS * SIZEOF_MAT4;
+
+inline constexpr size_t GPU_BYTES_DYNAMIC_TRANSFORMS
+	= RD::MAX_DYNAMIC_TRANSFORMS * SIZEOF_MAT4;
 
 inline constexpr size_t GPU_BYTES_LIGHTS
 	= RD::MAX_LIGHTS * SIZEOF_LOCAL_LIGHT;
@@ -75,6 +78,11 @@ inline constexpr size_t GPU_BYTES_VISIBLE_LIGHT_IDS
 
 inline constexpr size_t GPU_BYTES_LUMINANCE
 	= RD::MAX_LUMINANCE_GROUPS * sizeof(float) * 4;
+
+inline constexpr size_t  GPU_BYTES_MESHLET_VISIBILITY = RD::MAX_MESHLET_VISIBILITY_BITS / 8u;
+
+inline constexpr size_t GPU_BYTES_TASK_DISPATCH =
+	RD::TASK_OFFSET_TOTAL * RD::TASK_GROUP_SIZE;
 
 inline constexpr size_t GPU_BYTES_DEBUG_COUNTERS = 8u;
 

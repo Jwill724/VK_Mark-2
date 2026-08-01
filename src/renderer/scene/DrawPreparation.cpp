@@ -10,17 +10,51 @@
 #include "../../common/ResourceTypes.h"
 #include "../frame/FrameContext.h"
 #include "renderer/RendererDefinitions.h"
+#include "Scene.h"
 
 namespace RD = RendererDefinitions;
-
-static constexpr uint32_t TransformIDFor(const VirtualInstance& gi, uint32_t copy, uint32_t localSlot) {
-	return gi.firstTransform + copy * gi.transformCount + localSlot;
-}
 
 static constexpr bool IsDynamicMethod(const VirtualInstance& gi)
 {
 	return gi.instancingMethod == RD::InstancingMethod::DrawDynamic ||
-	       gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+		   gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+}
+
+static uint32_t AssignMeshletVisibilityOffsets(
+	std::vector<InstanceInput>& rows,
+	const std::vector<Mesh>& meshData)
+{
+	constexpr uint32_t MESHLET_HISTORY_MIN_BITS = 16u;
+
+	uint32_t cursor = 0u;
+
+	for (InstanceInput& row : rows)
+	{
+		const uint32_t chain[4] = {
+			row.lod0,
+			row.lod1,
+			row.lod2,
+			row.lod3
+		};
+		uint32_t reserve = 0u;
+		for (uint32_t i = 0; i < 4u; ++i)
+		{
+			if (chain[i] >= meshData.size()) continue;
+			const Mesh& m = meshData[chain[i]];
+			reserve = std::max(reserve, m.meshletVisibilityBase + m.meshletCount);
+		}
+
+		if (reserve < MESHLET_HISTORY_MIN_BITS || cursor + reserve > RD::MAX_MESHLET_VISIBILITY_BITS)
+		{
+			row.meshletVisibilityOffset = RD::INVALID_U32;
+			continue;
+		}
+
+		row.meshletVisibilityOffset = cursor;
+		cursor += reserve;
+	}
+
+	return cursor;
 }
 
 // Creates the initial rows (mesh X copies)
@@ -38,6 +72,7 @@ static void BakeInstanceData(
 	const uint32_t stride = gi.perInstanceStride;
 	const uint32_t copies = gi.usedCopies;
 
+	ASSERT(!transforms.empty());
 	ASSERT(stride > 0);
 	ASSERT(copies >= 1);
 	ASSERT(gi.transformCount > 0);
@@ -69,8 +104,12 @@ static void BakeInstanceData(
 			const uint32_t nodeSlot = asset.localToNodeSlot[localIndex];
 			ASSERT(nodeSlot < gi.transformCount);
 
-			const uint32_t transformID = TransformIDFor(gi, copyIndex, nodeSlot);
-			ASSERT(transformID >= slabBegin && transformID < usedEnd);
+			const uint32_t rawIdx = gi.firstTransform + copyIndex * gi.transformCount + nodeSlot;
+			ASSERT(rawIdx >= slabBegin && rawIdx < usedEnd);
+
+			const uint32_t transformID = IsDynamicMethod(gi)
+				? (rawIdx | RD::TRANSFORM_DYNAMIC_BIT)
+				: rawIdx;
 
 			// meshID is already the global MeshRegistry ID
 			const uint32_t meshID = instDesc.localMeshIdx;
@@ -99,11 +138,19 @@ static void BakeInstanceData(
 			if (matFlags & MATERIAL_FLAG_HAS_NORMAL_MAP)
 				flags |= InstanceFlags::HAS_NORMALS;
 
-			// shadow casting — opaque only, stripped from blend materials
+			// sun shadow casting
+			// opaque only, stripped from BLEND MATERIALS and INSTANCING
+			if ((flags & InstanceFlags::PASS_OPAQUE) &&
+				(matFlags & MATERIAL_FLAG_CASTS_SHADOWS) &&
+				!(gi.instancingMethod == RD::InstancingMethod::DrawMultiStatic) &&
+				!(gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic))
+			{
+				flags |= InstanceFlags::CAST_CSM;
+			}
+
 			if ((flags & InstanceFlags::PASS_OPAQUE) &&
 				(matFlags & MATERIAL_FLAG_CASTS_SHADOWS))
 			{
-				flags |= InstanceFlags::CAST_CSM;
 				flags |= InstanceFlags::CAST_FLASHLIGHT;
 			}
 
@@ -303,14 +350,15 @@ BinTableBuild DrawPreparation::BuildDrawBinTable(const std::vector<InstanceInput
 
 bool DrawPreparation::SyncInstanceInputs(
 	InstanceState& vs,
-	const std::vector<VirtualInstance>& virtualInstances,
+	const Scene& scene,
 	const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
 	const std::vector<Mesh>& meshData,
 	const std::vector<MeshLODs>& meshLods,
-	const std::vector<glm::mat4>& transforms,
 	const std::vector<uint32_t>&  materialFlags)
 {
 	bool gpuInputsDirty = false;
+
+	const auto& virtualInstances = scene.GetVirtualInstances();
 
 	for (const auto& gi : virtualInstances)
 	{
@@ -324,6 +372,12 @@ bool DrawPreparation::SyncInstanceInputs(
 		ASSERT(gi.perInstanceStride == static_cast<uint32_t>(asset.instances.size()));
 
 		auto slabIt = vs.slabs.find(sid);
+
+		const bool bDynamic =
+			gi.instancingMethod == RD::InstancingMethod::DrawDynamic ||
+			gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+
+		const auto& transforms = scene.GetTransformPool(bDynamic);
 
 		if (slabIt == vs.slabs.end())
 		{
@@ -340,7 +394,11 @@ bool DrawPreparation::SyncInstanceInputs(
 		//UpdateWorldAABBsForDynamic(vs, gi, meshData, transforms);
 	}
 
-	if (gpuInputsDirty) RebuildActive(vs);
+	if (gpuInputsDirty)
+	{
+		RebuildActive(vs);
+		AssignMeshletVisibilityOffsets(vs.gpuInputs, meshData);
+	}
 
 	return gpuInputsDirty;
 }
@@ -353,40 +411,51 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	Device&                           device,
 	Allocator&                        allocator,
 	const std::vector<InstanceInput>& instanceInputs,
-	const std::vector<glm::mat4>&     transforms,
+	Scene&                            scene,
 	const std::vector<LocalLight>&    lights,
-	bool                              isTemporalValid)
+	bool                              bMotionNeeded)
 {
-	auto& frameStaging = allocator.FrameStaging;
+	auto& frameStaging  = allocator.FrameStaging;
+	auto& globalStaging = allocator.GlobalStaging;
+	auto& frameAddrTable = frameCtx.GetBindlessBDATable();
 
-	auto& addrTable = frameCtx.GetBindlessBDATable();
+	const auto& dynamicTransforms = scene.GetDynamicTransforms();
+	const auto& motionMatrices    = scene.GetMotionMatrices();
+	const auto& staticTransforms  = scene.GetStaticTransforms();
 
-	const bool uploadInstances  = frameCtx.IsInstanceInputsUploadNeeded();
-	const bool uploadTransforms = frameCtx.IsTransformsUploadNeeded();
-	const bool uploadLights     = frameCtx.IsLightsUploadNeeded();
+	const bool uploadInstances = frameCtx.IsInstanceInputsUploadNeeded();
+	const bool uploadLights    = frameCtx.IsLightsUploadNeeded();
+	const bool uploadStatic    = scene.IsStaticTransformsDirty();
 
-	if (!uploadInstances && !uploadTransforms && !uploadLights && !addrTable.IsTableDirty()) return;
+	const bool uploadDynamic = !dynamicTransforms.empty();
+	const bool uploadMotion  = uploadDynamic && bMotionNeeded && !motionMatrices.empty();
 
-	// Stage everything into FrameStaging before recording the command
+	if (!uploadInstances && !uploadLights && !uploadStatic &&
+		!uploadDynamic && !frameAddrTable.IsTableDirty()) return;
+
 	struct UploadPlan
 	{
 		StagedWrite instanceInputs{};
 		StagedWrite drawBinKeys{};
 		StagedWrite drawBinKeysDense{};
 		StagedWrite globalAddrTable{};
-		StagedWrite transforms{};
-		StagedWrite prevTransforms{};
-		StagedWrite lights{};
-		StagedWrite addrTable{}; // frame address table
-		uint32_t addrVersion = UINT32_MAX;
+		StagedWrite staticTransforms{};
+		//uint32_t    globalAddrVersion = UINT32_MAX;
+		//bool        hasGlobalAddrTable = false;
 
-		// Assumes draw bins and global table as well
 		bool instanceUploadNeeded = false;
+		bool hasStaticTransforms  = false;
 
-		bool hasTransforms  = false;
-		bool hasPrevTf      = false;
-		bool hasLights      = false;
-		bool hasAddrTable   = false;
+		StagedWrite dynamicTransforms{};
+		StagedWrite motionMatrices{};
+		StagedWrite lights{};
+		StagedWrite frameAddrTable{};
+		uint32_t    frameAddrVersion = UINT32_MAX;
+
+		bool hasDynamicTransforms = false;
+		bool hasMotionMatrices    = false;
+		bool hasLights            = false;
+		bool hasFrameAddrTable    = false;
 	} plan;
 
 	// Global buffers for instance inputs and draw bin keys
@@ -428,22 +497,49 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	}
 
 	// Transforms
-	if (uploadTransforms && !transforms.empty())
+	if (uploadDynamic)
 	{
-		const size_t tfBytes = transforms.size() * sizeof(glm::mat4);
+		plan.dynamicTransforms = frameStaging.Stage(
+			dynamicTransforms.data(),
+			dynamicTransforms.size() * sizeof(glm::mat4),
+			frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::DynamicTransforms).m_buffer);
 
-		plan.transforms = frameStaging.Stage(
-			transforms.data(), tfBytes,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms).m_buffer);
+		plan.hasDynamicTransforms = true;
+	}
 
-		plan.hasTransforms = true;
+	if (uploadMotion)
+	{
+		plan.motionMatrices = frameStaging.Stage(
+			motionMatrices.data(),
+			motionMatrices.size() * sizeof(glm::mat4),
+			frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::MotionMatrices).m_buffer);
 
-		// Copy current -> prev for temporal
-		if (isTemporalValid)
+		plan.hasMotionMatrices = true;
+	}
+
+	if (uploadStatic)
+	{
+		const DirtyRange range = scene.GetStaticDirtyRange();
+		const size_t bytes     = static_cast<size_t>(range.count) * sizeof(glm::mat4);
+		const size_t dstOffset = static_cast<size_t>(range.offset) * sizeof(glm::mat4);
+
+		if (!globalStaging.CanFit(bytes))
 		{
-			// prev is a GPU->GPU copy recorded in-command
-			plan.hasPrevTf = true;
+			device.GetTransferQueue().WaitIdle();
+			globalStaging.Reset();
 		}
+
+		ASSERT(globalStaging.CanFit(bytes) &&
+			"GlobalStaging too small for the static transform range");
+
+		plan.staticTransforms = globalStaging.Stage(
+			staticTransforms.data() + range.offset,
+			bytes,
+			globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::StaticTransforms).m_buffer,
+			dstOffset);
+
+		plan.hasStaticTransforms = true;
+		scene.ClearStaticTransformsDirty();
 	}
 
 	// Lights
@@ -454,24 +550,25 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 		plan.lights = frameStaging.Stage(
 			lights.data(),
 			lightBytes,
-			addrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights).m_buffer);
+			frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights).m_buffer);
 
 		plan.hasLights = true;
 	}
 
-	// Per-frame address table
-	if (addrTable.IsTableDirty())
+	// Buffer address table
+	if (frameAddrTable.IsTableDirty())
 	{
-		plan.addrTable = frameStaging.Stage(
-			addrTable.GetAddrPtrTable().data(),
-			addrTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
-			addrTable.GetTableBuffer().m_buffer);
+		plan.frameAddrTable = frameStaging.Stage(
+			frameAddrTable.GetAddrPtrTable().data(),
+			frameAddrTable.GPU_ADDRESS_TABLE_SIZE_GPU_BYTES,
+			frameAddrTable.GetTableBuffer().m_buffer);
 
-		plan.hasAddrTable = true;
-		plan.addrVersion = addrTable.GetCpuVersion();
+		plan.hasFrameAddrTable = true;
+		plan.frameAddrVersion = frameAddrTable.GetCpuVersion();
 	}
 
 	frameStaging.Flush();
+	if (plan.hasStaticTransforms) globalStaging.Flush();
 
 	// Record transfer command
 	device.RecordDeferredCommand([&](VkCommandBuffer cmd)
@@ -497,30 +594,27 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 				device.GetContext());
 		}
 
-		if (plan.hasTransforms)
+		if (plan.hasDynamicTransforms)
 		{
-			// GPU->GPU copy of old transforms into prevTransforms before overwrite
-			if (plan.hasPrevTf)
-			{
-				const size_t tfBytes = transforms.size() * sizeof(glm::mat4);
-				VkBufferCopy prevCopy{};
-				prevCopy.size = tfBytes;
-				vkCmdCopyBuffer(
-					cmd,
-					addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms).m_buffer,
-					addrTable.GetGPUBuffer(RD::Renderer_Buffer::PrevTransforms).m_buffer,
-					1, &prevCopy);
-
-				BufferBarriers::TransferReleaseOnGraphics(
-					cmd,
-					addrTable.GetGPUBuffer(RD::Renderer_Buffer::PrevTransforms),
-					device.GetContext());
-			}
-
-			frameStaging.CopyCommand(cmd, plan.transforms);
+			frameStaging.CopyCommand(cmd, plan.dynamicTransforms);
 			BufferBarriers::TransferReleaseOnGraphics(
-				cmd,
-				addrTable.GetGPUBuffer(RD::Renderer_Buffer::Transforms),
+				cmd, frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::DynamicTransforms),
+				device.GetContext());
+		}
+
+		if (plan.hasMotionMatrices)
+		{
+			frameStaging.CopyCommand(cmd, plan.motionMatrices);
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd, frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::MotionMatrices),
+				device.GetContext());
+		}
+
+		if (plan.hasStaticTransforms)
+		{
+			globalStaging.CopyCommand(cmd, plan.staticTransforms);
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd, globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::StaticTransforms),
 				device.GetContext());
 		}
 
@@ -529,19 +623,19 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 			frameStaging.CopyCommand(cmd, plan.lights);
 			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,
-				addrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights),
+				frameAddrTable.GetGPUBuffer(RD::Renderer_Buffer::Lights),
 				device.GetContext());
 		}
 
-		if (plan.hasAddrTable)
+		if (plan.hasFrameAddrTable)
 		{
-			frameStaging.CopyCommand(cmd, plan.addrTable);
+			frameStaging.CopyCommand(cmd, plan.frameAddrTable);
 			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,
-				addrTable.GetTableBuffer(),
+				frameAddrTable.GetTableBuffer(),
 				device.GetContext());
 
-			frameCtx.SetPendingAddrTableVersion(plan.addrVersion);
+			frameCtx.SetPendingAddrTableVersion(plan.frameAddrVersion);
 		}
 
 	}, frameCtx.GetTransferPool(), QueueType::Transfer);
@@ -554,7 +648,7 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	frameCtx.StashTransferCmds();
 	frameCtx.GetTransferWaitValue() = signalValue;
 
-	addrTable.SetGpuVersion(frameCtx.GetPendingAddrTableVersion());
+	frameAddrTable.SetGpuVersion(frameCtx.GetPendingAddrTableVersion());
 
 	// Reset FrameStaging head — safe since transfer is submitted
 	frameStaging.Reset();

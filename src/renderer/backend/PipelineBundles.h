@@ -8,6 +8,8 @@ namespace RD = RendererDefinitions;
 enum class DirectionalCSMPipelineSlot : uint8_t
 {
 	Shadow,
+	ShadowMesh,
+
 	Count
 };
 
@@ -15,6 +17,7 @@ enum class DirectionalCSMPipelineSlot : uint8_t
 enum class FlashlightShadowPipelineSlot : uint8_t
 {
 	Shadow,
+	ShadowMesh,
 
 	Count
 };
@@ -22,9 +25,13 @@ enum class FlashlightShadowPipelineSlot : uint8_t
 enum class BasePrepassPipelineSlot : uint8_t
 {
 	Prepass,
+	PrepassMasked,
+	PrepassMesh,
+	PrepassMaskedMesh,
 
 	Count
 };
+
 
 enum class HiZGenerationPipelineSlot : uint8_t
 {
@@ -40,9 +47,16 @@ enum class MaterialResolvePipelineSlot : uint8_t
 	Count
 };
 
-enum class OpaqueTileShadingPipelineSlot : uint8_t
+enum class VelocityResolvePipelineSlot : uint8_t
 {
-	TileShading,
+	Resolve,
+
+	Count
+};
+
+enum class OpaqueLightingPipelineSlot : uint8_t
+{
+	Lighting,
 
 	Count
 };
@@ -197,17 +211,10 @@ enum class TransparentResolvePipelineSlot : uint8_t
 	Count
 };
 
-
-enum class OpaqueForwardPipelineSlot : uint8_t
-{
-	Opaque,
-
-	Count
-};
-
 enum class OpaqueWireframePipelineSlot : uint8_t
 {
 	Wireframe,
+	WireframeMesh,
 
 	Count
 };
@@ -280,11 +287,24 @@ template<typename SlotEnum>
 struct PipelineBundleTraits;
 
 template<>
+struct PipelineBundleTraits<BasePrepassPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::Prepass,
+		RD::Renderer_Pipeline::PrepassMasked,
+		RD::Renderer_Pipeline::PrepassMesh,
+		RD::Renderer_Pipeline::PrepassMaskedMesh
+	};
+};
+
+template<>
 struct PipelineBundleTraits<DirectionalCSMPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Shadow
+		RD::Renderer_Pipeline::Shadow,
+		RD::Renderer_Pipeline::ShadowMesh
 	};
 };
 
@@ -293,17 +313,8 @@ struct PipelineBundleTraits<FlashlightShadowPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Shadow
-	};
-};
-
-
-template<>
-struct PipelineBundleTraits<BasePrepassPipelineSlot>
-{
-	static constexpr std::array mappings =
-	{
-		RD::Renderer_Pipeline::Prepass
+		RD::Renderer_Pipeline::Shadow,
+		RD::Renderer_Pipeline::ShadowMesh
 	};
 };
 
@@ -456,11 +467,11 @@ struct PipelineBundleTraits<MaterialResolvePipelineSlot>
 };
 
 template<>
-struct PipelineBundleTraits<OpaqueTileShadingPipelineSlot>
+struct PipelineBundleTraits<OpaqueLightingPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::OpaqueTileShading
+		RD::Renderer_Pipeline::OpaqueLighting
 	};
 };
 
@@ -500,13 +511,12 @@ struct PipelineBundleTraits<TransparentResolvePipelineSlot>
 	};
 };
 
-
 template<>
-struct PipelineBundleTraits<OpaqueForwardPipelineSlot>
+struct PipelineBundleTraits<VelocityResolvePipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Opaque
+		RD::Renderer_Pipeline::VelocityResolve
 	};
 };
 
@@ -515,7 +525,8 @@ struct PipelineBundleTraits<OpaqueWireframePipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Wireframe
+		RD::Renderer_Pipeline::Wireframe,
+		RD::Renderer_Pipeline::WireframeMesh
 	};
 };
 
@@ -524,7 +535,7 @@ struct PipelineBundleTraits<TransparentForwardPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Transparent
+		RD::Renderer_Pipeline::TransparentForward
 	};
 };
 

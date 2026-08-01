@@ -61,31 +61,27 @@ void main()
 	}
 	else
 	{
-		// Mip N: Downsample from mip N - 1
-		ivec2 srcCoordBase = dstCoord * 2;
+		ivec2 maxSrc = ivec2(srcWidth - 1, srcHeight - 1);
+		ivec2 base   = dstCoord * 2;
 
-		ivec2 maxSrcCoord = ivec2(srcWidth - 1, srcHeight - 1);
+		// Odd source dimension: floor division orphans the last row/column — no dst texel
+		// would ever read it. Widen the footprint to 3 on that axis so it folds in.
+		int extraX = srcWidth  & 1;
+		int extraY = srcHeight & 1;
 
-		ivec2 c00 = clamp(srcCoordBase, ivec2(0), maxSrcCoord);
-		ivec2 c10 = clamp(srcCoordBase + ivec2(1, 0), ivec2(0), maxSrcCoord);
-		ivec2 c01 = clamp(srcCoordBase + ivec2(0, 1), ivec2(0), maxSrcCoord);
-		ivec2 c11 = clamp(srcCoordBase + ivec2(1, 1), ivec2(0), maxSrcCoord);
+		float outMin =  1e30;
+		float outMax = -1e30;
 
-		uint p00 = texelFetch(inHiZPacked, c00, 0).r;
-		uint p10 = texelFetch(inHiZPacked, c10, 0).r;
-		uint p01 = texelFetch(inHiZPacked, c01, 0).r;
-		uint p11 = texelFetch(inHiZPacked, c11, 0).r;
+		for (int y = 0; y <= 1 + extraY; ++y)
+		for (int x = 0; x <= 1 + extraX; ++x)
+		{
+			ivec2 c = clamp(base + ivec2(x, y), ivec2(0), maxSrc);
+			float lo, hi;
+			unpackHZB(texelFetch(inHiZPacked, c, 0).r, lo, hi);
+			outMin = min(outMin, lo);   // furthest occluder in reverse-z
+			outMax = max(outMax, hi);   // nearest
+		}
 
-		float min00, max00; unpackHZB(p00, min00, max00);
-		float min10, max10; unpackHZB(p10, min10, max10);
-		float min01, max01; unpackHZB(p01, min01, max01);
-		float min11, max11; unpackHZB(p11, min11, max11);
-
-		// min = farthest, max = nearest.
-		float outMin = min(min(min00, min10), min(min01, min11));
-		float outMax = max(max(max00, max10), max(max01, max11));
-
-		uint packedOut = packHZB(outMin, outMax);
-		imageStore(outMip, dstCoord, uvec4(packedOut, 0u, 0u, 0u));
+		imageStore(outMip, dstCoord, uvec4(packHZB(outMin, outMax), 0u, 0u, 0u));
 	}
 }

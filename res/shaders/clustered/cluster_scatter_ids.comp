@@ -16,20 +16,21 @@ void main()
 	ClusteredData clustered = getClusteredData();
 	SceneData scene = getSceneData();
 
+	float camNear = scene.cameraClips.x;
+	float camFar = scene.cameraClips.y;
+
 	uint globalIndex = gl_GlobalInvocationID.x;
 
 	// Iterate each cluster over lights
-	if (useClusterMajor) {
+	if (useClusterMajor)
+	{
 		uint clusterIndex = globalIndex;
 		uint clusterCount = clusteredData.clusterCount;
 		if (clusterIndex >= clusterCount) return;
 
 		ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
-
 		ClusterCounts countsBuf = getClusterCountsBuffer();
-
 		VisibleLightIDs visibleIDsBuf = getVisibleLightIDsBuffer();
-
 		LightBuffer lightBuf = getLightBuffer();
 
 		uint tileCountX = clusteredData.tileCountX;
@@ -44,21 +45,26 @@ void main()
 
 		uvec2 tileSliceRange = tsrBuf.ranges[tileIndex];
 
-		if (sliceZ < tileSliceRange.x || sliceZ > tileSliceRange.y || tileSliceRange.x > tileSliceRange.y) {
+		if (sliceZ < tileSliceRange.x || sliceZ > tileSliceRange.y || tileSliceRange.x > tileSliceRange.y)
+		{
 			countsBuf.counts[clusterIndex] = 0u;
 			return;
 		}
 
 		ClusterLightIDs lightIDsBuf = getClusterLightIDsBuffer();
-
 		ClusterOffsets offsetsBuf = getClusterOffsetsBuffer();
-
 		ClusterCursors cursorsBuf = getClusterCursorsBuffer();
+
+		ClusterAABB box = computeClusterAABB(
+			tileX, tileY, sliceZ, scene.proj, uvec2(scene.viewportSize.xy),
+			clusteredData.tileSizeX, clusteredData.tileSizeY, clusteredData.zSlices,
+			camNear, camFar);
 
 		uint baseOffset = offsetsBuf.offsets[clusterIndex];
 		uint localCount = 0u;
 
-		for (uint visibleIndex = 0u; visibleIndex < visibleCount; ++visibleIndex) {
+		for (uint visibleIndex = 0u; visibleIndex < visibleCount; ++visibleIndex)
+		{
 			uint globalLightID = visibleIDsBuf.ids[visibleIndex];
 			LocalLight light   = lightBuf.lights[globalLightID];
 
@@ -66,24 +72,8 @@ void main()
 				!((light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u) &&
 				!((light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u)) continue;
 
-			LightClusterBounds lightBounds = computeLightClusterBounds(
-				scene.view,
-				scene.proj,
-				light.position,
-				light.radius,
-				uvec2(scene.viewportSize.xy),
-				clusteredData.tileSizeX,
-				clusteredData.tileSizeY,
-				clusteredData.tileCountX,
-				clusteredData.tileCountY,
-				clusteredData.zSlices,
-				scene.cameraClips.x,
-				scene.cameraClips.y
-			);
-
-			if (tileX < lightBounds.tileMin.x || tileX > lightBounds.tileMax.x) continue;
-			if (tileY < lightBounds.tileMin.y || tileY > lightBounds.tileMax.y) continue;
-			if (sliceZ < lightBounds.sliceMin || sliceZ > lightBounds.sliceMax) continue;
+			vec3 lightVS = (scene.view * vec4(light.position, 1.0)).xyz;
+			if (!sphereOverlapsCluster(lightVS, light.radius, box)) continue;
 
 			if (localCount >= clusteredData.maxLightsPerCluster) break;
 
@@ -94,7 +84,8 @@ void main()
 		}
 	}
 	// Iterate over every light
-	else {
+	else
+	{
 		uint visibleIndex = globalIndex;
 		if (visibleIndex >= visibleCount) return;
 
@@ -121,9 +112,8 @@ void main()
 			clusteredData.tileCountX,
 			clusteredData.tileCountY,
 			clusteredData.zSlices,
-			scene.cameraClips.x,
-			scene.cameraClips.y
-		);
+			camNear,
+			camFar);
 
 		ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
 
@@ -135,8 +125,10 @@ void main()
 
 		uint tileCount = clusteredData.tileCountX * clusteredData.tileCountY;
 
-		for (uint tileY = lightBounds.tileMin.y; tileY <= lightBounds.tileMax.y; ++tileY) {
-			for (uint tileX = lightBounds.tileMin.x; tileX <= lightBounds.tileMax.x; ++tileX) {
+		for (uint tileY = lightBounds.tileMin.y; tileY <= lightBounds.tileMax.y; ++tileY)
+		{
+			for (uint tileX = lightBounds.tileMin.x; tileX <= lightBounds.tileMax.x; ++tileX)
+			{
 
 				uint tileIndex = tileY * clusteredData.tileCountX + tileX;
 
@@ -147,7 +139,8 @@ void main()
 
 				if (sliceMin > sliceMax) continue;
 
-				for (uint sliceZ = sliceMin; sliceZ <= sliceMax; ++sliceZ) {
+				for (uint sliceZ = sliceMin; sliceZ <= sliceMax; ++sliceZ)
+				{
 					uint clusterIndex = sliceZ * tileCount + tileIndex;
 
 					uint cursor = atomicAdd(cursorsBuf.cursors[clusterIndex], 1u);

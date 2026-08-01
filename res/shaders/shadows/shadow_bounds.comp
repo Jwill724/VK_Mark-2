@@ -1,9 +1,11 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
 
 #include "../include/common.glsl"
 #include "../include/depth.glsl"
+#include "../include/shadow.glsl"
 
 layout(local_size_x = 256) in;
 
@@ -17,8 +19,10 @@ void main()
 	uint tid = gl_LocalInvocationIndex;
 	SceneData sceneData = getSceneData();
 
+	int maxMip = textureQueryLevels(inHiZ) - 1;
+
 	// reduce lowest Hi-Z mip to global depth range
-	ivec2 mipSize = textureSize(inHiZ, int(HI_Z_MIP_CLAMPED));
+	ivec2 mipSize = textureSize(inHiZ, maxMip);
 	uint texelCount = uint(mipSize.x * mipSize.y);
 
 	float localMin = 1.0; // raw reverse-z
@@ -27,7 +31,7 @@ void main()
 	for (uint i = tid; i < texelCount; i += 256u)
 	{
 		ivec2 coord = ivec2(int(i % uint(mipSize.x)), int(i / uint(mipSize.x)));
-		uint packed = texelFetch(inHiZ, coord, int(HI_Z_MIP_CLAMPED)).r;
+		uint packed = texelFetch(inHiZ, coord, maxMip).r;
 
 		float dMin, dMax;
 		unpackHZB(packed, dMin, dMax);
@@ -78,7 +82,7 @@ void main()
 
 	uint c = tid;
 
-	float sliceNear = (c == 0u) ? nearPlane : csm.cascadeSplits[c - 1u];
+	float sliceNear = (c == 0u) ? nearPlane : csm.cascadeSplits[c - 1u] * CASCADE_BLEND_FRACTION;
 	float sliceFar  = csm.cascadeSplits[c];
 
 	// clamp slice to visible depth range

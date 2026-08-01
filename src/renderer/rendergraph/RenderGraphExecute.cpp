@@ -48,6 +48,9 @@ void RenderGraph::Build(
 	// --- Prepass & HiZ ---
 	RegisterThePrepass(*this,              pipeManager.GetBundle<BasePrepassPipelineSlot>());
 	RegisterHiZGenerationPass(*this,       pipeManager.GetBundle<HiZGenerationPipelineSlot>());
+	RegisterThePrepassLate(*this,          pipeManager.GetBundle<BasePrepassPipelineSlot>());
+	RegisterHiZGenerationLatePass(*this,   pipeManager.GetBundle<HiZGenerationPipelineSlot>());
+	RegisterVelocityResolvePass(*this,     pipeManager.GetBundle<VelocityResolvePipelineSlot>());
 
 	RegisterWireframePass(*this,           pipeManager.GetBundle<OpaqueWireframePipelineSlot>());
 
@@ -65,9 +68,7 @@ void RenderGraph::Build(
 
 	// --- Opaque + Skybox ---
 	RegisterSkyboxPass(*this,              pipeManager.GetBundle<SkyboxPipelineSlot>());
-	// Either one of these occurs
-	RegisterOpaqueForwardPass(*this,       pipeManager.GetBundle<OpaqueForwardPipelineSlot>());
-	RegisterOpaqueTileShadingPass(*this,   pipeManager.GetBundle<OpaqueTileShadingPipelineSlot>());
+	RegisterOpaqueLightingPass(*this,      pipeManager.GetBundle<OpaqueLightingPipelineSlot>());
 
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
@@ -89,7 +90,7 @@ void RenderGraph::Build(
 	RegisterLensFlarePass(*this,           pipeManager.GetBundle<LensFlarePipelineSlot>());
 	RegisterFinalCompositePass(*this,      pipeManager.GetBundle<FinalCompositePipelineSlot>());
 
-	// --- Debug gbuffer deferred ---
+	// --- Debug gbuffer ---
 	RegisterGBufferDebugPass(*this,        pipeManager.GetBundle<GBufferDebugPipelineSlot>());
 
 	// --- Post AA ---

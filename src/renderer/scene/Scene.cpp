@@ -47,7 +47,7 @@ void Scene::InitScene(glm::vec3 spawn)
 	m_previousJitterNDC = glm::vec2(0.0f);
 
 	m_lastViewProjUnjittered = glm::mat4(1.0f);
-	m_lastViewProjJittered = glm::mat4(1.0f);
+	//m_lastViewProjJittered = glm::mat4(1.0f);
 
 	m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 10.0f);    // golden sun
 	// m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 10.0f); // white
@@ -62,6 +62,12 @@ bool Scene::UpdateCamera(
 	bool isTemporalInvalid = false;
 
 	const auto& aaMode = profiler.debugToggles.aaMode;
+
+	if (aaMode != m_lastAaMode)
+	{
+		m_lastAaMode = aaMode;
+		isTemporalInvalid = true;
+	}
 
 	float width  = static_cast<float>(drawExtent.Width());
 	float height = static_cast<float>(drawExtent.Height());
@@ -133,7 +139,7 @@ bool Scene::UpdateCamera(
 
 		m_sceneInfo.temporalJitter = glm::vec4(0.0f);
 	}
-	m_sceneInfo.prevViewProj = m_lastViewProjUnjittered;
+	m_sceneInfo.prevViewProjUnjittered = m_lastViewProjUnjittered;
 
 	m_sceneInfo.projUnjittered = m_curCamProjUnjittered;
 
@@ -142,7 +148,8 @@ bool Scene::UpdateCamera(
 	m_sceneInfo.cameraPos = glm::vec4(m_camera.GetPosition(), 0.0f);
 
 	m_lastViewProjUnjittered = currentViewProjUnjittered;
-	m_lastViewProjJittered = currentViewProjJittered;
+
+	//m_lastViewProjJittered = currentViewProjJittered;
 
 	m_sceneInfo.prevView = m_lastView;
 	m_lastView = m_curCamView;
@@ -180,6 +187,29 @@ bool Scene::UpdateCamera(
 	m_sceneInfo.viewportSize.w = (aaMode == TAA_U32) ? -1.0f : 0.0f;
 
 	return isTemporalInvalid;
+}
+
+void Scene::BuildMotionMatrices(bool bMotionNeeded, bool bTemporalValid)
+{
+	const size_t count = m_dynamicTransforms.size();
+
+	if (m_prevDynamicTransforms.size() != count || !bTemporalValid)
+	{
+		m_motionMatrices.assign(count, glm::mat4(1.0f));
+		m_prevDynamicTransforms = m_dynamicTransforms;
+		return;
+	}
+
+	// Skip the inverses entirely when nothing consumes them.
+	if (bMotionNeeded)
+	{
+		if (m_motionMatrices.size() != count) m_motionMatrices.resize(count);
+
+		for (size_t i = 0; i < count; ++i)
+			m_motionMatrices[i] = m_prevDynamicTransforms[i] * glm::inverse(m_dynamicTransforms[i]);
+	}
+
+	m_prevDynamicTransforms = m_dynamicTransforms;
 }
 
 // =============================
@@ -347,6 +377,8 @@ void Scene::UpdateCSMInfo()
 		roundOffset.z           = 0.0f;
 		shadowMatrix[3]        += glm::vec4(roundOffset, 0.0f);
 		m_csmInfo.cascadeVP[i]  = shadowMatrix;
+
+		m_csmInfo.cascadeInvTransVP[i] = glm::transpose(glm::inverse(glm::mat3(shadowMatrix)));
 
 		lastSplitDist = curSplit;
 	}

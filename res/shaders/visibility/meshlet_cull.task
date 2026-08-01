@@ -1,0 +1,154 @@
+#version 450
+
+#extension GL_EXT_mesh_shader              : require
+#extension GL_KHR_shader_subgroup_ballot   : require
+#extension GL_ARB_shader_draw_parameters   : require
+#extension GL_GOOGLE_include_directive     : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/depth.glsl"
+#include "../include/meshlet_cull.glsl"
+
+layout(local_size_x = TASK_GROUP_SIZE) in;
+
+layout(push_constant) uniform PrepassTaskPush
+{
+	uint slot;
+	uint phase;
+} pc;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D inHiZ;
+
+taskPayloadSharedEXT MeshletPayload payload;
+
+shared uint sPayloadCount;
+
+void main()
+{
+	TaskDispatch td = getTaskDispatchBuffer().taskDispatch[streamTaskBase(pc.slot) + gl_DrawIDARB];
+
+	uint packedID      = getDrawInstanceIDsBuffer().ids[td.instanceBase + gl_WorkGroupID.y];
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(packedID)];
+	mat4 model         = getInstanceTransform(inst);
+	SceneData scene    = getSceneData();
+
+	if (gl_LocalInvocationIndex == 0u)
+	{
+		payload.packedID     = packedID;
+		payload.vertexOffset = td.vertexOffset;
+	}
+
+	// workgroup-uniform, hoisted out of the per-meshlet branch
+	vec4 pl, pr, pb, pt;
+	get_frustum_side_planes(scene.viewProj, pl, pr, pb, pt);
+	float worldScale = max_world_scale(model);
+
+	uint local     = gl_WorkGroupID.x * TASK_GROUP_SIZE + gl_LocalInvocationIndex;
+	uint meshletID = td.meshletOffset + local;
+	bool inRange   = local < td.meshletCount;
+
+	uint mlTriangles = 0u;
+	uint cullStage   = 0u;   // 0 = survived, 1 = frustum, 2 = cone, 3 = hi-z
+	bool passedAll   = false;
+	bool drawn       = false;
+
+	float maxMip = float(textureQueryLevels(inHiZ) - 1);
+
+	if (inRange)
+	{
+		Meshlet ml  = getMeshletBuffer().meshlets[meshletID];
+		mlTriangles = uint(ml.triangleCount);
+
+		vec3  centerWS = (model * vec4(ml.center, 1.0)).xyz;
+		float radiusWS = ml.radius * worldScale;
+
+		if (!sphere_in_side_planes(centerWS, radiusWS, pl, pr, pb, pt))
+		{
+			cullStage = 1u;
+		}
+		else if (meshletConeCulled(
+			ml, model, centerWS, radiusWS, vec4(scene.cameraPos.xyz, 1.0), 1.0))
+		{
+			cullStage = 2u;
+		}
+		else if (pc.phase != 0u &&
+				 !DBG(disableOcclusionCull) &&
+				 !sphere_hiz_visible(
+					 inHiZ, centerWS, radiusWS,
+					 maxMip, scene.viewProj))
+		{
+			cullStage = 3u;
+		}
+		else
+		{
+			passedAll = true;
+		}
+
+		bool hasHistory = inst.meshletVisibilityOffset != INVALID_U32;
+		uint bit        = inst.meshletVisibilityOffset + td.visibilityBase + local;
+		bool wasVisible = hasHistory ? meshletVisibleLastFrame(bit) : false;
+
+		if (pc.phase == 0u)
+		{
+			// Hi-Z not built yet — draw last frame's set, nothing else.
+			drawn = passedAll && wasVisible;
+		}
+		else
+		{
+			if (pc.phase == 1u && passedAll && hasHistory)
+			{
+				if (bit < MAX_MESHLET_VISIBILITY_BITS)
+					atomicOr(getMeshletVisibilityBBuffer().bits[bit >> 5u], 1u << (bit & 31u));
+			}
+
+			drawn = (pc.phase == 1u) ? (passedAll && !wasVisible) : passedAll;
+		}
+	}
+
+	// --- stats: one atomic per subgroup ---
+	if (DBG(enableProfilerView))
+	{
+		uint drawnCount = subgroupBallotBitCount(subgroupBallot(drawn));
+		uint drawnTris  = subgroupAdd(drawn ? mlTriangles : 0u);
+
+		uint cullF = 0u, cullC = 0u, cullH = 0u;
+		if (pc.phase == 1u)
+		{
+			cullF = subgroupBallotBitCount(subgroupBallot(cullStage == 1u));
+			cullC = subgroupBallotBitCount(subgroupBallot(cullStage == 2u));
+			cullH = subgroupBallotBitCount(subgroupBallot(cullStage == 3u));
+		}
+
+		if (subgroupElect())
+		{
+			GPUStatsBuffer s = getGPUStatsBuffer();
+
+			if (drawnCount > 0u)
+			{
+				if (pc.phase == 0u) atomicAdd(s.gpuStats.meshletsDrawnEarly, drawnCount);
+				else                atomicAdd(s.gpuStats.meshletsDrawnLate,  drawnCount);
+			}
+			if (drawnTris > 0u) atomicAdd(s.gpuStats.meshletTriangles,      drawnTris);
+			if (cullF > 0u)     atomicAdd(s.gpuStats.meshletsCulledFrustum, cullF);
+			if (cullC > 0u)     atomicAdd(s.gpuStats.meshletsCulledCone,    cullC);
+			if (cullH > 0u)     atomicAdd(s.gpuStats.meshletsCulledHiZ,     cullH);
+		}
+	}
+
+	if (gl_LocalInvocationIndex == 0u) sPayloadCount = 0u;
+	barrier();
+
+	uvec4 ballot  = subgroupBallot(drawn);
+	uint  sgCount = subgroupBallotBitCount(ballot);
+	uint  sgBase  = 0u;
+	if (subgroupElect()) sgBase = atomicAdd(sPayloadCount, sgCount);
+	sgBase = subgroupBroadcastFirst(sgBase);
+
+	if (drawn)
+		payload.meshletIndices[sgBase + subgroupBallotExclusiveBitCount(ballot)] = meshletID;
+
+	barrier();
+	EmitMeshTasksEXT(sPayloadCount, 1u, 1u);
+}

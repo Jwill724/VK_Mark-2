@@ -73,7 +73,7 @@ namespace RenderTargetDescs
 
 	inline ImageDesc ViewSpaceNormals(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::ABGRpacked, .extent = ext,
+		return { .format = Vulkan_Format::RG8unorm, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "ViewSpaceNormals" };
 	}
 
@@ -301,7 +301,7 @@ namespace StaticTextureDescs
 
 	inline ImageDesc DefaultMetalRough()
 	{
-		return { .format = Vulkan_Format::RGBA8unorm, .extent = { 1, 1, 1 },
+		return { .format = Vulkan_Format::RG8unorm, .extent = { 1, 1, 1 },
 				 .usage  = Vulkan_ImageUsage::TextureSampled, .debugName = "DefaultMetalRough" };
 	}
 

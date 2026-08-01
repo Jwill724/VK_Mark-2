@@ -1,8 +1,7 @@
 #pragma once
 
 #include "ResourceTypes.h"
-#include "Vertex.h"
-#include "Bounds.h"
+#include "Mesh.h"
 #include "../renderer/scene/World.h"
 
 // -----------------------------------------------------------------------
@@ -77,15 +76,19 @@ struct MaterialDesc
 // -----------------------------------------------------------------------
 struct MeshDesc
 {
-	uint32_t firstIndex    = 0;
-	uint32_t indexCount    = 0;
-	uint32_t vertexOffset  = 0;
-	uint32_t vertexCount   = 0;
-	uint32_t shadowFirstIndex = 0;
-	uint32_t shadowIndexCount = 0;
-
 	AABB localAABB;
-	float localBoundingRadius = 0.0f;
+	float localBoundingRadius            = 0.0f;
+	uint32_t firstIndex                  = UINT32_MAX;
+	uint32_t indexCount                  = UINT32_MAX;
+	uint32_t vertexOffset                = UINT32_MAX;
+	uint32_t vertexCount                 = UINT32_MAX;
+	uint32_t meshletOffset               = 0;
+	uint32_t meshletCount                = 0;
+	uint32_t meshletVisibilityBase       = 0;
+	uint32_t shadowFirstIndex            = UINT32_MAX;
+	uint32_t shadowIndexCount            = UINT32_MAX;
+	uint32_t shadowMeshletOffset         = 0;
+	uint32_t shadowMeshletCount          = 0;
 
 	// LOD mesh indices into the scene's mesh desc array (UINT32_MAX = fallback to lod0)
 	uint32_t lod0 = UINT32_MAX;
@@ -124,8 +127,11 @@ struct SceneUploadBatch
 	std::string sceneName;
 
 	// Flat CPU-side geometry — Renderer uploads these in one staging pass
-	std::vector<Vertex>    vertices;
-	std::vector<uint32_t>  indices;
+	std::vector<Vertex>   vertices;
+	std::vector<uint32_t> indices;
+	std::vector<Meshlet>  meshlets;
+	std::vector<uint32_t> meshletVertices;
+	std::vector<uint8_t>  meshletTriangles;
 
 	// Per-scene resource descriptors
 	std::vector<TextureDesc>  textures;  // owns pixel data until Renderer stages

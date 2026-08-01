@@ -47,13 +47,13 @@ void FrameContext::Init(
 	m_gpuAddressTable.Init(allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Transforms,
-		GPU_BYTES_TRANSFORMS,
+		RD::Renderer_Buffer::DynamicTransforms,
+		GPU_BYTES_DYNAMIC_TRANSFORMS,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::PrevTransforms,
-		GPU_BYTES_TRANSFORMS,
+		RD::Renderer_Buffer::MotionMatrices,
+		GPU_BYTES_DYNAMIC_TRANSFORMS,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
@@ -136,6 +136,21 @@ void FrameContext::Init(
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::VisibleLightIDs,
 		GPU_BYTES_VISIBLE_LIGHT_IDS,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::MeshletVisibilityA,
+		GPU_BYTES_MESHLET_VISIBILITY,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::MeshletVisibilityB,
+		GPU_BYTES_MESHLET_VISIBILITY,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::TaskDispatch,
+		GPU_BYTES_TASK_DISPATCH,
 		allocator);
 
 	// Readback stats buffer

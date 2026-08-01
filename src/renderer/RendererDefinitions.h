@@ -42,135 +42,182 @@ namespace RendererDefinitions
 	inline constexpr uint32_t PUSH_BINDING_WRITE_4 = 12u;
 	inline constexpr uint32_t PUSH_BINDING_WRITE_5 = 13u;
 
-	inline constexpr uint32_t DEBUG_VERTS_PER_OBB     = 24u;
-	inline constexpr uint32_t DEBUG_VERTS_PER_SPHERE  = 72u;      // 3 rings x 12 segments x 2
-	inline constexpr uint32_t DEBUG_MAX_ITEMS         = 131072u;  // max debug items per frame
-	inline constexpr uint32_t DEBUG_MAX_VERTS         = DEBUG_MAX_ITEMS * DEBUG_VERTS_PER_OBB;
-
-	// -------------------
-	// Renderer constants
-	// -------------------
-	inline constexpr uint32_t MAX_FRAME_INSTANCES_TOTAL     = 1048576u;
-	inline constexpr uint32_t MAX_FRAME_DRAW_COMMANDS_TOTAL = 65536u;
-	inline constexpr uint32_t MAX_INSTANCE_TRANSFORMS       = 200000u;
-	inline constexpr uint32_t MAX_FRAMES_IN_FLIGHT          = 3u;
-	inline constexpr uint32_t MAX_LIGHTS                    = 4096u;
-	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 128u;
-	inline constexpr uint32_t MAX_INSTANCES_PER_STREAM      = 262144u;
-	inline constexpr uint32_t MAX_DRAW_BINS                 = 16384u;
-	inline constexpr uint32_t BIN_TABLE_SIZE                = 32768u;
-	inline constexpr uint32_t INVALID_U32                   = 0xFFFFFFFFu;
-	inline constexpr uint32_t MAX_GRAPHICS_PRIMARIES        = 3u;
-
 	// -------------------------
 	// Indirect Dispatch Slots
 	// -------------------------
-	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES = 16u; // uvec4
+
+	inline constexpr size_t DISPATCH_SLOT_STRIDE_BYTES      = 16u; // uvec4
 
 	// Draw-build pipeline — stream dispatch args
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE      = 0u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT = 1u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT  = 2u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM0        = 3u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM1        = 4u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM2        = 5u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM3        = 6u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_SCATTER            = 7u;  // total-visible dispatch
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE        = 0u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE_MASKED = 1u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT   = 2u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT    = 3u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM0          = 4u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM1          = 5u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM2          = 6u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_STREAM_CSM3          = 7u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_SCATTER              = 8u;  // total-visible dispatch
 
 	// Other systems
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_DEBUG_BUILD        = 8u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_LIGHTS             = 9u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS           = 10u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES       = 11u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED     = 12u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_COUNT              = 13u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_DEBUG_BUILD          = 9u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_LIGHTS               = 10u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS             = 11u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES         = 12u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED       = 13u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_COUNT                = 14u;
 
 	// Byte offsets — multiply slot by stride
-	inline constexpr uint64_t DISPATCH_STREAM_OPAQUE_BYTES            = INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE       * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_TRANSPARENT_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT  * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_FLASHLIGHT_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT   * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_CSM0_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM0         * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_CSM1_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM1         * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_CSM2_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM2         * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_STREAM_CSM3_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM3         * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_SCATTER_OFFSET_BYTES           = INDIRECT_DISPATCH_SLOT_SCATTER             * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_DEBUG_BUILD_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_DEBUG_BUILD         * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES            = INDIRECT_DISPATCH_SLOT_LIGHTS              * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES          = INDIRECT_DISPATCH_SLOT_CLUSTERS            * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_CMAA2_SHAPES_OFFSET_BYTES      = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES        * DISPATCH_SLOT_STRIDE_BYTES;
-	inline constexpr uint64_t DISPATCH_CMAA2_DEFERRED_OFFSET_BYTES    = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED      * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_OPAQUE_BYTES            = INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE        * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_OPAQUE_MASKED_BYTES     = INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE_MASKED * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_TRANSPARENT_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_TRANSPARENT   * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_FLASHLIGHT_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_STREAM_FLASHLIGHT    * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM0_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM0          * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM1_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM1          * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM2_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM2          * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_STREAM_CSM3_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_STREAM_CSM3          * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_SCATTER_OFFSET_BYTES           = INDIRECT_DISPATCH_SLOT_SCATTER              * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_DEBUG_BUILD_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_DEBUG_BUILD          * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES            = INDIRECT_DISPATCH_SLOT_LIGHTS               * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES          = INDIRECT_DISPATCH_SLOT_CLUSTERS             * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CMAA2_SHAPES_OFFSET_BYTES      = INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_CMAA2_DEFERRED_OFFSET_BYTES    = INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED       * DISPATCH_SLOT_STRIDE_BYTES;
 
 	// -------------------------
 	// Visibility Stream Slots
 	// -------------------------
-	inline constexpr uint32_t VIS_SLOT_OPAQUE      = 0u;
-	inline constexpr uint32_t VIS_SLOT_TRANSPARENT = 1u;
-	inline constexpr uint32_t VIS_SLOT_FLASHLIGHT  = 2u;
-	inline constexpr uint32_t VIS_SLOT_CSM0        = 3u;
-	inline constexpr uint32_t VIS_SLOT_CSM1        = 4u;
-	inline constexpr uint32_t VIS_SLOT_CSM2        = 5u;
-	inline constexpr uint32_t VIS_SLOT_CSM3        = 6u;
-	inline constexpr uint32_t VIS_SLOT_COUNT       = 7u;
 
-	inline constexpr uint32_t VIS_PRIMARY_OPAQUE      = 1u << 0;
-	inline constexpr uint32_t VIS_PRIMARY_TRANSPARENT = 1u << 1;
-	inline constexpr uint32_t VIS_FLASHLIGHT          = 1u << 2;
-	inline constexpr uint32_t VIS_CSM0                = 1u << 3;
-	inline constexpr uint32_t VIS_CSM1                = 1u << 4;
-	inline constexpr uint32_t VIS_CSM2                = 1u << 5;
-	inline constexpr uint32_t VIS_CSM3                = 1u << 6;
+	// Used during instance cull to fill indirect dispatch
+	inline constexpr uint32_t VIS_SLOT_OPAQUE        = 0u;
+	inline constexpr uint32_t VIS_SLOT_OPAQUE_MASKED = 1u;
+	inline constexpr uint32_t VIS_SLOT_TRANSPARENT   = 2u;
+	inline constexpr uint32_t VIS_SLOT_FLASHLIGHT    = 3u;
+	inline constexpr uint32_t VIS_SLOT_CSM0          = 4u;
+	inline constexpr uint32_t VIS_SLOT_CSM1          = 5u;
+	inline constexpr uint32_t VIS_SLOT_CSM2          = 6u;
+	inline constexpr uint32_t VIS_SLOT_CSM3          = 7u;
+	inline constexpr uint32_t VIS_SLOT_COUNT         = 8u;
+
+	// Used to build draws
+	inline constexpr uint32_t VIS_PRIMARY_OPAQUE         = 1u << 0;
+	inline constexpr uint32_t VIS_PRIMARY_OPAQUE_MASKED  = 1u << 1;
+	inline constexpr uint32_t VIS_PRIMARY_TRANSPARENT    = 1u << 2;
+	inline constexpr uint32_t VIS_FLASHLIGHT             = 1u << 3;
+	inline constexpr uint32_t VIS_CSM0                   = 1u << 4;
+	inline constexpr uint32_t VIS_CSM1                   = 1u << 5;
+	inline constexpr uint32_t VIS_CSM2                   = 1u << 6;
+	inline constexpr uint32_t VIS_CSM3                   = 1u << 7;
 
 	// -------------------------
 	// Draw Region Offsets
 	// -------------------------
 	inline constexpr uint32_t INDIRECT_CMD_SIZE      = 20u; // VkDrawIndexedIndirectCommand
 
-	inline constexpr uint32_t MAX_DRAWS_OPAQUE       = 32768u;
-	inline constexpr uint32_t MAX_DRAWS_TRANSPARENT  = 8192u;
-	inline constexpr uint32_t MAX_DRAWS_FLASHLIGHT   = 4096u;
-	inline constexpr uint32_t MAX_DRAWS_CSM0         = 4096u;
-	inline constexpr uint32_t MAX_DRAWS_CSM1         = 4096u;
-	inline constexpr uint32_t MAX_DRAWS_CSM2         = 4096u;
-	inline constexpr uint32_t MAX_DRAWS_CSM3         = 4096u;
+	inline constexpr uint32_t MAX_DRAWS_OPAQUE        = 32768u;
+	inline constexpr uint32_t MAX_DRAWS_OPAQUE_MASKED = 12288u;
+	inline constexpr uint32_t MAX_DRAWS_TRANSPARENT   = 3072u;
+	inline constexpr uint32_t MAX_DRAWS_FLASHLIGHT    = 1024u;
+	inline constexpr uint32_t MAX_DRAWS_CSM0          = 8192u;
+	inline constexpr uint32_t MAX_DRAWS_CSM1          = 2048u;
+	inline constexpr uint32_t MAX_DRAWS_CSM2          = 2048u;
+	inline constexpr uint32_t MAX_DRAWS_CSM3          = 2048u;
 
 	// Struct-unit offsets (for GPU indexing: indirectDraws[DRAW_OFFSET_* + drawIdx])
-	inline constexpr uint32_t DRAW_OFFSET_OPAQUE      = 0u;
-	inline constexpr uint32_t DRAW_OFFSET_TRANSPARENT = DRAW_OFFSET_OPAQUE      + MAX_DRAWS_OPAQUE;
-	inline constexpr uint32_t DRAW_OFFSET_FLASHLIGHT  = DRAW_OFFSET_TRANSPARENT + MAX_DRAWS_TRANSPARENT;
-	inline constexpr uint32_t DRAW_OFFSET_CSM0        = DRAW_OFFSET_FLASHLIGHT  + MAX_DRAWS_FLASHLIGHT;
-	inline constexpr uint32_t DRAW_OFFSET_CSM1        = DRAW_OFFSET_CSM0        + MAX_DRAWS_CSM0;
-	inline constexpr uint32_t DRAW_OFFSET_CSM2        = DRAW_OFFSET_CSM1        + MAX_DRAWS_CSM1;
-	inline constexpr uint32_t DRAW_OFFSET_CSM3        = DRAW_OFFSET_CSM2        + MAX_DRAWS_CSM2;
-	inline constexpr uint32_t DRAW_OFFSET_TOTAL       = DRAW_OFFSET_CSM3        + MAX_DRAWS_CSM3; // = 65536
-
-	// Byte offsets (for vkCmdDrawIndexedIndirectCount buffer offset param)
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_OPAQUE      = DRAW_OFFSET_OPAQUE      * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_TRANSPARENT = DRAW_OFFSET_TRANSPARENT * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_FLASHLIGHT  = DRAW_OFFSET_FLASHLIGHT  * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM0        = DRAW_OFFSET_CSM0        * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM1        = DRAW_OFFSET_CSM1        * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM2        = DRAW_OFFSET_CSM2        * INDIRECT_CMD_SIZE;
-	inline constexpr uint32_t DRAW_BYTE_OFFSET_CSM3        = DRAW_OFFSET_CSM3        * INDIRECT_CMD_SIZE;
+	inline constexpr uint32_t DRAW_OFFSET_OPAQUE        = 0u;
+	inline constexpr uint32_t DRAW_OFFSET_OPAQUE_MASKED = DRAW_OFFSET_OPAQUE        + MAX_DRAWS_OPAQUE;
+	inline constexpr uint32_t DRAW_OFFSET_TRANSPARENT   = DRAW_OFFSET_OPAQUE_MASKED + MAX_DRAWS_OPAQUE_MASKED;
+	inline constexpr uint32_t DRAW_OFFSET_FLASHLIGHT    = DRAW_OFFSET_TRANSPARENT   + MAX_DRAWS_TRANSPARENT;
+	inline constexpr uint32_t DRAW_OFFSET_CSM0          = DRAW_OFFSET_FLASHLIGHT    + MAX_DRAWS_FLASHLIGHT;
+	inline constexpr uint32_t DRAW_OFFSET_CSM1          = DRAW_OFFSET_CSM0          + MAX_DRAWS_CSM0;
+	inline constexpr uint32_t DRAW_OFFSET_CSM2          = DRAW_OFFSET_CSM1          + MAX_DRAWS_CSM1;
+	inline constexpr uint32_t DRAW_OFFSET_CSM3          = DRAW_OFFSET_CSM2          + MAX_DRAWS_CSM2;
+	inline constexpr uint32_t DRAW_OFFSET_TOTAL         = DRAW_OFFSET_CSM3          + MAX_DRAWS_CSM3;
 
 	inline constexpr uint32_t DRAW_BYTE_OFFSET_BY_SLOT[VIS_SLOT_COUNT] = {
-		DRAW_BYTE_OFFSET_OPAQUE,
-		DRAW_BYTE_OFFSET_TRANSPARENT,
-		DRAW_BYTE_OFFSET_FLASHLIGHT,
-		DRAW_BYTE_OFFSET_CSM0,
-		DRAW_BYTE_OFFSET_CSM1,
-		DRAW_BYTE_OFFSET_CSM2,
-		DRAW_BYTE_OFFSET_CSM3,
+		DRAW_OFFSET_OPAQUE        * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_OPAQUE_MASKED * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_TRANSPARENT   * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_FLASHLIGHT    * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_CSM0          * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_CSM1          * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_CSM2          * INDIRECT_CMD_SIZE,
+		DRAW_OFFSET_CSM3          * INDIRECT_CMD_SIZE,
 	};
 
 	inline constexpr uint32_t MAX_DRAWS_BY_SLOT[VIS_SLOT_COUNT] = {
-		MAX_DRAWS_OPAQUE,
-		MAX_DRAWS_TRANSPARENT,
-		MAX_DRAWS_FLASHLIGHT,
-		MAX_DRAWS_CSM0,
-		MAX_DRAWS_CSM1,
-		MAX_DRAWS_CSM2,
-		MAX_DRAWS_CSM3,
+		MAX_DRAWS_OPAQUE, MAX_DRAWS_OPAQUE_MASKED, MAX_DRAWS_TRANSPARENT,
+		MAX_DRAWS_FLASHLIGHT, MAX_DRAWS_CSM0, MAX_DRAWS_CSM1, MAX_DRAWS_CSM2, MAX_DRAWS_CSM3,
 	};
+
+	// --------------------
+	// Task Dispatch Slots
+	// --------------------
+	inline constexpr uint32_t TASK_GROUP_SIZE = 32u;
+
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_OPAQUE        = MAX_DRAWS_OPAQUE;
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_OPAQUE_MASKED = MAX_DRAWS_OPAQUE_MASKED;
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_TRANSPARENT   = 0u;
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_FLASHLIGHT    = MAX_DRAWS_FLASHLIGHT;
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_CSM           = MAX_DRAWS_CSM0;
+
+	inline constexpr uint32_t TASK_OFFSET_OPAQUE        = 0u;
+	inline constexpr uint32_t TASK_OFFSET_OPAQUE_MASKED = TASK_OFFSET_OPAQUE        + MAX_TASK_DISPATCHES_OPAQUE;
+	inline constexpr uint32_t TASK_OFFSET_TRANSPARENT   = TASK_OFFSET_OPAQUE_MASKED + MAX_TASK_DISPATCHES_OPAQUE_MASKED;
+	inline constexpr uint32_t TASK_OFFSET_FLASHLIGHT    = TASK_OFFSET_TRANSPARENT   + MAX_TASK_DISPATCHES_TRANSPARENT;
+	inline constexpr uint32_t TASK_OFFSET_CSM0          = TASK_OFFSET_FLASHLIGHT    + MAX_TASK_DISPATCHES_FLASHLIGHT;
+	inline constexpr uint32_t TASK_OFFSET_CSM1          = TASK_OFFSET_CSM0          + MAX_TASK_DISPATCHES_CSM;
+	inline constexpr uint32_t TASK_OFFSET_CSM2          = TASK_OFFSET_CSM1          + MAX_TASK_DISPATCHES_CSM;
+	inline constexpr uint32_t TASK_OFFSET_CSM3          = TASK_OFFSET_CSM2          + MAX_TASK_DISPATCHES_CSM;
+	inline constexpr uint32_t TASK_OFFSET_TOTAL         = TASK_OFFSET_CSM3          + MAX_TASK_DISPATCHES_CSM;
+
+	inline constexpr uint32_t TASK_BYTE_OFFSET_BY_SLOT[VIS_SLOT_COUNT] = {
+		TASK_OFFSET_OPAQUE        * TASK_GROUP_SIZE,
+		TASK_OFFSET_OPAQUE_MASKED * TASK_GROUP_SIZE,
+		TASK_OFFSET_TRANSPARENT   * TASK_GROUP_SIZE,
+		TASK_OFFSET_FLASHLIGHT    * TASK_GROUP_SIZE,
+		TASK_OFFSET_CSM0          * TASK_GROUP_SIZE,
+		TASK_OFFSET_CSM1          * TASK_GROUP_SIZE,
+		TASK_OFFSET_CSM2          * TASK_GROUP_SIZE,
+		TASK_OFFSET_CSM3          * TASK_GROUP_SIZE
+	};
+
+	inline constexpr uint32_t MAX_TASK_DISPATCHES_BY_SLOT[VIS_SLOT_COUNT] = {
+		MAX_TASK_DISPATCHES_OPAQUE,
+		MAX_TASK_DISPATCHES_OPAQUE_MASKED,
+		MAX_TASK_DISPATCHES_TRANSPARENT,
+		MAX_TASK_DISPATCHES_FLASHLIGHT,
+		MAX_TASK_DISPATCHES_CSM,
+		MAX_TASK_DISPATCHES_CSM,
+		MAX_TASK_DISPATCHES_CSM,
+		MAX_TASK_DISPATCHES_CSM,
+	};
+
+	// -------------------
+	// Renderer constants
+	// -------------------
+	inline constexpr uint32_t MAX_FRAME_INSTANCES_TOTAL     = 1000000;
+	inline constexpr uint32_t MAX_FRAME_DRAW_COMMANDS_TOTAL = DRAW_OFFSET_TOTAL;
+	inline constexpr uint32_t MAX_FRAMES_IN_FLIGHT          = 3u;
+	//inline constexpr uint32_t MAX_LIGHTS                    = 16384u;
+	inline constexpr uint32_t MAX_LIGHTS                    = 2048u;
+	//inline constexpr uint32_t MAX_VISIBLE_LIGHTS            = 2048u;
+	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 128u;
+	inline constexpr uint32_t MAX_INSTANCES_PER_STREAM      = 262144u;
+	inline constexpr uint32_t MAX_DRAW_BINS                 = 16384u;
+	inline constexpr uint32_t BIN_TABLE_SIZE                = MAX_DRAW_BINS * 2;
+	inline constexpr uint32_t INVALID_U32                   = 0xFFFFFFFFu;
+	inline constexpr uint32_t MAX_GRAPHICS_PRIMARIES        = 3u;
+	inline constexpr uint32_t MAX_MESHLET_VISIBILITY_BITS   = 33554432u;
+	
+	inline constexpr uint32_t TRANSFORM_DYNAMIC_BIT = 1u << 31;
+	inline constexpr uint32_t TRANSFORM_INDEX_MASK  = ~TRANSFORM_DYNAMIC_BIT;
+	inline constexpr uint32_t MAX_STATIC_TRANSFORMS = MAX_FRAME_INSTANCES_TOTAL;
+	inline constexpr uint32_t MAX_DYNAMIC_TRANSFORMS = 32768u;
+
+	inline constexpr uint32_t DEBUG_VERTS_PER_OBB     = 24u;
+	inline constexpr uint32_t DEBUG_VERTS_PER_SPHERE  = 72u;     // 3 rings x 12 segments x 2
+	inline constexpr uint32_t DEBUG_MAX_ITEMS         = 65536u;  // max debug items per frame
+	inline constexpr uint32_t DEBUG_MAX_VERTS         = DEBUG_MAX_ITEMS * DEBUG_VERTS_PER_OBB;
 
 	// Static lights in global list
 	inline constexpr uint32_t LIGHT_LIST_STATIC_COUNT     = 1u;
@@ -180,11 +227,11 @@ namespace RendererDefinitions
 	inline constexpr uint32_t LIGHT_FLAG_CASTS_SPOT_SHADOW  = 1u << 0;
 	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT         = 1u << 1;
 	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT_OFF     = 1u << 2;
-	inline constexpr uint32_t CLUSTERS_TILE_SLICE_X         = 32u;
-	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Y         = 32u;
+	inline constexpr uint32_t CLUSTERS_TILE_SLICE_X         = 64u;
+	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Y         = 64u;
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Z         = 24u;
 	//inline constexpr size_t MAX_VISIBLE_LIGHT_ID_GPU_BYTES = MAX_LIGHTS * sizeof(uint32_t);
-	inline constexpr uint32_t MAX_LIGHTS_PER_CLUSTER        = 512u;
+	inline constexpr uint32_t MAX_LIGHTS_PER_CLUSTER        = 256u;
 	inline constexpr uint32_t MAX_VISIBLE_LIGHTS            = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
 
 	inline constexpr float ANISOTROPY_LEVEL_16        = 16.0f;
@@ -211,7 +258,8 @@ namespace RendererDefinitions
 	inline constexpr uint32_t MAX_MIP_LEVELS          = 12u;
 	inline constexpr uint32_t MAX_SHADOW_CASCADES     = 4u;
 	inline constexpr uint32_t MAX_LUMINANCE_GROUPS    = 65536u;
-	inline constexpr uint32_t HI_Z_MIP_COUNT          = 5u;
+	inline constexpr uint32_t HI_Z_MIP_COUNT          = 11u;
+	inline constexpr uint32_t HI_Z_MIN_MIP_COUNT      = 5u;
 
 	inline constexpr uint32_t MAX_ENVIRONMENT_SETS            = 8u;  // 128 uniform alignment
 	inline constexpr uint32_t SPECULAR_PREFILTERED_MIP_LEVELS = 9;
@@ -259,6 +307,9 @@ namespace RendererDefinitions
 		DrawBuild,
 		Prepass,
 		HiZGeneration,
+		PrepassLate,
+		HiZGenerationLate,
+		VelocityResolve,
 		DirectionalCSMAtlas,
 		FlashlightShadow,
 		MaterialResolve,
@@ -267,7 +318,7 @@ namespace RendererDefinitions
 		ScreenSpaceContactShadows,
 		Skybox,
 		OpaqueForward,
-		OpaqueTileShading,
+		OpaqueLighting,
 		TransparentForward,
 		TransparentResolve,
 		DebugDrawBuild,
@@ -296,18 +347,19 @@ namespace RendererDefinitions
 
 	enum class Renderer_Shader
 	{
-		Opaque_v,
-		Opaque_f,
+		Forward_v,
 		Transparent_f,
 		TransparentResolve_c,
 		Skybox_v,
 		Skybox_f,
 
+		Wireframe_m,
 		Wireframe_v,
 		Wireframe_f,
 
+		VelocityResolve_c,
 		MaterialResolve_c,
-		OpaqueTileShading_c,
+		OpaqueLighting_c,
 
 		ShadowBounds_c,
 		InstanceCull_c,
@@ -331,8 +383,17 @@ namespace RendererDefinitions
 		DiffuseIrradiance_c,
 		BRDFLUT_c,
 
+		MeshletCull_t,
+
+		Prepass_m,
+		PrepassMasked_m,
 		Prepass_v,
 		Prepass_f,
+		PrepassMasked_v,
+		PrepassMasked_f,
+
+		Shadow_t,
+		Shadow_m,
 		Shadow_v,
 		HiZGen_c,
 
@@ -382,12 +443,17 @@ namespace RendererDefinitions
 
 	enum class Renderer_Pipeline
 	{
-		Opaque,
-		Transparent,
+		TransparentForward,
 		TransparentResolve,
 		Skybox,
 
+		VelocityResolve,
+		WireframeMesh,
 		Wireframe,
+
+		PrepassMesh,
+		PrepassMaskedMesh,
+		ShadowMesh,
 
 		ShadowBounds,
 		InstanceCull,
@@ -397,7 +463,7 @@ namespace RendererDefinitions
 		DrawPlace,
 
 		MaterialResolve,
-		OpaqueTileShading,
+		OpaqueLighting,
 
 		ExposureReduce,
 		ExposureFinalize,
@@ -414,6 +480,7 @@ namespace RendererDefinitions
 		BRDFLUT,
 
 		Prepass,
+		PrepassMasked,
 		Shadow,
 		HiZGen,
 
@@ -561,13 +628,19 @@ namespace RendererDefinitions
 		Material,
 		Vertex,
 		Index,
+		Meshlet,
+		MeshletVertices,
+		MeshletTriangles,
+		StaticTransforms,
 		Luminance,
 
 		// Frame — transient
-		Transforms,
-		PrevTransforms,
+		DynamicTransforms,
+		MotionMatrices,
 		Lights,
 		InstanceVisibility,
+		MeshletVisibilityA,
+		MeshletVisibilityB,
 		VisibleCount,
 		VisibleInstances,
 		InstanceCursors,
@@ -580,6 +653,7 @@ namespace RendererDefinitions
 		ShadowCullData,
 		DrawStats,
 		DispatchIndirectArgs,
+		TaskDispatch,
 		DebugCounts,
 		DebugItems,
 		DebugVertex,
@@ -629,13 +703,14 @@ namespace RendererDefinitions
 		AA_CMAA2,   // Conservative Morphological Anti-Aliasing 2
 		AA_SMAA,    // Sub-Pixel Morphological Anti-Aliasing
 		AA_FXAA,    // Fast Approximate Anti-Aliasing
-		AA_TAA      // Temporal Anti-Aliasing
+		AA_TAA      // Temporal Anti-Aliasing, deferred only
 	};
 
 	enum class RenderingMode
 	{
-		FORWARD_PLUS,
 		VISIBILITY_DEFERRED,
+
+		MESH_SHADERS, // Implies visibility deferred
 		UNDEFINED
 	};
 
@@ -691,6 +766,8 @@ namespace RendererDefinitions
 
 		Read,
 		Write,
+
+		MeshShaderRead,
 
 		GraphicsColorWrite,
 		GraphicsDepthWrite,
@@ -756,10 +833,9 @@ namespace RendererDefinitions
 		bool InstancesActive() const noexcept { return m_renderToggles.activeInstanceCount > 0; }
 		bool LightsActive() const noexcept { return m_renderToggles.activeLightCount > 0; }
 
-		// Assume else is Forward plus since if undefined rendering doesn't work
-		bool IsVisibilityDeferred() const noexcept
+		bool IsMeshShaderPath() const noexcept
 		{
-			return static_cast<RenderingMode>(m_renderToggles.renderingMode) == RenderingMode::VISIBILITY_DEFERRED;
+			return static_cast<RenderingMode>(m_renderToggles.renderingMode) == RenderingMode::MESH_SHADERS;
 		}
 		uint32_t RenderMode() const noexcept { return m_renderToggles.renderingMode; }
 
@@ -792,6 +868,11 @@ namespace RendererDefinitions
 		bool IsTemporalValid() const noexcept { return m_bTemporalValid; }
 		bool IsHiZValid() const noexcept { return m_bHiZValid; }
 
+		bool IsTaaOn() const noexcept
+		{
+			return m_renderToggles.aaMode == static_cast<uint32_t>(AntiAliasingMethod::AA_TAA);
+		}
+
 		void ResetRenderToggles() { m_renderToggles = {}; }
 
 		uint32_t GetLightCount() const noexcept { return m_renderToggles.activeLightCount; }
@@ -820,9 +901,11 @@ namespace RendererDefinitions
 		SSAO,
 		SSShadows,
 		Cascades,
-		VisInstance,      // deferred only
-		VisTriangle,      // deferred only
-		VisLod,           // deferred only
+		VisInstance,
+		VisTriangle,
+		VisLod,
+		Meshlets,
+		//MeshletFacing,
 		Count
 	};
 
@@ -831,23 +914,25 @@ namespace RendererDefinitions
 		return 1u << static_cast<uint32_t>(v);
 	}
 
-	inline constexpr uint32_t DBG_CAPS_FORWARD =
-		DebugViewBit(DebugView::Off)       | DebugViewBit(DebugView::Albedo)    |
-		DebugViewBit(DebugView::Normals)   | DebugViewBit(DebugView::Roughness) |
-		DebugViewBit(DebugView::Metallic)  | DebugViewBit(DebugView::Emissive)  |
-		DebugViewBit(DebugView::SSAO)      | DebugViewBit(DebugView::SSShadows) |
-		DebugViewBit(DebugView::Cascades);
-
 	inline constexpr uint32_t DBG_CAPS_DEFERRED =
-		DBG_CAPS_FORWARD                      |
-		DebugViewBit(DebugView::VisInstance)  |
-		DebugViewBit(DebugView::VisTriangle)  |
-		DebugViewBit(DebugView::VisLod);
+		DebugViewBit(DebugView::Off)         | DebugViewBit(DebugView::Albedo)      |
+		DebugViewBit(DebugView::Normals)     | DebugViewBit(DebugView::Roughness)   |
+		DebugViewBit(DebugView::Metallic)    | DebugViewBit(DebugView::Emissive)    |
+		DebugViewBit(DebugView::SSAO)        | DebugViewBit(DebugView::SSShadows)   |
+		DebugViewBit(DebugView::Cascades)    | DebugViewBit(DebugView::VisInstance) |
+		DebugViewBit(DebugView::VisTriangle) | DebugViewBit(DebugView::VisLod);
+
+	inline constexpr uint32_t DBG_CAPS_MESH =
+		DBG_CAPS_DEFERRED                 |
+		DebugViewBit(DebugView::Meshlets);
 
 	inline constexpr uint32_t DebugCapsForMode(RenderingMode mode)
 	{
-		return (mode == RenderingMode::VISIBILITY_DEFERRED)
-			? DBG_CAPS_DEFERRED : DBG_CAPS_FORWARD;
+		switch (mode)
+		{
+			case RenderingMode::MESH_SHADERS:        return DBG_CAPS_MESH;
+			case RenderingMode::VISIBILITY_DEFERRED: return DBG_CAPS_DEFERRED;
+		}
 	}
 
 	inline constexpr bool DebugViewSupported(uint32_t caps, uint32_t view)
@@ -863,20 +948,19 @@ namespace RendererDefinitions
 	};
 
 	inline constexpr DebugViewEntry DEBUG_VIEW_TABLE[] = {
-		{ DebugView::Off,         "Complete"        },
-		{ DebugView::Albedo,      "Albedo"          },
-		{ DebugView::Normals,     "Normals"         },
-		{ DebugView::Roughness,   "Roughness"       },
-		{ DebugView::Metallic,    "Metallic"        },
-		{ DebugView::Emissive,    "Emissive"        },
-		{ DebugView::SSAO,        "SSAO"            },
-		{ DebugView::SSShadows,   "Contact Shadows" },
-		{ DebugView::Cascades,    "Cascade Splits"  },
-		{ DebugView::VisInstance, "Vis: Instance"   },
-		{ DebugView::VisTriangle, "Vis: Triangle"   },
-		{ DebugView::VisLod,      "Vis: LOD"        }
+		{ DebugView::Off,           "Complete"        },
+		{ DebugView::Albedo,        "Albedo"          },
+		{ DebugView::Normals,       "Normals"         },
+		{ DebugView::Roughness,     "Roughness"       },
+		{ DebugView::Metallic,      "Metallic"        },
+		{ DebugView::Emissive,      "Emissive"        },
+		{ DebugView::SSAO,          "SSAO"            },
+		{ DebugView::SSShadows,     "Contact Shadows" },
+		{ DebugView::Cascades,      "Cascade Splits"  },
+		{ DebugView::VisInstance,   "Vis: Instance"   },
+		{ DebugView::VisTriangle,   "Vis: Triangle"   },
+		{ DebugView::VisLod,        "Vis: LOD"        },
+		{ DebugView::Meshlets,      "Meshlets"        },
+		//{ DebugView::MeshletFacing, "MeshletFacing"   }
 	};
-
-	static_assert(std::size(DEBUG_VIEW_TABLE) == static_cast<size_t>(DebugView::Count),
-		"DEBUG_VIEW_TABLE must cover every DebugView");
 }

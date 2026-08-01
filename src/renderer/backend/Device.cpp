@@ -334,6 +334,8 @@ void Device::InitLogical(const PhysicalDeviceCandidate& candidate)
 
 	VK_CHECK(vkCreateDevice(m_context.physicalDevice, &createInfo, nullptr, &m_context.device));
 
+	LoadDeviceExtensionFunctions(m_context.device);
+
 	// --------------------
 	// Initialize VkQueues
 	// --------------------

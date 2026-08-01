@@ -40,6 +40,7 @@ struct InstanceInput
 	uint32_t meshID       = UINT32_MAX;
 	uint32_t materialID   = UINT32_MAX;
 	uint32_t transformID  = UINT32_MAX;
+	uint32_t meshletVisibilityOffset = 0u; 
 	uint32_t lod0         = UINT32_MAX;
 	uint32_t lod1         = UINT32_MAX;
 	uint32_t lod2         = UINT32_MAX;
@@ -73,16 +74,23 @@ struct DebugDraw
 struct GPUStats
 {
 	uint32_t visibleOpaque = 0;
-
 	uint32_t visibleTransparent = 0;
-
 	uint32_t visibleShadowCasters = 0;
 
-	uint32_t opaqueDrawCount = 0;
-	uint32_t transparentDrawCount = 0;
-	uint32_t shadowDrawCount = 0;
+	//uint32_t opaqueDrawCount = 0;
+	//uint32_t transparentDrawCount = 0;
+	//uint32_t shadowDrawCount = 0;
 
-	uint32_t triangleCount = 0; // Doesnt count shadows
+	uint32_t triangleCount = 0;  // Doesnt count shadows
+
+	// --- mesh shader path ---
+	uint32_t meshletsSubmitted = 0;
+	uint32_t meshletsDrawnEarly = 0;
+	uint32_t meshletsDrawnLate = 0;
+	uint32_t meshletsCulledFrustum = 0;
+	uint32_t meshletsCulledCone = 0;
+	uint32_t meshletsCulledHiZ = 0;
+	uint32_t meshletTriangles = 0;
 };
 
 struct CoreSlab
@@ -186,13 +194,6 @@ struct alignas(16) LightClustersData
 	uint32_t maxVisibleLights = RD::MAX_VISIBLE_LIGHTS;
 
 	glm::vec4 pad0[6] = { glm::vec4(0.0f) };
-};
-
-// Some chunk of a flat array that needs to go
-struct DirtyRange
-{
-	uint32_t offset = 0;
-	uint32_t count = 0;
 };
 
 // === RENDER PASS PUSH CONSTANTS ===
@@ -370,4 +371,22 @@ struct alignas(16) LumaExposurePush
 	float cameraExposure = 0.0;
 	float adaptationSpeed = 0.0;
 	float deltaTime = 0.0;
+};
+
+struct alignas(16) PrepassTaskPush
+{
+	uint32_t slot;     // VIS_SLOT_*
+	uint32_t phase;    // 0 = phase 1, 1 = phase 2 (enables Hi-Z test)
+	uint32_t pad0;
+	uint32_t pad1;
+};
+
+struct alignas(16) DepthTaskPush
+{
+	glm::mat4 viewproj;
+	glm::vec4 eye;             // xyz = eye pos (w=1) or light dir (w=0)
+	uint32_t  slot;
+	float  cullDistance = 0.0; // > 0 enables the range test; 0 disables (directional)
+	uint32_t pad0;
+	uint32_t pad1;
 };

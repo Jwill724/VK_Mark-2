@@ -47,7 +47,7 @@ VisTriangle fetchVisTriangle(uint packedID, uint primitiveID)
 	tri.materialID  = inst.materialID;
 	tri.transformID = inst.transformID;
 	tri.flags       = inst.flags;
-	tri.model       = getTransformBuffer().transforms[inst.transformID];
+	tri.model       = getInstanceTransform(inst);
 
 	Mesh mesh = getMeshBuffer().meshes[meshFromLODIndex(inst, lodIdx)];
 
@@ -65,7 +65,7 @@ VisTriangle fetchVisTriangle(uint packedID, uint primitiveID)
 	{
 		vec3 posOS;
 		unpackVertex(idx[k], tri.uv[k], tri.color[k], tri.normalOS[k],
-		             tri.tangentOS[k], handedness[k], posOS);
+					 tri.tangentOS[k], handedness[k], posOS);
 
 		vec4 wp      = tri.model * vec4(posOS, 1.0);
 		tri.posWS[k] = wp.xyz;
@@ -73,6 +73,52 @@ VisTriangle fetchVisTriangle(uint packedID, uint primitiveID)
 	}
 
 	tri.tangentHandedness = handedness[0];   // flat, never interpolated
+	return tri;
+}
+
+VisTriangle fetchVisTriangleMeshlet(uint packedID, uint visG)
+{
+	VisTriangle tri;
+
+	uint instanceID = visInstanceID(packedID);
+	uint lodIdx     = visLODIndex(packedID);
+
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[instanceID];
+	SceneData     scn  = getSceneData();
+
+	tri.materialID  = inst.materialID;
+	tri.transformID = inst.transformID;
+	tri.flags       = inst.flags;
+	tri.model       = getInstanceTransform(inst);
+
+	Mesh    mesh = getMeshBuffer().meshes[meshFromLODIndex(inst, lodIdx)];
+	Meshlet ml   = getMeshletBuffer().meshlets[visMeshletID(visG)];
+
+	uint triBase = ml.triangleOffset + visLocalTri(visG) * 3u;
+
+	MeshletTrisBuffer  mt = getMeshletTrisBuffer();
+	MeshletVertsBuffer mv = getMeshletVertsBuffer();
+
+	int idx[3];
+	for (int k = 0; k < 3; ++k)
+	{
+		uint localVtx = uint(mt.tris[triBase + uint(k)]);
+		idx[k] = int(mv.verts[ml.vertexOffset + localVtx] + mesh.vertexOffset);
+	}
+
+	float handedness[3];
+	for (int k = 0; k < 3; ++k)
+	{
+		vec3 posOS;
+		unpackVertex(idx[k], tri.uv[k], tri.color[k], tri.normalOS[k],
+		             tri.tangentOS[k], handedness[k], posOS);
+
+		vec4 wp      = tri.model * vec4(posOS, 1.0);
+		tri.posWS[k] = wp.xyz;
+		tri.posCS[k] = scn.viewProj * wp;
+	}
+
+	tri.tangentHandedness = handedness[0];
 	return tri;
 }
 

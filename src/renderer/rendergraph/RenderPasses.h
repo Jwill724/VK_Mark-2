@@ -24,7 +24,7 @@ void RegisterMaterialResolvePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
-void RegisterOpaqueTileShadingPass(
+void RegisterOpaqueLightingPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
@@ -48,6 +48,10 @@ void RegisterFlashlightShadowMapPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterVelocityResolvePass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
 void RegisterTemporalCopyPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
@@ -59,6 +63,18 @@ void RegisterThePrepass(
 void RegisterHiZGenerationPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
+
+// ==========================
+// mesh shading additions
+
+void RegisterThePrepassLate(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterHiZGenerationLatePass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+// ==========================
 
 void RegisterLightCullingPass(
 	RenderGraph& graph,
@@ -129,10 +145,6 @@ void RegisterTransparentResolvePass(
 	const std::vector<PipelineHandle> pipelines);
 
 void RegisterImguiDrawPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-
-void RegisterOpaqueForwardPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 

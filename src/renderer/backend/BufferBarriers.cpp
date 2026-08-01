@@ -113,7 +113,9 @@ void BufferBarriers::TransferWriteToComputeRead(
 	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
 	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT |
+					 VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT |
+					 VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
 	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
 	b.srcQueueFamilyIndex = srcFamilyIndex;
 	b.dstQueueFamilyIndex = dstFamilyIndex;
@@ -150,6 +152,28 @@ void BufferBarriers::CmdFillToComputeRW(
 	vkCmdPipelineBarrier2(cmd, &di);
 }
 
+void BufferBarriers::CmdFillToMeshRW(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers = &b;
+
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
 void BufferBarriers::TransferWriteToGraphicsRead(
 	VkCommandBuffer cmd,
 	const AllocatedBuffer& buf,
@@ -162,7 +186,10 @@ void BufferBarriers::TransferWriteToGraphicsRead(
 	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
 	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
 	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	b.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT   |
+					 VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT |
+					 VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT |
+					 VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
 	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
 	b.srcQueueFamilyIndex = srcFamilyIndex;
 	b.dstQueueFamilyIndex = dstFamilyIndex;
@@ -218,6 +245,71 @@ void BufferBarriers::ComputeWriteToVertexRead(
 	di.bufferMemoryBarrierCount = 1;
 	di.pBufferMemoryBarriers = &b;
 
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::ComputeWriteToTaskRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask  = VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size   = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers    = &b;
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+
+void BufferBarriers::ComputeWriteToMeshRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask  = VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT |
+					  VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size   = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers    = &b;
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::MeshWriteToMeshRead(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	b.srcStageMask  = VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask  = VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size   = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers    = &b;
 	vkCmdPipelineBarrier2(cmd, &di);
 }
 

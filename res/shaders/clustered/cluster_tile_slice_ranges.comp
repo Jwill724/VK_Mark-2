@@ -47,8 +47,8 @@ void main() {
 	uint tileSizeMax = max(clusteredData.tileSizeX, clusteredData.tileSizeY);
 	float mipLevelF = floor(log2(float(max(tileSizeMax, 1u))));
 
-	uint mipCount = uint(textureQueryLevels(inHiZ));
-	uint mipLevel = uint(clamp(mipLevelF, 0.0, float(max(mipCount, 1u) - 1u)));
+	float maxMip  = float(textureQueryLevels(inHiZ) - 1);
+	uint mipLevel = uint(clamp(mipLevelF, 0.0, maxMip));
 
 	uvec2 mipPixelMin = tilePixelMin >> mipLevel;
 	uvec2 mipPixelMax = tilePixelMax >> mipLevel;

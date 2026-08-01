@@ -20,7 +20,7 @@ if not exist "%VULKAN_BIN%\glslangValidator.exe" (
     exit /b 1
 )
 
-for /R %%F in (*.vert *.frag *.comp) do (
+for /R %%F in (*.vert *.frag *.comp *.task *.mesh) do (
     echo Compiling %%F ...
     set FILE=%%~nxF
 
@@ -30,6 +30,10 @@ for /R %%F in (*.vert *.frag *.comp) do (
         "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S frag !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
     ) else if "%%~xF"==".comp" (
         "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S comp !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
+    ) else if "%%~xF"==".task" (
+        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S task !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
+    ) else if "%%~xF"==".mesh" (
+        "%VULKAN_BIN%\glslangValidator.exe" -V --target-env vulkan1.4 -g -S mesh !INCLUDE_PATH! -o "%%~dpnF.spv" "%%F"
     )
 
     if ERRORLEVEL 1 (

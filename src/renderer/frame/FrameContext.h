@@ -177,6 +177,20 @@ public:
 
 	SecondaryCmdArena& GetSecondaryArena() { return m_secondaryArena; }
 
+	void SwapMeshletVisibility()
+	{
+		m_gpuAddressTable.SwapBufferSlots(
+			RD::Renderer_Buffer::MeshletVisibilityA,
+			RD::Renderer_Buffer::MeshletVisibilityB);
+	}
+
+	bool IsMeshletVisibilityBufferInitialized() const noexcept
+	{
+		return m_bMeshletVisInitialized;
+	}
+	void MeshletVisibilityBufferValid() { m_bMeshletVisInitialized = true; }
+	void InvalidateMeshletVisibility() noexcept { m_bMeshletVisInitialized = false; }
+
 private:
 	uint32_t m_frameIndex = 0u;
 
@@ -238,6 +252,8 @@ private:
 	bool m_bLightsInitialized = false;
 	bool m_bLightsBufferUploadNeeded = false;
 	bool m_bRecentDynamicLightsTransform = false;
+
+	bool m_bMeshletVisInitialized = false;
 
 	// frame owned gpu buffers
 	BindlessBDATable m_gpuAddressTable;

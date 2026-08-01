@@ -40,6 +40,7 @@ void main()
 {
 	uvec2 gid = gl_GlobalInvocationID.xy;
 	SceneData scene = getSceneData();
+	DebugToggles debug = getDebugToggles();
 	uvec2 vpSize = uvec2(scene.viewportSize.xy);
 	if (any(greaterThanEqual(gid, vpSize))) return;
 
@@ -56,7 +57,15 @@ void main()
 	}
 
 	// fetch + barycentrics
-	VisTriangle tri = fetchVisTriangle(ids.x, ids.y);
+	VisTriangle tri;
+	if (debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
+	{
+		tri = fetchVisTriangleMeshlet(ids.x, ids.y);
+	}
+	else
+	{
+		tri = fetchVisTriangle(ids.x, ids.y);
+	}
 
 	vec2 winSize = scene.viewportSize.xy;
 	BarycentricDeriv bary;
@@ -83,12 +92,13 @@ void main()
 	float emissiveStrength = (mat.emissiveStrength * 15.0);
 	vec3  emissive = emissT * (mat.emissiveColor * emissiveStrength);
 
-	bool hasNM      = (tri.flags & HAS_NORMALS) != 0u;
+	bool hasNM = (tri.flags & HAS_NORMALS) != 0u;
 
 	bool flatTri = dot(tri.normalOS[0], tri.normalOS[1]) > 0.9999
 			&& dot(tri.normalOS[0], tri.normalOS[2]) > 0.9999;
 
 	vec3 N = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda, s.uvDdx, s.uvDdy);
+
 	if (hasNM || !flatTri)
 	{
 		vec3 Nx = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddx, s.uvDdx, s.uvDdy);

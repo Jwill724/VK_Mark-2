@@ -3,20 +3,47 @@
 #include "Bounds.h"
 #include "Vertex.h"
 
+static constexpr size_t MESHLET_MAX_VERTS = 64;
+static constexpr size_t MESHLET_MAX_TRIS  = 124;
+static constexpr float  MESHLET_CONE_WEIGHT = 0.25f;
+
 inline constexpr uint32_t MESH_FLAG_IS_LOD                = 1u << 0;
 inline constexpr uint32_t MESH_FLAG_GOOD_OCCLUDEE         = 1u << 1;
 inline constexpr uint32_t MESH_LOD_FLAG_FORCE_SHADOW_LOD0 = 1u << 2;
+inline constexpr uint32_t MESH_FLAG_IS_LOD_VARIANT        = 1u << 3;
 
 struct Mesh
 {
 	AABB localAABB;
-	float localBoundingRadius = 0.0f;
-	uint32_t firstIndex = UINT32_MAX;
-	uint32_t indexCount = UINT32_MAX;
-	uint32_t vertexOffset = UINT32_MAX;
-	uint32_t vertexCount = UINT32_MAX;
-	uint32_t shadowFirstIndex = UINT32_MAX;
-	uint32_t shadowIndexCount = UINT32_MAX;
+	float localBoundingRadius            = 0.0f;
+	uint32_t firstIndex                  = UINT32_MAX;
+	uint32_t indexCount                  = UINT32_MAX;
+	uint32_t vertexOffset                = UINT32_MAX;
+	uint32_t vertexCount                 = UINT32_MAX;
+	uint32_t meshletOffset               = 0;
+	uint32_t meshletCount                = 0;
+	uint32_t meshletVisibilityBase       = 0;
+	uint32_t shadowFirstIndex            = UINT32_MAX;
+	uint32_t shadowIndexCount            = UINT32_MAX;
+	uint32_t shadowMeshletOffset         = 0;
+	uint32_t shadowMeshletCount          = 0;
+};
+
+struct Meshlet
+{
+	glm::vec3 center{};
+	float     radius = 0.0f;
+
+	int8_t    coneAxis[3]{};
+	int8_t    coneCutoff = UINT8_MAX;
+
+	uint32_t  vertexOffset = UINT32_MAX;
+	uint32_t  triangleOffset = UINT32_MAX; 
+
+	uint8_t   vertexCount = UINT8_MAX;
+	uint8_t   triangleCount = UINT8_MAX;
+
+	//uint32_t indexOffset = UINT32_MAX;
 };
 
 struct MeshLODs

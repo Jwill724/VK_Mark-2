@@ -6,7 +6,6 @@
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
-#include "../../../../profiler/Profiler.h"
 
 static constexpr size_t PIPE_ID_DEBUG = 0;
 
@@ -26,7 +25,6 @@ void RegisterGBufferDebugPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsVisibilityDeferred() &&
 							ctx.frameState->InstancesActive() &&
 							ctx.frameState->IsShadedOverlayOn();
 					})

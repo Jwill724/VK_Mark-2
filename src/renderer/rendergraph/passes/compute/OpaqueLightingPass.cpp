@@ -8,14 +8,14 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_TILE_SHADE = 0;
+static constexpr size_t PIPE_ID_MAIN = 0;
 
-void RegisterOpaqueTileShadingPass(
+void RegisterOpaqueLightingPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
-		"Opaque_Tile_Shading",
+		"Opaque_Lighting",
 		pipelines,
 		[&](RenderPassBuilder& builder)
 		{
@@ -26,7 +26,6 @@ void RegisterOpaqueTileShadingPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsVisibilityDeferred() &&
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->IsWireframeOn();
 					})
@@ -74,7 +73,7 @@ void RegisterOpaqueTileShadingPass(
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
-							RD::Renderer_Pass::OpaqueTileShading,
+							RD::Renderer_Pass::OpaqueLighting,
 							pass.passName);
 
 						const auto& drawExtent = graph.GetDrawExtent();
@@ -110,7 +109,7 @@ void RegisterOpaqueTileShadingPass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_TILE_SHADE],
+							pass.pipelines[PIPE_ID_MAIN],
 							pass.pushWriter);
 					});
 		});

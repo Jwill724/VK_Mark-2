@@ -100,7 +100,6 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer (root) -->
-    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -111,8 +110,9 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\GBufferDebugPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\InstanceCullPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\MaterialResolvePass.cpp" />
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueTileShadingPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueLightingPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\VelocityResolvePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -139,9 +139,6 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\OpaqueForwardPass.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp">
@@ -210,6 +207,9 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / frame -->
+    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp">
+      <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\renderer\frame\FrameContext.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -230,6 +230,9 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
     <!-- renderer / backend -->
+    <ClCompile Include="src\renderer\backend\VulkanExtensionFunctions.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="src\renderer\backend\Device.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
     </ClCompile>
@@ -406,12 +409,13 @@
     <ClInclude Include="src\renderer\backend\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
-    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h" />
+    <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h" />
     <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
     <!-- renderer / frame -->
     <ClInclude Include="src\renderer\frame\FrameContext.h" />
     <ClInclude Include="src\renderer\frame\FrameResources.h" />
+    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h" />
     <!-- renderer / rendergraph -->
     <ClInclude Include="src\renderer\rendergraph\RenderGraph.h" />
     <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h" />
@@ -466,13 +470,15 @@
     <None Include="res\shaders\clustered\light_culling.comp" />
     <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\core\material_resolve.comp" />
-    <None Include="res\shaders\core\opaque_tile_shading.comp" />
+    <None Include="res\shaders\core\opaque_lighting.comp" />
     <None Include="res\shaders\core\transparent_forward.frag" />
     <None Include="res\shaders\core\transparent_resolve.comp" />
+    <None Include="res\shaders\core\velocity_resolve.comp" />
     <None Include="res\shaders\debug\debug_args.comp" />
     <None Include="res\shaders\debug\debug_build.comp" />
     <None Include="res\shaders\debug\debug_count.comp" />
     <None Include="res\shaders\debug\gbuffer_view.comp" />
+    <None Include="res\shaders\debug\wireframeM.mesh" />
     <None Include="res\shaders\debug\wireframeFS.frag" />
     <None Include="res\shaders\debug\wireframeVS.vert" />
     <None Include="res\shaders\include\barycentric.glsl" />
@@ -482,6 +488,7 @@
     <None Include="res\shaders\include\instances.glsl" />
     <None Include="res\shaders\include\bindings.glsl" />
     <None Include="res\shaders\include\lighting.glsl" />
+    <None Include="res\shaders\include\meshlet_cull.glsl" />
     <None Include="res\shaders\include\visbuffer.glsl" />
     <None Include="res\shaders\post_process\bloom_downsample.comp" />
     <None Include="res\shaders\post_process\bloom_upsample.comp" />
@@ -491,19 +498,20 @@
     <None Include="res\shaders\post_process\smaa_weights.comp" />
     <None Include="res\shaders\post_process\taa.comp" />
     <None Include="res\shaders\shadows\bend_sss.comp" />
+    <None Include="res\shaders\shadows\shadowT.task" />
     <None Include="res\shaders\shadows\shadow_bounds.comp" />
     <None Include="res\shaders\shadows\shadow_depthVS.vert" />
     <None Include="res\shaders\include\common.glsl" />
-    <None Include="res\shaders\include\shading_functions.glsl" />
     <None Include="res\shaders\include\clustered.glsl" />
     <None Include="res\shaders\include\depth.glsl" />
     <None Include="res\shaders\include\shadow.glsl" />
     <None Include="res\shaders\include\cmaa2.glsl" />
     <None Include="res\shaders\include\pbr.glsl" />
-    <None Include="res\shaders\core\prepassFS.frag" />
     <None Include="res\shaders\core\prepassVS.vert" />
+    <None Include="res\shaders\core\prepassFS.frag" />
+    <None Include="res\shaders\core\prepassFS_masked.frag" />
+    <None Include="res\shaders\core\prepassVS_masked.vert" />
     <None Include="res\shaders\core\forwardVS.vert" />
-    <None Include="res\shaders\core\opaque_forward.frag" />
     <None Include="res\shaders\core\hi_z_gen.comp" />
     <None Include="res\shaders\environment\hdr2cubemap.comp" />
     <None Include="res\shaders\environment\skyboxVS.vert" />
@@ -525,11 +533,15 @@
     <None Include="res\shaders\post_process\final_composite.comp" />
     <None Include="res\shaders\post_process\volumetric_light_blur.comp" />
     <None Include="res\shaders\post_process\volumetric_light.comp" />
+    <None Include="res\shaders\shadows\shadowM.mesh" />
     <None Include="res\shaders\visibility\draw_args.comp" />
     <None Include="res\shaders\visibility\draw_emit.comp" />
     <None Include="res\shaders\visibility\draw_place.comp" />
     <None Include="res\shaders\visibility\draw_scatter.comp" />
     <None Include="res\shaders\visibility\instance_cull.comp" />
+    <None Include="res\shaders\visibility\prepass_masked_mesh.mesh" />
+    <None Include="res\shaders\visibility\prepass_mesh.mesh" />
+    <None Include="res\shaders\visibility\meshlet_cull.task" />
   </ItemGroup>
   <PropertyGroup>
     <!-- Include Directories for project-wide usage -->

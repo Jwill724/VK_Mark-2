@@ -128,8 +128,6 @@ private:
 		std::vector<SceneUploadBatch>& batches,
 		std::vector<std::shared_ptr<ModelAsset>>& assets);
 
-	void UpdateGlobalBufferTable(VkCommandBuffer cmd);
-
 	void FreeAllAssetTextures();
 
 	void TimestampPoolStart(FrameContext& frameCtx, VkCommandBuffer cmd);
@@ -150,6 +148,8 @@ private:
 
 	// Will vary, vsync is 2 contexts. When vsync off its 3.
 	std::array<FrameContext, RD::MAX_FRAMES_IN_FLIGHT> m_frameContexts;
+
+	RD::RenderingMode m_activeRenderingMode = RD::RenderingMode::UNDEFINED;
 
 	BindlessBDATable m_globalAddressTable;
 	std::vector<Material> m_materials;

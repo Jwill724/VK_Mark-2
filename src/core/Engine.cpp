@@ -5,6 +5,7 @@
 #include "JobSystem.h"
 #include "AssetManager.h"
 #include "../profiler/EditorImgui.h"
+#include "../input/UserInput.h"
 #include "renderer/Renderer.h"
 #include "renderer/backend/Device.h"
 #include "renderer/backend/PipelineManager.h"
@@ -23,8 +24,10 @@ namespace Engine
 	static constexpr uint32_t DEFAULT_WIN_EXTENT_W = 1280;
 	static constexpr uint32_t DEFAULT_WIN_EXTENT_H = 960;
 
-	bool _isInitialized{ false };
-	bool IsInitialized() { return _isInitialized; }
+	bool _bIsInitialized{ false };
+	bool IsInitialized() { return _bIsInitialized; }
+
+	bool _bHasWindowResized{ false };
 
 	void Cleanup();
 
@@ -46,7 +49,7 @@ void Engine::Run()
 
 	_editor.InitImgui(_renderer, _mainWindow.GetWindowHandle());
 
-	_isInitialized = true;
+	_bIsInitialized = true;
 
 	_renderer.StartTimer();
 	_assetManager.LoadScenes(
@@ -63,11 +66,28 @@ void Engine::Run()
 	_renderer.EndAssetTimer();
 	_pendingBatches.clear();
 
-	bool hasWindowResized = false;
-
 	while (_mainWindow.IsOpen())
 	{
 		_mainWindow.PollEvents();
+
+		if (_mainWindow.ConsumeResizeFlag() || _bHasWindowResized)
+		{
+			// Block on events instead of spinning, and keep the resize pending.
+			if (_mainWindow.IsMinimized())
+			{
+				_bHasWindowResized = true;
+				glfwWaitEvents();
+				continue;
+			}
+
+			_renderer.StallDevice();
+			_renderer.UpdateDrawExtentUsage(_mainWindow.GetExtent());
+
+			// Drop this frame's mouse motion — the window just moved under it.
+			UserInput::NotifyWindowResized();
+
+			_bHasWindowResized = false;
+		}
 
 		if (_mainWindow.ThrottleIfWindowUnfocused(0.033)) continue;
 
@@ -80,12 +100,11 @@ void Engine::Run()
 			_editor.RenderImgui(_renderer);
 		}
 
-		hasWindowResized = _renderer.PrepareFrame();
-		if (hasWindowResized)
+		if (_renderer.PrepareFrame())
 		{
-			_mainWindow.UpdateWindowSize();
-			_renderer.UpdateDrawExtentUsage(_mainWindow.GetExtent());
-			continue; // This condition shouldn't occur, but try again?
+			_bHasWindowResized = true;
+			_renderer.EndFrameTimer();
+			continue;
 		}
 
 		_renderer.StartTimer();
@@ -96,12 +115,8 @@ void Engine::Run()
 		_renderer.RecordRenderCommand(_jobSystem);
 		_renderer.EndDrawTimer();
 
-		hasWindowResized = _renderer.SubmitFrame();
-		if (hasWindowResized)
-		{
-			_mainWindow.UpdateWindowSize();
-			_renderer.UpdateDrawExtentUsage(_mainWindow.GetExtent());
-		}
+		// Handled at the top of the next iteration, after PollEvents.
+		_bHasWindowResized = _renderer.SubmitFrame();
 
 		_renderer.EndFrameTimer();
 	}
@@ -111,9 +126,9 @@ void Engine::Run()
 
 void Engine::Cleanup()
 {
-	if (_isInitialized)
+	if (_bIsInitialized)
 	{
-		_isInitialized = false;
+		_bIsInitialized = false;
 		_renderer.StallDevice();
 		_assetManager.Shutdown(_jobSystem);
 		_renderer.UnloadAllScenes();

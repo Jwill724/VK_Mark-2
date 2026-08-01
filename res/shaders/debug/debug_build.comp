@@ -21,7 +21,7 @@ void main()
 	DebugItem item = getDebugItemsBuffer().items[itemIdx];
 
 	InstanceInput inst = getInstanceInputBuffer().instanceInputs[item.instanceID];
-	mat4 transform     = getTransformBuffer().transforms[inst.transformID];
+	mat4 transform     = getInstanceTransform(inst);
 	Mesh mesh          = getMeshBuffer().meshes[inst.meshID];
 
 	vec3 bmin = mesh.localAABB.vmin;

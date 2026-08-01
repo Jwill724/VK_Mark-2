@@ -1,0 +1,77 @@
+#version 450
+
+#extension GL_EXT_mesh_shader            : require
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_ARB_shader_draw_parameters : require
+#extension GL_GOOGLE_include_directive   : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/meshlet_cull.glsl"
+#include "../include/clustered.glsl"
+
+layout(local_size_x = TASK_GROUP_SIZE) in;
+
+layout(push_constant) uniform DepthTaskPush
+{
+	mat4 viewproj;    // light VP for shadows
+	vec4 eye;         // xyz = eye pos (w=1) or light dir (w=0)
+	uint slot;
+	float cullDistance;  // > 0 enables the range test; 0 disables (directional)
+} pc;
+
+taskPayloadSharedEXT MeshletPayload payload;
+
+void main()
+{
+	TaskDispatch td = getTaskDispatchBuffer().taskDispatch[streamTaskBase(pc.slot) + gl_DrawIDARB];
+
+	uint packedID      = getDrawInstanceIDsBuffer().ids[td.instanceBase + gl_WorkGroupID.y];
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(packedID)];
+	mat4 model         = getInstanceTransform(inst);
+
+	if (gl_LocalInvocationIndex == 0u)
+	{
+		payload.packedID     = packedID;
+		payload.vertexOffset = td.vertexOffset;
+	}
+
+	vec4 pl, pr, pb, pt;
+	get_frustum_side_planes(pc.viewproj, pl, pr, pb, pt);
+	float worldScale = max_world_scale(model);
+
+	// Shadow projections carry a Y-flip, which inverts winding from FRONT_BIT
+	// which discards geometric back faces and the raster keeps front faces.
+	// So the cone test rejects the back-facing meshlets, same as a normal depth pass.
+	float coneFlip = 1.0;
+
+	uint local     = gl_WorkGroupID.x * TASK_GROUP_SIZE + gl_LocalInvocationIndex;
+	uint meshletID = td.meshletOffset + local;
+	bool visible   = local < td.meshletCount;
+
+	if (visible)
+	{
+		Meshlet ml     = getMeshletBuffer().meshlets[meshletID];
+		vec3  centerWS = (model * vec4(ml.center, 1.0)).xyz;
+		float radiusWS = ml.radius * worldScale;
+
+		if (pc.cullDistance > 0.0 && pc.slot == VIS_SLOT_FLASHLIGHT)
+		{
+			float d = length(centerWS - pc.eye.xyz) - radiusWS;
+			visible = d <= pc.cullDistance;
+		}
+
+		if (visible)
+			visible = sphere_in_side_planes(centerWS, radiusWS, pl, pr, pb, pt);
+
+		if (visible)
+			visible = !meshletConeCulled(ml, model, centerWS, radiusWS, pc.eye, coneFlip);
+	}
+
+	uvec4 ballot = subgroupBallot(visible);
+	if (visible)
+		payload.meshletIndices[subgroupBallotExclusiveBitCount(ballot)] = meshletID;
+
+	barrier();
+	EmitMeshTasksEXT(subgroupBallotBitCount(ballot), 1u, 1u);
+}

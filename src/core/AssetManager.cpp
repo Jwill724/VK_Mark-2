@@ -8,10 +8,10 @@
 
 static const std::unordered_map<ModelID, std::string> AssetPaths
 {
-	//{ ModelID::Sponza,            "sponza.glb"               },
+	{ ModelID::Sponza,            "sponza.glb"               },
 	//{ ModelID::Bistro,            "Bistro.glb"               },
 	//{ ModelID::MRSpheres,         "MetalRoughSpheres.glb"    },
-	{ ModelID::Duck,              "Duck.glb"                 },
+	//{ ModelID::Duck,              "Duck.glb"                 },
 	//{ ModelID::DamagedHelmet,     "DamagedHelmet.glb"        },
 	//{ ModelID::DragonAttenuation, "DragonAttenuation.glb"    },
 	//{ ModelID::City,              "city/town4new.glb"        },
@@ -22,15 +22,6 @@ static const std::unordered_map<ModelID, std::string> AssetPaths
 	//{ ModelID::YellowMech,        "yellow_mech.glb"          },
 	//{ ModelID::Mini,              "mini.glb"                 }
 };
-
-static bool IsSRGBTexture(const std::string& name)
-{
-	return name.find("_BaseColor") != std::string::npos
-		|| name.find("_Albedo")    != std::string::npos
-		|| name.find("diffuse")    != std::string::npos
-		|| name.find("_Emissive")  != std::string::npos
-		|| name.find("emissive")   != std::string::npos;
-}
 
 static bool IsTreeMaterial(const fastgltf::Material& mat)
 {
@@ -209,6 +200,30 @@ bool AssetManager::StageDecodeImages(ThreadContext& ctx)
 		auto& batch = *context->batch;
 		batch.textures.reserve(gltf.images.size());
 
+		std::vector<uint8_t> srgbImage(gltf.images.size(), 0);
+		{
+			auto markSRGB = [&](const fastgltf::TextureInfo& info)
+			{
+				if (info.textureIndex >= gltf.textures.size()) return;
+				const auto& tex = gltf.textures[info.textureIndex];
+				if (tex.imageIndex.has_value() && *tex.imageIndex < srgbImage.size())
+					srgbImage[*tex.imageIndex] = 1;
+			};
+
+			for (const auto& mat : gltf.materials)
+			{
+				if (mat.pbrData.baseColorTexture.has_value())
+					markSRGB(*mat.pbrData.baseColorTexture);
+				if (mat.emissiveTexture.has_value())
+					markSRGB(*mat.emissiveTexture);
+
+				//if (mat.specular && mat.specular->specularColorTexture.has_value())
+				//	markSRGB(*mat.specular->specularColorTexture);
+				//if (mat.sheen && mat.sheen->sheenColorTexture.has_value())
+				//	markSRGB(*mat.sheen->sheenColorTexture);
+			}
+		}
+
 		for (size_t i = 0; i < gltf.images.size(); ++i)
 		{
 			auto& gltfImage = gltf.images[i];
@@ -223,9 +238,8 @@ bool AssetManager::StageDecodeImages(ThreadContext& ctx)
 			else
 				desc.debugName = fmt::format("tex_{}_{}", batch.sceneName, i);
 
-			desc.isSRGB = IsSRGBTexture(desc.debugName);
+			desc.isSRGB = (srgbImage[i] != 0);
 
-			// Decode pixels
 			int w = 0, h = 0, ch = 0;
 			uint8_t* raw = nullptr;
 
@@ -352,6 +366,11 @@ bool AssetManager::StageProcessMaterials(ThreadContext& ctx)
 			desc.flags   |= MATERIAL_FLAG_CASTS_SHADOWS;
 			desc.passType = static_cast<uint32_t>(MaterialPass::Opaque);
 
+			desc.colorFactor       = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+			desc.metalRoughFactors = { mat.pbrData.metallicFactor, mat.pbrData.roughnessFactor };
+			desc.emissiveColor     = glm::make_vec3(mat.emissiveFactor.data());
+			desc.emissiveStrength  = mat.emissiveStrength;
+
 			auto resolveTexture = [&](
 				const fastgltf::TextureInfo& info,
 				uint32_t& outTexIdx,
@@ -366,32 +385,21 @@ bool AssetManager::StageProcessMaterials(ThreadContext& ctx)
 
 			if (mat.pbrData.baseColorTexture.has_value())
 			{
-				resolveTexture(*mat.pbrData.baseColorTexture,
-					desc.albedoTexIdx, desc.albedoSamplerIdx);
-				desc.colorFactor = glm::make_vec4(mat.pbrData.baseColorFactor.data());
+				resolveTexture(*mat.pbrData.baseColorTexture, desc.albedoTexIdx, desc.albedoSamplerIdx);
 			}
 			if (mat.pbrData.metallicRoughnessTexture.has_value())
 			{
-				resolveTexture(*mat.pbrData.metallicRoughnessTexture,
-					desc.metalRoughTexIdx, desc.metalRoughSampIdx);
-				desc.metalRoughFactors = {
-					mat.pbrData.metallicFactor,
-					mat.pbrData.roughnessFactor
-				};
+				resolveTexture(*mat.pbrData.metallicRoughnessTexture, desc.metalRoughTexIdx, desc.metalRoughSampIdx);
 			}
 			if (mat.normalTexture.has_value())
 			{
-				resolveTexture(*mat.normalTexture,
-					desc.normalTexIdx, desc.normalSamplerIdx);
+				resolveTexture(*mat.normalTexture, desc.normalTexIdx, desc.normalSamplerIdx);
 				desc.normalScale  = mat.normalTexture->scale;
 				desc.flags       |= MATERIAL_FLAG_HAS_NORMAL_MAP;
 			}
 			if (mat.emissiveTexture.has_value())
 			{
-				resolveTexture(*mat.emissiveTexture,
-					desc.emissiveTexIdx, desc.emissiveSampIdx);
-				desc.emissiveColor    = glm::make_vec3(mat.emissiveFactor.data());
-				desc.emissiveStrength = mat.emissiveStrength;
+				resolveTexture(*mat.emissiveTexture, desc.emissiveTexIdx, desc.emissiveSampIdx);
 			}
 
 			if (mat.alphaMode == fastgltf::AlphaMode::Mask)
@@ -423,6 +431,78 @@ bool AssetManager::StageProcessMaterials(ThreadContext& ctx)
 // -----------------------------------------------------------------------
 // StageProcessMeshes
 // -----------------------------------------------------------------------
+
+static void BuildMeshletRange(
+	const Vertex*      verts,
+	uint32_t           vertexCount,
+	const uint32_t*    indices,
+	size_t             indexCount,
+	SceneUploadBatch&  batch,
+	uint32_t&          outOffset,
+	uint32_t&          outCount)
+{
+	outOffset = static_cast<uint32_t>(batch.meshlets.size());
+	outCount  = 0;
+	if (indexCount < 3 || (indexCount % 3) != 0) return;
+
+	const float* posPtr = reinterpret_cast<const float*>(
+		reinterpret_cast<const uint8_t*>(verts) + offsetof(Vertex, position));
+
+	const size_t bound = meshopt_buildMeshletsBound(
+		indexCount, MESHLET_MAX_VERTS, MESHLET_MAX_TRIS);
+
+	std::vector<meshopt_Meshlet> raw(bound);
+	std::vector<uint32_t> mv(bound * MESHLET_MAX_VERTS);
+	std::vector<uint8_t>  mt(bound * MESHLET_MAX_TRIS * 3);
+
+	const size_t count = meshopt_buildMeshlets(
+		raw.data(), mv.data(), mt.data(),
+		indices, indexCount,
+		posPtr, vertexCount, sizeof(Vertex),
+		MESHLET_MAX_VERTS, MESHLET_MAX_TRIS, MESHLET_CONE_WEIGHT);
+
+	if (count == 0) return;
+
+	const uint32_t vBase = static_cast<uint32_t>(batch.meshletVertices.size());
+	const uint32_t tBase = static_cast<uint32_t>(batch.meshletTriangles.size());
+
+	for (size_t i = 0; i < count; ++i)
+	{
+		meshopt_Meshlet& m = raw[i];
+
+		meshopt_optimizeMeshlet(
+			&mv[m.vertex_offset], &mt[m.triangle_offset],
+			m.triangle_count, m.vertex_count);
+
+		const meshopt_Bounds b = meshopt_computeMeshletBounds(
+			&mv[m.vertex_offset], &mt[m.triangle_offset],
+			m.triangle_count, posPtr, vertexCount, sizeof(Vertex));
+
+		Meshlet out{};
+		out.center         = { b.center[0], b.center[1], b.center[2] };
+		out.radius         = b.radius;
+		out.coneAxis[0]    = b.cone_axis_s8[0];
+		out.coneAxis[1]    = b.cone_axis_s8[1];
+		out.coneAxis[2]    = b.cone_axis_s8[2];
+		out.coneCutoff     = b.cone_cutoff_s8;
+		out.vertexOffset   = vBase + m.vertex_offset;
+		out.triangleOffset = tBase + m.triangle_offset;
+		out.vertexCount    = static_cast<uint8_t>(m.vertex_count);
+		out.triangleCount  = static_cast<uint8_t>(m.triangle_count);
+
+		batch.meshlets.push_back(out);
+	}
+
+	// Trim to what the last meshlet actually used; meshopt 4-aligns triangle_offset.
+	const meshopt_Meshlet& last = raw[count - 1];
+	mv.resize(last.vertex_offset + last.vertex_count);
+	mt.resize(last.triangle_offset + ((last.triangle_count * 3u + 3u) & ~3u));
+
+	batch.meshletVertices.insert(batch.meshletVertices.end(), mv.begin(), mv.end());
+	batch.meshletTriangles.insert(batch.meshletTriangles.end(), mt.begin(), mt.end());
+
+	outCount = static_cast<uint32_t>(count);
+}
 
 bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 {
@@ -605,7 +685,7 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 					MeshDesc lodMesh   = meshDesc;
 					lodMesh.firstIndex = static_cast<uint32_t>(batch.indices.size());
 					lodMesh.indexCount = static_cast<uint32_t>(lodCount);
-					//lodMesh.flags     |= MESH_FLAG_IS_LOD;
+					lodMesh.flags     |= MESH_FLAG_IS_LOD_VARIANT;
 					const uint32_t lodIdx = static_cast<uint32_t>(batch.meshes.size());
 					batch.indices.insert(batch.indices.end(), lodIdxPtr, lodIdxPtr + lodCount);
 					batch.meshes.push_back(lodMesh);
@@ -641,8 +721,8 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 
 					if (!forceLod0)
 					{
-						shadowLod1 = buildLOD(0.40f, 0.006f);
-						shadowLod2 = buildLOD(0.18f, 0.012f);
+						shadowLod1 = buildLOD(0.75f, 0.002f);
+						shadowLod2 = buildLOD(0.55f, 0.004f);
 						if (shadowLod1 == UINT32_MAX) shadowLod1 = lod0Idx;
 						if (shadowLod2 == UINT32_MAX) shadowLod2 = shadowLod1;
 					}
@@ -674,23 +754,19 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 		}
 
 		// Shadow index buffer.
-		// Base (lod0) meshes get a position-welded shadow copy appended after the render
-		// indices. LOD meshes are ALREADY simplified — welding them again tears their
-		// silhouette (the leak). LODs reuse their own render indices.
 		const size_t shadowBase = batch.indices.size();
 
 		// Reserve shadow space only for base meshes (sum of their index counts).
 		size_t shadowTotal = 0;
 		for (const auto& md : batch.meshes)
-			if ((md.flags & MESH_FLAG_IS_LOD) == 0u)
+			if ((md.flags & MESH_FLAG_IS_LOD_VARIANT) == 0u)
 				shadowTotal += md.indexCount;
-
 		batch.indices.resize(shadowBase + shadowTotal);
 
 		size_t shadowCursor = shadowBase;
 		for (auto& md : batch.meshes)
 		{
-			if (md.flags & MESH_FLAG_IS_LOD)
+			if (md.flags & MESH_FLAG_IS_LOD_VARIANT)
 			{
 				// Reuse the LOD's own (simplified, watertight) render indices for shadows.
 				md.shadowFirstIndex = md.firstIndex;
@@ -714,6 +790,56 @@ bool AssetManager::StageProcessMeshes(ThreadContext& ctx)
 				md.shadowIndexCount, md.vertexCount, streams, 1u);
 
 			shadowCursor += md.indexCount;
+		}
+		ASSERT(shadowCursor == shadowBase + shadowTotal);
+
+		// Meshlets
+		for (auto& md : batch.meshes)
+		{
+			const Vertex* verts = batch.vertices.data() + md.vertexOffset;
+
+			BuildMeshletRange(verts, md.vertexCount,
+				batch.indices.data() + md.firstIndex, md.indexCount,
+				batch, md.meshletOffset, md.meshletCount);
+
+			if (md.shadowFirstIndex == md.firstIndex)
+			{
+				md.shadowMeshletOffset = md.meshletOffset;
+				md.shadowMeshletCount  = md.meshletCount;
+			}
+			else
+			{
+				BuildMeshletRange(verts, md.vertexCount,
+					batch.indices.data() + md.shadowFirstIndex, md.shadowIndexCount,
+					batch, md.shadowMeshletOffset, md.shadowMeshletCount);
+			}
+		}
+
+		// Each LOD in a chain owns a distinct sub-range of the instance's
+		// visibility bits, so a LOD switch can't alias another LOD's history.
+		for (auto& md : batch.meshes)
+		{
+			if ((md.flags & MESH_FLAG_IS_LOD) == 0u) continue;   // chain heads only
+
+			const uint32_t chain[4] = {
+				md.lod0,
+				md.lod1,
+				md.lod2,
+				md.lod3
+			};
+			uint32_t cursor = 0u;
+
+			for (uint32_t i = 0; i < 4u; ++i)
+			{
+				bool dup = false;
+				for (uint32_t j = 0; j < i; ++j)
+					if (chain[j] == chain[i]) { dup = true; break; }
+				if (dup) continue;
+
+				MeshDesc& lodMd = batch.meshes[chain[i]];
+				lodMd.meshletVisibilityBase = cursor;
+				cursor += lodMd.meshletCount;
+			}
 		}
 
 		sq->Advance(context, GLTFJobType::ProcessMeshes);

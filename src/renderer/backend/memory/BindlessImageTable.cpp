@@ -149,10 +149,9 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::FlareBright,             allocator.AllocateImage(RTDescs::FlareBright(quarter)));
 	SetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor,          allocator.AllocateImage(RTDescs::LensFlareColor(quarter)));
 	SetRenderTarget(RD::Renderer_RenderTarget::HiZ,                     allocator.AllocateImage(RTDescs::HiZ(drawExtent, RD::HI_Z_MIP_COUNT)));
-	SetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ,        allocator.AllocateImage(RTDescs::LinearizedMinHiZ(drawExtent, RD::HI_Z_MIP_COUNT)));
-
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough,     allocator.AllocateImage(RTDescs::MaterialAlbedoRough(drawExtent))); // rgb albedo (linear), a roughness
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal,          allocator.AllocateImage(RTDescs::MaterialNormal(drawExtent)));      // octEncode(N), [0,1] fits unorm exactly
+	SetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ,        allocator.AllocateImage(RTDescs::LinearizedMinHiZ(drawExtent, RD::HI_Z_MIN_MIP_COUNT)));
+	SetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough,     allocator.AllocateImage(RTDescs::MaterialAlbedoRough(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal,          allocator.AllocateImage(RTDescs::MaterialNormal(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::MaterialMetal,           allocator.AllocateImage(RTDescs::MaterialMetal(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::MaterialEmissive,        allocator.AllocateImage(RTDescs::MaterialEmissive(drawExtent)));
 }

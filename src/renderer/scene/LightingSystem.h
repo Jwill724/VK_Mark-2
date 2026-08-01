@@ -103,7 +103,6 @@ namespace LightingSystem
 		std::vector<uint32_t> freeIDs;
 		std::vector<uint8_t> alive;
 
-
 		std::vector<uint32_t> highlightedIDs;
 
 		void Clear()

@@ -25,13 +25,14 @@ namespace World
 		uint32_t instanceCount = 1;
 	};
 
+	// TODO: Add more conditionals to cover counts, theres no safety
 	std::unordered_map<ModelID, SceneProfileEntry> _sceneProfiles
 	{
 		{ ModelID::Sponza,            {} },
 		{ ModelID::Bistro,            {} },
 		{ ModelID::MRSpheres,         {} },
-		{ ModelID::Duck,              {RD::InstancingMethod::DrawMultiStatic, 10000 } },
-		{ ModelID::DamagedHelmet,     {} },
+		{ ModelID::Duck,              { RD::InstancingMethod::DrawMultiStatic, 200000 } },
+		{ ModelID::DamagedHelmet,     { RD::InstancingMethod::DrawStatic, 1 } },
 		{ ModelID::DragonAttenuation, {} },
 		{ ModelID::City,              {} },
 		{ ModelID::Structure,         {} },
@@ -42,16 +43,15 @@ namespace World
 		{ ModelID::Mini,              {} },
 	};
 
-	std::vector<AsteroidState> _asteroidStates;
-	uint32_t                   _asteroidFieldVI = UINT32_MAX;
+	//std::vector<AsteroidState> _asteroidStates;
+	//uint32_t                   _asteroidFieldVI = UINT32_MAX;
 
-	// --- Demo tuning ---
-	constexpr uint32_t  ASTEROID_COUNT   = 512u;
-	constexpr glm::vec3 FIELD_CENTER     = { 0.0f, 45.0f, -30.0f };
-	constexpr glm::vec3 FIELD_EXTENTS    = { 60.0f, 12.0f, 60.0f };
-	constexpr float     SCALE_MIN        = 0.15f;
-	constexpr float     SCALE_MAX        = 1.4f;
-	constexpr uint32_t  FIELD_SEED       = 0xA57E401Du;
+	//constexpr uint32_t  ASTEROID_COUNT   = 512u;
+	//constexpr glm::vec3 FIELD_CENTER     = { 0.0f, 45.0f, -30.0f };
+	//constexpr glm::vec3 FIELD_EXTENTS    = { 60.0f, 12.0f, 60.0f };
+	//constexpr float     SCALE_MIN        = 0.15f;
+	//constexpr float     SCALE_MAX        = 1.4f;
+	//constexpr uint32_t  FIELD_SEED       = 0xA57E401Du;
 
 	Scene _scene;
 	Scene& GetScene() { return _scene; }
@@ -67,8 +67,7 @@ namespace World
 
 	bool SyncGlobalInstancesAndTransforms(
 		std::unordered_map<ModelID, SceneProfileEntry>& sceneProfiles,
-		std::vector<VirtualInstance>& globalInstances,
-		std::vector<glm::mat4>& globalTransforms,
+		Scene& scene,
 		const double deltaTime);
 }
 
@@ -95,17 +94,31 @@ void World::Init(const BindlessImageTable& imgTable)
 void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
 {
 	const ModelID id = asset->sceneID;
-
 	_loadedScenes[id] = asset;
 
-	const uint32_t firstTransform =
-		static_cast<uint32_t>(_scene.GetTransforms().size());
+	const auto profileIt = _sceneProfiles.find(id);
+	const RD::InstancingMethod method = (profileIt != _sceneProfiles.end())
+		? profileIt->second.drawType
+		: RD::InstancingMethod::DrawStatic;
+
+	const bool bDynamic =
+		method == RD::InstancingMethod::DrawDynamic ||
+		method == RD::InstancingMethod::DrawMultiDynamic;
+
+	auto& pool = _scene.GetTransformPool(bDynamic);
+
+	const uint32_t firstTransform = static_cast<uint32_t>(pool.size());
+	const uint32_t addedCount     = static_cast<uint32_t>(asset->nodeTransforms.size());
 
 	for (const auto& t : asset->nodeTransforms)
-		_scene.GetTransforms().push_back(t);
+		pool.push_back(t);
 
-	asset->virtualInstance.firstTransform = firstTransform;
-	asset->virtualInstance.instanceID = static_cast<uint32_t>(_scene.GetVirtualInstances().size());
+	if (!bDynamic)
+		_scene.MarkStaticTransformsDirty(firstTransform, addedCount);
+
+	asset->virtualInstance.firstTransform   = firstTransform;
+	asset->virtualInstance.instancingMethod = method;
+	asset->virtualInstance.instanceID       = static_cast<uint32_t>(_scene.GetVirtualInstances().size());
 
 	_scene.GetVirtualInstances().push_back(asset->virtualInstance);
 
@@ -202,13 +215,15 @@ void World::UpdateWorldState(
 	// Transform updates
 	// ===================
 
-	auto result = SyncGlobalInstancesAndTransforms(
-		_sceneProfiles,
-		_scene.GetVirtualInstances(),
-		_scene.GetTransforms(),
-		deltaTime);
+	const bool dynamicChanged = SyncGlobalInstancesAndTransforms(
+		_sceneProfiles, _scene, deltaTime);
 
-	frameCtx.EvaluateTransformsStatus(result);
+	const bool bMotionNeeded =
+		profiler.debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
+
+	_scene.BuildMotionMatrices(bMotionNeeded, _scene.GetTemporalResult());
+
+	frameCtx.EvaluateTransformsStatus(dynamicChanged);
 
 	const bool bTransformsChanged = _scene.VerifyTransformCount();
 
@@ -238,75 +253,60 @@ void World::UpdateWorldState(
 	frameCtx.AssignCSMUniform(allocator.AllocateUniform(_scene.GetCSMData()), allocator);
 }
 
-// ===============================
-// Hard coded transform code sucks
-
-static glm::mat4 MakeGridTransform3D(
+static glm::mat4 MakeClusterTransform(
 	uint32_t index,
 	uint32_t count,
-	float spacing)
+	float radius)
 {
 	ASSERT(count > 0);
 
-	const uint32_t gridDim =
-		glm::max(1u,
-			static_cast<uint32_t>(
-				std::ceil(std::cbrt(static_cast<float>(count)))));
+	std::mt19937 rng(9001 + index);
 
-	const uint32_t layerSize = gridDim * gridDim;
-
-	const uint32_t y = index / layerSize;
-	const uint32_t rem = index % layerSize;
-
-	const uint32_t z = rem / gridDim;
-	const uint32_t x = rem % gridDim;
-
-	const glm::vec3 centerOffset =
-		glm::vec3(static_cast<float>(gridDim - 1)) * spacing * 0.5f;
+	std::uniform_real_distribution<float> positionDistribution(-radius, radius);
+	std::uniform_real_distribution<float> rotationDistribution(0.0f, glm::two_pi<float>());
 
 	const glm::vec3 translation =
 		glm::vec3(
-			static_cast<float>(x) * spacing,
-			static_cast<float>(y) * spacing,
-			static_cast<float>(z) * spacing)
-		- centerOffset;
+			positionDistribution(rng),
+			positionDistribution(rng),
+			positionDistribution(rng));
 
-	return glm::translate(glm::mat4(1.0f), translation);
+	const glm::vec3 rotation =
+		glm::vec3(
+			rotationDistribution(rng),
+			rotationDistribution(rng),
+			rotationDistribution(rng));
+
+	return
+		glm::translate(glm::mat4(1.0f), translation) *
+		glm::rotate(glm::mat4(1.0f), rotation.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
+		glm::rotate(glm::mat4(1.0f), rotation.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+		glm::rotate(glm::mat4(1.0f), rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
-static bool braindeadhack = false;
 bool World::SyncGlobalInstancesAndTransforms(
 	std::unordered_map<ModelID, SceneProfileEntry>& sceneProfiles,
-	std::vector<VirtualInstance>& globalInstances,
-	std::vector<glm::mat4>& globalTransforms,
+	Scene& scene,
 	const double deltaTime)
 {
 	if (!_bAreAssetsLoaded) return false;
 
-	bool transformsUpdated = false;
+	bool dynamicChanged = false;
 
-	for (auto& inst : globalInstances)
+	for (auto& inst : scene.GetVirtualInstances())
 	{
+		const bool bDynamic =
+			inst.instancingMethod == RD::InstancingMethod::DrawDynamic ||
+			inst.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+
+		auto& transforms = scene.GetTransformPool(bDynamic);
+		uint32_t appendStart = static_cast<uint32_t>(transforms.size());
+
 		ModelID sid = static_cast<ModelID>(inst.sceneID);
 		SceneProfileEntry& profile = sceneProfiles.at(sid);
 
 		if (profile.instanceCount == 1)
 		{
-			if (profile.drawType == RD::InstancingMethod::DrawStatic)
-			{
-				// TODO: Create a way to modify transforms at runtime
-				if (!braindeadhack && sid == ModelID::DamagedHelmet) {
-					glm::mat4& M = globalTransforms[inst.firstTransform];
-					// Turn helmet for bake
-					M = glm::rotate(M, glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
-					inst.baseTransform = M;
-					transformsUpdated = true;
-					braindeadhack = true;
-				}
-				inst.instancingMethod = profile.drawType;
-				continue; // transforms already baked into static
-			}
 			if (profile.drawType == RD::InstancingMethod::DrawDynamic)
 			{
 				inst.instancingMethod = profile.drawType;
@@ -327,44 +327,16 @@ bool World::SyncGlobalInstancesAndTransforms(
 					glm::translate(glm::mat4(1.0f), inst.modelOffset) *
 					baseTransform;
 
-				globalTransforms[inst.firstTransform] = newTransform;
+				transforms[inst.firstTransform] = newTransform;
 
-				transformsUpdated = true;
+				dynamicChanged = true;
 				continue;
 			}
-		//	if (profile.instancingMethod == RD::InstancingMethod::DrawDynamic) {
-		//		inst.instancingMethod = profile.instancingMethod;
-
-		//		const float deltaSecondsFloat = static_cast<float>(deltaTime);
-
-		//		// Advance a phase accumulator (store this per instance like you do spinAngleRadians)
-		//		const float moveSpeedRadiansPerSecond = 1.5f; // tweak
-		//		inst.movePhaseRadians += moveSpeedRadiansPerSecond * deltaSecondsFloat;
-
-		//		// Line direction and amplitude
-		//		const glm::vec3 lineDir = glm::normalize(glm::vec3(1.0f, 0.0f, 0.0f)); // X axis
-		//		const float amplitude = 2.0f; // world units
-
-		//		const float t = std::sin(inst.movePhaseRadians);
-		//		const glm::vec3 moveOffset = lineDir * (t * amplitude);
-
-		//		const glm::mat4& baseTransform = inst.baseTransform;
-
-		//		glm::mat4 newTransform = baseTransform;
-		//		newTransform[3] = baseTransform[3] + glm::vec4(moveOffset, 0.0f);
-
-		//		globalTransforms[inst.firstTransform] = newTransform;
-
-		//		transformsUpdated = true;
-		//		continue;
-		//	}
 		}
-
-		// TODO: ADD SUPPORT FOR MULTI-DYNAMIC
 
 		// Defined from copy values append list or decrease list
 		// on first run this will always be an append
-		if (profile.drawType == RD::InstancingMethod::DrawMultiStatic || profile.instanceCount > 1)
+		if (profile.drawType == RD::InstancingMethod::DrawMultiStatic && profile.instanceCount > 1)
 		{
 			inst.instancingMethod = profile.drawType;
 
@@ -383,27 +355,19 @@ bool World::SyncGlobalInstancesAndTransforms(
 			const uint32_t oldSlabEnd = oldSlabBegin + oldSlabTransformCount;
 
 			// We can only append in-place if this slab currently ends at the end of the global array.
-			const bool slabIsAtEnd = (oldSlabEnd == globalTransforms.size());
+			const bool slabIsAtEnd = (oldSlabEnd == transforms.size());
 
 			if (desiredCapacityCopies > oldCapacityCopies)
 			{
-				const glm::mat4 baseTransform = globalTransforms[oldSlabBegin];
-
-				//fmt::print("[syncGI] multistatic: oldCap={} newCap={} firstT={} tfCount={} slabEnd={} tfSize(before)={}\n",
-				//	oldCapacityCopies,
-				//	desiredCapacityCopies,
-				//	inst.firstTransform,
-				//	transformsPerCopy,
-				//	oldSlabEnd,
-				//	globalTransforms.size());
+				//const glm::mat4 baseTransform = transforms[oldSlabBegin];
 
 				if (!slabIsAtEnd) {
 					// Relocate this slab to the end to preserve the "contiguous slab" invariant.
-					const uint32_t newFirstTransform = static_cast<uint32_t>(globalTransforms.size());
+					const uint32_t newFirstTransform = static_cast<uint32_t>(transforms.size());
 
 					// Copy old slab transforms.
 					for (uint32_t i = 0; i < oldSlabTransformCount; ++i) {
-						globalTransforms.push_back(globalTransforms[static_cast<size_t>(oldSlabBegin + i)]);
+						transforms.push_back(transforms[static_cast<size_t>(oldSlabBegin + i)]);
 					}
 
 					inst.firstTransform = newFirstTransform;
@@ -412,30 +376,32 @@ bool World::SyncGlobalInstancesAndTransforms(
 				// Append transforms for new copies (copy indices [oldCap .. newCap)).
 				for (uint32_t copyIndex = oldCapacityCopies; copyIndex < desiredCapacityCopies; ++copyIndex)
 				{
-					glm::mat4 offset = MakeGridTransform3D(copyIndex, desiredCapacityCopies, 7.0f);
+					glm::mat4 offset =
+						MakeClusterTransform(
+							copyIndex,
+							desiredCapacityCopies,
+							100.0f);
 
 					for (uint32_t slot = 0; slot < transformsPerCopy; ++slot)
 					{
 						const uint32_t baseSlotIndex = inst.firstTransform + slot; // copy 0, slot N
-						const glm::mat4 slotBaseTransform = globalTransforms[baseSlotIndex];
+						const glm::mat4 slotBaseTransform = transforms[baseSlotIndex];
 
-						globalTransforms.push_back(offset * slotBaseTransform);
+						transforms.push_back(offset * slotBaseTransform);
 					}
 				}
 
-				//fmt::print("[syncGI] tfSize(after)={} firstT={} relocated={}\n",
-				//	globalTransforms.size(),
-				//	inst.firstTransform,
-				//	(!slabIsAtEnd));
-
 				inst.capacityCopies = desiredCapacityCopies;
-				transformsUpdated = true;
+				dynamicChanged = true;
 			}
+
+			uint32_t appendCount = static_cast<uint32_t>(transforms.size()) - appendStart;
+			scene.MarkStaticTransformsDirty(appendStart, appendCount);
 
 			// Change active copies (visibility will rebuild/activate).
 			inst.usedCopies = desiredUsedCopies;
 		}
 	}
 
-	return transformsUpdated;
+	return dynamicChanged;
 }

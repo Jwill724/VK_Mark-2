@@ -96,3 +96,28 @@ void BindlessBDATable::RemoveAddress(RD::Renderer_Buffer slot)
 	m_addresses[Index(slot)] = 0;
 	m_bIsTableDirty = true;
 }
+
+void BindlessBDATable::SwapBufferSlots(RD::Renderer_Buffer a, RD::Renderer_Buffer b)
+{
+	const size_t ia = Index(a);
+	const size_t ib = Index(b);
+
+	if (ia == ib) return;
+	if (m_addresses[ia] == 0 || m_addresses[ib] == 0) return; // not allocated yet
+
+	std::swap(m_addresses[ia],  m_addresses[ib]);
+	std::swap(m_gpuBuffers[ia], m_gpuBuffers[ib]);
+
+	m_bIsTableDirty = true;
+}
+
+void BindlessBDATable::ClearAssetBuffers(Allocator& allocator)
+{
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::Vertex, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::Index, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::Mesh, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::Material, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::Meshlet, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::MeshletVertices, allocator);
+	ClearGPUAddressBuffer(RD::Renderer_Buffer::MeshletTriangles, allocator);
+}

@@ -7,53 +7,29 @@
 #include "../include/common.glsl"
 
 layout(location = 0) out vec3 outViewNormal;
-layout(location = 1) out vec4 outCurrClip;
-layout(location = 2) out vec4 outPrevClip;
-layout(location = 3) out vec2 outUV;
-layout(location = 4) flat out uint outTemporalValidation;
-layout(location = 5) flat out uint outMaterialID;
-layout(location = 6) flat out uint outPackedID;
+layout(location = 1) flat out uint outPackedID;
 
 void main()
 {
 	uint packedID       = getDrawInstanceIDsBuffer().ids[gl_InstanceIndex];
 	uint instanceID     = visInstanceID(packedID);
 	InstanceInput inst  = getInstanceInputBuffer().instanceInputs[instanceID];
-	outMaterialID       = inst.materialID;
 	outPackedID         = packedID;
 
-	vec2 uv;
-	vec3 position;
-	vec3 normal;
-	unpackVertexPrepass(
-		gl_VertexIndex,
-		uv,
-		position,
-		normal);
+	Vertex vtx = getVertexBuffer().vertices[gl_VertexIndex];
+	vec3 position = vtx.position;
+	vec3 normal = octDecode(vec2(snorm16ToFloat(int(vtx.normalX)),
+							snorm16ToFloat(int(vtx.normalY))));
 
-	mat4 model = getTransformBuffer().transforms[inst.transformID];
+	mat4 model = getInstanceTransform(inst);
 
 	SceneData scene = getSceneData();
-
-	mat4 prevModel = model;
-	if (scene.temporal.y == 1u) {
-		prevModel = getPrevTransformBuffer().prevTransforms[inst.transformID];
-	}
 
 	mat3 normalMatrix = mat3(scene.view * model);
 	outViewNormal     = normalMatrix * normal;
 
-	vec4 worldPos     = model     * vec4(position, 1.0);
-	vec4 prevWorldPos = prevModel * vec4(position, 1.0);
-
-	vec4 currClip    = scene.viewProj           * worldPos;
-	vec4 currClipUnj = scene.viewProjUnjittered * worldPos;
-	vec4 prevClip    = scene.prevViewProj       * prevWorldPos;
-
-	outUV                 = uv;
-	outCurrClip           = currClipUnj;
-	outPrevClip           = prevClip;
-	outTemporalValidation = scene.temporal.y;
+	vec4 worldPos = model * vec4(position, 1.0);
+	vec4 currClip = scene.viewProj * worldPos;
 
 	gl_Position = currClip;
 }

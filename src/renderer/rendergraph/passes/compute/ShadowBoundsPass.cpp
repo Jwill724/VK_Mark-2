@@ -63,8 +63,7 @@ void RegisterShadowBoundsPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							hiz,
-							hizSampler,
-							0u);
+							hizSampler);
 
 						pso.DispatchComputePass(
 							cmd,

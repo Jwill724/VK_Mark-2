@@ -27,7 +27,6 @@ void RegisterMaterialResolvePass(
 					{
 						return
 							ctx.frameState->InstancesActive() &&
-							ctx.frameState->IsVisibilityDeferred() &&
 							!ctx.frameState->IsWireframeOn();
 					})
 

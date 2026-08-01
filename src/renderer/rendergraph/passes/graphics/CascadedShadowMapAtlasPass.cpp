@@ -5,12 +5,12 @@
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
-#include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
 #include "../../../scene/Scene.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
+static constexpr size_t PIPE_ID_MESH = 1;
 
 void RegisterDirectionalCSMPass(
 	RenderGraph& graph,
@@ -51,38 +51,42 @@ void RegisterDirectionalCSMPass(
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 
 						const auto& frameCtx = ctx.frameCtx;
+						VkCommandBuffer cmd  = ctx.commandBuffer;
 
-						VkCommandBuffer cmd = ctx.commandBuffer;
+						const bool bMeshPath = ctx.frameState->IsMeshShaderPath();
 
 						const auto& atlas = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
 
 						AttachmentDesc depth{};
-						depth.imageView = atlas.m_imageView;
+						depth.imageView   = atlas.m_imageView;
 						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 						depth.SetDepth(1);
 
 						pso.UpdateRenderInfo(
-							{
-								atlas.Width(),
-								atlas.Height()
-							},
+							{ atlas.Width(), atlas.Height() },
 							{ depth },
 							true); // Atlas on
 
 						const auto indirectBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
-
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
+						const auto taskDispatchBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer;
 
-						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
+						const auto& pipeline =
+							bMeshPath ? pass.pipelines[PIPE_ID_MESH]
+							          : pass.pipelines[PIPE_ID_MAIN];
 
 						const VkExtent2D atlasExtent = pso.GetAtlasExtent();
 						const VkExtent2D tileExtent =
 						{
-							atlasExtent.width / 2u,
+							atlasExtent.width  / 2u,
 							atlasExtent.height / 2u
 						};
+
+						const glm::vec4 lightDir =
+							glm::vec4(glm::vec3(ctx.scene->GetSceneData().sunlightDirection), 0.0f);
 
 						pso.BeginRendering(cmd);
 
@@ -99,19 +103,41 @@ void RegisterDirectionalCSMPass(
 
 							pso.UpdateAtlas(offset, tileExtent);
 							pso.ApplyViewport(cmd);
-							pso.SetPush(ctx.scene->GetCSMData().cascadeVP[cascadeIdx]);
 
-							uint32_t cascadeIndex = RD::VIS_SLOT_CSM0 + cascadeIdx;
-							ASSERT(cascadeIndex < RD::VIS_SLOT_COUNT);
+							const uint32_t cascadeSlot = RD::VIS_SLOT_CSM0 + cascadeIdx;
+							ASSERT(cascadeSlot < RD::VIS_SLOT_COUNT);
 
-							pso.DrawIndexedIndirectCount(
-								cmd,
-								cascadeIndex,
-								indirectBuffer,
-								indirectCountBuffer,
-								pipeline,
-								pass.pushWriter);
+							const glm::mat4& cascadeVP = ctx.scene->GetCSMData().cascadeVP[cascadeIdx];
+
+							if (bMeshPath)
+							{
+								DepthTaskPush push{};
+								push.viewproj      = cascadeVP;
+								push.eye           = lightDir;
+								push.slot          = cascadeSlot;
+								pso.SetPush(push);
+
+								pso.DrawMeshTasksIndirectCount(
+									cmd,
+									cascadeSlot,
+									taskDispatchBuffer,
+									indirectCountBuffer,
+									pipeline,
+									pass.pushWriter);
 							}
+							else
+							{
+								pso.SetPush(cascadeVP);
+
+								pso.DrawIndexedIndirectCount(
+									cmd,
+									cascadeSlot,
+									indirectBuffer,
+									indirectCountBuffer,
+									pipeline,
+									pass.pushWriter);
+							}
+						}
 
 						pso.EndRendering(cmd);
 					});

@@ -174,11 +174,12 @@ void main()
 	vec3 baseScatter      = sunColor * pc.density * phase * dirMask * pc.scatteringStrength;
 
 	// Shadow info
-	uint  cascadeCount = uint(csm.params.y); 
-	uint  cascadeIdx   = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
-	float nextSplit    = csm.cascadeSplits[min(cascadeIdx, MAX_CASCADES_INDEX)];
-	vec4  atlas        = csm.atlasUV[cascadeIdx];
-	mat4  cascadeVP    = csm.cascadeVP[cascadeIdx];
+	uint  cascadeCount   = uint(csm.params.y);
+	uint  cascadeClamped = cascadeCount - 1;
+	uint  cascadeIdx     = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
+	float nextSplit      = csm.cascadeSplits[min(cascadeIdx, cascadeClamped)];
+	vec4  atlas          = csm.atlasUV[cascadeIdx];
+	mat4  cascadeVP      = csm.cascadeVP[cascadeIdx];
 
 	vec3  camForward = -vec3(scene.invView[0][2], scene.invView[1][2], scene.invView[2][2]);
 	float forwardDot = dot(camForward, viewDir);
@@ -201,7 +202,7 @@ void main()
 		// Only re-check cascade when approaching the next split
 		if (reconstructPos.viewDepth > nextSplit) {
 			cascadeIdx = cascadeViewDepthSplit(reconstructPos.viewDepth, cascadeCount, csm.cascadeSplits);
-			nextSplit = (cascadeIdx < MAX_CASCADES_INDEX)
+			nextSplit = (cascadeIdx < cascadeClamped)
 				? csm.cascadeSplits[cascadeIdx + 1u]
 				: 1e30;
 		}

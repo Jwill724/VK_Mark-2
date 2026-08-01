@@ -80,17 +80,18 @@ AllocatedBuffer Allocator::AllocateGPUBuffer(
 		case RD::Renderer_Buffer::IndirectDraws:
 		case RD::Renderer_Buffer::IndirectDrawCounts:
 		case RD::Renderer_Buffer::DispatchIndirectArgs:
+		case RD::Renderer_Buffer::TaskDispatch:
 		case RD::Renderer_Buffer::DebugDraw:
 			desc.usage = Vulkan_BufferUsage::INDIRECT;
 			break;
 		case RD::Renderer_Buffer::Vertex:
 		case RD::Renderer_Buffer::DebugVertex:
+		case RD::Renderer_Buffer::MeshletVertices:
 			desc.usage = Vulkan_BufferUsage::VERTEX;
 			break;
 		case RD::Renderer_Buffer::Index:
 			desc.usage = Vulkan_BufferUsage::INDEX;
 			break;
-		case RD::Renderer_Buffer::Transforms:
 		case RD::Renderer_Buffer::DrawStats:
 			desc.usage = Vulkan_BufferUsage::BDA_SRC_COPY;
 			break;

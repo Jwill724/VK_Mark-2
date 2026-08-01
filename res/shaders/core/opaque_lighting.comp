@@ -1,6 +1,7 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
 
 #include "../include/clustered.glsl"
 #include "../include/common.glsl"
@@ -10,6 +11,8 @@
 #include "../include/lighting.glsl"
 
 #define TILE_DIM 16u
+
+const uint WG_THREADS = TILE_DIM * TILE_DIM;
 
 layout(local_size_x = TILE_DIM, local_size_y = TILE_DIM) in;
 
@@ -34,60 +37,22 @@ layout(push_constant) uniform TileShadePush
 
 	uint flashlightShadowMapID;
 	uint flashlightCookieTexID;
-	uint pad0;
-	uint pad1;
-
-	uint showAlbedo;
-	uint showNormals;
-	uint showRoughness;
-	uint showMetallic;
-
-	uint showAmbientOcclusion;
-	uint showSpecular;
-	uint showDiffuse;
-	uint showEmissive;
-
-	uint showBentNormals;
-	uint showCascadeSplits;
-	uint showSSS;
-	uint showVisibility;
 } pc;
 
 
 // ========================================
 // Shared memory: per-workgroup light list
 // ========================================
-#define LIGHT_MASK_WORDS 128u
-#define MAX_TILE_LIGHTS  512u
+#define LIGHT_MASK_WORDS ((MAX_LIGHTS + 31u) / 32u)
+#define MAX_TILE_LIGHTS  256u
 
 shared uint sDepthMinBits;
 shared uint sDepthMaxBits;
 shared uint sLightMask[LIGHT_MASK_WORDS];
+shared uint sWordBase[LIGHT_MASK_WORDS];
 shared uint sTileLights[MAX_TILE_LIGHTS];
-shared uint sTileLightCount;
 shared uint sSliceMin;
 shared uint sSliceMax;
-
-vec2 depthGradientFromDeltas(vec2 duvdx, vec2 duvdy, float dzdx, float dzdy)
-{
-	float det = duvdx.x * duvdy.y - duvdx.y * duvdy.x;
-	if (abs(det) < 1e-12) return vec2(0.0);
-
-	vec2 g;
-	g.x = ( duvdy.y * dzdx - duvdx.y * dzdy) / det;
-	g.y = (-duvdy.x * dzdx + duvdx.x * dzdy) / det;
-	return g;
-}
-
-void projectToCascade(vec3 worldPos, mat4 cascadeVP, vec4 atlas, out vec2 atlasUV, out float depth01)
-{
-	vec4 lsPos      = cascadeVP * vec4(worldPos, 1.0);
-	vec3 projCoords = lsPos.xyz / lsPos.w;
-	vec2 uv         = projCoords.xy * 0.5 + 0.5;
-	uv.y            = 1.0 - uv.y;
-	atlasUV         = uv * atlas.xy + atlas.zw;
-	depth01         = projCoords.z;
-}
 
 void main()
 {
@@ -104,9 +69,9 @@ void main()
 	{
 		sDepthMinBits   = 0x7F7FFFFFu; // +FLT_MAX bits
 		sDepthMaxBits   = 0u;
-		sTileLightCount = 0u;
 	}
-	if (tid < LIGHT_MASK_WORDS) sLightMask[tid] = 0u; // 256 threads >= 128 words
+
+	for (uint w = tid; w < LIGHT_MASK_WORDS; w += WG_THREADS) sLightMask[w] = 0u;
 	barrier();
 
 	float rawDepth  = 0.0;
@@ -169,7 +134,7 @@ void main()
 			uint count  = min(countsBuf.counts[clusterIndex], clusteredData.maxLightsPerCluster);
 			uint offset = offsetsBuf.offsets[clusterIndex];
 
-			for (uint i = tid; i < count; i += TILE_DIM * TILE_DIM)
+			for (uint i = tid; i < count; i += WG_THREADS)
 			{
 				uint lightID = idsBuf.lightIDs[offset + i];
 				atomicOr(sLightMask[lightID >> 5u], 1u << (lightID & 31u));
@@ -179,21 +144,41 @@ void main()
 	barrier();
 
 	// compact mask -> list
+	uint myWord = (tid < LIGHT_MASK_WORDS) ? sLightMask[tid] : 0u;
+
 	if (tid < LIGHT_MASK_WORDS)
 	{
-		uint word = sLightMask[tid];
+		sWordBase[tid] = bitCount(myWord);
+	}
+	barrier();
+
+	for (uint stride = 1u; stride < LIGHT_MASK_WORDS; stride <<= 1u)
+	{
+		uint addValue = 0u;
+		if (tid < LIGHT_MASK_WORDS && tid >= stride) addValue = sWordBase[tid - stride];
+		barrier();
+		if (tid < LIGHT_MASK_WORDS) sWordBase[tid] += addValue;
+		barrier();
+	}
+
+	uint tileLightCount = min(sWordBase[LIGHT_MASK_WORDS - 1u], MAX_TILE_LIGHTS);
+
+	if (tid < LIGHT_MASK_WORDS)
+	{
+		uint slot = sWordBase[tid] - bitCount(myWord); // inclusive -> exclusive
+		uint word = myWord;
 		while (word != 0u)
 		{
 			uint bit = uint(findLSB(word));
 			word &= word - 1u;
-			uint slot = atomicAdd(sTileLightCount, 1u);
 			if (slot < MAX_TILE_LIGHTS)
+			{
 				sTileLights[slot] = (tid << 5u) | bit;
+			}
+			++slot;
 		}
 	}
 	barrier(); // per-pixel exits are legal after this
-
-	uint tileLightCount = min(sTileLightCount, MAX_TILE_LIGHTS);
 
 	if (!inBounds || isSky) return;
 
@@ -206,14 +191,14 @@ void main()
 	vec3  N        = octDecode(texelFetch(gbNormal, ivec2(gid), 0).rg * 2.0 - 1.0);
 	float metal    = texelFetch(gbMetal, ivec2(gid), 0).r;
 	vec3  emissive = texelFetch(gbEmissive, ivec2(gid), 0).rgb;
-
-	vec3 vsN = texelFetch(prepassViewNormal, ivec2(gid), 0).rgb * 2.0 - 1.0;
-	const vec3 geometricNormalWS = normalize(mat3(scene.invView) * vsN);
+	vec3  vsN      = octDecode(texelFetch(prepassViewNormal, ivec2(gid), 0).rg * 2.0 - 1.0);
 
 	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
 	vec3 V = normalize(scene.cameraPos.xyz - worldPos);
 	vec3 L = normalize(scene.sunlightDirection.xyz);
 	vec3 H = normalize(V + L);
+
+	vec3 geometricNormalWS = normalize(mat3(scene.invView) * vsN);
 
 	float NdotV = max(dot(N, V), 0.0);
 	float NdotL = max(dot(N, L), 0.0);
@@ -249,7 +234,6 @@ void main()
 		? createHash(fragCoord)
 		: createHashTemporal(fragCoord, scene.temporal.x);
 
-
 	// Cascaded shadow maps
 	float shadow = 1.0;
 	if (DBG(enableShadows))
@@ -258,106 +242,72 @@ void main()
 		const uint  shadowMapID  = uint(csm.params.x);
 		const uint  cascadeCount = uint(csm.params.y);
 		const float texel        = csm.params.z;
+		const uint  cascadeClamped = cascadeCount - 1u;
 
-		const uint cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
-		const uint nextIdx    = min(cascadeIdx + 1u, MAX_CASCADES_INDEX);
+		const uvec4 activeCascades = getShadowCullDataBuffer().data.cascadeActive;
 
-		const float radius     = csm.maxFilterRadiusTexels[cascadeIdx];
-		const float nextRadius = csm.maxFilterRadiusTexels[nextIdx];
+		uint        cascadeIdx = cascadeViewDepthSplit(viewDepth, cascadeCount, csm.cascadeSplits);
+		CascadeProj cur;
+		cur.valid = false;
 
-		const float curWorldTexel  = csm.cascadeWorldTexels[cascadeIdx];
-		const float nextWorldTexel = csm.cascadeWorldTexels[nextIdx];
-
-		const mat4 curCascadeVP  = csm.cascadeVP[cascadeIdx];
-		const mat4 nextCascadeVP = csm.cascadeVP[nextIdx];
-
-		float maxPlaneBiasCur  = computeMaxPlaneBias(radius,     curWorldTexel,  ndcDepthPerWorld(curCascadeVP));
-		float maxPlaneBiasNext = computeMaxPlaneBias(nextRadius, nextWorldTexel, ndcDepthPerWorld(nextCascadeVP));
-
-		vec3 offsetPos     = worldPos + computeNormalOffset(geometricNormalWS, L, curWorldTexel);
-		vec3 nextOffsetPos = worldPos + computeNormalOffset(geometricNormalWS, L, nextWorldTexel);
-
-		vec4 atlas        = csm.atlasUV[cascadeIdx];
-		vec2 atlasMin     = atlas.zw;
-		vec2 atlasMax     = atlas.zw + atlas.xy;
-		vec4 nextAtlas    = csm.atlasUV[nextIdx];
-		vec2 nextAtlasMin = nextAtlas.zw;
-		vec2 nextAtlasMax = nextAtlas.zw + nextAtlas.xy;
-
-		vec2 atlasUV, nextAtlasUV;
-		float curDepth, nextDepth;
-		projectToCascade(offsetPos,     curCascadeVP,  atlas,     atlasUV,     curDepth);
-		projectToCascade(nextOffsetPos, nextCascadeVP, nextAtlas, nextAtlasUV, nextDepth);
-
-		vec2 depthGradCur  = vec2(0.0);
-		vec2 depthGradNext = vec2(0.0);
+		for (uint c = cascadeIdx; c < cascadeCount; ++c)
 		{
-			ivec2 pxX = ivec2(min(gid.x + 1u, vpSize.x - 1u), gid.y);
-			ivec2 pxY = ivec2(gid.x, min(gid.y + 1u, vpSize.y - 1u));
-			float dX = texelFetch(depthTex, pxX, 0).r;
-			float dY = texelFetch(depthTex, pxY, 0).r;
+			CascadeProj p = buildCascadeProj(csm, activeCascades, c,
+				worldPos, geometricNormalWS, L, texel);
 
-			if (dX > 0.0 && dY > 0.0)
+			if (p.valid)
 			{
-				vec2 uvX = (vec2(pxX) + 0.5) / vec2(vpSize);
-				vec2 uvY = (vec2(pxY) + 0.5) / vec2(vpSize);
-				vec3 wpX = reconstructWorldPosFromDepth(uvX, dX, scene.invProj, scene.invView).pos;
-				vec3 wpY = reconstructWorldPosFromDepth(uvY, dY, scene.invProj, scene.invView).pos;
-
-				vec2 aUV_X, aUV_Y; float z_X, z_Y;
-
-				projectToCascade(wpX, curCascadeVP, atlas, aUV_X, z_X);
-				projectToCascade(wpY, curCascadeVP, atlas, aUV_Y, z_Y);
-				depthGradCur = depthGradientFromDeltas(
-					aUV_X - atlasUV, aUV_Y - atlasUV, z_X - curDepth, z_Y - curDepth);
-
-				projectToCascade(wpX, nextCascadeVP, nextAtlas, aUV_X, z_X);
-				projectToCascade(wpY, nextCascadeVP, nextAtlas, aUV_Y, z_Y);
-				depthGradNext = depthGradientFromDeltas(
-					aUV_X - nextAtlasUV, aUV_Y - nextAtlasUV, z_X - nextDepth, z_Y - nextDepth);
+				cur = p;
+				cascadeIdx = c;
+				break;
 			}
 		}
 
-		vec2 shadowUV = (atlasUV - atlas.zw) / atlas.xy;
-
-		if (!(shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
-			  shadowUV.y < 0.0 || shadowUV.y > 1.0 ||
-			  curDepth   < 0.0 || curDepth   > 1.0))
+		if (cur.valid)
 		{
-			float sA = PCFVogel(
-				shadowHash, shadowMapID, atlasUV, curDepth,
-				texel, radius, atlasMin, atlasMax, depthGradCur, maxPlaneBiasCur);
+			float sA = sampleCascade(cur, shadowHash, shadowMapID, texel);
+			shadow   = sA;
 
-			shadow = sA;
+			// Next usable cascade for the transition blend — also skipping
+			// inactive tiles, so a deactivated cascade can never bleed in.
+			uint        nextIdx = cascadeIdx + 1u;
+			CascadeProj nxt;
+			nxt.valid = false;
 
-			if (cascadeIdx < MAX_CASCADES_INDEX)
+			for (uint c = nextIdx; c < cascadeCount; ++c)
 			{
-				float blendEnd   = csm.cascadeSplits[cascadeIdx];
-				float blendStart = blendEnd * 0.9;
+				CascadeProj p = buildCascadeProj(csm, activeCascades, c,
+					worldPos, geometricNormalWS, L, texel);
 
+				if (p.valid)
+				{
+					nxt = p;
+					break;
+				}
+			}
+
+			const float blendEnd = csm.cascadeSplits[cascadeIdx];
+
+			if (nxt.valid)
+			{
+				// Blending between cascades for smooth transitions.
+				float blendStart = blendEnd * CASCADE_BLEND_FRACTION;
 				if (viewDepth >= blendStart)
 				{
-					vec2 nextShadowUV = (nextAtlasUV - nextAtlas.zw) / nextAtlas.xy;
-					if (!(nextShadowUV.x < 0.0 || nextShadowUV.x > 1.0 ||
-						  nextShadowUV.y < 0.0 || nextShadowUV.y > 1.0 ||
-						  nextDepth      < 0.0 || nextDepth      > 1.0))
-					{
-						float sB = PCFVogel(
-							shadowHash, shadowMapID, nextAtlasUV, nextDepth,
-							texel, nextRadius, nextAtlasMin, nextAtlasMax, depthGradNext, maxPlaneBiasNext);
-
-						float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
-						shadow = mix(sA, sB, blendFactor);
-					}
+					float sB          = sampleCascade(nxt, shadowHash, shadowMapID, texel);
+					float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
+					shadow            = mix(sA, sB, blendFactor);
 				}
 			}
 			else
 			{
-				float blendEnd   = csm.cascadeSplits[cascadeIdx];
-				float blendStart = blendEnd * 0.98;
-				if (viewDepth >= blendStart) {
+				// Nothing usable beyond this cascade — whether it's the last one
+				// or the rest were deactivated. Fade to lit rather than cutting off.
+				float blendStart = blendEnd * CASCADE_LAST_FADE_FRACTION;
+				if (viewDepth >= blendStart)
+				{
 					float blendFactor = smoothstep(blendStart, blendEnd, viewDepth);
-					shadow = mix(sA, 1.0, blendFactor);
+					shadow            = mix(sA, 1.0, blendFactor);
 				}
 			}
 		}
@@ -398,7 +348,6 @@ void main()
 			bool castsShadow = (light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u;
 			if (castsShadow && isFlashLight && !isFlashLightOff)
 			{
-
 				vec4 flashlightSpacePos   = scene.flashlightVP * vec4(worldPos, 1.0);
 				vec3 flashlightProjCoords = flashlightSpacePos.xyz / flashlightSpacePos.w;
 

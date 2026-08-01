@@ -6,7 +6,6 @@
 #include "../include/common.glsl"
 #include "../include/clustered.glsl"
 #include "../include/pbr.glsl"
-#include "../include/shading_functions.glsl"
 #include "../include/lighting.glsl"
 
 layout(location = 0) in vec3 inColor;

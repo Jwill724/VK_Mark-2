@@ -7,6 +7,7 @@
 #include "../include/depth.glsl"
 #include "../include/common.glsl"
 #include "../include/shadow.glsl"
+#include "../include/clustered.glsl"
 
 layout(local_size_x = 256) in;
 
@@ -52,11 +53,13 @@ void main()
 	InstanceVisibilityBuffer visCounters  = getInstanceVisibilityBuffer();
 	VisibleCountBuffer visibleCount       = getVisibleCountBuffer();
 	InstanceInput instance                = getInstanceInputBuffer().instanceInputs[instanceID];
-	mat4 transform                        = getTransformBuffer().transforms[instance.transformID];
+	mat4 transform                        = getInstanceTransform(instance);
 	Mesh mesh                             = getMeshBuffer().meshes[instance.meshID];
 	AABB worldAABB                        = TransformAABB(mesh.localAABB, transform);
 	SceneData sceneData                   = getSceneData();
 	ShadowCSM csm                         = getShadowCSM();
+
+	float maxMip = float(textureQueryLevels(inHiZ) - 1);
 
 	vec3  center = 0.5 * (worldAABB.vmin + worldAABB.vmax);
 	float radius = mesh.localBoundingRadius * max_world_scale(transform);
@@ -75,28 +78,37 @@ void main()
 			survives = true;
 
 		// Occlusion cull
-		if (survives && hiZValid && !DBG(disableOcclusionCull))
+		if (survives && hiZValid && !DBG(disableOcclusionCull) && debug.renderingMode != RENDERING_MODE_MESH_SHADERS)
 		{
-			if (!sphere_hiz_visible(inHiZ, center, radius, float(HI_Z_MIP_CLAMPED), vp))
+			if (!sphere_hiz_visible(inHiZ, center, radius, maxMip, vp))
+			{
 				survives = false;
+			}
 		}
 	}
 
-	uint passFlags = 0u;
+	uint visMask = 0u;
 
 	bool statsTracking = DBG(enableProfilerView);
+
+	bool isAlphaMasked = (instance.flags & ALPHA_TESTED) != 0u;
 
 	if (survives)
 	{
 		// primary
-		if ((instance.flags & PASS_OPAQUE) != 0u)
+		if ((instance.flags & PASS_OPAQUE) != 0u && !isAlphaMasked)
 		{
-			passFlags |= (1u << VIS_SLOT_OPAQUE);
+			visMask |= (1u << VIS_SLOT_OPAQUE);
 			markVisible(visCounters, VIS_SLOT_OPAQUE, statsTracking);
+		}
+		else if ((instance.flags & PASS_OPAQUE) != 0u && isAlphaMasked)
+		{
+			visMask |= (1u << VIS_SLOT_OPAQUE_MASKED);
+			markVisible(visCounters, VIS_SLOT_OPAQUE_MASKED, statsTracking);
 		}
 		else if ((instance.flags & PASS_TRANSPARENT) != 0u)
 		{
-			passFlags |= (1u << VIS_SLOT_TRANSPARENT);
+			visMask |= (1u << VIS_SLOT_TRANSPARENT);
 			markVisible(visCounters, VIS_SLOT_TRANSPARENT, statsTracking);
 		}
 
@@ -105,12 +117,24 @@ void main()
 			(instance.flags & PASS_OPAQUE) != 0u &&
 			(instance.flags & CAST_FLASHLIGHT) != 0u)
 		{
-			vec4 fl, fr, fb, ft;
-			get_frustum_side_planes(sceneData.flashlightVP, fl, fr, fb, ft);
+			LocalLight flashlight = getLightBuffer().lights[LIGHT_LIST_SLOT_FLASHLIGHT];
 
-			if (sphere_in_side_planes(center, radius, fl, fr, fb, ft))
+			float distToLight = length(center - flashlight.position) - radius;
+			bool inRange      = distToLight <= flashlight.radius;
+
+			bool flashlightVisible = false;
+
+			if (inRange)
 			{
-				passFlags |= (1u << VIS_SLOT_FLASHLIGHT);
+				vec4 fl, fr, fb, ft;
+				get_frustum_side_planes(sceneData.flashlightVP, fl, fr, fb, ft);
+
+				flashlightVisible = sphere_in_side_planes(center, radius, fl, fr, fb, ft);
+			}
+
+			if (flashlightVisible)
+			{
+				visMask |= (1u << VIS_SLOT_FLASHLIGHT);
 				markVisible(visCounters, VIS_SLOT_FLASHLIGHT, statsTracking);
 			}
 		}
@@ -154,12 +178,12 @@ void main()
 				lsEpsilon)) continue;
 
 			uint slot = VIS_SLOT_CSM0 + c;
-			passFlags |= (1u << slot);
+			visMask |= (1u << slot);
 			markVisible(visCounters, slot, statsTracking);
 		}
 	}
 
-	bool needsEntry = survives || (passFlags != 0u);
+	bool needsEntry = survives || (visMask != 0u);
 
 	if (needsEntry)
 	{
@@ -173,7 +197,7 @@ void main()
 		visInst.instanceID   = instanceID;
 		visInst.lodIndex     = lodIdx;
 		visInst.selectedMesh = meshFromLODIndex(instance, lodIdx);
-		visInst.passFlags    = passFlags;
+		visInst.visMask      = visMask;
 
 		getVisibleInstanceBuffer().visibles[visId] = visInst;
 	}
