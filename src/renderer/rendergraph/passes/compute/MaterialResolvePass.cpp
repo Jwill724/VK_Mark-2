@@ -35,22 +35,17 @@ void RegisterMaterialResolvePass(
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::MaterialAlbedoRough,
+					RD::Renderer_RenderTarget::GBufferAlbedoRough,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::MaterialNormal,
+					RD::Renderer_RenderTarget::GBufferNormalMaterial,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::MaterialMetal,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
-
-				.WriteResource(
-					RD::Renderer_RenderTarget::MaterialEmissive,
+					RD::Renderer_RenderTarget::GBufferEmissive,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
@@ -67,10 +62,9 @@ void RegisterMaterialResolvePass(
 						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
-						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough);
-						const auto& normal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal);
-						const auto& metal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialMetal);
-						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialEmissive);
+						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);
+						const auto& normalMat = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial);
+						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive);
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
@@ -88,16 +82,11 @@ void RegisterMaterialResolvePass(
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_2,
-							normal);
+							normalMat);
 
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_3,
-							metal);
-
-						pso.BindWriteImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_WRITE_4,
 							emissive);
 
 						pso.DispatchComputePass(

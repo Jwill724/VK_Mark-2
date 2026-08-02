@@ -28,6 +28,7 @@ Renderer-Goals.txt
 
 # Assets
 res/assets/Bistro.glb
+res/unlisted_assets/
 
 # Ignore SPIR-V shader binaries
 *.spv

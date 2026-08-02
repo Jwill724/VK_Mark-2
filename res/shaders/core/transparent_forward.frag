@@ -68,12 +68,6 @@ void main()
 	float metal  = metalRough.b * mat.metalRoughFactors.x;
 
 	vec3 emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
-	float lum     = max(max(emissive.r, emissive.g), emissive.b);
-
-	// No bloom so hack it a bit
-	// Boost only bright parts
-	float boost   = smoothstep(1.0, 10.0, lum);
-	emissive     *= mix(1.0, 3.0, boost);
 
 	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
 	vec3 V        = normalize(scene.cameraPos.xyz - inWorldPos);
@@ -153,12 +147,12 @@ void main()
 	vec3 ambientSpecular = iblSpec;
 	vec3 ambient         = ambientDiffuse + ambientSpecular;
 
-	vec3 color = direct + localLightColor + ambient + emissive;
+	vec3 color = direct + localLightColor + ambient;
 
 	float z = viewDepth;
 	// Depth scale == 400.0 default
 	float w = alpha * clamp(0.03 / (1e-5 + pow(z / pc.oitDepthScale, 4.0)), 1e-2, 3e3);
 
-	outAccum  = vec4(color * alpha, alpha) * w;
+	outAccum  = vec4(color * alpha + emissive, alpha) * w;
 	outReveal = alpha;
 }

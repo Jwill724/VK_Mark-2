@@ -132,6 +132,9 @@ static void BakeInstanceData(
 			if (matFlags & MATERIAL_FLAG_ALPHA_MASKED)
 				flags |= InstanceFlags::ALPHA_TESTED;
 
+			if (matFlags & MATERIAL_FLAG_DOUBLE_SIDED)
+				flags |= InstanceFlags::DOUBLE_SIDED;
+
 			if (matFlags & MATERIAL_FLAG_IS_TREE)
 				flags |= InstanceFlags::IS_TREE;
 

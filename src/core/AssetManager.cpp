@@ -8,21 +8,21 @@
 
 static const std::unordered_map<ModelID, std::string> AssetPaths
 {
-	{ ModelID::Sponza,            "sponza.glb"               },
-	//{ ModelID::Bistro,            "Bistro.glb"               },
+	{ ModelID::Sponza,              "sponza.glb"               },
+	//{ ModelID::Bistro,              "bistro.glb"               },
 	//{ ModelID::MRSpheres,         "MetalRoughSpheres.glb"    },
 	//{ ModelID::Duck,              "Duck.glb"                 },
 	//{ ModelID::DamagedHelmet,     "DamagedHelmet.glb"        },
 	//{ ModelID::DragonAttenuation, "DragonAttenuation.glb"    },
 	//{ ModelID::City,              "city/town4new.glb"        },
 	//{ ModelID::Structure,         "structure.glb"            },
-	//{ ModelID::EmissiveTest,      "EmissiveStrengthTest.glb" },
 	//{ ModelID::WrathDragon,       "wrath_of_the_dragon.glb"  },
 	//{ ModelID::Mech,              "mech.glb"                 },
 	//{ ModelID::YellowMech,        "yellow_mech.glb"          },
 	//{ ModelID::Mini,              "mini.glb"                 }
 };
 
+// Specific use for Bistro asset
 static bool IsTreeMaterial(const fastgltf::Material& mat)
 {
 	if (mat.name.empty()) return false;
@@ -136,9 +136,11 @@ bool AssetManager::StageLoadFile(ThreadContext& ctx)
 
 		fastgltf::Parser parser;
 		auto data = fastgltf::GltfDataBuffer::FromPath(fullPath);
-		if (!data || data.error() != fastgltf::Error::None)
+		if (data.error() != fastgltf::Error::None)
 		{
-			fmt::println("[AssetManager] Failed to read: {}", fullPath);
+			fmt::println("[AssetManager] Failed to read: {} ({}: {})", fullPath,
+				fastgltf::getErrorName(data.error()),
+				fastgltf::getErrorMessage(data.error()));
 			sq->pendingSceneCount--;
 			continue;
 		}
@@ -151,22 +153,22 @@ bool AssetManager::StageLoadFile(ThreadContext& ctx)
 			fastgltf::Options::LoadExternalImages;
 
 		auto type = fastgltf::determineGltfFileType(data.get());
-		fastgltf::Expected<fastgltf::Asset> result{ fastgltf::Error::None };
-
-		if (type == fastgltf::GltfType::glTF)
-			result = parser.loadGltf(data.get(), context->basePath, opts);
-		else if (type == fastgltf::GltfType::GLB)
-			result = parser.loadGltfBinary(data.get(), context->basePath, opts);
-		else
+		if (type == fastgltf::GltfType::Invalid)
 		{
 			fmt::println("[AssetManager] Unknown file type: {}", fullPath);
 			sq->pendingSceneCount--;
 			continue;
 		}
 
-		if (!result || result.error() != fastgltf::Error::None)
+		auto result = (type == fastgltf::GltfType::glTF)
+			? parser.loadGltf(data.get(), context->basePath, opts)
+			: parser.loadGltfBinary(data.get(), context->basePath, opts);
+
+		if (result.error() != fastgltf::Error::None)
 		{
-			fmt::println("[AssetManager] Parse failed: {}", fullPath);
+			fmt::println("[AssetManager] Parse failed: {} ({}: {})", fullPath,
+				fastgltf::getErrorName(result.error()),
+				fastgltf::getErrorMessage(result.error()));
 			sq->pendingSceneCount--;
 			continue;
 		}
@@ -414,6 +416,9 @@ bool AssetManager::StageProcessMaterials(ThreadContext& ctx)
 			}
 			if (IsTreeMaterial(mat))
 				desc.flags |= MATERIAL_FLAG_IS_TREE;
+
+			if (mat.doubleSided)
+				desc.flags |= MATERIAL_FLAG_DOUBLE_SIDED;
 
 			batch.materials.push_back(std::move(desc));
 		}

@@ -31,17 +31,15 @@ void RegisterGBufferDebugPass(
 
 				.ReadResource(RD::Renderer_RenderTarget::DepthResolved,
 					RD::ImageAccess::DepthRead)
-				.ReadResource(RD::Renderer_RenderTarget::MaterialAlbedoRough,
+				.ReadResource(RD::Renderer_RenderTarget::GBufferAlbedoRough,
 					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::MaterialNormal,
+				.ReadResource(RD::Renderer_RenderTarget::GBufferNormalMaterial,
 					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::MaterialMetal,
-					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::MaterialEmissive,
+				.ReadResource(RD::Renderer_RenderTarget::GBufferEmissive,
 					RD::ImageAccess::Read)
 				.ReadResource(RD::Renderer_RenderTarget::ViewSpaceNormals,
 					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::AORaw,
+				.ReadResource(RD::Renderer_RenderTarget::BentNormalAO,
 					RD::ImageAccess::Read)
 				.ReadResource(RD::Renderer_RenderTarget::Visibility,
 					RD::ImageAccess::Read)
@@ -60,26 +58,24 @@ void RegisterGBufferDebugPass(
 						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
-						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough);
-						const auto& normal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal);
-						const auto& metal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialMetal);
-						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::MaterialEmissive);
+						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);
+						const auto& normalMat = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial);
+						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive);
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& vsNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
-						const auto& aoRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AORaw);
+						const auto& bentAo = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormalAO);
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
 						const auto& contactShadows = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, visibility, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, albedoRough, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, normal, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, metal, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_5, emissive, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_6, depthResolved , nearestClampSampler, UINT32_MAX, RD::ImageAccess::DepthRead);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_7, aoRaw, nearestClampSampler);
-						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_8, contactShadows, nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, normalMat, nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, emissive, nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_5, depthResolved, nearestClampSampler, UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_6, bentAo, nearestClampSampler);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_7, contactShadows, nearestClampSampler);
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, tonemap);
 

@@ -811,6 +811,10 @@ namespace
 		ImGui::SliderFloat("Bloom Intensity", &profiler.debugToggles.bloomIntensity, 0.03, 0.2f, "%.2f");
 		ImGui::SliderFloat("Bloom Threshold", &bloom.bloomThreshold, 0.01f, 3.0f, "%.2f");
 		ImGui::SliderFloat("Bloom Knee", &bloom.bloomKnee, 0.01f, 2.0f, "%.2f");
+
+		int emissiveBoostInt = static_cast<int>(bloom.emissiveBoost);
+		ImGui::SliderInt("Emissive Boost", &emissiveBoostInt, 0, 50);
+		bloom.emissiveBoost = static_cast<float>(emissiveBoostInt);
 	}
 
 	static void groupChromaticAberration(UIContext& ui)
@@ -953,8 +957,6 @@ namespace
 		int groupCount = 0;
 	};
 
-	// Indexed by Editor::SettingsCategory, so row order must match the enum.
-	// Row 3 is SettingsCategory::Pipelines, shown as "Debug".
 	static const SettingsCategoryEntry SETTINGS_CATEGORIES[] = {
 		{ "Render",   RENDER_GROUPS,   IM_ARRAYSIZE(RENDER_GROUPS)   },
 		{ "Lighting", LIGHTING_GROUPS, IM_ARRAYSIZE(LIGHTING_GROUPS) },

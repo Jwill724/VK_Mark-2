@@ -10,7 +10,7 @@ layout(local_size_x = 16, local_size_y = 16) in;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D rawAO;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D edgeInfo;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D aoFiltered;
-
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2, rgba8) uniform image2D bentNormals;
 
 layout(push_constant) uniform PushConstantData {
 	vec2 tanHalfFov;
@@ -27,6 +27,13 @@ layout(push_constant) uniform PushConstantData {
 	float sharpness;
 	float radius;
 	vec2  blurDirection;
+
+	uint noiseIndex;
+	uint hilbertLutID;
+
+	// Only need these
+	float denoiseBlurBeta;
+	uint isFinalPass;
 } pc;
 
 void main()
@@ -70,5 +77,14 @@ void main()
 
 	float filteredAO = sum / max(wsum, 1e-5);
 
-	imageStore(aoFiltered, pix, vec4(filteredAO));
+	if (pc.isFinalPass == 0)
+	{
+		imageStore(aoFiltered, pix, vec4(filteredAO));
+	}
+	else
+	{
+		vec4 bentAo = imageLoad(bentNormals, pix); // Bent normals
+		bentAo.a = filteredAO;
+		imageStore(bentNormals, pix, bentAo);
+	}
 }

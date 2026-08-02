@@ -47,6 +47,11 @@ void RegisterSSAOPass(
 					RD::Renderer_RenderTarget::ViewSpaceNormals,
 					RD::ImageAccess::ComputeRead)
 
+				.WriteResource(
+					RD::Renderer_RenderTarget::BentNormalAO,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
 				.InternalResource(
 					RD::Renderer_RenderTarget::LinearizedMinHiZ,
 					RD::ImageAccess::ComputeWrite,
@@ -65,11 +70,6 @@ void RegisterSSAOPass(
 
 				.InternalResource(
 					RD::Renderer_RenderTarget::AOTemp,
-					RD::ImageAccess::ComputeWrite,
-					RD::ImageAccess::ComputeRead)
-
-				.WriteResource(
-					RD::Renderer_RenderTarget::BentNormals,
 					RD::ImageAccess::ComputeWrite,
 					RD::ImageAccess::ComputeRead)
 
@@ -122,7 +122,7 @@ void RegisterSSAOPass(
 						const auto& rawAO            = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AORaw);
 						const auto& aoTemp           = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AOTemp);
 						const auto& edgeInfo         = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo);
-						const auto& bentNormals      = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormals);
+						const auto& bentNormals      = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormalAO);
 						const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
 						const auto& depthResolved    = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 
@@ -186,6 +186,7 @@ void RegisterSSAOPass(
 						pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_1,  rawAO,    aoSampler);
 						pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_2,  edgeInfo, nearSampler);
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, aoTemp);
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, bentNormals);
 
 						const bool useTAA = ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 
@@ -206,9 +207,11 @@ void RegisterSSAOPass(
 							pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_1,  aoTemp,   aoSampler);
 							pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_2,  edgeInfo, nearSampler);
 							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, rawAO);
+							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, bentNormals);
 
 							pso.EditPush<SSAOPush>([](SSAOPush& push) {
 								push.blurDirection = { 0.0f, 1.0f };
+								push.isFinalPass = 1u;
 							});
 
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_FILTER], pass.pushWriter);
@@ -232,6 +235,7 @@ void RegisterSSAOPass(
 							pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_1,  aoTemp,   aoSampler);
 							pso.BindReadImage(pass.pushWriter,  RD::PUSH_BINDING_READ_2,  edgeInfo, nearSampler);
 							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, rawAO);
+							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, bentNormals);
 
 							pso.EditPush<SSAOPush>([](SSAOPush& push) {
 								push.isFinalPass = 1u;
@@ -240,7 +244,7 @@ void RegisterSSAOPass(
 							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DENOISE], pass.pushWriter);
 						}
 
-						// Final transition, rawAO -> Read for downstream passes
+						// Next iteration setup
 						I::TransitionLayoutCompute(cmd, rawAO, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 					});
 		});

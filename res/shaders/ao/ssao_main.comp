@@ -192,7 +192,7 @@ void main() {
 		if (depthFade <= 0.0) {
 			// Completely outside AO range
 			imageStore(outRawAO, pix, vec4(1.0));
-			imageStore(outBentNormals, pix, vec4(N, 1.0));
+			imageStore(outBentNormals, pix, vec4(octEncode(normalize(mat3(scene.invView) * N)), 1.0, 1.0));
 			return;
 		}
 	}
@@ -368,8 +368,9 @@ void main() {
 		// Convert view space bent normals to world space
 		bentNormal = normalize(bentNormal);
 		vec3 worldSpaceBent = normalize(mat3(scene.invView) * bentNormal);
+		vec2 bentOct = octEncode(worldSpaceBent);  // already returns [0,1]
 
 		float coneAngle = bentConeAngleAccum / float(SLICE_COUNT);
-		imageStore(outBentNormals, pix, vec4(worldSpaceBent, coneAngle));
+		imageStore(outBentNormals, pix, vec4(bentOct, coneAngle / HALF_PI, 0.0));
 	}
 }

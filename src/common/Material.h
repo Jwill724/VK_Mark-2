@@ -8,6 +8,7 @@ inline constexpr uint32_t MATERIAL_FLAG_ALPHA_MASKED   = 1u << 0;
 inline constexpr uint32_t MATERIAL_FLAG_CASTS_SHADOWS  = 1u << 1;
 inline constexpr uint32_t MATERIAL_FLAG_HAS_NORMAL_MAP = 1u << 2;
 inline constexpr uint32_t MATERIAL_FLAG_IS_TREE        = 1u << 3;
+inline constexpr uint32_t MATERIAL_FLAG_DOUBLE_SIDED   = 1u << 4;
 
 // Every scene emits a default material at this slot in ProcessMaterials.
 inline constexpr uint32_t DEFAULT_MATERIAL_INDEX = 0u;

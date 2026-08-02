@@ -42,11 +42,6 @@ void RegisterTransparentForwardPass(
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
-				.WriteResource(
-					RD::Renderer_RenderTarget::DepthRaw,
-					RD::ImageAccess::GraphicsDepthWrite,
-					RD::ImageAccess::GraphicsDepthWrite)
-
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -88,17 +83,8 @@ void RegisterTransparentForwardPass(
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
 						depthAttach.SetDepth(0);
-
-						if (!ctx.frameState->InstancesActive())
-						{
-							const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
-							depthAttach.imageView = depthRaw.m_imageView;
-							depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-							depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-							depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-						}
 
 						pso.UpdateRenderInfo({ depthResolved.Width(), depthResolved.Height() }, // All images are the same size as renderer drawExtent
 							{ tAccumAttach, tRevealAttach, depthAttach });

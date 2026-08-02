@@ -13,13 +13,13 @@ namespace RenderTargetDescs
 
 	inline ImageDesc Opaque(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "Opaque" };
 	}
 
 	inline ImageDesc TransparentResolved(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "TransparentResolved" };
 	}
 
@@ -39,12 +39,6 @@ namespace RenderTargetDescs
 	{
 		return { .format = Vulkan_Format::D32, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::DrawDepth, .debugName = "DepthResolved" };
-	}
-
-	inline ImageDesc DepthRaw(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::D32, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::DrawDepth, .debugName = "DepthRaw" };
 	}
 
 	inline ImageDesc PrevDepth(Extents3D ext)
@@ -83,30 +77,6 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "ToneMap" };
 	}
 
-	inline ImageDesc AOEdgeInfo(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::R8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOEdgeInfo" };
-	}
-
-	inline ImageDesc AORaw(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::R8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AORaw" };
-	}
-
-	inline ImageDesc AOTemp(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::R8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOTemp" };
-	}
-
-	inline ImageDesc BentNormals(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "BentNormals" };
-	}
-
 	inline ImageDesc ColorHistory(Extents3D ext, uint32_t index)
 	{
 		// index disambiguates the two ping-pong slots in debug tools
@@ -117,32 +87,26 @@ namespace RenderTargetDescs
 
 	inline ImageDesc AAColor(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "AAColor" };
 	}
 
-	inline ImageDesc MaterialAlbedoRough(Extents3D ext)
+	inline ImageDesc GBufferAlbedoRough(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialAlbedoRough" };
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferAlbedoRough" };
 	}
 
-	inline ImageDesc MaterialNormal(Extents3D ext)
+	inline ImageDesc GBufferNormalMaterial(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::RG16unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialNormal" };
+		return { .format = Vulkan_Format::R32U, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferNormalMaterial" };
 	}
 
-	inline ImageDesc MaterialMetal(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::R8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialMetal" };
-	}
-
-	inline ImageDesc MaterialEmissive(Extents3D ext)
+	inline ImageDesc GBufferEmissive(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "MaterialEmissive" };
+				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferEmissive" };
 	}
 
 	inline ImageDesc PostNonAAComposite(Extents3D ext)
@@ -170,6 +134,30 @@ namespace RenderTargetDescs
 	}
 
 	// --- Half resolution ---
+
+	inline ImageDesc AOEdgeInfo(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOEdgeInfo" };
+	}
+
+	inline ImageDesc AORaw(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AORaw" };
+	}
+
+	inline ImageDesc AOTemp(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOTemp" };
+	}
+
+	inline ImageDesc BentNormalAO(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BentNormalAO" };
+	}
 
 	inline ImageDesc VolumetricLight(Extents3D halfExt)
 	{
@@ -272,7 +260,7 @@ namespace EnvironmentMapDescs
 	inline ImageDesc BRDFLut()
 	{
 		return { .format = Vulkan_Format::RG16F,
-				 .extent = { 512, 512, 1 },
+				 .extent = { 128, 128, 1 },
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BRDFLut" };
 	}
 }
@@ -291,12 +279,6 @@ namespace StaticTextureDescs
 	{
 		return { .format = Vulkan_Format::RGBA8unorm, .extent = { 1, 1, 1 },
 				 .usage  = Vulkan_ImageUsage::TextureSampled, .debugName = "DefaultFlatNormal" };
-	}
-
-	inline ImageDesc BlackEmissive()
-	{
-		return { .format = Vulkan_Format::RGBA8unorm, .extent = { 1, 1, 1 },
-				 .usage  = Vulkan_ImageUsage::TextureSampled, .debugName = "DefaultEmissive" };
 	}
 
 	inline ImageDesc DefaultMetalRough()

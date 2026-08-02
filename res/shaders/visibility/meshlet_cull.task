@@ -68,8 +68,8 @@ void main()
 		{
 			cullStage = 1u;
 		}
-		else if (meshletConeCulled(
-			ml, model, centerWS, radiusWS, vec4(scene.cameraPos.xyz, 1.0), 1.0))
+		else if ((inst.flags & DOUBLE_SIDED) == 0u &&
+			meshletConeCulled(ml, model, centerWS, radiusWS, vec4(scene.cameraPos.xyz, 1.0), 1.0))
 		{
 			cullStage = 2u;
 		}

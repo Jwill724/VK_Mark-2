@@ -35,11 +35,6 @@ void RegisterWireframePass(
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
-				.WriteResource(
-					RD::Renderer_RenderTarget::DepthRaw,
-					RD::ImageAccess::GraphicsDepthWrite,
-					RD::ImageAccess::GraphicsDepthWrite)
-
 				.ReadResource(
 					RD::Renderer_RenderTarget::HiZ,
 					RD::ImageAccess::MeshShaderRead)
@@ -66,7 +61,6 @@ void RegisterWireframePass(
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
-						const auto& depthRaw = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthRaw);
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 
@@ -76,8 +70,8 @@ void RegisterWireframePass(
 						opaqueAttach.SetColor({ 0.0f, 0.0f, 0.0f, 1.0f });
 
 						AttachmentDesc depthAttach{};
-						depthAttach.imageView = bMeshPath ? depthResolved.m_imageView : depthRaw.m_imageView;
-						depthAttach.loadOp = bMeshPath ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
+						depthAttach.imageView = depthResolved.m_imageView;
+						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 						depthAttach.SetDepth(0);
 

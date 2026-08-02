@@ -660,6 +660,7 @@ size_t ImageUtils::GetPixelSize(VkFormat format)
 		case VK_FORMAT_R16_UINT:
 		case VK_FORMAT_R16_SINT:
 		case VK_FORMAT_R16_SFLOAT:
+		case VK_FORMAT_D16_UNORM:
 			return 2;
 
 		case VK_FORMAT_R16G16_UNORM:

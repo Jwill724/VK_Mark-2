@@ -24,7 +24,7 @@ static constexpr PrepassVariant kPrepassVariants[] =
 	  BasePrepassPipelineSlot::PrepassMasked, BasePrepassPipelineSlot::PrepassMaskedMesh },
 };
 
-// Shared attachment setup — phase 2 flips the load ops.
+// Shared attachment setup — phase 2 flips the load ops
 static void BuildPrepassAttachments(
 	RenderPassExecutionContext& ctx,
 	GraphicsScope& pso,
@@ -52,7 +52,7 @@ static void BuildPrepassAttachments(
 
 	if (bLoadExisting)
 	{
-		// Phase 2 accumulates onto phase 1's results — never clear.
+		// Phase 2 accumulates onto phase 1's results
 		prepassDepth.loadOp      = VK_ATTACHMENT_LOAD_OP_LOAD;
 		prepassVisibility.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		prepassNormal.loadOp     = VK_ATTACHMENT_LOAD_OP_LOAD;

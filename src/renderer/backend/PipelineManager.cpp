@@ -142,12 +142,18 @@ void PM::RegisterPipelines()
 
 	m_pipelinePresets[static_cast<size_t>(RP::ShadowMesh)] = shadow;
 
-	m_pipelinePresets[static_cast<size_t>(RP::PrepassMasked)]     = prepass;
-	m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)]       = prepass;
-	m_pipelinePresets[static_cast<size_t>(RP::PrepassMaskedMesh)] = prepass;
+	m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)] = prepass;
 
-	auto& wireMesh                   = m_pipelinePresets[static_cast<size_t>(RP::WireframeMesh)];
-	wireMesh                         = m_pipelinePresets[static_cast<size_t>(RP::Wireframe)];
+	// Alpha tested double sided support, no cull
+	auto& prepassMasked = m_pipelinePresets[static_cast<size_t>(RP::PrepassMasked)];
+	prepassMasked = prepass;
+	prepassMasked.cullMode = VK_CULL_MODE_NONE;
+
+	// Cone culling is skipped for double sided
+	m_pipelinePresets[static_cast<size_t>(RP::PrepassMaskedMesh)] = prepassMasked;
+
+	auto& wireMesh = m_pipelinePresets[static_cast<size_t>(RP::WireframeMesh)];
+	wireMesh  = m_pipelinePresets[static_cast<size_t>(RP::Wireframe)];
 
 	// Adjust for _EQUAL of Prepass
 	wireMesh.enableDepthBias = true;
@@ -222,7 +228,7 @@ void PM::InitPipelines(VkDevice device)
 	TheBuilder.InitCreateInfoStructs();
 
 	// Default m_image formats
-	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::RGBA16F), static_cast<VkFormat>(Vulkan_Format::D32));
+	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::BGRpacked), static_cast<VkFormat>(Vulkan_Format::D32));
 
 	RegisterPipelines();
 

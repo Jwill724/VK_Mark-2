@@ -848,11 +848,11 @@ void Renderer::BatchUploadMaterials(
 
 		asset.materialGlobalIDs.reserve(batch.materials.size());
 
-		auto resolve = [&](uint32_t localIdx, RD::Renderer_Texture fallback) -> uint32_t
+		auto resolve = [&](uint32_t localIdx, RD::Renderer_Texture errorTex) -> uint32_t
 		{
 			if (localIdx == UINT32_MAX ||
 				localIdx >= static_cast<uint32_t>(asset.textureBindlessIDs.size()))
-				return m_bindlessImageTable.GetStaticTexture(fallback).m_bindlessID;
+				return m_bindlessImageTable.GetStaticTexture(errorTex).m_bindlessID;
 			return asset.textureBindlessIDs[localIdx];
 		};
 
@@ -862,7 +862,7 @@ void Renderer::BatchUploadMaterials(
 			mat.albedoID         = resolve(desc.albedoTexIdx,    RD::Renderer_Texture::White);
 			mat.metalRoughnessID = resolve(desc.metalRoughTexIdx,RD::Renderer_Texture::MetalRough);
 			mat.normalID         = resolve(desc.normalTexIdx,    RD::Renderer_Texture::Normal);
-			mat.emissiveID       = resolve(desc.emissiveTexIdx,  RD::Renderer_Texture::Emissive);
+			mat.emissiveID       = resolve(desc.emissiveTexIdx,  RD::Renderer_Texture::Dummy);
 			mat.colorFactor      = desc.colorFactor;
 			mat.metalRoughFactors= desc.metalRoughFactors;
 			mat.emissiveColor    = desc.emissiveColor;

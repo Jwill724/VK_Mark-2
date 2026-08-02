@@ -22,7 +22,6 @@ enum class ModelID // TODO: This goes somewhere else, not here
 	DragonAttenuation,
 	City,
 	Structure,
-	EmissiveTest,
 	WrathDragon,
 	Mech,
 	YellowMech,

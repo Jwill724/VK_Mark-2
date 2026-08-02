@@ -123,7 +123,6 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved,     allocator.AllocateImage(RTDescs::TransparentResolved(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation, allocator.AllocateImage(RTDescs::TransparentAccumulation(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage,    allocator.AllocateImage(RTDescs::TransparentRevealage(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::DepthRaw,                allocator.AllocateImage(RTDescs::DepthRaw(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::DepthResolved,           allocator.AllocateImage(RTDescs::DepthResolved(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved,       allocator.AllocateImage(RTDescs::PrevDepth(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::Velocity,                allocator.AllocateImage(RTDescs::Velocity(drawExtent)));
@@ -135,7 +134,7 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo,              allocator.AllocateImage(RTDescs::AOEdgeInfo(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::AORaw,                   allocator.AllocateImage(RTDescs::AORaw(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::AOTemp,                  allocator.AllocateImage(RTDescs::AOTemp(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::BentNormals,             allocator.AllocateImage(RTDescs::BentNormals(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::BentNormalAO,            allocator.AllocateImage(RTDescs::BentNormalAO(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryA,           allocator.AllocateImage(RTDescs::ColorHistory(drawExtent, 0)));
 	SetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryB,           allocator.AllocateImage(RTDescs::ColorHistory(drawExtent, 1)));
 	SetRenderTarget(RD::Renderer_RenderTarget::AAColor,                 allocator.AllocateImage(RTDescs::AAColor(drawExtent)));
@@ -150,10 +149,9 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor,          allocator.AllocateImage(RTDescs::LensFlareColor(quarter)));
 	SetRenderTarget(RD::Renderer_RenderTarget::HiZ,                     allocator.AllocateImage(RTDescs::HiZ(drawExtent, RD::HI_Z_MIP_COUNT)));
 	SetRenderTarget(RD::Renderer_RenderTarget::LinearizedMinHiZ,        allocator.AllocateImage(RTDescs::LinearizedMinHiZ(drawExtent, RD::HI_Z_MIN_MIP_COUNT)));
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialAlbedoRough,     allocator.AllocateImage(RTDescs::MaterialAlbedoRough(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialNormal,          allocator.AllocateImage(RTDescs::MaterialNormal(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialMetal,           allocator.AllocateImage(RTDescs::MaterialMetal(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::MaterialEmissive,        allocator.AllocateImage(RTDescs::MaterialEmissive(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough,      allocator.AllocateImage(RTDescs::GBufferAlbedoRough(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial,   allocator.AllocateImage(RTDescs::GBufferNormalMaterial(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive,         allocator.AllocateImage(RTDescs::GBufferEmissive(drawExtent)));
 }
 
 // First time setup only
@@ -394,7 +392,6 @@ void BindlessImageTable::CreateStaticTextures(Allocator& allocator)
 {
 	SetStaticTexture(RD::Renderer_Texture::White,           allocator.AllocateImage(STDescs::White()));
 	SetStaticTexture(RD::Renderer_Texture::Normal,          allocator.AllocateImage(STDescs::FlatNormal()));
-	SetStaticTexture(RD::Renderer_Texture::Emissive,        allocator.AllocateImage(STDescs::BlackEmissive()));
 	SetStaticTexture(RD::Renderer_Texture::MetalRough,      allocator.AllocateImage(STDescs::DefaultMetalRough()));
 	SetStaticTexture(RD::Renderer_Texture::Dummy,           allocator.AllocateImage(STDescs::Dummy()));
 	SetStaticTexture(RD::Renderer_Texture::DummyU8,         allocator.AllocateImage(STDescs::DummyUint8()));
@@ -469,7 +466,6 @@ void BindlessImageTable::UploadStaticTextures(StagingBuffer& staging, VkCommandB
 	{
 		{ &st[Index(RD::Renderer_Texture::White)],            &white,               st[Index(RD::Renderer_Texture::White)].m_pixelBytes,            MipStrategy::GenerateOnGPU },
 		{ &st[Index(RD::Renderer_Texture::Normal)],           &flatNormal,          st[Index(RD::Renderer_Texture::Normal)].m_pixelBytes,           MipStrategy::GenerateOnGPU },
-		{ &st[Index(RD::Renderer_Texture::Emissive)],         &black,               st[Index(RD::Renderer_Texture::Emissive)].m_pixelBytes,         MipStrategy::GenerateOnGPU },
 		{ &st[Index(RD::Renderer_Texture::MetalRough)],       metalRough,           st[Index(RD::Renderer_Texture::MetalRough)].m_pixelBytes,       MipStrategy::GenerateOnGPU },
 		{ &st[Index(RD::Renderer_Texture::Dummy)],            &dummyBlack,          st[Index(RD::Renderer_Texture::Dummy)].m_pixelBytes,            MipStrategy::SingleLevel   },
 		{ &st[Index(RD::Renderer_Texture::DummyU8)],          &dummyU8,             st[Index(RD::Renderer_Texture::DummyU8)].m_pixelBytes,          MipStrategy::SingleLevel   },
@@ -973,7 +969,6 @@ void BindlessImageTable::BuildInitialCombinedSamplerArray()
 
 	pushStatic(RD::Renderer_Texture::White,           RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::Normal,          RD::Renderer_Sampler::LinearClamp);
-	pushStatic(RD::Renderer_Texture::Emissive,        RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::MetalRough,      RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::Dummy,           RD::Renderer_Sampler::NearestClamp);
 	pushStatic(RD::Renderer_Texture::DummyU8,         RD::Renderer_Sampler::NearestClamp);

@@ -41,6 +41,9 @@ const uint AO_VBAO_BENT_NORMALS = 2u;
 
 const uint MAX_LUMINANCE_GROUPS = 65536u;
 
+const float COLOR_HISTORY_MAX = 65504.0;   // RGBA16F
+const float RESOLVE_TARGET_MAX = 64512.0;  // r11f_g11f_b10f
+
 const float GTAO_RADIUS_MULTIPLIER = 1.457;
 
 const uint RENDERING_MODE_VISIBILITY_DEFERRED = 0u;
@@ -263,6 +266,7 @@ float softThreshold(float value, float threshold, float knee)
 	return max(soft, 0.0);
 }
 
+
 float saturate(float value) { return clamp(value, 0.0, 1.0); }
 vec2 saturate(vec2 value)  { return clamp(value, vec2(0.0), vec2(1.0)); }
 vec4 saturate(vec4 value)  { return clamp(value, vec4(0.0), vec4(1.0)); }
@@ -331,6 +335,47 @@ mat2 createHashTemporal(vec2 pixelCoord, uint frameIndex)
 	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
 	float ang = interleavedGradientNoise(jitteredPixel) * 6.2831853;
 	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
+
+uint packNormalMaterial(vec3 N, float metal, uint matID)
+{
+	vec2 oct = octEncode(N);                                  // already [0,1]
+	uint ox  = uint(round(clamp(oct.x, 0.0, 1.0) * 2047.0));  // 11
+	uint oy  = uint(round(clamp(oct.y, 0.0, 1.0) * 2047.0));  // 11
+	uint m   = uint(round(clamp(metal,  0.0, 1.0) * 63.0));   // 6
+	return ox | (oy << 11) | (m << 22) | ((matID & 0xFu) << 28);
+}
+
+vec3 unpackGBufferNormal(uint p)
+{
+	vec2 oct;
+	oct.x = float( p        & 0x7FFu) / 2047.0;
+	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
+	return octDecode(oct * 2.0 - 1.0);
+}
+
+float unpackGBufferMetal(uint p)
+{
+	return float((p >> 22) & 0x3Fu)  / 63.0;
+}
+
+void unpackNormalMetal(uint p, out vec3 N, out float metal)
+{
+	vec2 oct;
+	oct.x = float( p        & 0x7FFu) / 2047.0;
+	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
+	metal = float((p >> 22) & 0x3Fu)  / 63.0;
+	N     = octDecode(oct * 2.0 - 1.0);
+}
+
+void unpackNormalMaterial(uint p, out vec3 N, out float metal, out uint matID)
+{
+	vec2 oct;
+	oct.x = float( p        & 0x7FFu) / 2047.0;
+	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
+	metal = float((p >> 22) & 0x3Fu)  / 63.0;
+	matID =       (p >> 28) & 0xFu;
+	N     = octDecode(oct * 2.0 - 1.0);
 }
 
 // Lighting struct

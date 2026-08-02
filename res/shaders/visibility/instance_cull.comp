@@ -92,6 +92,8 @@ void main()
 	bool statsTracking = DBG(enableProfilerView);
 
 	bool isAlphaMasked = (instance.flags & ALPHA_TESTED) != 0u;
+	bool isDoubleSided = (instance.flags & DOUBLE_SIDED) != 0u;
+	bool isFoliage     = (instance.flags & IS_TREE) != 0u;
 
 	if (survives)
 	{
@@ -101,7 +103,7 @@ void main()
 			visMask |= (1u << VIS_SLOT_OPAQUE);
 			markVisible(visCounters, VIS_SLOT_OPAQUE, statsTracking);
 		}
-		else if ((instance.flags & PASS_OPAQUE) != 0u && isAlphaMasked)
+		else if ((instance.flags & PASS_OPAQUE) != 0u && (isAlphaMasked || isDoubleSided || isFoliage))
 		{
 			visMask |= (1u << VIS_SLOT_OPAQUE_MASKED);
 			markVisible(visCounters, VIS_SLOT_OPAQUE_MASKED, statsTracking);

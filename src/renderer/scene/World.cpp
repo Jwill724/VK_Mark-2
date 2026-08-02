@@ -32,11 +32,10 @@ namespace World
 		{ ModelID::Bistro,            {} },
 		{ ModelID::MRSpheres,         {} },
 		{ ModelID::Duck,              { RD::InstancingMethod::DrawMultiStatic, 200000 } },
-		{ ModelID::DamagedHelmet,     { RD::InstancingMethod::DrawStatic, 1 } },
+		{ ModelID::DamagedHelmet,     { RD::InstancingMethod::DrawMultiStatic, 5000 } },
 		{ ModelID::DragonAttenuation, {} },
 		{ ModelID::City,              {} },
 		{ ModelID::Structure,         {} },
-		{ ModelID::EmissiveTest,      {} },
 		{ ModelID::WrathDragon,       {} },
 		{ ModelID::Mech,              {} },
 		{ ModelID::YellowMech,        {} },
@@ -380,7 +379,7 @@ bool World::SyncGlobalInstancesAndTransforms(
 						MakeClusterTransform(
 							copyIndex,
 							desiredCapacityCopies,
-							100.0f);
+							40.0f);
 
 					for (uint32_t slot = 0; slot < transformsPerCopy; ++slot)
 					{

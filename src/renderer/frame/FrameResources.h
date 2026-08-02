@@ -28,11 +28,12 @@ enum InstanceFlags : uint32_t
 	OCCLUDABLE       = 1 << 7,
 	LOD_ENABLED      = 1 << 8,
 	ALPHA_TESTED     = 1 << 9,
-	GPU_SKINNED      = 1 << 10,
-	ALWAYS_VISIBLE   = 1 << 11,
-	IS_TREE          = 1 << 12,
-	HAS_NORMALS      = 1 << 13,
-	INSTANCE_ACTIVE  = 1 << 14,
+	DOUBLE_SIDED     = 1 << 10,
+	GPU_SKINNED      = 1 << 11,
+	ALWAYS_VISIBLE   = 1 << 12,
+	IS_TREE          = 1 << 13,
+	HAS_NORMALS      = 1 << 14,
+	INSTANCE_ACTIVE  = 1 << 15,
 };
 
 struct InstanceInput
@@ -355,6 +356,10 @@ struct alignas(16) BloomPush
 	uint32_t flags; // 0 = first downsample
 	float bloomThreshold = 1.0f;
 	float bloomKnee = 1.0f;
+	float emissiveBoost = 20.0f;
+	float pad0;
+	float pad1;
+	float pad2;
 };
 
 struct ToneMappingSettings

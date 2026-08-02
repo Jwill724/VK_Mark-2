@@ -538,14 +538,13 @@ namespace RendererDefinitions
 		Tonemap,
 		DepthResolved,
 		PrevDepthResolved,
-		DepthRaw,
 		HiZ,
 		LinearizedMinHiZ,
 		Visibility,
 		AORaw,
 		AOTemp,
 		AoEdgeInfo,
-		BentNormals,
+		BentNormalAO,
 		AAColor,
 		ColorHistoryA,
 		ColorHistoryB,
@@ -557,10 +556,11 @@ namespace RendererDefinitions
 		ViewSpaceNormals,
 		VolumetricLight,
 		VolumetricLightBlur,
-		MaterialAlbedoRough,
-		MaterialNormal,
-		MaterialMetal,
-		MaterialEmissive,
+
+		// Deferred outputs
+		GBufferAlbedoRough,
+		GBufferNormalMaterial, // N, metal, matID
+		GBufferEmissive,
 
 		// Used as chromatic aberration output
 		PostNonAAComposite,
@@ -586,9 +586,8 @@ namespace RendererDefinitions
 		Dummy,
 		DummyU8,
 		Brdf,
-		MetalRough,
 		White,
-		Emissive,
+		MetalRough,
 		Normal,
 		Checkerboard,
 

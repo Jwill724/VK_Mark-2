@@ -9,17 +9,18 @@ const uint PASS_OPAQUE            = 1u << 0;
 const uint PASS_TRANSPARENT       = 1u << 1;
 const uint STATIC_OBJECT          = 1u << 2;
 const uint DYNAMIC_OBJECT         = 1u << 3;
+const uint CAST_CSM               = 1u << 4;
 const uint CAST_FLASHLIGHT        = 1u << 5;
 const uint RECEIVE_SHADOW         = 1u << 6;
 const uint OCCLUDABLE             = 1u << 7;
 const uint LOD_ENABLED            = 1u << 8;
 const uint ALPHA_TESTED           = 1u << 9;
-const uint CAST_CSM               = 1u << 4;
-const uint GPU_SKINNED            = 1u << 10;
-const uint ALWAYS_VISIBLE         = 1u << 11;
-const uint IS_TREE                = 1u << 12;
-const uint HAS_NORMALS            = 1u << 13;
-const uint INSTANCE_ACTIVE        = 1u << 14;
+const uint DOUBLE_SIDED           = 1u << 10;
+const uint GPU_SKINNED            = 1u << 11;
+const uint ALWAYS_VISIBLE         = 1u << 12;
+const uint IS_TREE                = 1u << 13;
+const uint HAS_NORMALS            = 1u << 14;
+const uint INSTANCE_ACTIVE        = 1u << 15;
 
 // Stored in VisibleInstance
 const uint VIS_PRIMARY_OPAQUE        = 1u << 0;

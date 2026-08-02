@@ -14,6 +14,9 @@ namespace I = ImageUtils;
 static constexpr size_t PIPE_ID_BLOOM_DOWNSAMPLE = 0;
 static constexpr size_t PIPE_ID_BLOOM_UPSAMPLE   = 1;
 
+static constexpr uint32_t BLOOM_FIRST_DOWNSAMPLE_BIT = 1u;
+static constexpr uint32_t BLOOM_EMISSIVE_BIT         = 2u;
+
 void RegisterBloomPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
@@ -43,6 +46,10 @@ void RegisterBloomPass(
 					RD::Renderer_RenderTarget::DepthResolved,
 					RD::ImageAccess::DepthRead)
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::GBufferEmissive,
+					RD::ImageAccess::Read)
+
 				.InternalResource(
 					RD::Renderer_RenderTarget::BloomMipchain,
 					RD::ImageAccess::Write,
@@ -68,9 +75,12 @@ void RegisterBloomPass(
 
 						const auto& bloom = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain);
 						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& gbEmissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive);
 						const auto& sceneHDR = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 						const auto linearClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto nearestClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+
+						const bool emissiveEnabled = ctx.profiler->bloomPush.emissiveBoost > 0.0f;
 
 						const uint32_t mips = bloom.m_mipLevels;
 
@@ -96,12 +106,21 @@ void RegisterBloomPass(
 											  std::max(1u, bloom.Height() >> (mip - 1)) };
 							}
 
+							pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, gbEmissive, linearClamp);
 							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, bloom, mip);
 
-							pso.EditPush<BloomPush>([srcExtent, dstExtent, mip](BloomPush& push) {
+							uint32_t flags = 0u;
+							if (mip == 0)
+							{
+								flags |= BLOOM_FIRST_DOWNSAMPLE_BIT;
+								if (emissiveEnabled)
+									flags |= BLOOM_EMISSIVE_BIT;
+							}
+
+							pso.EditPush<BloomPush>([srcExtent, dstExtent, flags](BloomPush& push) {
 								push.srcTexelSize = { 1.0f / float(srcExtent.Width()), 1.0f / float(srcExtent.Height()) };
 								push.dstRes       = { dstExtent.Width(), dstExtent.Height() };
-								push.flags        = (mip == 0) ? 1u : 0u;
+								push.flags        = flags;
 							});
 
 							pso.UpdateExtent(dstExtent);

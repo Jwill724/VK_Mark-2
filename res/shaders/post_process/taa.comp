@@ -201,7 +201,7 @@ void main()
 
 	if (!validHistory) {
 		vec3 rgb = max(tonemapInverse(YCoCgToRGB(mean)), vec3(0.0));
-		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(65504.0)), 1.0));
+		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(COLOR_HISTORY_MAX)), 1.0));
 		return;
 	}
 
@@ -211,7 +211,10 @@ void main()
 	float disocclusion = max(computeVelocityDisocclusion(uv, velocityUV),
 							 computeDepthDisocclusion(uv, velocityUV, pixel, scene.cameraClips.x, scene.cameraClips.y));
 
-	vec3 historyRGB     = max(sampleHistoryCatmullRom(historyUV, outRes), vec3(0.0));
+	vec3 historyRGB = sampleHistoryCatmullRom(historyUV, outRes);
+	bool badHistory = any(isnan(historyRGB)) || any(isinf(historyRGB));
+	historyRGB      = badHistory ? vec3(0.0) : max(historyRGB, vec3(0.0));
+
 	vec3 historyYCoCgTm = RGBToYCoCg(tonemap(historyRGB));
 
 	float gamma = mix(2.0, 1.0, motion);
@@ -233,5 +236,5 @@ void main()
 
 	vec3 resolvedRGB = max(tonemapInverse(YCoCgToRGB(resolvedYCoCgTm)), vec3(0.0));
 
-	imageStore(outColorResolved, pixel, vec4(min(resolvedRGB, vec3(65504.0)), 1.0));
+	imageStore(outColorResolved, pixel, vec4(min(resolvedRGB, vec3(COLOR_HISTORY_MAX)), 1.0));
 }

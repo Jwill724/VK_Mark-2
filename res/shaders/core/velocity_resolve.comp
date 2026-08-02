@@ -43,8 +43,21 @@ void main()
 		}
 	}
 
-	vec4 currClip = scene.viewProjUnjittered     * worldPos;
-	vec4 prevClip = scene.prevViewProjUnjittered * prevWorld;
+	vec4 currClip;
+	vec4 prevClip;
+
+	// Sky pixels
+	if (rawDepth <= 0.0)
+	{
+		vec3 dirWS = normalize(r.pos - scene.cameraPos.xyz);
+		currClip = scene.viewProjUnjittered     * vec4(dirWS, 0.0);
+		prevClip = scene.prevViewProjUnjittered * vec4(dirWS, 0.0);
+	}
+	else
+	{
+		currClip = scene.viewProjUnjittered     * worldPos;
+		prevClip = scene.prevViewProjUnjittered * prevWorld;
+	}
 
 	vec2 velocity = vec2(0.0);
 	if (currClip.w > 0.0 && prevClip.w > 0.0)
