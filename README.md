@@ -54,7 +54,7 @@
 ## Screenshots
 ![Sponza](res/screenshots/sponza.png)
 ![Bistro](res/screenshots/bistro.png)
-![SanMiguel](res/screenshots/helmet.png)
+![SanMiguel](res/screenshots/sanmiguel.png)
 ![200k Ducks](res/screenshots/ducks.png)
 
 ## Controls
