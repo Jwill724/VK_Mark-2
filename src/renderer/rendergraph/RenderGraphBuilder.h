@@ -28,7 +28,7 @@ struct RenderPassDesc
 	PushDescriptorWriter pushWriter;
 
 	// --- scheduling ---
-	RenderPhase phase = RenderPhase::Shading;
+	RenderPhase phase = RenderPhase::Lighting;
 
 	// The single scheduling flag. Implies BOTH:
 	//   - executes on the compute queue (GPU overlap)
@@ -72,6 +72,15 @@ public:
 		uint32_t mipCount = 1);
 
 	RenderPassBuilder& SetPhase(RenderPhase phase);
+
+	// Ping-pong history pair.
+	RenderPassBuilder& HistoryResource(
+		RD::Renderer_RenderTarget slotA,
+		RD::Renderer_RenderTarget slotB,
+		RD::ImageAccess enterAccess,
+		RD::ImageAccess exitAccess,
+		bool bIsWrite,
+		bool bManualExitTransition = false);
 
 	// Marks the pass async-capable. Sets the phase itself, so async passes never need SetPhase.
 	RenderPassBuilder& RunOnAsyncCompute()

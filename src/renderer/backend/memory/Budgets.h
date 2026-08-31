@@ -9,8 +9,9 @@ inline constexpr size_t SIZEOF_VISIBLE_INSTANCE  = 16u;   // 4 x uint
 inline constexpr size_t SIZEOF_STREAM_ENTRY      = 8u;    // 2 x uint (visibleID, binID)
 inline constexpr size_t SIZEOF_DRAW_BIN          = 16u;   // 4 x uint
 inline constexpr size_t SIZEOF_DISPATCH_ARG      = 16u;   // uvec4
-inline constexpr size_t SIZEOF_LOCAL_LIGHT       = 60u;
+inline constexpr size_t SIZEOF_LOCAL_LIGHT       = 64u;
 inline constexpr size_t SIZEOF_MAT4              = 64u;
+inline constexpr size_t SIZEOF_RT_INSTANCE       = 64u;
 inline constexpr size_t SIZEOF_BIN_KEY           = 12u;   // 3 x uint (meshID, materialID, binID)
 
 // GPU buffer byte sizes
@@ -33,10 +34,6 @@ inline constexpr size_t GPU_BYTES_INSTANCE_STREAMS
 // Final placed instance IDs — VS reads via gl_InstanceIndex
 inline constexpr size_t GPU_BYTES_DRAW_INSTANCE_IDS
 	= RD::VIS_SLOT_COUNT * RD::MAX_INSTANCES_PER_STREAM * sizeof(uint32_t);
-
-// Flat indirect draw command buffer — all streams concatenated
-inline constexpr size_t GPU_BYTES_INDIRECT_DRAWS
-	= RD::DRAW_OFFSET_TOTAL * RD::INDIRECT_CMD_SIZE;
 
 // One draw count per stream — feeds DrawIndexedIndirectCount
 inline constexpr size_t GPU_BYTES_INDIRECT_DRAW_COUNTS
@@ -79,10 +76,19 @@ inline constexpr size_t GPU_BYTES_VISIBLE_LIGHT_IDS
 inline constexpr size_t GPU_BYTES_LUMINANCE
 	= RD::MAX_LUMINANCE_GROUPS * sizeof(float) * 4;
 
+inline constexpr size_t GPU_BYTES_SH_IRRADIANCE
+	= RD::MAX_ENVIRONMENT_SETS * (sizeof(float) * 3) * 9;
+
 inline constexpr size_t  GPU_BYTES_MESHLET_VISIBILITY = RD::MAX_MESHLET_VISIBILITY_BITS / 8u;
 
 inline constexpr size_t GPU_BYTES_TASK_DISPATCH =
 	RD::TASK_OFFSET_TOTAL * RD::TASK_GROUP_SIZE;
+
+inline constexpr size_t GPU_BYTES_RT_INSTANCES =
+	RD::MAX_RT_INSTANCES * SIZEOF_RT_INSTANCE;
+
+inline constexpr size_t GPU_BYTES_RT_ROWS =
+	RD::MAX_RT_INSTANCES * sizeof(uint32_t);
 
 inline constexpr size_t GPU_BYTES_DEBUG_COUNTERS = 8u;
 

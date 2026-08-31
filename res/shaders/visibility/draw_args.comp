@@ -14,6 +14,7 @@ void main()
 	DispatchIndirectArgsBuffer args = getIndirectDispatchBuffer();
 	if (tid < VIS_SLOT_COUNT)
 	{
+		// Writes out the culled results for each instance stream
 		uint count  = getInstanceVisibilityBuffer().counters.counts[tid];
 		uint groups = (count + 255u) / 256u;
 		args.args[tid] = uvec4(max(groups, 1u), 1u, 1u, count); // .w = raw count for early-out

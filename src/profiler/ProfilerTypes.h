@@ -32,8 +32,10 @@ private:
 
 struct VRAMStats
 {
-	uint64_t used = 0;
-	uint64_t budget = 0;
+	VkDeviceSize used = 0;       // live VMA allocations
+	VkDeviceSize committed = 0;  // VMA VkDeviceMemory blocks
+	VkDeviceSize driverUsed = 0; // VK_EXT_memory_budget estimate
+	VkDeviceSize budget = 0;
 };
 
 struct FrameStats
@@ -41,7 +43,6 @@ struct FrameStats
 	std::string gpuName;
 
 	float deltaSecondsRaw = 1.0f / 60.0f;
-	float vramQueryTimerSeconds = 0.0f;
 	float frameTimeRawMs = 0.0f;
 	float gpuFrameTimeRawMs = 0.0f;
 

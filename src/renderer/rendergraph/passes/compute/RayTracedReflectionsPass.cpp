@@ -1,0 +1,173 @@
+#include "pch.h"
+
+#include "../../RenderPasses.h"
+#include "../../../rendergraph/RenderGraphBuilder.h"
+#include "../../scopes/ComputeScope.h"
+#include "../../../backend/BufferBarriers.h"
+#include "../../../backend/ImageUtils.h"
+#include "../../../backend/NRDContext.h"
+#include "../../../backend/memory/BindlessImageTable.h"
+#include "../../RenderGraph.h"
+#include "../../RenderGraphResources.h"
+#include "../../../../profiler/Profiler.h"
+#include "../../../frame/FrameContext.h"
+
+namespace B = BufferBarriers;
+namespace I = ImageUtils;
+
+static constexpr size_t PIPE_ID_NRD_PREP    = 0;
+static constexpr size_t PIPE_ID_CLASSIFY    = 1;
+static constexpr size_t PIPE_ID_ARGS        = 2;
+static constexpr size_t PIPE_ID_INTERSECT   = 3;
+
+void RegisterRTReflectionsPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines)
+{
+	graph.AddPass(
+		"RT_Reflections",
+		pipelines,
+		[&](RenderPassBuilder& builder)
+		{
+			builder
+				.RunOnAsyncCompute()
+
+				.SetExecutionCondition(
+					[](const RenderPassExecutionContext& ctx)
+					{
+						return
+							ctx.NRDReflect != nullptr && ctx.NRDReflect->IsValid() &&
+							ctx.frameState->IsNRDActive() &&
+							ctx.frameState->RTReflectionsEnabled();
+					})
+
+				.ReadResource(RD::Renderer_RenderTarget::DepthResolved, RD::ImageAccess::DepthRead)
+				.ReadResource(RD::Renderer_RenderTarget::HiZ, RD::ImageAccess::ComputeRead)
+				.ReadResource(RD::Renderer_RenderTarget::GBufferAlbedoRough, RD::ImageAccess::ComputeRead)
+				.ReadResource(RD::Renderer_RenderTarget::GBufferNormalMaterial, RD::ImageAccess::ComputeRead)
+				.ReadResource(RD::Renderer_RenderTarget::Velocity, RD::ImageAccess::ComputeRead)
+
+				.InternalResource(RD::Renderer_RenderTarget::ReflectRoughness,
+					RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead)
+
+				.WriteResource(RD::Renderer_RenderTarget::ReflectRadiance,
+					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
+
+				.WriteResource(RD::Renderer_RenderTarget::NRDMotion,
+					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
+				.WriteResource(RD::Renderer_RenderTarget::NRDNormalRoughness,
+					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
+				.WriteResource(RD::Renderer_RenderTarget::NRDViewZ,
+					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
+
+				.SetRecord(
+					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
+					{
+						auto passScope = ctx.profiler->ProfilePass(
+							*ctx.frameCtx,
+							ctx.commandBuffer,
+							RD::Renderer_Pass::RTReflections,
+							pass.passName,
+							ctx.threadSlot,
+							ctx.scheduleInfo->queue);
+
+						VkCommandBuffer cmd = ctx.commandBuffer;
+						const auto& frameCtx = ctx.frameCtx;
+
+						const auto& drawExtent = graph.GetDrawExtent();
+						const Extents2D halfExtent = {
+							(drawExtent.Width() + 1u) / 2u,
+							(drawExtent.Height() + 1u) / 2u };
+
+						pass.scope = ComputeScope{ {halfExtent}, WORKGROUP_8x8 };
+						auto& pso = std::get<ComputeScope>(pass.scope);
+
+						const auto& indirectArgs = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DispatchIndirectArgs);
+						const auto& rtRayList = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTRayList);
+
+						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
+						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);
+						const auto& normalMaterial = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial);
+						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
+
+						const auto& radiance = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ReflectRadiance);
+						const auto& roughness = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ReflectRoughness);
+
+						const auto depthPyramidSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+						const auto nearestClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+
+						// =========
+						// NRD Prep
+						// =========
+
+						pso.SetPush(ctx.profiler->nrdReflectPush);
+
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, depth, nearestClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, normalMaterial, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, albedoRough, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, velocity, nearestClamp);
+
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1,
+							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDMotion));
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2,
+							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDNormalRoughness));
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_3,
+							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDViewZ));
+
+						pso.DispatchComputePass(ctx.commandBuffer, pass.pipelines[PIPE_ID_NRD_PREP], pass.pushWriter);
+
+						// =========
+						// Classify
+						// =========
+
+						pso.SetPush(ctx.profiler->reflectPush);
+
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, depth, nearestClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, albedoRough, nearestClamp);
+
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, roughness);
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, radiance);
+
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLASSIFY], pass.pushWriter);
+
+						B::ComputeWriteToRW(cmd, rtRayList);
+						I::TransitionLayoutCompute(cmd, roughness,
+							RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+
+						// ==============
+						// Indirect args
+						// ==============
+						pso.SetPush(RTArgsPush{
+							RD::RT_RAY_SLOT_REFLECT,
+							RD::INDIRECT_DISPATCH_SLOT_REFLECT_RAYS,
+							64u,
+							ctx.profiler->reflectPush.rayCapacity});
+
+						pso.UpdateWorkgroups(WORKGROUP_1, true);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_ARGS], pass.pushWriter);
+
+						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
+						B::ComputeWriteToRead(cmd, rtRayList);
+
+						pso.SetPush(ctx.profiler->reflectPush);
+
+						// ==============
+						// Ray intersect
+						// ==============
+
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, depth, nearestClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, roughness, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, normalMaterial, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, hiZ, depthPyramidSampler);
+
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, radiance);
+
+						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_REFLECT_RAYS_OFFSET_BYTES);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INTERSECT], pass.pushWriter);
+					});
+		});
+}

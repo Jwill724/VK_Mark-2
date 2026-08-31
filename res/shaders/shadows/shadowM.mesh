@@ -6,19 +6,23 @@
 
 #include "../include/common.glsl"
 #include "../include/meshlet_cull.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
 
 layout(local_size_x = TASK_GROUP_SIZE) in;
 layout(triangles, max_vertices = MESHLET_MAX_VERTS, max_primitives = MESHLET_MAX_TRIS) out;
 
-layout(push_constant) uniform DepthMeshPush
+layout(push_constant) uniform DepthTaskPush
 {
-	mat4 viewproj;
-	vec4 eye;
+	mat4 viewproj;    // light VP for shadows
+	vec4 eye;         // xyz = eye pos (w=1) or light dir (w=0)
 	uint slot;
-	uint frontFaceCull;
+	float cullDistance;  // > 0 enables the range test; 0 disables (directional)
 } pc;
 
 taskPayloadSharedEXT MeshletPayload payload;
+
+shared vec4 sClip[MESHLET_MAX_VERTS];
 
 void main()
 {
@@ -32,21 +36,29 @@ void main()
 	InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(payload.packedID)];
 	mat4 model         = getInstanceTransform(inst);
 
-	MeshletVertsBuffer mv = getMeshletVertsBuffer();
+	bool twoSided = (inst.flags & (DOUBLE_SIDED | IS_TREE)) != 0u;
 
 	for (uint i = gl_LocalInvocationIndex; i < vc; i += TASK_GROUP_SIZE)
 	{
-		uint  vtxIdx = mv.verts[ml.vertexOffset + i] + payload.vertexOffset;
-		vec3  posOS  = getVertexBuffer().vertices[vtxIdx].position;
-		gl_MeshVerticesEXT[i].gl_Position = pc.viewproj * (model * vec4(posOS, 1.0));
+		uint vtxIdx = getMeshletVertsBuffer().verts[ml.vertexOffset + i] + payload.vertexOffset;
+		vec3 posOS  = getVertexBuffer().vertices[vtxIdx].position;
+		vec4 clip   = pc.viewproj * (model * vec4(posOS, 1.0));
+
+		gl_MeshVerticesEXT[i].gl_Position = clip;
+		sClip[i] = clip;
 	}
+
+	barrier();
 
 	MeshletTrisBuffer mt = getMeshletTrisBuffer();
 
 	for (uint t = gl_LocalInvocationIndex; t < tc; t += TASK_GROUP_SIZE)
 	{
-		uint b = ml.triangleOffset + t * 3u;
-		gl_PrimitiveTriangleIndicesEXT[t] = uvec3(
-			uint(mt.tris[b + 0u]), uint(mt.tris[b + 1u]), uint(mt.tris[b + 2u]));
+		uint  b   = ml.triangleOffset + t * 3u;
+		uvec3 tri = uvec3(uint(mt.tris[b + 0u]), uint(mt.tris[b + 1u]), uint(mt.tris[b + 2u]));
+
+		gl_PrimitiveTriangleIndicesEXT[t] = tri;
+		gl_MeshPrimitivesEXT[t].gl_CullPrimitiveEXT =
+			twoSided ? false : triBackFacing(sClip[tri.x], sClip[tri.y], sClip[tri.z], SHADOW_FACE_SIGN);
 	}
 }

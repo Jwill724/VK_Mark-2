@@ -1,0 +1,203 @@
+//#version 450
+//
+//#extension GL_ARB_separate_shader_objects : require
+//#extension GL_GOOGLE_include_directive : require
+//
+//#include "../include/common.glsl"
+//
+//layout(local_size_x = 16, local_size_y = 16) in;
+//
+//layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inTonemap;
+//layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outFxaaColor;
+//
+//float luma(vec3 color)
+//{
+//	return dot(color, vec3(0.299, 0.587, 0.114));
+//}
+//
+//vec3 sampleRgb(vec2 uv)
+//{
+//	return texture(inTonemap, uv).rgb;
+//}
+//
+//float sampleLuma(vec2 uv)
+//{
+//	return luma(texture(inTonemap, uv).rgb);
+//}
+//
+//void main()
+//{
+//	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
+//
+//	SceneData scene = getSceneData();
+//	ivec2 viewportSize = ivec2(scene.viewportSize.xy);
+//	if (pix.x >= viewportSize.x || pix.y >= viewportSize.y) return;
+//
+//	vec2 invRes = scene.pixelSizes.xy;
+//	vec2 uv = (vec2(pix) + 0.5) * invRes;
+//
+//	vec4 centerSample = texture(inTonemap, uv);
+//	vec3 rgbM = centerSample.rgb;
+//
+//	float lumaM = luma(rgbM);
+//
+//	float lumaN = sampleLuma(uv + vec2(0.0, -invRes.y));
+//	float lumaS = sampleLuma(uv + vec2(0.0,  invRes.y));
+//	float lumaW = sampleLuma(uv + vec2(-invRes.x, 0.0));
+//	float lumaE = sampleLuma(uv + vec2( invRes.x, 0.0));
+//
+//	float lumaNW = sampleLuma(uv + vec2(-invRes.x, -invRes.y));
+//	float lumaNE = sampleLuma(uv + vec2( invRes.x, -invRes.y));
+//	float lumaSW = sampleLuma(uv + vec2(-invRes.x,  invRes.y));
+//	float lumaSE = sampleLuma(uv + vec2( invRes.x,  invRes.y));
+//
+//	float lumaMin = min(
+//		lumaM,
+//		min(min(lumaN, lumaS), min(lumaW, lumaE))
+//	);
+//
+//	lumaMin = min(
+//		lumaMin,
+//		min(min(lumaNW, lumaNE), min(lumaSW, lumaSE))
+//	);
+//
+//	float lumaMax = max(
+//		lumaM,
+//		max(max(lumaN, lumaS), max(lumaW, lumaE))
+//	);
+//
+//	lumaMax = max(
+//		lumaMax,
+//		max(max(lumaNW, lumaNE), max(lumaSW, lumaSE))
+//	);
+//
+//	float lumaRange = lumaMax - lumaMin;
+//
+//	const float fxaaQualityEdgeThreshold = 0.125;
+//	const float fxaaQualityEdgeThresholdMin = 0.0312;
+//	const float fxaaQualitySubpix = 0.0;
+//
+//	if (lumaRange < max(fxaaQualityEdgeThresholdMin, lumaMax * fxaaQualityEdgeThreshold)) {
+//		imageStore(outFxaaColor, pix, centerSample);
+//		return;
+//	}
+//
+//	float edgeHorz =
+//		abs((-2.0 * lumaW) + lumaNW + lumaSW) +
+//		abs((-2.0 * lumaM) + lumaN + lumaS) * 2.0 +
+//		abs((-2.0 * lumaE) + lumaNE + lumaSE);
+//
+//	float edgeVert =
+//		abs((-2.0 * lumaN) + lumaNW + lumaNE) +
+//		abs((-2.0 * lumaM) + lumaW + lumaE) * 2.0 +
+//		abs((-2.0 * lumaS) + lumaSW + lumaSE);
+//
+//	bool isHorizontal = edgeHorz >= edgeVert;
+//
+//	float lumaNeg = isHorizontal ? lumaN : lumaW;
+//	float lumaPos = isHorizontal ? lumaS : lumaE;
+//
+//	float gradientNeg = abs(lumaNeg - lumaM);
+//	float gradientPos = abs(lumaPos - lumaM);
+//
+//	bool isNegSteepest = gradientNeg >= gradientPos;
+//	float gradientScaled = max(gradientNeg, gradientPos) * 0.25;
+//
+//	vec2 stepUV = isHorizontal
+//		? vec2(invRes.x, 0.0)
+//		: vec2(0.0, invRes.y);
+//
+//	vec2 edgeUV = uv;
+//
+//	if (isHorizontal) {
+//		edgeUV.y += isNegSteepest ? (-0.5 * invRes.y) : (0.5 * invRes.y);
+//	}
+//	else {
+//		edgeUV.x += isNegSteepest ? (-0.5 * invRes.x) : (0.5 * invRes.x);
+//	}
+//
+//	float lumaLocalAvg = 0.5 * (lumaM + (isNegSteepest ? lumaNeg : lumaPos));
+//
+//	vec2 uvNeg = edgeUV - stepUV;
+//	vec2 uvPos = edgeUV + stepUV;
+//
+//	float lumaEndNeg = sampleLuma(uvNeg) - lumaLocalAvg;
+//	float lumaEndPos = sampleLuma(uvPos) - lumaLocalAvg;
+//
+//	bool doneNeg = abs(lumaEndNeg) >= gradientScaled;
+//	bool donePos = abs(lumaEndPos) >= gradientScaled;
+//
+//	if (!doneNeg) uvNeg -= stepUV;
+//	if (!donePos) uvPos += stepUV;
+//
+//	if (!doneNeg || !donePos) {
+//		const float qualitySteps[12] = float[](
+//			1.0, 1.5, 2.0, 2.0,
+//			2.0, 2.0, 2.0, 2.0,
+//			2.0, 4.0, 8.0, 8.0
+//		);
+//
+//		for (int i = 0; i < 12; ++i) {
+//			if (!doneNeg) {
+//				lumaEndNeg = sampleLuma(uvNeg) - lumaLocalAvg;
+//				doneNeg = abs(lumaEndNeg) >= gradientScaled;
+//				if (!doneNeg) {
+//					uvNeg -= stepUV * qualitySteps[i];
+//				}
+//			}
+//
+//			if (!donePos) {
+//				lumaEndPos = sampleLuma(uvPos) - lumaLocalAvg;
+//				donePos = abs(lumaEndPos) >= gradientScaled;
+//				if (!donePos) {
+//					uvPos += stepUV * qualitySteps[i];
+//				}
+//			}
+//
+//			if (doneNeg && donePos) break;
+//		}
+//	}
+//
+//	float distNeg = isHorizontal ? (uv.x - uvNeg.x) : (uv.y - uvNeg.y);
+//	float distPos = isHorizontal ? (uvPos.x - uv.x) : (uvPos.y - uv.y);
+//
+//	bool dirNeg = distNeg < distPos;
+//	float distNearest = min(distNeg, distPos);
+//	float edgeThickness = distNeg + distPos;
+//
+//	float pixelOffset = -distNearest / edgeThickness + 0.5;
+//
+//	float lumaEndNearest = dirNeg ? lumaEndNeg : lumaEndPos;
+//	float lumaCenterDelta = lumaM - lumaLocalAvg;
+//
+//	bool correctVariation = ((lumaEndNearest < 0.0) != (lumaCenterDelta < 0.0));
+//
+//	float finalOffset = correctVariation ? pixelOffset : 0.0;
+//
+//	float lumaAvg = (
+//		1.0 / 12.0 *
+//		(
+//			2.0 * (lumaN + lumaS + lumaE + lumaW) +
+//			lumaNW + lumaNE + lumaSW + lumaSE
+//		)
+//	);
+//
+//	float subpixA = clamp(abs(lumaAvg - lumaM) / lumaRange, 0.0, 1.0);
+//	float subpixB = subpixA * subpixA;
+//	float subpixC = (-2.0 * subpixB + 3.0) * subpixB;
+//	float subpixOffset = subpixC * subpixC * fxaaQualitySubpix;
+//
+//	finalOffset = max(finalOffset, subpixOffset);
+//
+//	vec2 finalUV = uv;
+//	if (isHorizontal) {
+//		finalUV.y += finalOffset * (isNegSteepest ? -invRes.y : invRes.y);
+//	}
+//	else {
+//		finalUV.x += finalOffset * (isNegSteepest ? -invRes.x : invRes.x);
+//	}
+//
+//	vec3 result = texture(inTonemap, finalUV).rgb;
+//	imageStore(outFxaaColor, pix, vec4(result, centerSample.a));
+//}
+//

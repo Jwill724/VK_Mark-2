@@ -20,8 +20,8 @@ uint packHZB(float minDepth01, float maxDepth01)
 	float safeMax = max(maxDepth01, 0.0);
 	float ratio = (safeMax > 0.0) ? (minDepth01 / safeMax) : 1.0;
 
-	uint uMax = uint(clamp(maxDepth01, 0.0, 1.0) * float(MAX_MASK));
-	uint uRatio = uint(clamp(ratio, 0.0, 1.0) * float(RATIO_MASK));
+	uint uMax   = min(uint(ceil(clamp(maxDepth01, 0.0, 1.0) * float(MAX_MASK))), MAX_MASK);
+	uint uRatio = min(uint(ceil(clamp(ratio, 0.0, 1.0) * float(RATIO_MASK))), RATIO_MASK);
 
 	return (uMax << RATIO_BITS) | (uRatio & RATIO_MASK);
 }
@@ -40,6 +40,13 @@ float unpackNearRaw(uint packed)
 
 float linearizeDepth(float depth, float nearPlane, float farPlane) {
 	return (nearPlane * farPlane) / (nearPlane + depth * (farPlane - nearPlane));
+}
+
+float screenToViewDepth(float screenDepth, float depthLinearizeMult, float depthLinearizeAdd)
+{
+	// Optimization by XeGTAO
+	// https://github.com/GameTechDev/XeGTAO/blob/a5b1686c7ea37788eeb3576b5be47f7c03db532c/Source/Rendering/Shaders/XeGTAO.hlsli#L112
+	return depthLinearizeMult / (depthLinearizeAdd - screenDepth);
 }
 
 float sampleHiZMinDepth(usampler2D hiZ, vec2 uv, float radiusHalfRes, float nearPlane, float farPlane)
@@ -101,6 +108,27 @@ ViewReconstructResult reconstructViewSpaceFromDepth(vec2 uv, float depthValue, m
 	result.viewDepth = -viewPos.z;
 
 	return result;
+}
+
+vec3 cheapReconstructViewPos(vec2 uv, float depthVS, vec2 ndcToViewMul, vec2 ndcToViewAdd) {
+	vec3 pos;
+	pos.xy = (ndcToViewMul * uv + ndcToViewAdd) * depthVS;
+	pos.z = -depthVS;
+	return pos;
+}
+
+// xy = uv, z = 1/viewDepth (screen-space linear, safe to lerp)
+vec3 viewToRayScreen(vec3 posV, mat4 proj)
+{
+	vec4 c = proj * vec4(posV, 1.0);
+	return vec3(c.xy / c.w * vec2(0.5, -0.5) + 0.5, 1.0 / (-posV.z));
+}
+
+vec3 viewToUVDepth(vec3 posV, mat4 proj)
+{
+	vec4 c = proj * vec4(posV, 1.0);
+	vec3 ndc = c.xyz / c.w;
+	return vec3(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5, ndc.z);
 }
 
 #endif

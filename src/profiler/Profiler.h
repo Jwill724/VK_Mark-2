@@ -147,7 +147,7 @@ public:
 	TotalAssetDataCounts assetCounts;
 	RD::RenderToggles   debugToggles;
 
-	SSAOPush            ssaoSettings;
+	SSGIPush            ssgiSettings;
 	TAAPush             taaSettings;
 	VolumetricPush      volLightSettings;
 	LensFlarePush       lensFlareSettings;
@@ -158,6 +158,10 @@ public:
 	ForwardPush         forwardPush;
 	SkyboxPush          skyboxPush;
 	BindlessAccessPush  smaaTexturesIds;
+	ReflectPush         reflectPush;
+	NRDPush             nrdReflectPush;
+	NRDPush             nrdShadowPush;
+	RTShadowPush        rtShadowPush;
 
 	GPUStats            gpuStats;
 

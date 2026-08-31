@@ -8,16 +8,21 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_HDR_CUBEMAP = 0;
-static constexpr size_t PIPE_ID_IRRADIANCE  = 1;
-static constexpr size_t PIPE_ID_SPECULAR    = 2;
-static constexpr size_t PIPE_ID_BRDF        = 3;
+static constexpr size_t PIPE_ID_HDR_CUBEMAP    = 0;
+static constexpr size_t PIPE_ID_SH_IRRADIANCE  = 1;
+static constexpr size_t PIPE_ID_SPECULAR       = 2;
+static constexpr size_t PIPE_ID_BRDF           = 3;
 
-static struct alignas(16) EnvPush
+struct alignas(16) ShIrrPush
 {
-	float    sampleCountF = 0.0f;
+	uint32_t setIndex = UINT32_MAX;
+	uint32_t pad0[3]{};
+};
+
+struct alignas(16) BrdfPush
+{
 	uint32_t sampleCountU = 0u;
-	uint32_t pad0[2]{};
+	uint32_t pad0[3]{};
 };
 
 void BakeEnvironmentMaps(
@@ -32,35 +37,39 @@ void BakeEnvironmentMaps(
 	PushDescriptorWriter pushWriter;
 
 	const auto skyboxSampler     = imageTable.GetSampler(RD::Renderer_Sampler::Skybox);
-	const auto irradianceSampler = imageTable.GetSampler(RD::Renderer_Sampler::Irradiance);
 	const auto specSampler       = imageTable.GetSampler(RD::Renderer_Sampler::Specular);
+	const auto equirectSampler   = imageTable.GetSampler(RD::Renderer_Sampler::Equirect);
 	const auto& brdf             = imageTable.GetStaticTexture(RD::Renderer_Texture::Brdf);
 
 	const auto setCount = imageTable.EnvironmentSetCount();
 
-	EnvPush envPush;
-	envPush.sampleCountU = RD::PREFILTER_SAMPLE_COUNT;
-	envPush.sampleCountF = RD::DIFFUSE_SAMPLE_DELTA;
+
+	BrdfPush brdfPush;
+	brdfPush.sampleCountU = RD::PREFILTER_SAMPLE_COUNT;
+
+	ShIrrPush shIrrPush;
 
 	for (uint32_t i = 0; i < setCount; ++i)
 	{
 		const auto& envSet = imageTable.GetEnvironmentSet(i);
 		ASSERT(envSet.IsValid());
 
+		shIrrPush.setIndex = envSet.setIndex;
+
+		ASSERT(shIrrPush.setIndex != UINT32_MAX);
+
 		auto& equirect   = envSet.equirect;
-		auto& irradiance = envSet.irradiance;
 		auto& specular   = envSet.specular;
 		auto& skybox     = envSet.skybox;
 
 		I::TransitionLayout(cmd, skybox,     RD::ImageAccess::Undefined,   RD::ImageAccess::Write);
 		I::TransitionLayout(cmd, specular,   RD::ImageAccess::Undefined,   RD::ImageAccess::Write);
-		I::TransitionLayout(cmd, irradiance, RD::ImageAccess::Undefined,   RD::ImageAccess::Write);
 
 		// =========================
 		// HDR Equirect to cubemap
 		// =========================
 
-		pso.BindReadImage(pushWriter,  RD::PUSH_BINDING_READ_1,  equirect, skyboxSampler);
+		pso.BindReadImage(pushWriter,  RD::PUSH_BINDING_READ_1,  equirect, equirectSampler);
 		pso.BindWriteImage(pushWriter, RD::PUSH_BINDING_WRITE_1, skybox, 0);
 
 		pso.UpdateExtent({ skybox.Width(), skybox.Height() });
@@ -72,27 +81,27 @@ void BakeEnvironmentMaps(
 		I::GenerateCubemapMipLevels(cmd, skybox);
 
 		// ======================
-		// Irradiance diffuse
+		// SH Irradiance
 		// ======================
 
-		pso.BindReadImage(pushWriter,  RD::PUSH_BINDING_READ_1,  skybox,     irradianceSampler);
-		pso.BindWriteImage(pushWriter, RD::PUSH_BINDING_WRITE_1, irradiance, 0);
-		pso.SetPush(envPush);
+		pso.BindReadImage(pushWriter, RD::PUSH_BINDING_READ_1,  skybox, skyboxSampler);
+		pso.SetPush(shIrrPush);
 
-		pso.UpdateExtent({ irradiance.Width(), irradiance.Height() });
-		pso.UpdateWorkgroups({ 8, 8, 6 });
+		pso.UpdateWorkgroups({ 64, 1, 1 });
+		pso.UpdateExtent({ 64u, 1u });
 
-		pso.DispatchComputePass(cmd, pipelines[PIPE_ID_IRRADIANCE], pushWriter);
+		pso.DispatchComputePass(cmd, pipelines[PIPE_ID_SH_IRRADIANCE], pushWriter);
 
-		I::TransitionLayout(cmd, irradiance, RD::ImageAccess::Write, RD::ImageAccess::Read);
+		pso.ClearPush();
 
 		// ========================
 		// Specular prefilter
 		// ========================
 
+		pso.UpdateWorkgroups({8, 8, 6});
 		for (uint32_t mip = 0; mip < specular.m_mipLevels; ++mip)
 		{
-			pso.BindReadImage(pushWriter,  RD::PUSH_BINDING_READ_1,  skybox,  specSampler);
+			pso.BindReadImage(pushWriter,  RD::PUSH_BINDING_READ_1,  skybox,  skyboxSampler);
 			pso.BindWriteImage(pushWriter, RD::PUSH_BINDING_WRITE_1, specular, mip);
 
 			pso.UpdateExtent({ envSet.specularPCs[mip].width, envSet.specularPCs[mip].height });
@@ -107,13 +116,13 @@ void BakeEnvironmentMaps(
 	// ======================
 	// BRDF LUT
 	// ======================
-
+	pso.ClearPush();
 	I::TransitionLayout(cmd, brdf, RD::ImageAccess::Undefined, RD::ImageAccess::Write);
 
 	pso.BindWriteImage(pushWriter, RD::PUSH_BINDING_WRITE_1, brdf);
 	pso.UpdateExtent({ brdf.Width(), brdf.Height() });
 	pso.UpdateWorkgroups(WORKGROUP_8x8);
-	pso.SetPush(envPush);
+	pso.SetPush(brdfPush);
 
 	pso.DispatchComputePass(cmd, pipelines[PIPE_ID_BRDF], pushWriter);
 

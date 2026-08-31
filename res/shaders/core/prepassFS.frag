@@ -15,16 +15,7 @@ layout(location = 1) out vec2 outViewSpaceNormal;
 
 void main()
 {
-	DebugToggles debug = getDebugToggles();
-
-	if (debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
-	{
-		outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID) | uint(gl_FrontFacing));
-	}
-	else
-	{
-		outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID));
-	}
+	outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID) | uint(gl_FrontFacing));
 
 	vec3 n = inViewNormal;
 	if (!gl_FrontFacing) n = -n;

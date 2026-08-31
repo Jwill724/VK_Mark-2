@@ -11,7 +11,6 @@
 void FrameContext::Init(
 	uint32_t frameIndex,
 	uint32_t threadSlotCount,
-	Extents2D drawExtent,
 	Device& device,
 	DescriptorManager& descriptorsManager,
 	Allocator& allocator)
@@ -20,8 +19,6 @@ void FrameContext::Init(
 	auto logicalDevice = deviceCtx.device;
 	auto qIndices = deviceCtx.queueIndices;
 	m_frameIndex = frameIndex;
-
-	m_cachedDrawExtent = drawExtent;
 
 	m_graphicsPool = device.CreateCommandPool(QueueType::Graphics);
 	m_transferPool = device.CreateCommandPool(QueueType::Transfer);
@@ -94,11 +91,6 @@ void FrameContext::Init(
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::IndirectDraws,
-		GPU_BYTES_INDIRECT_DRAWS,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::IndirectDrawCounts,
 		GPU_BYTES_INDIRECT_DRAW_COUNTS,
 		allocator);
@@ -164,15 +156,17 @@ void FrameContext::Init(
 		m_statsReadback.m_allocation,
 		reinterpret_cast<void**>(const_cast<GPUStats**>(&m_statsMapped)));
 
-	// Light cluster buffers
-	ClusterBufferSizes clusterBufSizes;
-	clusterBufSizes.UpdateClusterBufferSizes(m_cachedDrawExtent.Width(), m_cachedDrawExtent.Height());
-	CreateClusterBuffers(clusterBufSizes, allocator);
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::RTInstances,
+		GPU_BYTES_RT_INSTANCES,
+		allocator);
 
-	// Cmaa2 buffers
-	Cmaa2BufferSizes cmaa2BufSizes;
-	cmaa2BufSizes.UpdateCmaa2BufferSizes(m_cachedDrawExtent.Width(), m_cachedDrawExtent.Height());
-	CreateCMAA2Buffers(cmaa2BufSizes, allocator);
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::RTInstanceCount,
+		sizeof(uint32_t),
+		allocator);
+
+	CreateTLAS(device, allocator);
 
 	VkQueryPoolCreateInfo queryPoolInfo{};
 	queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
@@ -202,14 +196,100 @@ void FrameContext::Init(
 	m_timestampResults.fill(0);
 }
 
+void FrameContext::CreateTLAS(Device& device, Allocator& allocator)
+{
+	const auto& ctx = device.GetContext();
+
+	VkPhysicalDeviceAccelerationStructurePropertiesKHR asProps{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
+	VkPhysicalDeviceProperties2 props2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	props2.pNext = &asProps;
+	vkGetPhysicalDeviceProperties2(ctx.physicalDevice, &props2);
+
+	VkAccelerationStructureGeometryKHR geom{
+		VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+	geom.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	geom.flags        = 0;
+
+	auto& inst = geom.geometry.instances;
+	inst.sType           = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	inst.arrayOfPointers = VK_FALSE;
+	inst.data.deviceAddress =
+		m_gpuAddressTable.GetGPUBuffer(RD::Renderer_Buffer::RTInstances).m_address;
+
+	VkAccelerationStructureBuildGeometryInfoKHR build{
+		VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+	build.type          = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	build.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	build.mode          = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+	build.geometryCount = 1;
+	build.pGeometries   = &geom;
+
+	const uint32_t maxPrims = RD::MAX_RT_INSTANCES;
+
+	VkAccelerationStructureBuildSizesInfoKHR sizeInfo{
+		VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+	vkGetAccelerationStructureBuildSizesKHR(
+		ctx.device,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+		&build, &maxPrims, &sizeInfo);
+
+	m_tlasStorage = allocator.AllocateBuffer({
+		sizeInfo.accelerationStructureSize,
+		Vulkan_BufferUsage::AS_STORAGE,
+		HeapType::GPU_Local,
+		false,
+		"TLASStorage" });
+
+	VkAccelerationStructureCreateInfoKHR ci{
+		VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+	ci.buffer = m_tlasStorage.m_buffer;
+	ci.offset = 0;
+	ci.size   = sizeInfo.accelerationStructureSize;
+	ci.type   = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+	VK_CHECK(vkCreateAccelerationStructureKHR(ctx.device, &ci, nullptr, &m_tlas));
+
+	const VkDeviceSize scratchAlign = asProps.minAccelerationStructureScratchOffsetAlignment;
+
+	m_tlasScratch = allocator.AllocateBuffer({
+		sizeInfo.buildScratchSize + scratchAlign,
+		Vulkan_BufferUsage::AS_SCRATCH,
+		HeapType::GPU_Local,
+		false,
+		"TLASScratch" });
+
+	m_tlasScratchAddress =
+		(m_tlasScratch.m_address + scratchAlign - 1) & ~(scratchAlign - 1);
+}
+
+void FrameContext::DeferredClearGPUBuffer(RD::Renderer_Buffer slot, Allocator& allocator)
+{
+	AllocatedBuffer old = m_gpuAddressTable.DetachGPUAddressBuffer(slot);
+	if (!old.IsValid()) return;
+
+	m_cpuDeletionQueue.PushFunction([old, &allocator]() mutable {
+		allocator.FreeBuffer(old);
+		});
+}
+
 void FrameContext::ClusterReset(Allocator& allocator)
 {
 	for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::ClusterCounts);
-		i <= static_cast<size_t>(RD::Renderer_Buffer::ClusterScanScratch);
+		i <= static_cast<size_t>(RD::Renderer_Buffer::ClusterTileTransparentNear);
 		i++)
 	{
-		m_gpuAddressTable.ClearGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
+		DeferredClearGPUBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
 	}
+}
+
+void FrameContext::CreateRTRayListBuffer(const RTRayListLayout& sizes, Allocator& allocator)
+{
+	DeferredClearGPUBuffer(RD::Renderer_Buffer::RTRayList, allocator);
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::RTRayList,
+		sizes.totalBytes,
+		allocator);
 }
 
 void FrameContext::CreateDebugBuffers(Allocator& allocator)
@@ -252,7 +332,14 @@ void FrameContext::CreateClusterBuffers(
 	ClusterReset(allocator);
 
 	// Uniform buffer updates
-	allocator.FreeBuffer(m_clustered_UBO);
+	if (m_clustered_UBO.IsValid())
+	{
+		m_cpuDeletionQueue.PushFunction([old = m_clustered_UBO, &allocator]() mutable {
+			allocator.FreeBuffer(old);
+			});
+		m_clustered_UBO = {};
+	}
+
 	m_clusterData.tileCountX = clusterBufSizes.tileCountX;
 	m_clusterData.tileCountY = clusterBufSizes.tileCountY;
 	m_clusterData.clusterCount = clusterBufSizes.clusterCount;
@@ -290,57 +377,62 @@ void FrameContext::CreateClusterBuffers(
 		RD::Renderer_Buffer::ClusterScanScratch,
 		clusterBufSizes.clusterScanScratchBytes,
 		allocator);
-}
-
-void FrameContext::Cmaa2Reset(Allocator& allocator)
-{
-	for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::Cmaa2Control);
-		i <= static_cast<size_t>(RD::Renderer_Buffer::Cmaa2DeferredHeads);
-		i++)
-	{
-		m_gpuAddressTable.ClearGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
-	}
-}
-
-void FrameContext::CreateCMAA2Buffers(
-	const Cmaa2BufferSizes& cmaa2BufSizes,
-	Allocator& allocator)
-{
-	Cmaa2Reset(allocator);
-
-	// Push constant updates
-	m_cmaa2Push.halfWidth = cmaa2BufSizes.quadCountX;
-	m_cmaa2Push.maxShapeCandidates = cmaa2BufSizes.pixelCount;
-	m_cmaa2Push.maxDeferredItems = cmaa2BufSizes.deferredItemsCapacity;
-	m_cmaa2Push.maxDeferredLocations = cmaa2BufSizes.quadCount;
-
-	// Ssbo updates
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Cmaa2Control,
-		cmaa2BufSizes.controlBytes,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Cmaa2ShapeCandidates,
-		cmaa2BufSizes.shapeCandidatesBytes,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Cmaa2DeferredLocations,
-		cmaa2BufSizes.deferredLocationsBytes,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Cmaa2DeferredItems,
-		cmaa2BufSizes.deferredItemsBytes,
-		allocator);
-
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::Cmaa2DeferredHeads,
-		cmaa2BufSizes.deferredHeadsBytes,
+		RD::Renderer_Buffer::ClusterTileTransparentNear,
+		clusterBufSizes.tileTransparentNearBytes,
 		allocator);
 }
+
+//void FrameContext::Cmaa2Reset(Allocator& allocator)
+//{
+//	for (size_t i = static_cast<size_t>(RD::Renderer_Buffer::Cmaa2Control);
+//		i <= static_cast<size_t>(RD::Renderer_Buffer::Cmaa2DeferredHeads);
+//		i++)
+//	{
+//		m_gpuAddressTable.ClearGPUAddressBuffer(static_cast<RD::Renderer_Buffer>(i), allocator);
+//	}
+//}
+//
+//void FrameContext::CreateCMAA2Buffers(
+//	const Cmaa2BufferSizes& cmaa2BufSizes,
+//	Allocator& allocator)
+//{
+//	Cmaa2Reset(allocator);
+//
+//	// Push constant updates
+//	m_cmaa2Push.halfWidth = cmaa2BufSizes.quadCountX;
+//	m_cmaa2Push.maxShapeCandidates = cmaa2BufSizes.pixelCount;
+//	m_cmaa2Push.maxDeferredItems = cmaa2BufSizes.deferredItemsCapacity;
+//	m_cmaa2Push.maxDeferredLocations = cmaa2BufSizes.quadCount;
+//
+//	// Ssbo updates
+//
+//	m_gpuAddressTable.AddGPUBufferToAddressTable(
+//		RD::Renderer_Buffer::Cmaa2Control,
+//		cmaa2BufSizes.controlBytes,
+//		allocator);
+//
+//	m_gpuAddressTable.AddGPUBufferToAddressTable(
+//		RD::Renderer_Buffer::Cmaa2ShapeCandidates,
+//		cmaa2BufSizes.shapeCandidatesBytes,
+//		allocator);
+//
+//	m_gpuAddressTable.AddGPUBufferToAddressTable(
+//		RD::Renderer_Buffer::Cmaa2DeferredLocations,
+//		cmaa2BufSizes.deferredLocationsBytes,
+//		allocator);
+//
+//	m_gpuAddressTable.AddGPUBufferToAddressTable(
+//		RD::Renderer_Buffer::Cmaa2DeferredItems,
+//		cmaa2BufSizes.deferredItemsBytes,
+//		allocator);
+//
+//	m_gpuAddressTable.AddGPUBufferToAddressTable(
+//		RD::Renderer_Buffer::Cmaa2DeferredHeads,
+//		cmaa2BufSizes.deferredHeadsBytes,
+//		allocator);
+//}
 
 void FrameContext::CollectTransferCmds(std::vector<VkCommandBuffer>&& cmds, QueueType queue)
 {
@@ -384,6 +476,11 @@ void FrameContext::TickDescriptorWrites(DescriptorWriter& writer)
 		m_directionalCSM_UBO,
 		m_frameSet);
 
+	writer.WriteBuffer(
+		RD::FRAME_BINDING_VOLUMETRIC,
+		m_volumetricShadow_UBO,
+		m_frameSet);
+
 	// Less frequent writes
 
 	if (m_gpuAddressTable.IsTableDirty())
@@ -402,6 +499,15 @@ void FrameContext::TickDescriptorWrites(DescriptorWriter& writer)
 			m_frameSet);
 		m_bClusterUniformWriteNeeded = false;
 	}
+
+	if (m_bTlasWriteNeeded && m_tlas != VK_NULL_HANDLE)
+	{
+		writer.WriteAccelerationStructure(
+			RD::FRAME_BINDING_TLAS,
+			m_tlas,
+			m_frameSet);
+		m_bTlasWriteNeeded = false;
+	}
 }
 
 void FrameContext::AssignSceneUniform(AllocatedBuffer buffer, const Allocator& allocator)
@@ -418,6 +524,13 @@ void FrameContext::AssignCSMUniform(AllocatedBuffer buffer, const Allocator& all
 		allocator.FreeBuffer(buffer);
 	});
 }
+void FrameContext::AssignVolumetricShadowUniform(AllocatedBuffer buffer, const Allocator& allocator)
+{
+	m_volumetricShadow_UBO = std::move(buffer);
+	m_cpuDeletionQueue.PushFunction([buffer = m_volumetricShadow_UBO, &allocator]() mutable {
+		allocator.FreeBuffer(buffer);
+		});
+}
 
 void FrameContext::Cleanup(const DeviceContext& deviceCtx, Allocator& allocator)
 {
@@ -432,6 +545,14 @@ void FrameContext::Cleanup(const DeviceContext& deviceCtx, Allocator& allocator)
 	allocator.FreeBuffer(m_statsReadback);
 
 	m_gpuAddressTable.Shutdown(allocator);
+
+	if (m_tlas != VK_NULL_HANDLE)
+	{
+		vkDestroyAccelerationStructureKHR(deviceCtx.device, m_tlas, nullptr);
+		m_tlas = VK_NULL_HANDLE;
+	}
+	allocator.FreeBuffer(m_tlasStorage);
+	allocator.FreeBuffer(m_tlasScratch);
 
 	if (m_graphicsTimestampPool != VK_NULL_HANDLE)
 		vkDestroyQueryPool(deviceCtx.device, m_graphicsTimestampPool, nullptr);

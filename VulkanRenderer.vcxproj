@@ -37,29 +37,48 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\nrd\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(ProjectDir)vendor\nrd\Lib\$(Configuration);$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
-      </AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\nrd\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;TRACY_ENABLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(ProjectDir)vendor\nrd\Lib\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>NRD.lib;ShaderMakeBlob.lib;glfw3.lib;vulkan-1.lib;shaderc_combined.lib;kernel32.lib;user32.lib;gdi32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)res\shaders\compile_shaders.bat"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;%(AdditionalIncludeDirectories)
-      </AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enkiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(ProjectDir)vendor\nrd\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <WarningLevel>Level4</WarningLevel>
       <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>_UNICODE;UNICODE;NDEBUG;TRACY_ENABLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(ProjectDir)vendor\nrd\Lib\$(Configuration);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>NRD.lib;ShaderMakeBlob.lib;glfw3.lib;vulkan-1.lib;shaderc_combined.lib;kernel32.lib;user32.lib;gdi32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>call "$(ProjectDir)res\shaders\compile_shaders.bat"</Command>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <!-- ===================== Sources ===================== -->
   <ItemGroup>
@@ -69,217 +88,118 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
     </ClCompile>
     <!-- src root -->
+    <ClCompile Include="src\core\asset\AssetRegistry.cpp" />
+    <ClCompile Include="src\core\asset\importers\GltfImporter.cpp" />
+    <ClCompile Include="src\core\asset\SceneCache.cpp" />
+    <ClCompile Include="src\core\asset\SourceGeometry.cpp" />
+    <ClCompile Include="src\core\asset\SceneSource.cpp" />
+    <ClCompile Include="src\core\asset\importers\BCNCompression.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <!-- Entry point -->
     <ClCompile Include="src\Main.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <!-- core -->
-    <ClCompile Include="src\core\Engine.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\JobSystem.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\AssetManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\core\Window.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\core\Engine.cpp" />
+    <ClCompile Include="src\core\JobSystem.cpp" />
+    <ClCompile Include="src\core\Window.cpp" />
+    <ClCompile Include="src\core\asset\AssetManager.cpp" />
     <!-- profiler -->
-    <ClCompile Include="src\profiler\Profiler.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\profiler\EditorImgui.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\profiler\Profiler.cpp" />
+    <ClCompile Include="src\profiler\EditorImgui.cpp" />
     <!-- input -->
-    <ClCompile Include="src\input\Camera.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\input\UserInput.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer (root) -->
-    <ClCompile Include="src\renderer\Renderer.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\input\Camera.cpp" />
+    <ClCompile Include="src\input\UserInput.cpp" />
+    <!-- renderer -->
+    <ClCompile Include="src\renderer\Renderer.cpp" />
     <!-- renderer / rendergraph -->
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedShadowsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\VolumetricFogPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\VolumetricShadowMap.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphCompile.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\RenderGraphBuilder.cpp" />
+    <!-- renderer / rendergraph / scopes -->
+    <ClCompile Include="src\renderer\rendergraph\scopes\GraphicsScope.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\scopes\ComputeScope.cpp" />
+    <!-- renderer / rendergraph / passes / graphics -->
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\LineDebugPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\SkyboxPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\TransparentForwardPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp" />
+    <!-- renderer / rendergraph / passes / compute -->
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\NRDDenoisePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\BloomPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ChromaticAberrationPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DebugDrawBuildPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\DrawBuildPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\EnvironmentMapGenerationPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\FinalCompositePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\GBufferDebugPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\HierarchicalDepthGenerationPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\InstanceCullPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LensFlarePass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\LuminanceExposurePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\MaterialResolvePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\OpaqueLightingPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedReflectionsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceGlobalIlluminationPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceContactShadowsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ShadowBoundsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TopLevelAccelerationStructureBuildPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\VelocityResolvePass.cpp" />
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\WireframePass.cpp" />
-    <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\RenderGraphCompile.cpp" />
-    <ClCompile Include="src\renderer\rendergraph\RenderGraphResources.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\RenderGraphBuilder.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer / rendergraph / scopes -->
-    <ClCompile Include="src\renderer\rendergraph\scopes\GraphicsScope.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\scopes\ComputeScope.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer / graph / passes / graphics -->
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\CascadedShadowMapAtlasPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\LineDebugPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\FlashlightShadowMapPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\ThePrepass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\SkyboxPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\graphics\TransparentForwardPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer / graph / passes / compute -->
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ChromaticAberrationPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ConservativeMorphologicalAntiAliasing2Pass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\EnvironmentMapGenerationPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\FastApproximateAntiAliasing.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\FinalCompositePass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\HierarchicalDepthGenerationPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\LensFlarePass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\LuminanceExposurePass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceAmbientOcclusionPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceContactShadowsPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\SubpixelMorphologicalAntiAliasingPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <!-- renderer / graph / passes / command -->
-    <ClCompile Include="src\renderer\rendergraph\passes\command\ImguiDrawPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\command\SwapchainPresentPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\command\TemporalCopyPass.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <!-- renderer / rendergraph / passes / command -->
+    <ClCompile Include="src\renderer\rendergraph\passes\command\ImguiDrawPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\command\SwapchainPresentPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\command\TemporalCopyPass.cpp" />
     <!-- renderer / frame -->
-    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\frame\FrameContext.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\frame\FrameResources.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\renderer\frame\SecondaryCmdArena.cpp" />
+    <ClCompile Include="src\renderer\frame\FrameContext.cpp" />
+    <ClCompile Include="src\renderer\frame\FrameResources.cpp" />
     <!-- renderer / scene -->
-    <ClCompile Include="src\renderer\scene\Scene.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\World.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\DrawPreparation.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\scene\LightingSystem.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\renderer\scene\Scene.cpp" />
+    <ClCompile Include="src\renderer\scene\World.cpp" />
+    <ClCompile Include="src\renderer\scene\DrawPreparation.cpp" />
+    <ClCompile Include="src\renderer\scene\LightingSystem.cpp" />
     <!-- renderer / backend -->
     <ClCompile Include="src\renderer\backend\VulkanExtensionFunctions.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\Device.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\Queue.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\Shader.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\Swapchain.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\Sync.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\PipelineManager.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\ImageUtils.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\BufferBarriers.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\renderer\backend\Device.cpp" />
+    <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp" />
+    <ClCompile Include="src\renderer\backend\Queue.cpp" />
+    <ClCompile Include="src\renderer\backend\Shader.cpp" />
+    <ClCompile Include="src\renderer\backend\Swapchain.cpp" />
+    <ClCompile Include="src\renderer\backend\Sync.cpp" />
+    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp" />
+    <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp" />
+    <ClCompile Include="src\renderer\backend\PipelineManager.cpp" />
+    <ClCompile Include="src\renderer\backend\ImageUtils.cpp" />
+    <ClCompile Include="src\renderer\backend\BufferBarriers.cpp" />
+    <ClCompile Include="src\renderer\backend\NRDContext.cpp" />
     <!-- renderer / backend / memory -->
-    <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\memory\ResourceAllocator.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\memory\BindlessImageTable.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="src\renderer\backend\memory\BindlessBDATable.cpp">
-      <PrecompiledHeader>Use</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="src\renderer\backend\memory\Staging.cpp" />
+    <ClCompile Include="src\renderer\backend\memory\ResourceAllocator.cpp" />
+    <ClCompile Include="src\renderer\backend\memory\BindlessImageTable.cpp" />
+    <ClCompile Include="src\renderer\backend\memory\BindlessBDATable.cpp" />
     <!-- third-party (no PCH) -->
+    <ClCompile Include="vendor\bc7enc\bc7enc.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+    <ClCompile Include="vendor\bc7enc\rgbcx.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -372,12 +292,10 @@
     </ClCompile>
     <ClCompile Include="vendor\fmt\format.cc">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MultiThreadedDLL</RuntimeLibrary>
     </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
-    <!-- common -->
     <ClInclude Include="src\common\Bounds.h" />
     <ClInclude Include="src\common\Core.h" />
     <ClInclude Include="src\common\Material.h" />
@@ -387,22 +305,41 @@
     <ClInclude Include="src\common\Vertex.h" />
     <ClInclude Include="src\common\ResourceTypes.h" />
     <ClInclude Include="src\common\EngineTypes.h" />
-    <!-- core -->
-    <ClInclude Include="src\core\AssetUploadTypes.h" />
+    <ClInclude Include="src\core\asset\AssetRegistry.h" />
+    <ClInclude Include="src\core\asset\AssetUploadTypes.h" />
+    <ClInclude Include="src\core\asset\AssetManager.h" />
+    <ClInclude Include="src\core\asset\importers\BCNCompression.h" />
+    <ClInclude Include="src\core\asset\importers\GltfImporter.h" />
+    <ClInclude Include="src\core\asset\SceneCache.h" />
+    <ClInclude Include="src\core\asset\SourceGeometry.h" />
+    <ClInclude Include="src\core\asset\SceneSource.h" />
     <ClInclude Include="src\core\Logging.h" />
     <ClInclude Include="src\core\Engine.h" />
     <ClInclude Include="src\core\JobSystem.h" />
-    <ClInclude Include="src\core\AssetManager.h" />
     <ClInclude Include="src\core\Environment.h" />
     <ClInclude Include="src\core\Window.h" />
-    <!-- input -->
     <ClInclude Include="src\input\UserInput.h" />
     <ClInclude Include="src\input\Camera.h" />
-    <!-- profiler -->
     <ClInclude Include="src\profiler\ProfilerTypes.h" />
     <ClInclude Include="src\profiler\Profiler.h" />
     <ClInclude Include="src\profiler\EditorImgui.h" />
-    <!-- renderer -->
+    <ClInclude Include="src\renderer\frame\ResizeCoordinator.h" />
+    <ClInclude Include="src\renderer\RendererDefinitions.h" />
+    <ClInclude Include="src\renderer\Renderer.h" />
+    <ClInclude Include="src\renderer\frame\FrameContext.h" />
+    <ClInclude Include="src\renderer\frame\FrameResources.h" />
+    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraph.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderPasses.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphResources.h" />
+    <ClInclude Include="src\renderer\rendergraph\RenderGraphBuilder.h" />
+    <ClInclude Include="src\renderer\rendergraph\scopes\GraphicsScope.h" />
+    <ClInclude Include="src\renderer\rendergraph\scopes\ComputeScope.h" />
+    <ClInclude Include="src\renderer\scene\LightingSystem.h" />
+    <ClInclude Include="src\renderer\scene\Scene.h" />
+    <ClInclude Include="src\renderer\scene\World.h" />
+    <ClInclude Include="src\renderer\scene\DrawPreparation.h" />
     <ClInclude Include="src\renderer\backend\Device.h" />
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h" />
     <ClInclude Include="src\renderer\backend\Queue.h" />
@@ -410,27 +347,6 @@
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
     <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h" />
-    <ClInclude Include="src\renderer\RendererDefinitions.h" />
-    <ClInclude Include="src\renderer\Renderer.h" />
-    <!-- renderer / frame -->
-    <ClInclude Include="src\renderer\frame\FrameContext.h" />
-    <ClInclude Include="src\renderer\frame\FrameResources.h" />
-    <ClInclude Include="src\renderer\frame\SecondaryCmdArena.h" />
-    <!-- renderer / rendergraph -->
-    <ClInclude Include="src\renderer\rendergraph\RenderGraph.h" />
-    <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h" />
-    <ClInclude Include="src\renderer\rendergraph\RenderPasses.h" />
-    <ClInclude Include="src\renderer\rendergraph\RenderGraphResources.h" />
-    <ClInclude Include="src\renderer\rendergraph\RenderGraphBuilder.h" />
-    <!-- renderer / scopes -->
-    <ClInclude Include="src\renderer\rendergraph\scopes\GraphicsScope.h" />
-    <ClInclude Include="src\renderer\rendergraph\scopes\ComputeScope.h" />
-    <!-- renderer / scene -->
-    <ClInclude Include="src\renderer\scene\LightingSystem.h" />
-    <ClInclude Include="src\renderer\scene\Scene.h" />
-    <ClInclude Include="src\renderer\scene\World.h" />
-    <ClInclude Include="src\renderer\scene\DrawPreparation.h" />
-    <!-- renderer / backend -->
     <ClInclude Include="src\renderer\backend\Debugging.h" />
     <ClInclude Include="src\renderer\backend\DescriptorManager.h" />
     <ClInclude Include="src\renderer\backend\DescriptorWriter.h" />
@@ -439,9 +355,9 @@
     <ClInclude Include="src\renderer\backend\PipelineBundles.h" />
     <ClInclude Include="src\renderer\backend\ImageUtils.h" />
     <ClInclude Include="src\renderer\backend\BufferBarriers.h" />
+    <ClInclude Include="src\renderer\backend\NRDContext.h" />
     <ClInclude Include="src\renderer\backend\VulkanForward.h" />
     <ClInclude Include="src\renderer\backend\VulkanTypes.h" />
-    <!-- renderer / backend / memory -->
     <ClInclude Include="src\renderer\backend\memory\Budgets.h" />
     <ClInclude Include="src\renderer\backend\memory\Staging.h" />
     <ClInclude Include="src\renderer\backend\memory\TextureStaging.h" />
@@ -452,88 +368,100 @@
     <ClInclude Include="src\renderer\backend\memory\AllocatedImage.h" />
     <ClInclude Include="src\renderer\backend\memory\BindlessBDATable.h" />
     <ClInclude Include="src\renderer\backend\memory\BindlessImageTable.h" />
-    <!-- assets -->
+    <ClInclude Include="vendor\bc7enc\bc7enc.h" />
+    <ClInclude Include="vendor\bc7enc\rgbcx.h" />
+    <ClInclude Include="vendor\bc7enc\rgbcx_table4.h" />
+    <ClInclude Include="vendor\bc7enc\rgbcx_table4_small.h" />
     <ClInclude Include="res\assets\AreaTex.h" />
     <ClInclude Include="res\assets\SearchTex.h" />
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
-    <None Include="res\shaders\ao\ssao_denoise.comp" />
-    <None Include="res\shaders\ao\ssao_depth_prefilter.comp" />
-    <None Include="res\shaders\ao\ssao_filter.comp" />
-    <None Include="res\shaders\ao\ssao_main.comp" />
+    <None Include="res\shaders\clustered\transparent_cluster_bounds.comp" />
+    <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="res\shaders\core\transparent_cull.task" />
+    <None Include="res\shaders\core\transparent_draw.mesh" />
+    <None Include="res\shaders\include\reflect_common.glsl" />
+    <None Include="res\shaders\include\rt_core.glsl" />
+    <None Include="res\shaders\include\rt_geometry.glsl" />
+    <None Include="res\shaders\include\rt_params.glsl" />
+    <None Include="res\shaders\include\rt_sampling.glsl" />
+    <None Include="res\shaders\include\rt_shade.glsl" />
+    <None Include="res\shaders\include\barycentric.glsl" />
+    <None Include="res\shaders\include\culling.glsl" />
+    <None Include="res\shaders\include\debug_views.glsl" />
+    <None Include="res\shaders\include\draws.glsl" />
+    <None Include="res\shaders\include\instances.glsl" />
+    <None Include="res\shaders\include\nrd_common.glsl" />
+    <None Include="res\shaders\include\bindings.glsl" />
+    <None Include="res\shaders\include\lighting.glsl" />
+    <None Include="res\shaders\include\meshlet_cull.glsl" />
+    <None Include="res\shaders\include\rt_shadow.glsl" />
+    <None Include="res\shaders\include\rt_shadow_common.glsl" />
+    <None Include="res\shaders\include\visbuffer.glsl" />
+    <None Include="res\shaders\include\common.glsl" />
+    <None Include="res\shaders\include\clustered.glsl" />
+    <None Include="res\shaders\include\depth.glsl" />
+    <None Include="res\shaders\include\shadow.glsl" />
+    <None Include="res\shaders\include\pbr.glsl" />
+    <None Include="res\shaders\core\tlas_instances.comp" />
+    <None Include="res\shaders\core\material_resolve.comp" />
+    <None Include="res\shaders\core\opaque_lighting.comp" />
+    <None Include="res\shaders\core\transparent_forward.frag" />
+    <None Include="res\shaders\core\transparent_resolve.comp" />
+    <None Include="res\shaders\core\velocity_resolve.comp" />
+    <None Include="res\shaders\core\prepassFS.frag" />
+    <None Include="res\shaders\core\prepassFS_masked.frag" />
+    <None Include="res\shaders\core\hi_z_gen.comp" />
+    <None Include="res\shaders\core\nrd_prepare.comp" />
+    <None Include="res\shaders\core\rt_ray_args.comp" />
+    <None Include="res\shaders\reflections\rtreflect_trace.comp" />
+    <None Include="res\shaders\reflections\reflect_classify.comp" />
+    <None Include="res\shaders\shadows\rtshadow_trace.comp" />
+    <None Include="res\shaders\shadows\shadow_masked.mesh" />
+    <None Include="res\shaders\shadows\shadow_maskedFS.frag" />
+    <None Include="res\shaders\ssgi\hi_z_prefilter.comp" />
+    <None Include="res\shaders\ssgi\ao_denoise.comp" />
+    <None Include="res\shaders\ssgi\gi_denoise.comp" />
+    <None Include="res\shaders\ssgi\gi_accumulate.comp" />
+    <None Include="res\shaders\ssgi\bilateral_upsample.comp" />
+    <None Include="res\shaders\ssgi\vbgi_main.comp" />
     <None Include="res\shaders\clustered\cluster_count.comp" />
     <None Include="res\shaders\clustered\cluster_scan_offsets.comp" />
     <None Include="res\shaders\clustered\cluster_scatter_ids.comp" />
     <None Include="res\shaders\clustered\cluster_tile_slice_ranges.comp" />
     <None Include="res\shaders\clustered\lights_indirect_args.comp" />
     <None Include="res\shaders\clustered\light_culling.comp" />
-    <None Include="res\shaders\compile_shaders.bat" />
-    <None Include="res\shaders\core\material_resolve.comp" />
-    <None Include="res\shaders\core\opaque_lighting.comp" />
-    <None Include="res\shaders\core\transparent_forward.frag" />
-    <None Include="res\shaders\core\transparent_resolve.comp" />
-    <None Include="res\shaders\core\velocity_resolve.comp" />
     <None Include="res\shaders\debug\debug_args.comp" />
     <None Include="res\shaders\debug\debug_build.comp" />
     <None Include="res\shaders\debug\debug_count.comp" />
     <None Include="res\shaders\debug\gbuffer_view.comp" />
     <None Include="res\shaders\debug\wireframeM.mesh" />
     <None Include="res\shaders\debug\wireframeFS.frag" />
-    <None Include="res\shaders\debug\wireframeVS.vert" />
-    <None Include="res\shaders\include\barycentric.glsl" />
-    <None Include="res\shaders\include\culling.glsl" />
-    <None Include="res\shaders\include\debug_views.glsl" />
-    <None Include="res\shaders\include\draws.glsl" />
-    <None Include="res\shaders\include\instances.glsl" />
-    <None Include="res\shaders\include\bindings.glsl" />
-    <None Include="res\shaders\include\lighting.glsl" />
-    <None Include="res\shaders\include\meshlet_cull.glsl" />
-    <None Include="res\shaders\include\visbuffer.glsl" />
-    <None Include="res\shaders\post_process\bloom_downsample.comp" />
-    <None Include="res\shaders\post_process\bloom_upsample.comp" />
-    <None Include="res\shaders\post_process\chromatic_aberration.comp" />
-    <None Include="res\shaders\post_process\smaa_blend.comp" />
-    <None Include="res\shaders\post_process\smaa_edges.comp" />
-    <None Include="res\shaders\post_process\smaa_weights.comp" />
-    <None Include="res\shaders\post_process\taa.comp" />
-    <None Include="res\shaders\shadows\bend_sss.comp" />
-    <None Include="res\shaders\shadows\shadowT.task" />
-    <None Include="res\shaders\shadows\shadow_bounds.comp" />
-    <None Include="res\shaders\shadows\shadow_depthVS.vert" />
-    <None Include="res\shaders\include\common.glsl" />
-    <None Include="res\shaders\include\clustered.glsl" />
-    <None Include="res\shaders\include\depth.glsl" />
-    <None Include="res\shaders\include\shadow.glsl" />
-    <None Include="res\shaders\include\cmaa2.glsl" />
-    <None Include="res\shaders\include\pbr.glsl" />
-    <None Include="res\shaders\core\prepassVS.vert" />
-    <None Include="res\shaders\core\prepassFS.frag" />
-    <None Include="res\shaders\core\prepassFS_masked.frag" />
-    <None Include="res\shaders\core\prepassVS_masked.vert" />
-    <None Include="res\shaders\core\forwardVS.vert" />
-    <None Include="res\shaders\core\hi_z_gen.comp" />
+    <None Include="res\shaders\debug\line_debugVS.vert" />
+    <None Include="res\shaders\debug\line_debugFS.frag" />
     <None Include="res\shaders\environment\hdr2cubemap.comp" />
     <None Include="res\shaders\environment\skyboxVS.vert" />
     <None Include="res\shaders\environment\skyboxFS.frag" />
     <None Include="res\shaders\environment\specular_prefilter.comp" />
-    <None Include="res\shaders\environment\diffuse_irradiance.comp" />
+    <None Include="res\shaders\environment\sh_irradiance.comp" />
     <None Include="res\shaders\environment\brdf_lut.comp" />
+    <None Include="res\shaders\post_process\vol_light_resolve.comp" />
+    <None Include="res\shaders\post_process\bloom_downsample.comp" />
+    <None Include="res\shaders\post_process\bloom_upsample.comp" />
+    <None Include="res\shaders\post_process\chromatic_aberration.comp" />
+    <None Include="res\shaders\post_process\taa.comp" />
     <None Include="res\shaders\post_process\exposure_finalize.comp" />
     <None Include="res\shaders\post_process\exposure_reduce.comp" />
-    <None Include="res\shaders\debug\line_debugVS.vert" />
-    <None Include="res\shaders\debug\line_debugFS.frag" />
     <None Include="res\shaders\post_process\flare_bright.comp" />
     <None Include="res\shaders\post_process\flare_gen.comp" />
-    <None Include="res\shaders\post_process\fxaa.comp" />
-    <None Include="res\shaders\post_process\cmaa2_deferred_resolve.comp" />
-    <None Include="res\shaders\post_process\cmaa2_edges.comp" />
-    <None Include="res\shaders\post_process\cmaa2_shape_candidates.comp" />
-    <None Include="res\shaders\post_process\cmaa2_indirect_args.comp" />
     <None Include="res\shaders\post_process\final_composite.comp" />
-    <None Include="res\shaders\post_process\volumetric_light_blur.comp" />
-    <None Include="res\shaders\post_process\volumetric_light.comp" />
+    <None Include="res\shaders\post_process\vol_light_blur.comp" />
+    <None Include="res\shaders\post_process\vol_light_raymarch.comp" />
+    <None Include="res\shaders\shadows\bend_sss.comp" />
+    <None Include="res\shaders\shadows\shadowT.task" />
     <None Include="res\shaders\shadows\shadowM.mesh" />
+    <None Include="res\shaders\shadows\shadow_bounds.comp" />
     <None Include="res\shaders\visibility\draw_args.comp" />
     <None Include="res\shaders\visibility\draw_emit.comp" />
     <None Include="res\shaders\visibility\draw_place.comp" />
@@ -542,47 +470,16 @@
     <None Include="res\shaders\visibility\prepass_masked_mesh.mesh" />
     <None Include="res\shaders\visibility\prepass_mesh.mesh" />
     <None Include="res\shaders\visibility\meshlet_cull.task" />
+    <None Include="res\shaders\deprecated\smaa_blend.comp" />
+    <None Include="res\shaders\deprecated\smaa_edges.comp" />
+    <None Include="res\shaders\deprecated\smaa_weights.comp" />
+    <None Include="res\shaders\deprecated\fxaa.comp" />
+    <None Include="res\shaders\deprecated\cmaa2.glsl" />
+    <None Include="res\shaders\deprecated\cmaa2_deferred_resolve.comp" />
+    <None Include="res\shaders\deprecated\cmaa2_edges.comp" />
+    <None Include="res\shaders\deprecated\cmaa2_shape_candidates.comp" />
+    <None Include="res\shaders\deprecated\cmaa2_indirect_args.comp" />
   </ItemGroup>
-  <PropertyGroup>
-    <!-- Include Directories for project-wide usage -->
-    <IncludePath>$(ProjectDir)src;$(ProjectDir)src\common;$(ProjectDir)res;$(ProjectDir)vendor\vulkan\include;$(ProjectDir)vendor;$(ProjectDir)vendor\simdjson;$(ProjectDir)vendor\im_gui;$(ProjectDir)vendor\enikiTS;$(ProjectDir)vendor\meshoptimizer;$(ProjectDir)vendor\tracy;$(IncludePath)</IncludePath>
-    <!-- Library Directories for project-wide usage -->
-    <LibraryPath>$(ProjectDir)vendor\glfw\lib;$(ProjectDir)vendor\vulkan\lib;$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <ItemDefinitionGroup>
-    <Link>
-      <!-- Link Libraries -->
-      <AdditionalDependencies>
-    glfw3.lib;vulkan-1.lib;shaderc_combined.lib;
-    kernel32.lib;user32.lib;gdi32.lib;winmm.lib;
-    %(AdditionalDependencies)
-  </AdditionalDependencies>
-    </Link>
-    <PreBuildEvent>
-      <Command>
-      REM Compile Shaders
-      IF "$(Configuration)|$(Platform)"=="Debug|x64" (
-          call "$(ProjectDir)res\shaders\compile_shaders.bat"
-      )
-      IF "$(Configuration)|$(Platform)"=="Release|x64" (
-          call "$(ProjectDir)res\shaders\compile_shaders.bat"
-      )
-    </Command>
-    </PreBuildEvent>
-    <ClCompile>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Release|x64'">_UNICODE;UNICODE;NDEBUG;TRACY_ENABLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|x64'">pch.h</PrecompiledHeaderFile>
-      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Release|x64'">MultiThreadedDLL</RuntimeLibrary>
-      <BufferSecurityCheck Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</BufferSecurityCheck>
-    </ClCompile>
-    <ClCompile>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_UNICODE;UNICODE;TRACY_ENABLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
-      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">pch.h</PrecompiledHeaderFile>
-      <RuntimeLibrary Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">MultiThreadedDebugDLL</RuntimeLibrary>
-    </ClCompile>
-  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>

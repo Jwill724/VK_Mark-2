@@ -1,0 +1,125 @@
+//#version 450
+//
+//#extension GL_GOOGLE_include_directive : require
+//#extension GL_ARB_separate_shader_objects : require
+//
+//#include "../include/common.glsl"
+//#include "../include/cmaa2.glsl"
+//
+// ***************IMPORTANT NOTE****************
+// This pass requires a full tone map image copy prior for the resolve.
+// Cmaa2 doesn't have enough full image data due to the indirect dispatch nature,
+// so a the load copy can't be performed in here. I recommend during the tonemap pass
+// to just write out tonemap into the aa color target for this pass to overwrite.
+//
+//// Original implementation: https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
+//
+//layout(local_size_x = 32) in;
+//
+//layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inTonemap;
+//layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outColor;
+//
+//uint quadIndexFromQuadPos(uvec2 quadPos, uint halfWidth)
+//{
+//	return quadPos.y * halfWidth + quadPos.x;
+//}
+//
+//uint decodeOffsetXY(uint headValue)
+//{
+//	return (headValue >> CMAA2_HEAD_OFFSETXY_SHIFT) & CMAA2_HEAD_OFFSETXY_MASK;
+//}
+//
+//uint decodeItemIndex(uint headValue)
+//{
+//	return headValue & CMAA2_HEAD_INDEX_MASK;
+//}
+//
+//layout(push_constant) uniform CMAA2Push {
+//	uint halfWidth;
+//	uint maxShapeCandidates;
+//	uint maxDeferredItems;
+//	uint maxDeferredLocations;
+//} pc;
+//
+//void main()
+//{
+//	Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
+//
+//	Cmaa2DeferredLocationsBuffer locations = getCMAA2DeferredLocationsBuffer();
+//
+//	Cmaa2DeferredHeadsBuffer heads = getCMAA2DeferredHeadsBuffer();
+//
+//	Cmaa2DeferredItemsBuffer items = getCMAA2DeferredItemsBuffer();
+//
+//	SceneData scene = getSceneData();
+//
+//	uint locationCount = control.control[CMAA2_CTRL_DEFERRED_LOCATION_COUNT];
+//	if (locationCount > pc.maxDeferredLocations) {
+//		locationCount = pc.maxDeferredLocations;
+//	}
+//
+//	uint locationIndex = gl_GlobalInvocationID.x;
+//	if (locationIndex >= locationCount) return;
+//
+//	uint fullWidth = uint(scene.viewportSize.x);
+//	uint fullHeight = uint(scene.viewportSize.y);
+//
+//	uint packedQuad = locations.quadIDs[locationIndex];
+//
+//	uint quadX = packedQuad >> 16u;
+//	uint quadY = packedQuad & 0xFFFFu;
+//
+//	uint quadCountX = pc.halfWidth;
+//	uint quadCountY = (fullHeight + 1u) >> 1u;
+//
+//	if (quadX >= quadCountX || quadY >= quadCountY) return;
+//
+//	uvec2 quadPos = uvec2(quadX, quadY);
+//
+//	ivec2 basePixel = ivec2(quadPos << 1u);
+//	if (uint(basePixel.x) >= fullWidth || uint(basePixel.y) >= fullHeight) return;
+//
+//	uint headIndex = quadIndexFromQuadPos(quadPos, pc.halfWidth);
+//	uint headValue = heads.heads[headIndex];
+//
+//	// Nothing queued for this quad
+//	if (headValue == CMAA2_EMPTY_HEAD) return;
+//
+//	for (uint offsetXY = 0u; offsetXY < 4u; offsetXY++)
+//	{
+//		ivec2 pixelPos = basePixel + pixelOffsets[offsetXY];
+//		if (uint(pixelPos.x) >= fullWidth || uint(pixelPos.y) >= fullHeight) continue;
+//
+//		vec4 resolved = texelFetch(inTonemap, pixelPos, 0);
+//
+//		uint walker = headValue;
+//		while (walker != CMAA2_EMPTY_HEAD)
+//		{
+//			uint nodeOffsetXY = decodeOffsetXY(walker);
+//			uint itemIndex = decodeItemIndex(walker);
+//
+//			if (itemIndex >= pc.maxDeferredItems) break;
+//
+//			uvec4 item = items.items[itemIndex];
+//			uint prevHead = item.x;
+//
+//			if (nodeOffsetXY == offsetXY) {
+//				vec2 unpackedRG = unpackHalf2x16(item.y);
+//				vec2 unpackedBA = unpackHalf2x16(item.z);
+//
+//				resolved = vec4(
+//					unpackedRG.x,
+//					unpackedRG.y,
+//					unpackedBA.x,
+//					unpackedBA.y
+//				);
+//				break;
+//			}
+//
+//			walker = prevHead;
+//		}
+//
+//		imageStore(outColor, pixelPos, resolved);
+//	}
+//}
+//

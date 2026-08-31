@@ -17,7 +17,11 @@ void main() {
 	ClusteredData clustered = getClusteredData();
 	SceneData scene = getSceneData();
 
-	if (tileCoord.x >= clusteredData.tileCountX || tileCoord.y >= clusteredData.tileCountY) return;
+	bool isHiZInvalid = scene.temporal.y == 0;
+
+	if ((tileCoord.x >= clusteredData.tileCountX ||
+		tileCoord.y >= clusteredData.tileCountY) ||
+		isHiZInvalid) return;
 
 	ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
 
@@ -73,7 +77,13 @@ void main() {
 	float nearPlane = scene.cameraClips.x;
 	float farPlane  = scene.cameraClips.y;
 
-	uint minSlice = depthToSliceLog(minLinearDepth, nearPlane, farPlane, clusteredData.zSlices);
+	float transparentNear = uintBitsToFloat(
+		getClusterTileTransparentNearBuffer().nearDepth[tileIndex]);
+
+	float rangeNear = min(minLinearDepth, transparentNear);
+
+	uint minSlice = depthToSliceLog(
+		clamp(rangeNear, nearPlane, farPlane), nearPlane, farPlane, clusteredData.zSlices);
 	minSlice = min(minSlice, clusteredData.zSlices - 1u);
 
 	tsrBuf.ranges[tileIndex] = uvec2(minSlice, maxSlice);

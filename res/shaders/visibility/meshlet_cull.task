@@ -10,6 +10,8 @@
 #include "../include/common.glsl"
 #include "../include/depth.glsl"
 #include "../include/meshlet_cull.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
 
 layout(local_size_x = TASK_GROUP_SIZE) in;
 
@@ -56,6 +58,8 @@ void main()
 
 	float maxMip = float(textureQueryLevels(inHiZ) - 1);
 
+	bool hiZValid = scene.temporal.z != 0u;
+
 	if (inRange)
 	{
 		Meshlet ml  = getMeshletBuffer().meshlets[meshletID];
@@ -75,6 +79,7 @@ void main()
 		}
 		else if (pc.phase != 0u &&
 				 !DBG(disableOcclusionCull) &&
+				 hiZValid &&
 				 !sphere_hiz_visible(
 					 inHiZ, centerWS, radiusWS,
 					 maxMip, scene.viewProj))

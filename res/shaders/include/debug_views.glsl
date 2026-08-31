@@ -15,25 +15,18 @@ const uint DBG_VIS_INSTANCE   = 9u;
 const uint DBG_VIS_TRIANGLE   = 10u;
 const uint DBG_VIS_LOD        = 11u;
 const uint DBG_MESHLETS       = 12u;
-const uint DBG_MESHLET_FACING = 13u;
-const uint DBG_COUNT          = 14u;
+//const uint DBG_MESHLET_FACING = 13u;
+const uint DBG_COUNT          = 13u;
 
 #define DBG_BIT(v) (1u << (v))
 
-// Vis views need the visibility buffer, which only the deferred path consumes.
-const uint DBG_CAPS_FORWARD =
-	DBG_BIT(DBG_OFF)       | DBG_BIT(DBG_ALBEDO)     | DBG_BIT(DBG_NORMALS)   |
-	DBG_BIT(DBG_ROUGHNESS) | DBG_BIT(DBG_METALLIC)   | DBG_BIT(DBG_EMISSIVE)  |
-	DBG_BIT(DBG_SSAO)      | DBG_BIT(DBG_SS_SHADOWS) | DBG_BIT(DBG_CASCADES);
+const uint DBG_CAPS_TEMPORAL =
+	DBG_BIT(DBG_OFF) | DBG_BIT(DBG_SSAO);
 
-const uint DBG_CAPS_DEFERRED =
-	DBG_CAPS_FORWARD       |
-	DBG_BIT(DBG_VIS_INSTANCE) | DBG_BIT(DBG_VIS_TRIANGLE) | DBG_BIT(DBG_VIS_LOD);
-
-const uint DBG_CAPS_MESH =
-	DBG_CAPS_DEFERRED |
-	DBG_BIT(DBG_MESHLETS) |
-	DBG_BIT(DBG_MESHLET_FACING);
+bool debugViewTemporal(uint view)
+{
+	return view < DBG_COUNT && (DBG_CAPS_TEMPORAL & DBG_BIT(view)) != 0u;
+}
 
 bool debugViewSupported(uint caps, uint view)
 {
@@ -59,13 +52,6 @@ vec3 debugLodColor(uint lodIdx)
 vec3 debugCascadeOverlay(vec3 albedo, uint cascadeIdx)
 {
 	return mix(albedo, cascadeColor(cascadeIdx), 0.6);
-}
-
-uint debugCapsForMode(uint mode)
-{
-	if (mode == RENDERING_MODE_MESH_SHADERS)        return DBG_CAPS_MESH;
-	if (mode == RENDERING_MODE_VISIBILITY_DEFERRED) return DBG_CAPS_DEFERRED;
-	return DBG_CAPS_FORWARD;
 }
 
 #endif

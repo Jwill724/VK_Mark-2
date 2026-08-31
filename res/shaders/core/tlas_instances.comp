@@ -1,0 +1,45 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_KHR_shader_subgroup_ballot : require
+
+#include "../include/rt_core.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform PC { uint rtInstanceCount; } tp;
+
+void main()
+{
+	uint slot = gl_GlobalInvocationID.x;
+	if (slot >= tp.rtInstanceCount) return;
+
+	uint instanceID    = getRTRowsBuffer().rows[slot];
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[instanceID];
+
+	mat4 m = getInstanceTransform(inst);
+
+	RTInstance out_;
+	out_.row0 = vec4(m[0][0], m[1][0], m[2][0], m[3][0]);
+	out_.row1 = vec4(m[0][1], m[1][1], m[2][1], m[3][1]);
+	out_.row2 = vec4(m[0][2], m[1][2], m[2][2], m[3][2]);
+
+	bool masked       = (inst.flags & ALPHA_TESTED) != 0u;
+	bool transmissive = (inst.flags & TRANSMISSIVE) != 0u;
+
+	uint mask = transmissive
+		? RT_MASK_TRANSMISSIVE
+		: (masked ? RT_MASK_ALPHA_TESTED : RT_MASK_OPAQUE);
+
+	uint rtFlags = 0u;
+	if (transmissive || (inst.flags & DOUBLE_SIDED) != 0u)
+		rtFlags |= RT_INSTANCE_FLAG_TRIANGLE_FACING_CULL_DISABLE;
+	if (!masked)
+		rtFlags |= RT_INSTANCE_FLAG_FORCE_OPAQUE;
+
+	out_.customIndexAndMask = (instanceID & 0x00FFFFFFu) | (mask << 24);
+	out_.sbtOffsetAndFlags  = rtFlags << 24;
+	out_.blasAddress        = getBlasAddressesBuffer().blasAddrs[rtBlasMeshID(inst)];
+
+	getRTInstancesBuffer().instances[slot] = out_;
+}

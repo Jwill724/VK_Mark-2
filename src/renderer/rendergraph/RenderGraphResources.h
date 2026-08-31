@@ -30,6 +30,9 @@ class BindlessBDATable;
 class Scene;
 class Swapchain;
 class RenderGraph;
+class PipelineManager;
+class DescriptorManager;
+class NRDContext;
 
 struct RenderPassExecutionContext
 {
@@ -46,6 +49,11 @@ struct RenderPassExecutionContext
 	const RD::RenderStateInfo*       frameState  = nullptr;
 	const Swapchain*                 swapchain   = nullptr;
 
+	const NRDContext*  NRDReflect        = nullptr;
+	const NRDContext*  NRDShadow         = nullptr;
+	DescriptorManager* descriptorManager = nullptr;
+	PipelineManager*   pipelineManager   = nullptr;
+
 	PassScheduleInfo* scheduleInfo = nullptr;
 
 	RenderGraph* renderGraph = nullptr;
@@ -57,6 +65,8 @@ class RenderScope
 {
 public:
 	static constexpr size_t PUSH_ALIGNMENT = 16u;
+
+	void SkipPushConstant(bool skip) noexcept { m_bSkipPushConstant = skip; }
 
 	template<typename T>
 	void SetPush(const T& data) noexcept

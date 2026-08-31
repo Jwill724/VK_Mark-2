@@ -20,7 +20,7 @@ void RegisterTransparentForwardPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetPhase(RenderPhase::Shading)
+				.SetPhase(RenderPhase::Lighting)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
@@ -32,6 +32,10 @@ void RegisterTransparentForwardPass(
 					RD::Renderer_RenderTarget::DepthResolved,
 					RD::ImageAccess::DepthRead)
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::RTShadowDenoised,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
 					RD::ImageAccess::GraphicsColorWrite,
@@ -39,6 +43,11 @@ void RegisterTransparentForwardPass(
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentRevealage,
+					RD::ImageAccess::GraphicsColorWrite,
+					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::TransparentVelocityAccum,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
@@ -57,17 +66,18 @@ void RegisterTransparentForwardPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto indirectBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
-
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
-
-						const auto& pipeline  = pass.pipelines[PIPE_ID_MAIN];
+						const auto taskDispatchBuffer =
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer;
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& rtShadowDenoised = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTShadowDenoised);
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
 						const auto& transparentReveal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
+						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
+						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 
 						AttachmentDesc tAccumAttach{};
 						tAccumAttach.imageView = transparentAccum.m_imageView;
@@ -79,6 +89,11 @@ void RegisterTransparentForwardPass(
 						tRevealAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 						tRevealAttach.SetColor({ 1.0f, 0.0f, 0.0f, 0.0f });
 
+						AttachmentDesc tVelocityAccumAttach{};
+						tVelocityAccumAttach.imageView = transparentVelocityAccum.m_imageView;
+						tVelocityAccumAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+						tVelocityAccumAttach.SetColor({ 0.0f });
+
 						AttachmentDesc depthAttach{};
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
@@ -87,18 +102,24 @@ void RegisterTransparentForwardPass(
 						depthAttach.SetDepth(0);
 
 						pso.UpdateRenderInfo({ depthResolved.Width(), depthResolved.Height() }, // All images are the same size as renderer drawExtent
-							{ tAccumAttach, tRevealAttach, depthAttach });
+							{ tAccumAttach, tRevealAttach, tVelocityAccumAttach, depthAttach });
 
 						pso.SetPush(ctx.profiler->forwardPush);
 
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							rtShadowDenoised,
+							nearestClampSampler);
+
 						pso.BeginRendering(cmd);
 
-						pso.DrawIndexedIndirectCount(
+						pso.DrawMeshTasksIndirectCount(
 							cmd,
 							RD::VIS_SLOT_TRANSPARENT,
-							indirectBuffer,
+							taskDispatchBuffer,
 							indirectCountBuffer,
-							pipeline,
+							pass.pipelines[PIPE_ID_MAIN],
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

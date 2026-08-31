@@ -6,7 +6,7 @@ VulkanRenderer/
 bin/
 lib/
 
-# Visual Studio noise
+# Visual Studio
 *.sln
 *.user
 *.VC.db
@@ -20,32 +20,42 @@ lib/
 *.exe
 *.cache
 *.editorconfig
-
 *.ini
 
-# Random text files
+# Misc
 Renderer-Goals.txt
 
 # Assets
-res/assets/Bistro.glb
-res/unlisted_assets/
+res/cache/
+res/assets/bistro/
+res/assets/sponza_intel/
+res/assets/San_Miguel/
+res/assets/node_modules/
+res/assets/*.mjs
+res/assets/*.tsv
+res/assets/*.txt
+res/assets/package-lock.json
 
-# Ignore SPIR-V shader binaries
+!res/assets/envhdr/
+!res/assets/city/
+!res/assets/*.glb
+!res/assets/**/*.glb
+
+res/assets/Bistro.glb
+
+# Shaders
 *.spv
 *.spv.dis
 
-# CMake files
+# CMake
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
 
-# Ignore Vulkan SDK JSON cache if it ever pops up
+# Vulkan
 vk_layer_settings.txt
 
-# Don't ignore source/assets
 !src/
 !res/
 !vendor/
- 
- 

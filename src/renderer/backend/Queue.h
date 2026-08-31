@@ -61,6 +61,11 @@ public:
 	static void          DestroyFence(VkDevice device, VkFence fence);
 	static void          DestroySemaphore(VkDevice device, VkSemaphore semaphore);
 
+	bool IsValid() const noexcept
+	{
+		return m_familyIndex != UINT32_MAX && m_queue != VK_NULL_HANDLE;
+	}
+
 protected:
 	TimelineSync CreateTimelineSemaphore(VkDevice device);
 
@@ -82,7 +87,7 @@ class GraphicsQueue final : public GPUQueue
 public:
 	bool SupportsTimestamps() const noexcept { return m_timestampValidBits > 0; }
 
-	void SubmitFrame(
+	VkResult SubmitFrame(
 		const std::vector<VkSemaphoreSubmitInfo>& waitInfos,
 		VkCommandBuffer                           cmdBuffer,
 		VkSemaphore                               signalSemaphore,
@@ -129,11 +134,6 @@ public:
 
 	uint64_t AdvanceTimeline() { return m_sync.AdvanceTimeline(); }
 
-	bool IsValid() const noexcept
-	{
-		return m_familyIndex != UINT32_MAX && m_queue != VK_NULL_HANDLE;
-	}
-
 private:
 	TimelineSync m_sync;
 };
@@ -155,11 +155,6 @@ public:
 	uint64_t AdvanceTimeline() { return m_sync.AdvanceTimeline(); }
 
 	bool SupportsTimestamps() const noexcept { return m_timestampValidBits > 0; }
-
-	bool IsValid() const noexcept
-	{
-		return m_familyIndex != UINT32_MAX && m_queue != VK_NULL_HANDLE;
-	}
 
 private:
 	TimelineSync m_sync;

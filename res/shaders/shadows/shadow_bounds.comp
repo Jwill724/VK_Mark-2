@@ -100,10 +100,6 @@ void main()
 		return;
 	}
 
-	// frustum slice corners -> light-space AABB
-	float tanHalfFovY = 1.0 / sceneData.proj[1][1];
-	float tanHalfFovX = 1.0 / sceneData.proj[0][0];
-
 	vec3 lsMin = vec3( 1e30);
 	vec3 lsMax = vec3(-1e30);
 
@@ -113,8 +109,8 @@ void main()
 	for (uint zi = 0u; zi < 2u; ++zi)
 	{
 		float z = (zi == 0u) ? sliceNear : sliceFar;
-		float x = z * tanHalfFovX;
-		float y = z * tanHalfFovY;
+		float x = z * sceneData.tanHalfFov.x;
+		float y = z * sceneData.tanHalfFov.y;
 
 		for (uint corner = 0u; corner < 4u; ++corner)
 		{

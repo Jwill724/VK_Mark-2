@@ -16,12 +16,23 @@ public:
 
 	Debugging Debugging;
 
-	std::string      GetPhysicalDeviceName()  const { return m_pDeviceName; }
-	size_t           GetNonCoherentAtomSize() const { return m_deviceLimits.nonCoherentAtomSize; }
-	uint32_t         GetMaxPushConstantSize() const { return m_deviceLimits.maxPushConstantsSize; }
-	uint32_t         GetMaxMemoryAllocation() const { return m_deviceLimits.maxMemoryAllocationCount; }
-	uint32_t         GetMaxAnisotropy()       const { return static_cast<uint32_t>(m_deviceLimits.maxSamplerAnisotropy); }
-	float            GetTimestampPeriod()     const { return m_deviceLimits.timestampPeriod; }
+	std::string GetPhysicalDeviceName()  const { return m_pDeviceName; }
+
+	const DeviceProperties& GetProperties() const noexcept { return m_props; }
+	size_t      GetNonCoherentAtomSize() const { return m_props.limits.nonCoherentAtomSize; }
+	uint32_t    GetMaxPushConstantSize() const { return m_props.limits.maxPushConstantsSize; }
+	uint32_t    GetMaxMemoryAllocation() const { return m_props.limits.maxMemoryAllocationCount; }
+	uint32_t    GetMaxAnisotropy()       const { return static_cast<uint32_t>(m_props.limits.maxSamplerAnisotropy); }
+	float       GetTimestampPeriod()     const { return m_props.limits.timestampPeriod; }
+
+	VkDeviceSize GetMinASScratchAlignment() const noexcept
+	{
+		return m_props.accelStruct.minAccelerationStructureScratchOffsetAlignment;
+	}
+	uint64_t GetMaxASInstanceCount() const noexcept
+	{
+		return m_props.accelStruct.maxInstanceCount;
+	}
 
 	uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
@@ -38,9 +49,42 @@ public:
 
 	void InitLogical(const PhysicalDeviceCandidate& candidate);
 
-	void IdleDevice() const;
-
 	void Cleanup();
+
+	// -----------------------------
+	// Diagnostics
+	// -----------------------------
+
+	bool IsDeviceFaultSupported()  const noexcept { return pfn_vkGetDeviceFaultInfoEXT != nullptr; }
+	bool AreCheckpointsSupported() const noexcept { return pfn_vkCmdSetCheckpointNV != nullptr; }
+	bool IsObjectNamingSupported() const noexcept { return pfn_vkSetDebugUtilsObjectNameEXT != nullptr; }
+
+	enum class MarkerBackend { None, NvCheckpoints, AmdBufferMarker };
+
+	MarkerBackend GetMarkerBackend() const noexcept { return m_markerBackend; }
+
+	void InitCrashMarkers(uint32_t framesInFlight, uint32_t maxPassesPerBatch);
+	void CleanupCrashMarkers();
+	void ResetCrashMarkers(uint32_t frameIndex) const;
+
+	void MarkPassBegin(VkCommandBuffer cmd, QueueType qType, uint32_t frameIndex, uint32_t passIndex) const;
+	void MarkPassEnd(VkCommandBuffer cmd, QueueType qType, uint32_t frameIndex, uint32_t passIndex) const;
+
+	void DumpDeviceState(const char* context) const;
+
+	void ReportDeviceFault(const char* context) const;
+	void ReportCheckpoints(const char* context) const;
+	void ReportMemoryBudget(const char* context) const;
+
+	void SetObjectName(uint64_t handle, VkObjectType type, const char* name) const;
+
+	template<typename T>
+	void SetObjectName(T handle, VkObjectType type, const char* name) const
+	{
+		SetObjectName(reinterpret_cast<uint64_t>(handle), type, name);
+	}
+
+	void SetCheckpoint(VkCommandBuffer cmd, const char* marker) const;
 
 	// -----------------------------
 	// Command buffer/pool creation
@@ -118,20 +162,19 @@ public:
 
 	GraphicsQueue& GetGraphicsQueue() { return m_graphicsQueue; }
 	const GraphicsQueue& GetGraphicsQueue() const { return m_graphicsQueue; }
-	PresentQueue&  GetPresentQueue() { return m_presentQueue; }
+	PresentQueue& GetPresentQueue() { return m_presentQueue; }
 	const PresentQueue& GetPresentQueue() const { return m_presentQueue; }
 	TransferQueue& GetTransferQueue() { return m_transferQueue; }
 	const TransferQueue& GetTransferQueue() const { return m_transferQueue; }
-	ComputeQueue&  GetComputeQueue() { return m_computeQueue; }
+	ComputeQueue& GetComputeQueue() { return m_computeQueue; }
 	const ComputeQueue& GetComputeQueue() const { return m_computeQueue; }
 
 private:
 	DeviceContext              m_context;
-	VkSurfaceKHR               m_surface        = VK_NULL_HANDLE;
+	VkSurfaceKHR               m_surface = VK_NULL_HANDLE;
 	std::string                m_pDeviceName;
 
-	VkPhysicalDeviceProperties m_deviceProps{};
-	VkPhysicalDeviceLimits     m_deviceLimits{};
+	DeviceProperties m_props{};
 
 	SwapchainSupportDetails    m_swapchainSupportDetails{};
 
@@ -147,7 +190,7 @@ private:
 		VkCommandPool GetPool(uint32_t threadID, QueueType type) const noexcept
 		{
 			VkCommandPool selected = VK_NULL_HANDLE;
-			switch(type)
+			switch (type)
 			{
 			case QueueType::Graphics:
 				selected = m_perThreadPools[threadID].graphicsPool;
@@ -191,7 +234,6 @@ private:
 		DeferredCmds.m_recordedComputeCmds.push_back(cmd);
 	}
 
-
 	VkResult CreateDebugUtilsMessengerEXT(
 		const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
 		const VkAllocationCallbacks* pAllocator);
@@ -214,13 +256,38 @@ private:
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_EXT_MESH_SHADER_EXTENSION_NAME,
-
+		VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
 		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+		//VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
 		VK_KHR_RAY_QUERY_EXTENSION_NAME,
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-		VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME
+		VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME,
+		VK_EXT_DEVICE_FAULT_EXTENSION_NAME
 	};
 
 	std::vector<const char*> GetRequiredExtensions() const;
+
+	const std::vector<const char*> m_optionalDeviceExtensions
+	{
+		VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME,
+		VK_AMD_BUFFER_MARKER_EXTENSION_NAME,
+	};
+
+	std::vector<const char*> m_enabledDeviceExtensions;
+
+	std::vector<const char*> BuildEnabledExtensionList() const;
+
+	MarkerBackend m_markerBackend = MarkerBackend::None;
+
+	std::vector<std::string> m_markerNamesGraphics;
+	std::vector<std::string> m_markerNamesCompute;
+
+	VkBuffer           m_markerBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory     m_markerMemory = VK_NULL_HANDLE;
+	volatile uint32_t* m_markerMapped = nullptr;
+	uint32_t           m_markerFramesInFlight = 0;
+	uint32_t           m_markerPassesPerBatch = 0;
+
+	uint32_t MarkerSlot(QueueType qType, uint32_t frameIndex, uint32_t passIndex, bool end) const noexcept;
+	const char* MarkerName(QueueType qType, uint32_t value) const;
 };

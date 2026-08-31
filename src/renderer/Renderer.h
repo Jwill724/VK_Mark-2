@@ -5,7 +5,9 @@
 #include "backend/memory/BindlessBDATable.h"
 #include "backend/memory/BindlessImageTable.h"
 #include "backend/Swapchain.h"
+#include "backend/NRDContext.h"
 #include "frame/FrameContext.h"
+#include "frame/ResizeCoordinator.h"
 #include "Material.h"
 #include "Mesh.h"
 #include "RendererDefinitions.h"
@@ -26,15 +28,6 @@ struct GLFWwindow;
 struct SceneUploadBatch;
 struct ModelAsset;
 
-inline constexpr bool LensFlareOn           = true;
-inline constexpr bool ChromaticAberrationOn = true;
-inline constexpr bool BloomOn               = true;
-inline constexpr bool VolumetricsOn         = true;
-inline constexpr bool ShadowsOn             = true;
-inline constexpr bool ScreenSpaceShadowsOn  = true;
-inline constexpr bool ProfilerViewOn        = false;
-inline constexpr bool SettingsTabOn         = true;
-
 // Manages core vulkan state and memory allocation.
 // All primary resources are stored here, gpu buffers, image, frame data.
 // Bindless textures, push descriptors for render targets, indirect buffer table for bindless gpu buffers.
@@ -46,7 +39,6 @@ public:
 		JobSystem& jobSystem);
 	void Cleanup();
 
-	// Calls idle for device, should be only used at shutdown
 	void StallDevice();
 
 	bool ShouldRenderImgui() const noexcept
@@ -87,6 +79,7 @@ public:
 	bool IsFirstFrame() const noexcept { return m_frameNumber == 0; }
 
 	const std::vector<uint32_t>& GetMaterialFlagsById() { return m_materialFlagsIDs; }
+	const std::vector<uint64_t>& GetBlasAddresses() { return m_blasAddresses; }
 
 	void UpdateRendererContext(GLFWwindow* window);
 
@@ -94,6 +87,13 @@ public:
 	void EndAssetTimer();
 	void EndSceneUpdateTimer() { m_profiler.getStats().sceneUpdateTime.Add(m_profiler.EndTimerMS()); }
 	void EndDrawTimer() { m_profiler.getStats().drawTime.Add(m_profiler.EndTimerMS()); }
+
+	void RequestResize(ResizeReason reason) { m_resize.Request(reason); }
+	bool IsResizePending() const { return m_resize.IsPending(); }
+	uint64_t GetResizeGeneration() const { return m_resize.GetGeneration(); }
+
+	// Returns false when the renderer is not presentable this frame.
+	bool ResolveResize(Extents2D liveExtent);
 
 private:
 	uint32_t m_frameNumber = 0;
@@ -116,6 +116,8 @@ private:
 
 	void CheckCSMAtlasExtentUpdate();
 
+	void UpdateShadowMode();
+
 	void BatchUploadTextures(
 		std::vector<SceneUploadBatch>& batches,
 		std::vector<std::shared_ptr<ModelAsset>>& assets,
@@ -127,6 +129,8 @@ private:
 	void BatchUploadMaterials(
 		std::vector<SceneUploadBatch>& batches,
 		std::vector<std::shared_ptr<ModelAsset>>& assets);
+
+	std::vector<uint64_t> BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuffer& outScratch);
 
 	void FreeAllAssetTextures();
 
@@ -149,8 +153,6 @@ private:
 	// Will vary, vsync is 2 contexts. When vsync off its 3.
 	std::array<FrameContext, RD::MAX_FRAMES_IN_FLIGHT> m_frameContexts;
 
-	RD::RenderingMode m_activeRenderingMode = RD::RenderingMode::UNDEFINED;
-
 	BindlessBDATable m_globalAddressTable;
 	std::vector<Material> m_materials;
 	MeshRegistry m_registeredMeshes;
@@ -169,27 +171,40 @@ private:
 	Allocator m_allocator;
 
 	ClusterBufferSizes m_clusterBufferSizes;
-	Cmaa2BufferSizes m_cmaa2BufferSizes;
+	RTRayListLayout m_rtRayListLayout;
 
-	bool m_bHasDrawExtentResized = false;
+	NRDContext m_nrdReflectContext;
+	NRDContext m_nrdShadowContext;
+
+	AllocatedBuffer m_blasStorage;
+	std::vector<VkAccelerationStructureKHR> m_blasHandles;
+
+	std::vector<uint64_t> m_blasAddresses;
 
 	Profiler m_profiler;
 
 	RD::ShadowQuality m_currentShadowQuality;
 
 	void InitRenderSettings(
-		RD::RenderingMode renderMode,
 		bool enableLensFlare,
 		bool enableChromaticAberration,
 		bool enableBloom,
 		bool enableShadows,
 		bool enableSSS,
 		bool enableVolumetrics,
+		bool enableRTReflections,
 		RD::AntiAliasingMethod aaMode,
-		RD::AmbientOcclusionMethod aoMode,
+		RD::GIMethod giMode,
 		RD::ShadowQuality shadowQuality,
+		RD::SunShadowFilter sunShadowFilter,
 		bool enableProfilerView,
 		bool enableSettings);
+
+	ResizeCoordinator m_resize;
+
+	void DrainFrameContexts();
+	void RebuildFrameContexts();
+	void ValidateExtentCoherence();
 
 	// Must always initialize to read states
 	bool m_bRenderTargetsLayoutsTransitioned = false;
@@ -197,4 +212,7 @@ private:
 	uint32_t m_activeEnvSet = UINT32_MAX;
 
 	glm::vec4 m_luminanceSums[RD::MAX_LUMINANCE_GROUPS] = { glm::vec4(0.0f) };
+	glm::vec3 m_shIrradiance[RD::MAX_ENVIRONMENT_SETS] = { glm::vec3(0.0f) };
+
+	std::atomic<uint32_t> m_checkpointPassCounter{ 0 };
 };

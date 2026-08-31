@@ -17,17 +17,10 @@ void main()
 {
 	Material mat = getMaterialBuffer().materials[inMaterialID];
 	SceneData scene = getSceneData();
-	DebugToggles debug = getDebugToggles();
-	float alpha = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w).a * mat.colorFactor.a;
+	float mipBias = scene.taaMipParams.x;
+	float alpha = SampleTextureBiasTAA(mat.albedoID, inUV, mipBias).a * mat.colorFactor.a;
 	if (alpha < mat.alphaCutoff) discard;
-	if (debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
-	{
-		outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID) | uint(gl_FrontFacing));
-	}
-	else
-	{
-		outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID));
-	}
+	outVisibility = uvec2(inPackedID, uint(gl_PrimitiveID) | uint(gl_FrontFacing));
 
 	vec3 n = inViewNormal;
 	if (!gl_FrontFacing) n = -n;

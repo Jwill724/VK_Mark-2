@@ -10,6 +10,8 @@ static bool HasRequiredQueues(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
 static bool CheckDeviceExtensionSupport(VkPhysicalDevice pDevice, const std::vector<const char*> deviceExtensions);
 static SwapchainSupportDetails QuerySwapchainSupport(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
 static QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice pDevice, VkSurfaceKHR surface);
+static bool QueryRayTracingSupport(VkPhysicalDevice pDevice);
+static bool QueryDeviceFaultSupport(VkPhysicalDevice pDevice);
 
 PhysicalDeviceCandidate PhysicalDeviceSelector::PickBest(
 	VkInstance instance,
@@ -73,14 +75,18 @@ std::optional<PhysicalDeviceCandidate> EvaluateDevice(
 		return std::nullopt;
 	}
 
-	PhysicalDeviceCandidate candidate{};
-	candidate.pDevice = pDevice;
-	candidate.queueIndices = FindQueueFamilies(pDevice, surface);
-	candidate.swapchainSupport = std::move(swapchainSupport);
+	if (!QueryRayTracingSupport(pDevice))
+		return std::nullopt;
 
-	vkGetPhysicalDeviceProperties(pDevice, &candidate.properties);
-	candidate.limits = candidate.properties.limits;
-	candidate.name = std::string(candidate.properties.deviceName);
+	if (!QueryDeviceFaultSupport(pDevice))
+		return std::nullopt;
+
+	PhysicalDeviceCandidate candidate{};
+	candidate.pDevice          = pDevice;
+	candidate.queueIndices     = FindQueueFamilies(pDevice, surface);
+	candidate.swapchainSupport = std::move(swapchainSupport);
+	candidate.props.Query(pDevice);
+	candidate.name             = std::string(candidate.props.core.properties.deviceName);
 
 	return candidate;
 }
@@ -216,4 +222,49 @@ SwapchainSupportDetails QuerySwapchainSupport(VkPhysicalDevice pDevice, VkSurfac
 	}
 
 	return details;
+}
+
+static bool QueryRayTracingSupport(VkPhysicalDevice pDevice)
+{
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR as{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+	VkPhysicalDeviceRayQueryFeaturesKHR rq{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
+	VkPhysicalDeviceRayTracingPositionFetchFeaturesKHR pf{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_POSITION_FETCH_FEATURES_KHR };
+	VkPhysicalDeviceMeshShaderFeaturesEXT ms{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT };
+
+	VkPhysicalDeviceFeatures2 feats{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	feats.pNext = &as;
+	as.pNext    = &rq;
+	rq.pNext    = &pf;
+	pf.pNext    = &ms;
+
+	vkGetPhysicalDeviceFeatures2(pDevice, &feats);
+
+	REQUIRE_HARDWARE(
+		as.accelerationStructure &&
+		as.descriptorBindingAccelerationStructureUpdateAfterBind &&
+		rq.rayQuery &&
+		pf.rayTracingPositionFetch &&
+		ms.meshShader && ms.taskShader,
+		"Requires ray query, position fetch, and mesh shaders — RTX 20 series and up");
+
+	return true;
+}
+
+static bool QueryDeviceFaultSupport(VkPhysicalDevice pDevice)
+{
+	VkPhysicalDeviceFaultFeaturesEXT fault{
+		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FAULT_FEATURES_EXT };
+
+	VkPhysicalDeviceFeatures2 feats{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	feats.pNext = &fault;
+
+	vkGetPhysicalDeviceFeatures2(pDevice, &feats);
+
+	REQUIRE_HARDWARE(fault.deviceFault, "Requires VK_EXT_device_fault");
+
+	return true;
 }

@@ -72,6 +72,8 @@ struct Flashlight final : public LocalLight
 	uint32_t m_cookieGoboID = UINT32_MAX;
 };
 
+struct SceneLightDesc;
+
 namespace LightingSystem
 {
 	inline struct alignas(16) FlashLightSettings
@@ -90,6 +92,8 @@ namespace LightingSystem
 		float radius = 20.0f;
 		float outerDeg = 38.0f;
 		float innerDeg = 22.0f;
+
+		float sourceRadius = 0.04f;
 	} _flashlightSettings{};
 
 	inline struct LightIDTable {
@@ -122,6 +126,10 @@ namespace LightingSystem
 	extern bool _dynamicLightsEnabled;
 
 	const uint32_t& GetActiveLightCount();
+	const uint32_t& GetLightBufferCount();
+
+	uint32_t AddSceneLight(const SceneLightDesc& desc);
+	void     RemoveSceneLight(uint32_t lightID);
 
 	extern std::vector<LocalLight> _globalLightList;
 

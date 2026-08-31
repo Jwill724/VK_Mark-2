@@ -324,12 +324,12 @@ void GPUQueue::DestroySemaphore(VkDevice device, VkSemaphore semaphore)
 }
 
 
-// ----------------------------------------------------------
-// SPECIAL RENDERER QUEUES FOR FINAL SUBMIT AND PRESENTATION
-// ----------------------------------------------------------
+// --------------------------------------------------
+// SPECIAL RENDERER QUEUES FOR FINAL GRAPHICS SUBMIT
+// --------------------------------------------------
 
 // Graphics queue
-void GraphicsQueue::SubmitFrame(
+VkResult GraphicsQueue::SubmitFrame(
 	const std::vector<VkSemaphoreSubmitInfo>& waitInfos,
 	VkCommandBuffer                           cmdBuffer,
 	VkSemaphore                               signalSemaphore,
@@ -343,7 +343,7 @@ void GraphicsQueue::SubmitFrame(
 
 	VkSemaphoreSubmitInfo signalInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO };
 	signalInfo.semaphore = signalSemaphore;
-	signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+	signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
 	VkSubmitInfo2 submitInfo{ VK_STRUCTURE_TYPE_SUBMIT_INFO_2 };
 	submitInfo.waitSemaphoreInfoCount   = static_cast<uint32_t>(waitInfos.size());
@@ -353,7 +353,7 @@ void GraphicsQueue::SubmitFrame(
 	submitInfo.signalSemaphoreInfoCount = 1;
 	submitInfo.pSignalSemaphoreInfos    = &signalInfo;
 
-	VK_CHECK(vkQueueSubmit2(m_queue, 1, &submitInfo, fence));
+	return vkQueueSubmit2(m_queue, 1, &submitInfo, fence);
 }
 
 void GraphicsQueue::InitTimelineSemaphore()

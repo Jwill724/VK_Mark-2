@@ -10,14 +10,13 @@
 #include "../../../scene/Scene.h"
 
 static constexpr size_t PIPE_ID_MAIN = 0;
-static constexpr size_t PIPE_ID_MESH = 1;
 
 void RegisterDirectionalCSMPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
-		"Cascaded_Shadow_Map_Atlas",
+		"Sun_CSM",
 		pipelines,
 		[&](RenderPassBuilder& builder)
 		{
@@ -30,7 +29,9 @@ void RegisterDirectionalCSMPass(
 						return
 							ctx.frameState->IsShadowsOn() &&
 							ctx.frameState->InstancesActive() &&
-							!ctx.frameState->DebugRenderFastPath();
+							!ctx.frameState->IsCSMAtlasCached() &&
+							!ctx.frameState->DebugRenderFastPath() &&
+							!ctx.frameState->RTShadowsEnabled();
 					})
 
 				.WriteResource(
@@ -53,10 +54,7 @@ void RegisterDirectionalCSMPass(
 						const auto& frameCtx = ctx.frameCtx;
 						VkCommandBuffer cmd  = ctx.commandBuffer;
 
-						const bool bMeshPath = ctx.frameState->IsMeshShaderPath();
-
 						const auto& atlas = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
-
 						AttachmentDesc depth{};
 						depth.imageView   = atlas.m_imageView;
 						depth.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
@@ -67,16 +65,10 @@ void RegisterDirectionalCSMPass(
 							{ depth },
 							true); // Atlas on
 
-						const auto indirectBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 						const auto taskDispatchBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer;
-
-						const auto& pipeline =
-							bMeshPath ? pass.pipelines[PIPE_ID_MESH]
-							          : pass.pipelines[PIPE_ID_MAIN];
 
 						const VkExtent2D atlasExtent = pso.GetAtlasExtent();
 						const VkExtent2D tileExtent =
@@ -109,34 +101,19 @@ void RegisterDirectionalCSMPass(
 
 							const glm::mat4& cascadeVP = ctx.scene->GetCSMData().cascadeVP[cascadeIdx];
 
-							if (bMeshPath)
-							{
-								DepthTaskPush push{};
-								push.viewproj      = cascadeVP;
-								push.eye           = lightDir;
-								push.slot          = cascadeSlot;
-								pso.SetPush(push);
+							DepthTaskPush push{};
+							push.viewproj = cascadeVP;
+							push.eye = lightDir;
+							push.slot = cascadeSlot;
+							pso.SetPush(push);
 
-								pso.DrawMeshTasksIndirectCount(
-									cmd,
-									cascadeSlot,
-									taskDispatchBuffer,
-									indirectCountBuffer,
-									pipeline,
-									pass.pushWriter);
-							}
-							else
-							{
-								pso.SetPush(cascadeVP);
-
-								pso.DrawIndexedIndirectCount(
-									cmd,
-									cascadeSlot,
-									indirectBuffer,
-									indirectCountBuffer,
-									pipeline,
-									pass.pushWriter);
-							}
+							pso.DrawMeshTasksIndirectCount(
+								cmd,
+								cascadeSlot,
+								taskDispatchBuffer,
+								indirectCountBuffer,
+								pass.pipelines[PIPE_ID_MAIN],
+								pass.pushWriter);
 						}
 
 						pso.EndRendering(cmd);

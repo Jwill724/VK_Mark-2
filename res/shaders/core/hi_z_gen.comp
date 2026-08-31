@@ -18,9 +18,9 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform usampler2D inHiZPa
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform uimage2D outMip;
 
 layout(push_constant) uniform DepthPyramidPush {
+	vec2 invSize; // 1.0 / current mip res
 	uint mipLevel;
 	float pad0;
-	vec2 invSize; // 1.0 / current mip res
 } pc;
 
 void main()

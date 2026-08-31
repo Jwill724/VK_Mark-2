@@ -34,6 +34,8 @@ enum InstanceFlags : uint32_t
 	IS_TREE          = 1 << 13,
 	HAS_NORMALS      = 1 << 14,
 	INSTANCE_ACTIVE  = 1 << 15,
+	RT_VISIBLE       = 1 << 16,
+	TRANSMISSIVE     = 1 << 17,
 };
 
 struct InstanceInput
@@ -109,26 +111,21 @@ struct InstanceState
 	//std::vector<AABB> worldAABBs;        // parallel to coreStatic
 	std::unordered_map<ModelID, CoreSlab> slabs;
 	std::vector<uint32_t> active;    // live rows (indices into coreStatic)
+	std::vector<uint32_t> rtRows;
+	uint32_t rtInstanceCount = 0;
 	void Cleanup() noexcept
 	{
 		gpuInputs.clear();
 		active.clear();
+		rtRows.clear();
 		//worldAABBs.clear();
 		slabs.clear();
+		rtInstanceCount = 0;
 	}
-};
-
-enum class LightType
-{
-	//Directional,
-	Point,
-	Spot
 };
 
 struct LocalLight
 {
-	LightType type = LightType::Point;
-
 	glm::vec3 position = glm::vec3(0.0f);
 	float radius = 1.0f;
 
@@ -140,6 +137,9 @@ struct LocalLight
 
 	float outerCos = 0.8f;
 	uint32_t flags = 0;
+
+	float sourceRadius = 0.0f;
+	float sourceLength = 0.0f;
 };
 
 struct Cmaa2BufferSizes
@@ -173,6 +173,7 @@ struct ClusterBufferSizes
 
 	size_t clusterTileSliceRangesBytes = 0;
 	size_t clusterScanScratchBytes = 0;
+	size_t tileTransparentNearBytes = 0;
 
 	void UpdateClusterBufferSizes(
 		uint32_t screenWidth,
@@ -180,6 +181,25 @@ struct ClusterBufferSizes
 		uint32_t tileSizeX = RD::CLUSTERS_TILE_SLICE_X,
 		uint32_t tileSizeY = RD::CLUSTERS_TILE_SLICE_Y,
 		uint32_t zSlices   = RD::CLUSTERS_TILE_SLICE_Z);
+};
+
+struct RTRayListHeader
+{
+	uint32_t rayCount;
+	uint32_t rayCapacity;
+};
+
+struct RTRayListLayout
+{
+	static constexpr uint32_t HEADER_BYTES = RD::RT_RAY_SLOT_COUNT * sizeof(uint32_t);
+
+	uint32_t capacities[RD::RT_RAY_SLOT_COUNT]{};
+
+	uint32_t totalBytes = 0;
+	uint32_t halfWidth = 0;
+	uint32_t halfHeight = 0;
+
+	void Update(uint32_t screenWidth, uint32_t screenHeight);
 };
 
 struct alignas(16) LightClustersData
@@ -199,7 +219,6 @@ struct alignas(16) LightClustersData
 
 // === RENDER PASS PUSH CONSTANTS ===
 
-
 struct alignas(16) BindlessAccessPush
 {
 	uint32_t id0 = UINT32_MAX;
@@ -210,76 +229,84 @@ struct alignas(16) BindlessAccessPush
 
 struct alignas(16) ForwardPush
 {
-	uint32_t diffuseID = UINT32_MAX;
+	glm::vec2 halfTexel = glm::vec2(0.0f);
 	uint32_t specularID = UINT32_MAX;
 	uint32_t brdfID = UINT32_MAX;
 	float oitDepthScale = 400.0f;
-
+	float bounceFeedback = 0.6f;
+	float giIntensity = 5.0f;
 	uint32_t flashlightShadowMapID = UINT32_MAX;
 	uint32_t flashlightCookieTexID = UINT32_MAX;
-	uint32_t pad0;
-	uint32_t pad1;
+	float reflectRoughFade = 0.0f;
+	float reflectRoughCutoff = 0.0f;
+
+	float pad0;
 };
 
-struct alignas(16) SSAOPush
+struct alignas(16) SSGIPush
 {
-	glm::vec2 tanHalfFov{0.0f};
-	float effectRadius = 0.5f;
+	float effectRadius = 10.0f;
 	float effectFalloffRange = 0.6f;
-
-	glm::vec2 ndcToViewAdd{ 0.0f };
-	glm::vec2 ndcToViewMul{ 0.0f };
 
 	glm::vec2 ndcToViewMul_x_PixelSize{ 0.0f };
 
-	float depthLinearizeMult = 0.0f;
-	float depthLinearizeAdd = 0.0f;
-
-	// Bilateral blur
-	float sharpness = 2.0;
-	float radius = 4.0;
-	glm::vec2 blurDirection{ 0.0f };
+	float radiusMultiplier = 1.457;
+	float sampleDistributionPower = 2.0f;
 
 	// For temporal noise
 	uint32_t noiseIndex = 0u; // FrameIndex % 64u
 	uint32_t hilbertLutID = UINT32_MAX;
 
 	// Denoise
-	float denoiseBlurBeta = 1.2f;
+	float denoiseBlurBeta = 1.0f;
 	uint32_t isFinalPass = 0u;
+
+	float upsampleDepthSigma = 256.0f;
+
+	float giClampMax          = 8.0f;
+	float giReprojTolerance   = 0.1f;
+	float giTemporalAlpha     = 0.08f;
+	float giFallbackStrength  = 0.4f;
+
+	float pad0;
 };
 
 struct alignas(16) TAAPush
 {
-	float minBlend = 0.05f;
-	float maxBlend = 0.9f;
-	float depthDisocclusionScale = 4.0f;
-	float deltaTime = 0.0f;
-	float invDeltaTime = 0.0f;
-	float motionSpeedScale = 1.0f / 3840.0f;
-	float sharpen = 0.0f;
-	float tau = 0.06f;
+	float minBlend                = 0.02f;
+	float maxBlend                = 0.9f;
+	float depthDisocclusionScale  = 2.0f;
+	float invDeltaTime            = 0.0f;
+	float motionSpeedScale        = 0.03f;
+	float sharpen                 = 0.0f;
+	float darkClampBoost          = 1.75f;
+	float sigmaFloorScale         = 0.02f;
+	float normalDisocclusionScale = 10.0f;
+	float shadingChangeScale      = 1.0f;
+	float pad0;
+	float pad1;
 };
 
 struct alignas(16) VolumetricPush
 {
 	float density = 0.002f;
-	float scatteringStrength = 15.0f;
+	float scatteringStrength = 5.0f;
 	float extinction = 0.08f;
-	float heightFalloff = 0.05f;
+	float heightFalloff = 0.06f;
 
-	float maxDistance = 200.0f;
-	float jitterStrength = 0.8f;
-	float asymmetryFactor = 0.9f;
+	float maxDistance = 75.0f;
+	float jitterStrength = 0.9f;
+	float asymmetryFactor = 0.5f;
 	float minTransmittance = 0.9f;
 
-	int beamPower = 2;
+	int beamPower = 8;
 	float blurRadius = 4.0f;
-	float blurDepthSigma = 0.015f;
+	float blurDepthSigma = 0.5f;
 	float blurWeightSigma = 1.6f;
 
 	glm::vec2 blurDirection{ 0.0f };
-	glm::vec2 pad0{ 0.0f };
+	float historyWeight = 0.92f;
+	float clipGamma = 1.25f;
 };
 
 struct alignas(16) LensFlarePush
@@ -325,8 +352,8 @@ struct alignas(16) SSSPush
 	glm::ivec2 waveOffsets{0};
 	glm::vec2 invDepthSize{0.0f};
 
-	float surfaceThickness = 0.01f;
-	float bilinearThreshold = 0.02f;
+	float surfaceThickness = 0.005f;
+	float bilinearThreshold = 0.2f;
 	float shadowContrast = 4.0f;
 	float pad0;
 };
@@ -356,10 +383,17 @@ struct alignas(16) BloomPush
 	uint32_t flags; // 0 = first downsample
 	float bloomThreshold = 1.0f;
 	float bloomKnee = 1.0f;
-	float emissiveBoost = 20.0f;
+	float emissiveBoost = 1.5f;
 	float pad0;
 	float pad1;
 	float pad2;
+};
+
+struct alignas(16) DownsamplePush
+{
+	glm::vec2 srcTexel = glm::vec2(0.0f);
+	uint32_t applyKaris = 0;
+	uint32_t pad0;
 };
 
 struct ToneMappingSettings
@@ -392,6 +426,74 @@ struct alignas(16) DepthTaskPush
 	glm::vec4 eye;             // xyz = eye pos (w=1) or light dir (w=0)
 	uint32_t  slot;
 	float  cullDistance = 0.0; // > 0 enables the range test; 0 disables (directional)
-	uint32_t pad0;
-	uint32_t pad1;
+	uint32_t pad0[2];
+};
+
+struct alignas(16) TlasPush
+{
+	uint32_t instanceCount = 0;
+	uint32_t pad0[3];
+};
+
+struct alignas(16) NRDPush
+{
+	glm::vec2 resSize{ 0.0f };
+	glm::vec2 resTexel{ 0.0f };
+	uint32_t writeMotion = 0;
+	uint32_t pad0[3];
+};
+
+struct alignas(16) RTArgsPush
+{
+	uint32_t raySlot = 0u;
+	uint32_t argsSlot = 0u;
+	uint32_t groupSize = 64u;
+	uint32_t rayCapacity = 0u;
+};
+
+struct alignas(16) RTShadowParams
+{
+	float    rayTMin = 0.001f;
+	float    rayTMax = 500.0f;
+	float    rayBias = 1e-4f;
+	float    normalBias = 0.02f;
+	float    sunSoftness = 1.0f;
+	float    mipBias = 1.0f;
+	uint32_t taps = 1u;
+	uint32_t alphaTested = 1u;
+};
+
+struct alignas(16) ReflectPush
+{
+	glm::vec2 halfResSize{ 0.0f };
+	glm::vec2 halfResTexel{ 0.0f };
+
+	RTShadowParams shadow{ .rayTMax = 60.0f, .rayBias = 1e-4f, .normalBias = 0.06f };
+
+	float reflectRoughnessCutoff = 0.60f;
+	float roughnessFadeStart = 0.45f;
+	float ambientScale = 1.0f;
+	float bounceRoughnessCutoff = 0.35f;
+
+	uint32_t noiseIndex = 0u;
+	uint32_t hilbertLutID = UINT32_MAX;
+	uint32_t skyboxID = UINT32_MAX;
+	uint32_t brdfID = UINT32_MAX;
+
+	uint32_t specularID = UINT32_MAX;
+	uint32_t maxBounces = 3u;
+	uint32_t maxReflectLights = 250u;
+	uint32_t rayCapacity = 0;
+};
+
+struct alignas(16) RTShadowPush
+{
+	glm::vec2 resolution{ 0.0f };
+	glm::vec2 invResolution{ 0.0f };
+
+	RTShadowParams shadow{};
+
+	uint32_t hilbertLutID = UINT32_MAX;
+
+	uint32_t pad0[3]{};
 };

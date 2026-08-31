@@ -6,8 +6,8 @@
 #include "../include/common.glsl"
 #include "../include/depth.glsl"
 
-// Heavily based on Spartan Engine implementation
-// https://github.com/PanosK92/SpartanEngine/blob/master/data/shaders/taau.hlsl
+const float TAA_HISTORY_TAU  = 0.5;
+const float TAA_MAX_HISTORY  = 32.0;
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
@@ -17,6 +17,10 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D inVeloci
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D inVelocityHistory;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D inDepth;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6) uniform sampler2D inPrevDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7) uniform sampler2D inViewNormals;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8) uniform sampler2D inPrevViewNormals;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_9) uniform sampler2D inTransparentReveal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_10) uniform sampler2D inTransparentVelocity;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outColorResolved;
 
@@ -24,11 +28,13 @@ layout(push_constant) uniform TAAPush {
 	float minBlend;
 	float maxBlend;
 	float depthDisocclusionScale;
-	float deltaTime;
 	float invDeltaTime;
 	float motionSpeedScale;
 	float sharpen;
-	float tau;
+	float darkClampBoost;
+	float sigmaFloorScale;
+	float normalDisocclusionScale;
+	float shadingChangeScale;
 } pc;
 
 vec3 RGBToYCoCg(vec3 rgb)
@@ -116,28 +122,35 @@ vec3 clipAABB(vec3 aabbMin, vec3 aabbMax, vec3 p, vec3 q)
 	return p + r;
 }
 
-vec2 getDilatedVelocity(ivec2 pixel, ivec2 res)
+struct DilatedTap
 {
-	float bestZ   = -1.0;
-	vec2  dilated = vec2(0.0);
+	vec2  velocity;
+	float rawDepth;
+};
+
+DilatedTap getDilatedTap(ivec2 pixel, ivec2 res)
+{
+	DilatedTap tap;
+	tap.velocity = vec2(0.0);
+	tap.rawDepth = -1.0;
 
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
 			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
 			float z = texelFetch(inDepth, t, 0).r;
-			if (z > bestZ) {           // pick the tap nearest the camera
-				bestZ   = z;
-				dilated = texelFetch(inVelocity, t, 0).rg;
+			if (z > tap.rawDepth) {
+				tap.rawDepth = z;
+				tap.velocity = texelFetch(inVelocity, t, 0).rg;
 			}
 		}
 	}
 
-	return dilated;
+	return tap;
 }
 
-float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV)
+float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV, vec2 jitterUV)
 {
-	vec2 historyUV = uv - velocityUV;
+	vec2 historyUV = uv - velocityUV + jitterUV;
 	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
 
 	vec2  prevVelocity  = texture(inVelocityHistory, historyUV).rg;
@@ -145,15 +158,46 @@ float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV)
 	return clamp((velocityDelta - 0.012) * 0.85, 0.0, 1.0);
 }
 
-float computeDepthDisocclusion(vec2 uv, vec2 velocityUV, ivec2 pixel, float near, float far)
+float computeDepthDisocclusion(vec2 historyUV, float currentRawDepth, float near, float far)
 {
-	vec2 historyUV = uv - velocityUV;
+	ivec2 prevRes   = textureSize(inPrevDepth, 0);
+	ivec2 prevPixel = clamp(ivec2(historyUV * vec2(prevRes)), ivec2(0), prevRes - 1);
+
+	float prevMin =  1e9;
+	float prevMax = -1e9;
+
+	for (int y = -1; y <= 1; ++y) {
+		for (int x = -1; x <= 1; ++x) {
+			ivec2 t = clamp(prevPixel + ivec2(x, y), ivec2(0), prevRes - 1);
+			float d = linearizeDepth(texelFetch(inPrevDepth, t, 0).r, near, far);
+			prevMin = min(prevMin, d);
+			prevMax = max(prevMax, d);
+		}
+	}
+
+	float current   = linearizeDepth(currentRawDepth, near, far);
+	float outside   = max(prevMin - current, current - prevMax);
+	float tolerance = max(prevMax - prevMin, current * 0.02);
+
+	return clamp((outside / tolerance) * pc.depthDisocclusionScale, 0.0, 1.0);
+}
+
+float computeNormalDisocclusion(vec2 uv, vec2 velocityUV, vec2 jitterUV, ivec2 pixel, mat3 invView, mat3 prevInvView)
+{
+	vec2 historyUV = uv - velocityUV + jitterUV;
 	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
 
-	float currentDepth = linearizeDepth(texelFetch(inDepth, pixel, 0).r, near, far);
-	float prevDepth    = linearizeDepth(texture(inPrevDepth, historyUV).r, near, far);
-	float depthDelta   = abs(currentDepth - prevDepth) / max(currentDepth, 1e-4);
-	return clamp(depthDelta * pc.depthDisocclusionScale, 0.0, 1.0);
+	ivec2 prevRes   = textureSize(inPrevViewNormals, 0);
+	ivec2 prevPixel = clamp(ivec2(historyUV * vec2(prevRes)), ivec2(0), prevRes - 1);
+
+	vec3 currVS = octDecode(texelFetch(inViewNormals,     pixel,     0).rg * 2.0 - 1.0);
+	vec3 prevVS = octDecode(texelFetch(inPrevViewNormals, prevPixel, 0).rg * 2.0 - 1.0);
+
+	vec3 currWS = normalize(invView     * currVS);
+	vec3 prevWS = normalize(prevInvView * prevVS);
+
+	float cosAngle = clamp(dot(currWS, prevWS), -1.0, 1.0);
+	return clamp((1.0 - cosAngle) * pc.normalDisocclusionScale, 0.0, 1.0);
 }
 
 void main()
@@ -172,63 +216,101 @@ void main()
 	vec3 m2   = vec3(0.0);
 	vec3 cMin = vec3( 1e9);
 	vec3 cMax = vec3(-1e9);
-	vec3 currentYCoCgTm = vec3(0.0);
 
+	vec2  jitterPx     = scene.temporalJitter.xy * 0.5 * outRes;
+	jitterPx.y         = -jitterPx.y;
+	vec3  filtered     = vec3(0.0);
+	float filterWeight = 0.0;
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
 			ivec2 tap = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
 			vec3  s   = texelFetch(inColorCurrent, tap, 0).rgb;
 			s         = any(isnan(s)) ? vec3(0.0) : max(s, vec3(0.0));
-			vec3 c    = RGBToYCoCg(tonemap(s));
-			m1   += c;
-			m2   += c * c;
-			cMin  = min(cMin, c);
-			cMax  = max(cMax, c);
-			if (x == 0 && y == 0) currentYCoCgTm = c;
+			vec3  c   = RGBToYCoCg(tonemap(s));
+
+			m1  += c;
+			m2  += c * c;
+			cMin = min(cMin, c);
+			cMax = max(cMax, c);
+
+			vec2  d = vec2(x, y) + jitterPx;
+			float w = exp(-2.29 * dot(d, d));
+
+			filtered     += c * w;
+			filterWeight += w;
 		}
 	}
+
+	vec3 currentYCoCgTm = filtered / max(filterWeight, 1e-5);
 
 	const float sampleCount = 9.0;
 	vec3 mean  = m1 / sampleCount;
 	vec3 sigma = sqrt(max(m2 / sampleCount - mean * mean, vec3(0.0)));
-	sigma      = max(sigma, vec3(0.001));
 
-	vec2 velocityUV = getDilatedVelocity(pixel, res);
-	vec2 historyUV  = uv - velocityUV;
+	float avgLuma   = max(getLuminanceBuffer().luminanceSums[0].y, 1e-4);
+	float refLumaTm = avgLuma / (1.0 + avgLuma);
+	sigma = max(sigma, vec3(min(mean.x, refLumaTm) * pc.sigmaFloorScale));
+
+	float coverage      = 1.0 - texelFetch(inTransparentReveal, pixel, 0).r;
+	float geometryTrust = 1.0 - coverage;
+
+	DilatedTap tap = getDilatedTap(pixel, res);
+
+	vec2 velocityUV = mix(tap.velocity,
+						  texelFetch(inTransparentVelocity, pixel, 0).rg,
+						  coverage);
+
+	const vec2 jitterUV = jitterPx * invRes;
+	vec2 historyUV = uv - velocityUV + jitterUV;
 
 	bool validHistory = all(greaterThanEqual(historyUV, vec2(0.0))) &&
 						all(lessThanEqual(historyUV, vec2(1.0)));
 
 	if (!validHistory) {
 		vec3 rgb = max(tonemapInverse(YCoCgToRGB(mean)), vec3(0.0));
-		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(COLOR_HISTORY_MAX)), 1.0));
+		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(COLOR_HISTORY_MAX)), 1.0 / TAA_MAX_HISTORY));
 		return;
 	}
 
-	float speedPxPerSec = length(velocityUV * outRes) * pc.invDeltaTime;
-	float motion        = clamp(speedPxPerSec * pc.motionSpeedScale, 0.0, 1.0);
+	float motion = clamp(length(velocityUV * outRes) * pc.motionSpeedScale, 0.0, 1.0);
 
-	float disocclusion = max(computeVelocityDisocclusion(uv, velocityUV),
-							 computeDepthDisocclusion(uv, velocityUV, pixel, scene.cameraClips.x, scene.cameraClips.y));
+	float normalTerm = computeNormalDisocclusion(uv, velocityUV, jitterUV, pixel,
+						   mat3(scene.invView), mat3(scene.prevInvView));
 
-	vec3 historyRGB = sampleHistoryCatmullRom(historyUV, outRes);
+	float disocclusion = geometryTrust * max(
+			max(computeVelocityDisocclusion(uv, velocityUV, jitterUV),
+				computeDepthDisocclusion(historyUV, tap.rawDepth,
+					scene.cameraClips.x, scene.cameraClips.y)),
+			normalTerm * step(0.05, motion));
+
+	vec3  historyRGB    = sampleHistoryCatmullRom(historyUV, outRes);
+	float historyFrames = texture(inColorHistory, historyUV).a * TAA_MAX_HISTORY;
+
 	bool badHistory = any(isnan(historyRGB)) || any(isinf(historyRGB));
 	historyRGB      = badHistory ? vec3(0.0) : max(historyRGB, vec3(0.0));
 
 	vec3 historyYCoCgTm = RGBToYCoCg(tonemap(historyRGB));
 
-	float gamma = mix(2.0, 1.0, motion);
+	float relLuma   = clamp(max(mean.x, historyYCoCgTm.x) / max(refLumaTm, 1e-4), 0.0, 1.0);
+	float lumaScale = mix(pc.darkClampBoost, 1.0, relLuma);
+
+	float gamma = mix(2.0, 1.0, motion) * lumaScale;
 	gamma       = mix(gamma, 0.75, disocclusion);
 
-	vec3 aabbMin   = mean - sigma * gamma;
-	vec3 aabbMax   = mean + sigma * gamma;
-	historyYCoCgTm = clipAABB(aabbMin, aabbMax, mean, historyYCoCgTm);
+	vec3 aabbMin = mean - sigma * gamma;
+	vec3 aabbMax = mean + sigma * gamma;
+	vec3 clipped = clipAABB(aabbMin, aabbMax, mean, historyYCoCgTm);
 
-	float baseBlend = 1.0 - exp(-pc.deltaTime / max(pc.tau, 1e-4));
-	baseBlend       = clamp(baseBlend, pc.minBlend, pc.maxBlend);
+	float clipDist      = abs(historyYCoCgTm.x - clipped.x) / max(sigma.x * gamma, 1e-4);
+	float shadingChange = clamp(clipDist * pc.shadingChangeScale, 0.0, 1.0);
+	historyYCoCgTm      = clipped;
 
-	float instability = max(motion, disocclusion);
-	float blend       = mix(baseBlend, pc.maxBlend, instability);
+	float instability = max(max(motion, disocclusion), shadingChange);
+	historyFrames     = badHistory ? 0.0 : historyFrames * (1.0 - instability);
+
+	float dt          = 1.0 / max(pc.invDeltaTime, 1e-4);
+	float steadyBlend = clamp(1.0 - exp(-dt / TAA_HISTORY_TAU), pc.minBlend, pc.maxBlend);
+	float blend       = clamp(max(steadyBlend, 1.0 / (historyFrames + 1.0)), pc.minBlend, pc.maxBlend);
 
 	vec3 resolvedYCoCgTm = mix(historyYCoCgTm, currentYCoCgTm, blend);
 
@@ -236,5 +318,8 @@ void main()
 
 	vec3 resolvedRGB = max(tonemapInverse(YCoCgToRGB(resolvedYCoCgTm)), vec3(0.0));
 
-	imageStore(outColorResolved, pixel, vec4(min(resolvedRGB, vec3(COLOR_HISTORY_MAX)), 1.0));
+	float newFrames = min(historyFrames + 1.0, TAA_MAX_HISTORY);
+
+	imageStore(outColorResolved, pixel,
+		vec4(min(resolvedRGB, vec3(COLOR_HISTORY_MAX)), newFrames / TAA_MAX_HISTORY));
 }

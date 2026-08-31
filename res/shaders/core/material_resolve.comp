@@ -7,6 +7,7 @@
 #include "../include/barycentric.glsl"
 #include "../include/visbuffer.glsl"
 #include "../include/pbr.glsl"
+#include "../include/depth.glsl"
 #include "../include/lighting.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -14,7 +15,7 @@ layout(local_size_x = 8, local_size_y = 8) in;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D visBuffer;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outAlbedoRough;
-layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2, r32ui) writeonly uniform uimage2D outNormalMaterial; // N, metal, matID
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2, r32ui) writeonly uniform uimage2D outNormalMetal;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_3, r11f_g11f_b10f) writeonly uniform image2D outEmissive;
 
 vec3 InterpolateDdx(BarycentricDeriv d, vec3 v0, vec3 v1, vec3 v2)
@@ -48,22 +49,14 @@ void main()
 	// Sky / background
 	if (ids.x == VIS_INVALID)
 	{
-		imageStore(outAlbedoRough,    ivec2(gid), vec4(0.0));
-		imageStore(outNormalMaterial, ivec2(gid), uvec4(0));
-		imageStore(outEmissive,       ivec2(gid), vec4(0.0));
+		imageStore(outAlbedoRough,  ivec2(gid), vec4(0.0));
+		imageStore(outNormalMetal,  ivec2(gid), uvec4(0));
+		imageStore(outEmissive,     ivec2(gid), vec4(0.0));
 		return;
 	}
 
 	// fetch + barycentrics
-	VisTriangle tri;
-	if (debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
-	{
-		tri = fetchVisTriangleMeshlet(ids.x, ids.y);
-	}
-	else
-	{
-		tri = fetchVisTriangle(ids.x, ids.y);
-	}
+	VisTriangle tri = fetchVisTriangleMeshlet(ids.x, ids.y);
 
 	vec2 winSize = scene.viewportSize.xy;
 	BarycentricDeriv bary;
@@ -76,7 +69,7 @@ void main()
 	VisSurface s = interpolateVisSurface(tri, bary);
 	Material mat = getMaterialBuffer().materials[s.materialID];
 
-	float bias = scene.viewportSize.w;
+	float bias = scene.taaMipParams.x;
 	vec4 base = SampleVisSurface(mat.albedoID, s, bias) * mat.colorFactor;
 
 	vec3 albedo = s.color.rgb * base.rgb;
@@ -87,19 +80,21 @@ void main()
 	float rough = metalRough.g * mat.metalRoughFactors.y;
 	float metal = metalRough.b * mat.metalRoughFactors.x;
 
-	vec3 emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
+	vec3 emissive = emissT * (mat.emissiveColor * (mat.emissiveStrength * EMISSIVE_STRENGTH_BOOST));
 
 	bool hasNM = (tri.flags & HAS_NORMALS) != 0u;
 
 	bool flatTri = dot(tri.normalOS[0], tri.normalOS[1]) > 0.9999
 			&& dot(tri.normalOS[0], tri.normalOS[2]) > 0.9999;
 
-	vec3 N = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda, s.uvDdx, s.uvDdy);
+	float faceSign = visFrontFacing(ids.y) ? 1.0 : -1.0;
+
+	vec3 N = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda, s.uvDdx, s.uvDdy, faceSign);
 
 	if (hasNM || !flatTri)
 	{
-		vec3 Nx = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddx, s.uvDdx, s.uvDdy);
-		vec3 Ny = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddy, s.uvDdx, s.uvDdy);
+		vec3 Nx = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddx, s.uvDdx, s.uvDdy, faceSign);
+		vec3 Ny = EvalShadingNormal(tri, mat, hasNM, bary.m_lambda + bary.m_ddy, s.uvDdx, s.uvDdy, faceSign);
 		rough = specularAAAnalytic(rough, Nx - N, Ny - N);
 	}
 	else
@@ -109,7 +104,7 @@ void main()
 
 	metal = clamp(metal, 0.0, 1.0);
 
-	imageStore(outAlbedoRough,    ivec2(gid), vec4(sqrt(albedo), sqrt(rough)));
-	imageStore(outNormalMaterial, ivec2(gid), uvec4(packNormalMaterial(N, metal, s.materialID), uvec3(0)));
-	imageStore(outEmissive,       ivec2(gid), vec4(emissive, 0.0));
+	imageStore(outAlbedoRough, ivec2(gid), vec4(sqrt(albedo), sqrt(rough)));
+	imageStore(outNormalMetal, ivec2(gid), uvec4(packNormalMetalModel(N, metal, mat.shadingModel), uvec3(0)));
+	imageStore(outEmissive,    ivec2(gid), vec4(emissive, 0.0));
 }

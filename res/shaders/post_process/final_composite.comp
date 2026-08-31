@@ -15,7 +15,6 @@ layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D volumetr
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D lensFlareColorImage;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D bloomImage;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D toneMapImage;
-layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2) writeonly uniform image2D cmaa2ColorImage;
 
 vec3 ACESFilm(vec3 x) {
 	const float a = 2.51;
@@ -78,9 +77,5 @@ void main()
 
 	if (!debugViewing) {
 		imageStore(toneMapImage, pid, vec4(mapped, 1.0));
-	}
-
-	if (debug.aaMode == AA_CMAA2) {
-		imageStore(cmaa2ColorImage, pid, vec4(mapped, 1.0));
 	}
 }

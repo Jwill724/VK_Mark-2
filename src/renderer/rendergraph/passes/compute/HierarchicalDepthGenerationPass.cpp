@@ -16,9 +16,9 @@ constexpr size_t PIPE_ID_HI_Z = 0;
 
 struct alignas(16) DepthPyramidPush
 {
+	glm::vec2 invSize;
 	uint32_t mipLevel;
 	float pad0;
-	glm::vec2 invSize;
 };
 
 void RegisterHiZGenerationPass(
@@ -55,7 +55,7 @@ void RegisterHiZGenerationPass(
 							RD::Renderer_Pass::HiZGeneration,
 							pass.passName);
 
-						pass.scope = ComputeScope{ drawExtent , WORKGROUP_8x8 };
+						pass.scope = ComputeScope{ drawExtent, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
@@ -149,14 +149,7 @@ void RegisterHiZGenerationLatePass(
 		{
 			builder
 				.SetPhase(RenderPhase::Prepass)
-
-				.SetExecutionCondition(
-					[](const RenderPassExecutionContext& ctx)
-					{
-						return
-							ctx.frameState->InstancesActive() &&
-							ctx.frameState->IsMeshShaderPath();
-					})
+				.ForceExecution()
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::DepthResolved,
@@ -164,7 +157,7 @@ void RegisterHiZGenerationLatePass(
 
 				.InternalResource(RD::Renderer_RenderTarget::HiZ,
 					RD::ImageAccess::Write,
-					RD::ImageAccess::Read,
+					RD::ImageAccess::ComputeRead,
 					0,
 					VK_REMAINING_MIP_LEVELS)
 
@@ -249,7 +242,7 @@ void RegisterHiZGenerationLatePass(
 								cmd,
 								hiZ,
 								RD::ImageAccess::Write,
-								RD::ImageAccess::Read,
+								RD::ImageAccess::ComputeRead,
 								mip,
 								1);
 

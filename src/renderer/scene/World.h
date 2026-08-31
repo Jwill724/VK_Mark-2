@@ -11,11 +11,17 @@ class BindlessImageTable;
 struct ModelAsset;
 struct GLFWwindow;
 struct InstanceState;
+struct Extents2D;
 
 enum class ModelID // TODO: This goes somewhere else, not here
 {
 	Sponza,
+	SponzaIntelMain,
+	SponzaIntelCurtains,
+	SponzaIntelIvy,
+	SponzaIntelTree,
 	Bistro,
+	BistroExt,
 	MRSpheres,
 	Duck,
 	DamagedHelmet,
@@ -26,6 +32,19 @@ enum class ModelID // TODO: This goes somewhere else, not here
 	Mech,
 	YellowMech,
 	Mini,
+	SanMiguel,
+
+	//DarkRoom,
+	//CornellBox,
+	//BreakfastRoom,
+	//FireplaceRoom,
+	//Conference,
+	//Sibenik,
+	//MandarinOrange,
+	//CandleHolder,
+	//TransmissionTest,
+	//CompareClearCoat,
+	//MosquitoInAmber,
 
 	Count
 };
@@ -43,8 +62,11 @@ namespace World
 	void Cleanup();
 
 	void UpdateWorldState(
+		uint32_t frameNumber,
+		const Extents2D& drawExtent,
 		FrameContext& frameCtx,
 		Allocator& allocator,
 		Profiler& profiler,
-		GLFWwindow* window);
+		GLFWwindow* window,
+		bool isTemporalAllowed);
 }

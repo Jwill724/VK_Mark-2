@@ -7,6 +7,8 @@
     <Filter Include="src\common" />
     <!-- core (assets/resources) -->
     <Filter Include="src\core" />
+    <Filter Include="src\core\asset" />
+    <Filter Include="src\core\asset\importers" />
     <!-- input -->
     <Filter Include="src\input" />
     <!-- profiler -->
@@ -27,9 +29,11 @@
     <Filter Include="res" />
     <Filter Include="res\assets" />
     <Filter Include="res\shaders" />
-    <Filter Include="res\shaders\ao" />
     <Filter Include="res\shaders\clustered" />
     <Filter Include="res\shaders\core" />
+    <Filter Include="res\shaders\deprecated" />
+    <Filter Include="res\shaders\ssgi" />
+    <Filter Include="res\shaders\reflections" />
     <Filter Include="res\shaders\debug" />
     <Filter Include="res\shaders\environment" />
     <Filter Include="res\shaders\include" />
@@ -56,8 +60,8 @@
     <ClCompile Include="src\core\JobSystem.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
-    <ClCompile Include="src\core\AssetManager.cpp">
-      <Filter>src\core</Filter>
+    <ClCompile Include="src\core\asset\AssetManager.cpp">
+      <Filter>src\core\asset</Filter>
     </ClCompile>
     <ClCompile Include="src\core\Window.cpp">
       <Filter>src\core</Filter>
@@ -116,13 +120,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ClusteredLightsPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ConservativeMorphologicalAntiAliasing2Pass.cpp">
-      <Filter>src\renderer\rendergraph\passes\compute</Filter>
-    </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\EnvironmentMapGenerationPass.cpp">
-      <Filter>src\renderer\rendergraph\passes\compute</Filter>
-    </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\FastApproximateAntiAliasing.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\FinalCompositePass.cpp">
@@ -137,7 +135,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\LuminanceExposurePass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceAmbientOcclusionPass.cpp">
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceGlobalIlluminationPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceContactShadowsPass.cpp">
@@ -146,13 +144,13 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\SubpixelMorphologicalAntiAliasingPass.cpp">
-      <Filter>src\renderer\rendergraph\passes\compute</Filter>
-    </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\NRDDenoisePass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <!-- renderer / graph / passes / command -->
@@ -232,6 +230,9 @@
     <ClCompile Include="src\renderer\backend\BufferBarriers.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\backend\NRDContext.cpp">
+      <Filter>src\renderer\backend</Filter>
+    </ClCompile>
     <!-- renderer / backend / memory -->
     <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
       <Filter>src\renderer\backend\memory</Filter>
@@ -247,6 +248,12 @@
     </ClCompile>
     <!-- third-party (no PCH) -->
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\bc7enc\bc7enc.cpp">
+      <Filter>vendor</Filter>
+    </ClCompile>
+    <ClCompile Include="vendor\bc7enc\rgbcx.cpp">
       <Filter>vendor</Filter>
     </ClCompile>
     <ClCompile Include="vendor\vulkan\include\vma\vma.cpp">
@@ -372,6 +379,39 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\VelocityResolvePass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\TopLevelAccelerationStructureBuildPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedReflectionsPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\AssetRegistry.cpp">
+      <Filter>src\core\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\SceneSource.cpp">
+      <Filter>src\core\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\SourceGeometry.cpp">
+      <Filter>src\core\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\SceneCache.cpp">
+      <Filter>src\core\asset</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\importers\GltfImporter.cpp">
+      <Filter>src\core\asset\importers</Filter>
+    </ClCompile>
+    <ClCompile Include="src\core\asset\importers\BCNCompression.cpp">
+      <Filter>src\core\asset\importers</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedShadowsPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\VolumetricFogPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\graphics\VolumetricShadowMap.cpp">
+      <Filter>src\renderer\rendergraph\passes\graphics</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -413,8 +453,8 @@
     <ClInclude Include="src\core\JobSystem.h">
       <Filter>src\core</Filter>
     </ClInclude>
-    <ClInclude Include="src\core\AssetManager.h">
-      <Filter>src\core</Filter>
+    <ClInclude Include="src\core\asset\AssetManager.h">
+      <Filter>src\core\asset</Filter>
     </ClInclude>
     <ClInclude Include="src\core\Environment.h">
       <Filter>src\core</Filter>
@@ -538,6 +578,9 @@
     <ClInclude Include="src\renderer\backend\BufferBarriers.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
+    <ClInclude Include="src\renderer\backend\NRDContext.h">
+      <Filter>src\renderer\backend</Filter>
+    </ClInclude>
     <!-- renderer / backend / memory -->
     <ClInclude Include="src\renderer\backend\memory\ResourceAllocator.h">
       <Filter>src\renderer\backend\memory</Filter>
@@ -576,8 +619,8 @@
     <ClInclude Include="res\assets\SearchTex.h">
       <Filter>res\assets</Filter>
     </ClInclude>
-    <ClInclude Include="src\core\AssetUploadTypes.h">
-      <Filter>src\core</Filter>
+    <ClInclude Include="src\core\asset\AssetUploadTypes.h">
+      <Filter>src\core\asset</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\Sync.h">
       <Filter>src\renderer\backend</Filter>
@@ -585,24 +628,64 @@
     <ClInclude Include="src\renderer\rendergraph\RenderGraphSchedule.h">
       <Filter>src\renderer\rendergraph</Filter>
     </ClInclude>
+    <ClInclude Include="src\core\asset\AssetRegistry.h">
+      <Filter>src\core\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\asset\SceneSource.h">
+      <Filter>src\core\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\asset\SourceGeometry.h">
+      <Filter>src\core\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\asset\SceneCache.h">
+      <Filter>src\core\asset</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\asset\importers\GltfImporter.h">
+      <Filter>src\core\asset\importers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\asset\importers\BCNCompression.h">
+      <Filter>src\core\asset\importers</Filter>
+    </ClInclude>
+    <!-- vendor -->
+    <ClInclude Include="vendor\bc7enc\bc7enc.h">
+      <Filter>vendor</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\bc7enc\rgbcx.h">
+      <Filter>vendor</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\bc7enc\rgbcx_table4.h">
+      <Filter>vendor</Filter>
+    </ClInclude>
+    <ClInclude Include="vendor\bc7enc\rgbcx_table4_small.h">
+      <Filter>vendor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\frame\ResizeCoordinator.h">
+      <Filter>src\renderer\frame</Filter>
+    </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
     <None Include="res\shaders\compile_shaders.bat">
       <Filter>res\shaders</Filter>
     </None>
-    <!-- ao -->
-    <None Include="res\shaders\ao\ssao_denoise.comp">
-      <Filter>res\shaders\ao</Filter>
+    <!-- ssgi -->
+    <None Include="res\shaders\ssgi\hi_z_prefilter.comp">
+      <Filter>res\shaders\ssgi</Filter>
     </None>
-    <None Include="res\shaders\ao\ssao_depth_prefilter.comp">
-      <Filter>res\shaders\ao</Filter>
+    <None Include="res\shaders\ssgi\gi_denoise.comp">
+      <Filter>res\shaders\ssgi</Filter>
     </None>
-    <None Include="res\shaders\ao\ssao_filter.comp">
-      <Filter>res\shaders\ao</Filter>
+    <None Include="res\shaders\ssgi\ao_denoise.comp">
+      <Filter>res\shaders\ssgi</Filter>
     </None>
-    <None Include="res\shaders\ao\ssao_main.comp">
-      <Filter>res\shaders\ao</Filter>
+    <None Include="res\shaders\ssgi\bilateral_upsample.comp">
+      <Filter>res\shaders\ssgi</Filter>
+    </None>
+    <None Include="res\shaders\ssgi\vbgi_main.comp">
+      <Filter>res\shaders\ssgi</Filter>
+    </None>
+    <None Include="res\shaders\ssgi\gi_accumulate.comp">
+      <Filter>res\shaders\ssgi</Filter>
     </None>
     <!-- clustered -->
     <None Include="res\shaders\clustered\cluster_count.comp">
@@ -633,20 +716,20 @@
     <None Include="res\shaders\core\prepassFS.frag">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\prepassVS.vert">
-      <Filter>res\shaders\core</Filter>
-    </None>
     <None Include="res\shaders\core\prepassFS_masked.frag">
-      <Filter>res\shaders\core</Filter>
-    </None>
-    <None Include="res\shaders\core\prepassVS_masked.vert">
-      <Filter>res\shaders\core</Filter>
-    </None>
-    <None Include="res\shaders\core\forwardVS.vert">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\core\hi_z_gen.comp">
       <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\core\nrd_prepare.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\core\rt_ray_args.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_params.glsl">
+      <Filter>res\shaders\include</Filter>
     </None>
     <!-- debug -->
     <None Include="res\shaders\debug\line_debugVS.vert">
@@ -668,7 +751,7 @@
     <None Include="res\shaders\environment\specular_prefilter.comp">
       <Filter>res\shaders\environment</Filter>
     </None>
-    <None Include="res\shaders\environment\diffuse_irradiance.comp">
+    <None Include="res\shaders\environment\sh_irradiance.comp">
       <Filter>res\shaders\environment</Filter>
     </None>
     <None Include="res\shaders\environment\brdf_lut.comp">
@@ -681,13 +764,10 @@
     <None Include="res\shaders\include\clustered.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
-    <None Include="res\shaders\include\depth.glsl">
+    <None Include="res\shaders\include\nrd_common.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
     <None Include="res\shaders\include\shadow.glsl">
-      <Filter>res\shaders\include</Filter>
-    </None>
-    <None Include="res\shaders\include\cmaa2.glsl">
       <Filter>res\shaders\include</Filter>
     </None>
     <None Include="res\shaders\include\pbr.glsl">
@@ -695,18 +775,6 @@
     </None>
     <!-- post_process -->
     <None Include="res\shaders\post_process\chromatic_aberration.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\cmaa2_deferred_resolve.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\cmaa2_edges.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\cmaa2_indirect_args.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\cmaa2_shape_candidates.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
     <None Include="res\shaders\post_process\exposure_finalize.comp">
@@ -724,40 +792,22 @@
     <None Include="res\shaders\post_process\flare_gen.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\post_process\fxaa.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\smaa_blend.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\smaa_edges.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
-    <None Include="res\shaders\post_process\smaa_weights.comp">
-      <Filter>res\shaders\post_process</Filter>
-    </None>
     <None Include="res\shaders\post_process\taa.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\post_process\volumetric_light_blur.comp">
+    <None Include="res\shaders\post_process\vol_light_blur.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
-    <None Include="res\shaders\post_process\volumetric_light.comp">
+    <None Include="res\shaders\post_process\vol_light_raymarch.comp">
       <Filter>res\shaders\post_process</Filter>
     </None>
     <!-- shadows -->
     <None Include="res\shaders\shadows\bend_sss.comp">
       <Filter>res\shaders\shadows</Filter>
     </None>
-    <None Include="res\shaders\shadows\shadow_depthVS.vert">
-      <Filter>res\shaders\shadows</Filter>
-    </None>
     <!-- visibility -->
     <None Include="res\shaders\visibility\instance_cull.comp">
       <Filter>res\shaders\visibility</Filter>
-    </None>
-    <None Include="res\shaders\debug\wireframeVS.vert">
-      <Filter>res\shaders\debug</Filter>
     </None>
     <None Include="res\shaders\debug\wireframeFS.frag">
       <Filter>res\shaders\debug</Filter>
@@ -847,6 +897,87 @@
       <Filter>res\shaders\visibility</Filter>
     </None>
     <None Include="res\shaders\core\velocity_resolve.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\include\depth.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\cmaa2_deferred_resolve.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\cmaa2_edges.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\cmaa2_indirect_args.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\cmaa2_shape_candidates.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\fxaa.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\smaa_blend.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\smaa_edges.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\smaa_weights.comp">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\deprecated\cmaa2.glsl">
+      <Filter>res\shaders\deprecated</Filter>
+    </None>
+    <None Include="res\shaders\post_process\vol_light_resolve.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\core\tlas_instances.comp">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\reflections\reflect_classify.comp">
+      <Filter>res\shaders\reflections</Filter>
+    </None>
+    <None Include="res\shaders\include\reflect_common.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_geometry.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\clustered\transparent_cluster_bounds.comp">
+      <Filter>res\shaders\clustered</Filter>
+    </None>
+    <None Include="res\shaders\shadows\shadow_maskedFS.frag">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\shadows\shadow_masked.mesh">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\reflections\rtreflect_trace.comp">
+      <Filter>res\shaders\reflections</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_core.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_sampling.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_shadow.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_shade.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\include\rt_shadow_common.glsl">
+      <Filter>res\shaders\include</Filter>
+    </None>
+    <None Include="res\shaders\shadows\rtshadow_trace.comp">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\core\transparent_cull.task">
+      <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\core\transparent_draw.mesh">
       <Filter>res\shaders\core</Filter>
     </None>
   </ItemGroup>

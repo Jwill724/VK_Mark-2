@@ -9,13 +9,11 @@
 #include "../backend/memory/BindlessImageTable.h"
 #include "../frame/FrameContext.h"
 #include "../../profiler/Profiler.h"
-#include "../../core/AssetUploadTypes.h"
+#include "../../core/asset/AssetUploadTypes.h"
 
 namespace RD = RendererDefinitions;
 
 static constexpr glm::vec3 DEFAULT_SPAWN { 1.0, 1.0, 1.0 };
-
-static uint32_t jitter_frame_index = 0u;
 
 namespace World
 {
@@ -28,11 +26,17 @@ namespace World
 	// TODO: Add more conditionals to cover counts, theres no safety
 	std::unordered_map<ModelID, SceneProfileEntry> _sceneProfiles
 	{
-		{ ModelID::Sponza,            {} },
+		{ ModelID::Sponza,              {} },
+		{ ModelID::SponzaIntelMain,     {} },
+		{ ModelID::SponzaIntelCurtains, {} },
+		{ ModelID::SponzaIntelIvy,      {} },
+		{ ModelID::SponzaIntelTree,     {} },
+		{ ModelID::SanMiguel,         {} },
 		{ ModelID::Bistro,            {} },
+		{ ModelID::BistroExt,         {} },
 		{ ModelID::MRSpheres,         {} },
 		{ ModelID::Duck,              { RD::InstancingMethod::DrawMultiStatic, 200000 } },
-		{ ModelID::DamagedHelmet,     { RD::InstancingMethod::DrawMultiStatic, 5000 } },
+		{ ModelID::DamagedHelmet,     { RD::InstancingMethod::DrawDynamic, 1 } },
 		{ ModelID::DragonAttenuation, {} },
 		{ ModelID::City,              {} },
 		{ ModelID::Structure,         {} },
@@ -40,6 +44,18 @@ namespace World
 		{ ModelID::Mech,              {} },
 		{ ModelID::YellowMech,        {} },
 		{ ModelID::Mini,              {} },
+
+		//{ ModelID::DarkRoom,          {} },
+		//{ ModelID::CornellBox,        {} },
+		//{ ModelID::BreakfastRoom,     {} },
+		//{ ModelID::FireplaceRoom,     {} },
+		//{ ModelID::Conference,        {} },
+		//{ ModelID::Sibenik,           {} },
+		//{ ModelID::MandarinOrange,           {} },
+		//{ ModelID::CandleHolder,           {} },
+		//{ ModelID::TransmissionTest,           {} },
+		//{ ModelID::CompareClearCoat,           {} },
+		//{ ModelID::MosquitoInAmber,           {} },
 	};
 
 	//std::vector<AsteroidState> _asteroidStates;
@@ -88,6 +104,9 @@ void World::Init(const BindlessImageTable& imgTable)
 
 	const auto& csm = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
 	_scene.InitCSMInfo(csm.Width(), csm.Height(), csm.m_bindlessID);
+
+	const auto& volShadow = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::VolumetricShadowMap);
+	_scene.InitVolumetricShadowInfo(volShadow.Width(), volShadow.Height(), volShadow.m_bindlessID);
 }
 
 void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
@@ -121,25 +140,39 @@ void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
 
 	_scene.GetVirtualInstances().push_back(asset->virtualInstance);
 
+	asset->lightIDs.reserve(asset->lights.size());
+	for (const auto& light : asset->lights)
+	{
+		const uint32_t id = LightingSystem::AddSceneLight(light);
+		if (id != UINT32_MAX) asset->lightIDs.push_back(id);
+	}
+
 	_bAreAssetsLoaded = true;
 
 	fmt::println("[World] Scene registered: '{}'", asset->sceneName);
 }
 
 void World::UpdateWorldState(
+	uint32_t frameNumber,
+	const Extents2D& drawExtent,
 	FrameContext& frameCtx,
 	Allocator& allocator,
 	Profiler& profiler,
-	GLFWwindow* window)
+	GLFWwindow* window,
+	bool isTemporalAllowed)
 {
 	bool bIsTemporalInvalid = false; // Assume clean start each frame
 
 	auto& sceneData = _scene.GetSceneData();
 	auto& camera = _scene.GetCamera();
 
-	sceneData.temporal.x = jitter_frame_index++;
+	const auto& debug = profiler.debugToggles;
 
-	bIsTemporalInvalid = _scene.UpdateCamera(frameCtx.GetCachedExtent(), profiler, window);
+	_scene.ClearDynamicTransformsFlag();
+
+	sceneData.temporal.x = frameNumber;
+
+	bIsTemporalInvalid = _scene.UpdateCamera(drawExtent, profiler, window, isTemporalAllowed);
 
 	const auto deltaTime = profiler.getStats().deltaSecondsRaw;
 
@@ -157,7 +190,7 @@ void World::UpdateWorldState(
 		LightingSystem::_mainFlashLight.ToggleFlashLight();
 	}
 
-	const bool bIsFlashlightActive = LightingSystem::_mainFlashLight.IsFlashLightActive();
+	const bool bIsFlashlightActive = LightingSystem::_mainFlashLight.IsFlashLightOn();
 
 	// Positional changes to dirty light
 	bFlashlightChanged = LightingSystem::_mainFlashLight.UpdateFlashLight(
@@ -214,11 +247,9 @@ void World::UpdateWorldState(
 	// Transform updates
 	// ===================
 
-	const bool dynamicChanged = SyncGlobalInstancesAndTransforms(
-		_sceneProfiles, _scene, deltaTime);
+	const bool dynamicChanged = SyncGlobalInstancesAndTransforms(_sceneProfiles, _scene, deltaTime);
 
-	const bool bMotionNeeded =
-		profiler.debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
+	const bool bMotionNeeded = debug.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 
 	_scene.BuildMotionMatrices(bMotionNeeded, _scene.GetTemporalResult());
 
@@ -228,16 +259,25 @@ void World::UpdateWorldState(
 
 	bIsTemporalInvalid = bIsTemporalInvalid || bTransformsChanged;
 
+	const bool rtShadowsOff = debug.sunShadowFilter != static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT);
+
 	// Screen space contact shadows
-	if (profiler.debugToggles.enableSSS)
+	if (debug.enableSSS)
 	{
 		_scene.BuildDispatchList();
 	}
 
 	// Cascaded shadow map updates
-	if (profiler.debugToggles.enableShadows)
+	if (debug.enableShadows && rtShadowsOff)
 	{
+		_scene.UpdateShadowTexel(static_cast<RD::SunShadowFilter>(debug.sunShadowFilter));
 		_scene.UpdateCSMInfo();
+	}
+
+	// Volumetric csm update
+	if (debug.enableVolumetrics)
+	{
+		_scene.UpdateVolumetricShadowInfo(profiler.volLightSettings.maxDistance);
 	}
 
 	// Now the temporal should be known if this frame is safe
@@ -250,6 +290,7 @@ void World::UpdateWorldState(
 
 	// Vulkan requires a buffer created once its defined in used shader, even if that buffer isn't actually used.
 	frameCtx.AssignCSMUniform(allocator.AllocateUniform(_scene.GetCSMData()), allocator);
+	frameCtx.AssignVolumetricShadowUniform(allocator.AllocateUniform(_scene.GetVolumetricShadowInfo()), allocator);
 }
 
 static glm::mat4 MakeClusterTransform(
@@ -283,6 +324,7 @@ static glm::mat4 MakeClusterTransform(
 		glm::rotate(glm::mat4(1.0f), rotation.z, glm::vec3(0.0f, 0.0f, 1.0f));
 }
 
+static bool braindeadhack = false;
 bool World::SyncGlobalInstancesAndTransforms(
 	std::unordered_map<ModelID, SceneProfileEntry>& sceneProfiles,
 	Scene& scene,
@@ -291,6 +333,7 @@ bool World::SyncGlobalInstancesAndTransforms(
 	if (!_bAreAssetsLoaded) return false;
 
 	bool dynamicChanged = false;
+	bool staticUpdated = false;
 
 	for (auto& inst : scene.GetVirtualInstances())
 	{
@@ -306,11 +349,56 @@ bool World::SyncGlobalInstancesAndTransforms(
 
 		if (profile.instanceCount == 1)
 		{
+			if (profile.drawType == RD::InstancingMethod::DrawStatic)
+			{
+				// TODO: Create a way to modify transforms at runtime
+				if (!braindeadhack && sid == ModelID::DamagedHelmet) {
+					glm::mat4& M = transforms[inst.firstTransform];
+
+					const glm::mat4& baseTransform = inst.baseTransform;
+					const glm::vec3 pivot = glm::vec3(baseTransform[3]);
+
+					// Turn helmet for bake
+					glm::mat4 pitch =
+						glm::rotate(
+							glm::mat4(1.0f),
+							glm::radians(90.0f),
+							glm::vec3(1.0f, 0.0f, 0.0f)
+						);
+
+					glm::mat4 yawLeft =
+						glm::rotate(
+							glm::mat4(1.0f),
+							glm::radians(90.0f),
+							glm::vec3(0.0f, 1.0f, 0.0f)
+						);
+
+					glm::mat4 rotate = yawLeft * pitch;
+
+					glm::vec3 offset =
+						glm::vec3(
+							0.0f,  // world X
+							2.5f,  // world Y
+							0.0f   // world Z
+						);
+
+					M =
+						glm::translate(glm::mat4(1.0f), offset) *
+						glm::translate(glm::mat4(1.0f), pivot) *
+						rotate *
+						glm::translate(glm::mat4(1.0f), -pivot);
+					staticUpdated = true;
+					braindeadhack = true;
+				}
+				inst.instancingMethod = profile.drawType;
+				continue; // transforms already baked into static
+			}
+
 			if (profile.drawType == RD::InstancingMethod::DrawDynamic)
 			{
 				inst.instancingMethod = profile.drawType;
 
-				constexpr float spinSpeedRadiansPerSecond = glm::radians(30.0f);
+				constexpr float spinSpeedRadiansPerSecond = glm::radians(40.0f);
 				const float deltaSecondsFloat = static_cast<float>(deltaTime);
 
 				inst.spinAngleRadians += spinSpeedRadiansPerSecond * deltaSecondsFloat;
@@ -379,7 +467,7 @@ bool World::SyncGlobalInstancesAndTransforms(
 						MakeClusterTransform(
 							copyIndex,
 							desiredCapacityCopies,
-							40.0f);
+							100.0f);
 
 					for (uint32_t slot = 0; slot < transformsPerCopy; ++slot)
 					{
@@ -402,5 +490,8 @@ bool World::SyncGlobalInstancesAndTransforms(
 		}
 	}
 
-	return dynamicChanged;
+	if (dynamicChanged)
+		scene.MarkDynamicTransformsDirty();
+
+	return dynamicChanged || staticUpdated;
 }

@@ -49,9 +49,6 @@
 
 #define FASTGLTF_ENABLE_GLMC
 #include <fastgltf/glm_element_traits.hpp>
-#include <fastgltf/core.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/tools.hpp>
 #include <fastgltf/util.hpp>
 
 #include "imgui.h"
@@ -62,10 +59,3 @@
 
 #include "assets/AreaTex.h"
 #include "assets/SearchTex.h"
-
-#ifndef NDEBUG
-	#include <cassert>
-	#define ASSERT(x) assert(x)
-#else
-	#define ASSERT(x) ((void)0)
-#endif

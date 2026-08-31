@@ -7,31 +7,41 @@ namespace RD = RendererDefinitions;
 
 enum class DirectionalCSMPipelineSlot : uint8_t
 {
-	Shadow,
 	ShadowMesh,
 
 	Count
 };
 
+enum class RTSunShadowPipelineSlot : uint8_t
+{
+	NRDShadowPrepare,
+	RTSunShadow,
+
+	Count
+};
 
 enum class FlashlightShadowPipelineSlot : uint8_t
 {
-	Shadow,
-	ShadowMesh,
+	ShadowMeshMaskedD32,
 
 	Count
 };
 
+enum class VolumetricShadowPipelineSlot : uint8_t
+{
+	ShadowMeshMaskedD16,
+
+	Count
+};
+
+
 enum class BasePrepassPipelineSlot : uint8_t
 {
-	Prepass,
-	PrepassMasked,
 	PrepassMesh,
 	PrepassMaskedMesh,
 
 	Count
 };
-
 
 enum class HiZGenerationPipelineSlot : uint8_t
 {
@@ -61,15 +71,17 @@ enum class OpaqueLightingPipelineSlot : uint8_t
 	Count
 };
 
-enum class SSAOPipelineSlot : uint8_t
+enum class SSGIPipelineSlot : uint8_t
 {
-	DepthPrefilter,
-
+	HiZPrefilter,
 	Main,
 
-	Filter,
+	GIAccum,
 
-	Denoise,
+	Upsample,
+
+	AODenoise,
+	GIDenoise,
 
 	Count
 };
@@ -85,7 +97,7 @@ enum class SSContactShadowPipelineSlot : uint8_t
 enum class VolumetricLightingPipelineSlot : uint8_t
 {
 	Raymarch,
-
+	TemporalResolve,
 	Blur,
 
 	Count
@@ -93,7 +105,7 @@ enum class VolumetricLightingPipelineSlot : uint8_t
 
 enum class BloomPipelineSlot : uint8_t
 {
-	Downsample,
+	OpaqueDownsample,
 
 	Upsample,
 
@@ -136,6 +148,8 @@ enum class ClusteredLightsPipelineSlot : uint8_t
 {
 	LightCull,
 
+	TransparentClusterBounds,
+
 	TileSliceRanges,
 
 	IndirectArgs,
@@ -150,39 +164,7 @@ enum class ClusteredLightsPipelineSlot : uint8_t
 };
 
 
-enum class SMAAPipelineSlot : uint8_t
-{
-	EdgeDetection,
-
-	BlendWeights,
-
-	NeighborhoodBlend,
-
-	Count
-};
-
-
-enum class CMAA2PipelineSlot : uint8_t
-{
-	BuildEdges,
-
-	DispatchArgs,
-
-	ProcessCandidates,
-
-	DeferredResolve,
-
-	Count
-};
-
 enum class TAAPipelineSlot : uint8_t
-{
-	Main,
-
-	Count
-};
-
-enum class FXAAPipelineSlot : uint8_t
 {
 	Main,
 
@@ -213,7 +195,6 @@ enum class TransparentResolvePipelineSlot : uint8_t
 
 enum class OpaqueWireframePipelineSlot : uint8_t
 {
-	Wireframe,
 	WireframeMesh,
 
 	Count
@@ -268,6 +249,49 @@ enum class DrawBuildPipelineSlot : uint8_t
 	Count
 };
 
+enum class TlasInstancesPipelineSlot { Build, Count };
+
+enum class RTReflectionsPipelineSlot
+{
+	NRDReflectPrepare,
+	Classify,
+	Args,
+	Intersect,
+	Count
+};
+
+//enum class SMAAPipelineSlot : uint8_t
+//{
+//	EdgeDetection,
+//
+//	BlendWeights,
+//
+//	NeighborhoodBlend,
+//
+//	Count
+//};
+
+
+//enum class CMAA2PipelineSlot : uint8_t
+//{
+//	BuildEdges,
+//
+//	DispatchArgs,
+//
+//	ProcessCandidates,
+//
+//	DeferredResolve,
+//
+//	Count
+//};
+
+//enum class FXAAPipelineSlot : uint8_t
+//{
+//	Main,
+//
+//	Count
+//};
+
 
 // =====================================================================================
 // PIPELINE BUNDLE TRAITS
@@ -291,8 +315,6 @@ struct PipelineBundleTraits<BasePrepassPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Prepass,
-		RD::Renderer_Pipeline::PrepassMasked,
 		RD::Renderer_Pipeline::PrepassMesh,
 		RD::Renderer_Pipeline::PrepassMaskedMesh
 	};
@@ -303,7 +325,6 @@ struct PipelineBundleTraits<DirectionalCSMPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Shadow,
 		RD::Renderer_Pipeline::ShadowMesh
 	};
 };
@@ -313,10 +334,19 @@ struct PipelineBundleTraits<FlashlightShadowPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Shadow,
-		RD::Renderer_Pipeline::ShadowMesh
+		RD::Renderer_Pipeline::ShadowMeshMaskedD32
 	};
 };
+
+template<>
+struct PipelineBundleTraits<VolumetricShadowPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::ShadowMeshMaskedD16
+	};
+};
+
 
 template<>
 struct PipelineBundleTraits<GBufferDebugPipelineSlot>
@@ -337,16 +367,17 @@ struct PipelineBundleTraits<HiZGenerationPipelineSlot>
 	};
 };
 
-
 template<>
-struct PipelineBundleTraits<SSAOPipelineSlot>
+struct PipelineBundleTraits<SSGIPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::SSAODepthPrefilter,
-		RD::Renderer_Pipeline::SSAO,
-		RD::Renderer_Pipeline::SSAOFilter,
-		RD::Renderer_Pipeline::SSAODenoise
+		RD::Renderer_Pipeline::HiZPrefilter,
+		RD::Renderer_Pipeline::VBGI,
+		RD::Renderer_Pipeline::GIAccumulate,
+		RD::Renderer_Pipeline::BilateralUpsample,
+		RD::Renderer_Pipeline::AODenoise,
+		RD::Renderer_Pipeline::GIDenoise
 	};
 };
 
@@ -367,6 +398,7 @@ struct PipelineBundleTraits<VolumetricLightingPipelineSlot>
 	static constexpr std::array mappings =
 	{
 		RD::Renderer_Pipeline::VolumetricLight,
+		RD::Renderer_Pipeline::VolumetricLightResolve,
 		RD::Renderer_Pipeline::VolumetricLightBlur
 	};
 };
@@ -425,35 +457,12 @@ struct PipelineBundleTraits<ClusteredLightsPipelineSlot>
 	static constexpr std::array mappings =
 	{
 		RD::Renderer_Pipeline::LightCull,
+		RD::Renderer_Pipeline::TransparentClusterBounds,
 		RD::Renderer_Pipeline::ClusterTileSliceRanges,
 		RD::Renderer_Pipeline::IndirectArgsLight,
 		RD::Renderer_Pipeline::ClusterCount,
 		RD::Renderer_Pipeline::ClusterScanOffsets,
 		RD::Renderer_Pipeline::ClusterScatterIDs
-	};
-};
-
-template<>
-struct PipelineBundleTraits<SMAAPipelineSlot>
-{
-	static constexpr std::array mappings =
-	{
-		RD::Renderer_Pipeline::SMAAEdges,
-		RD::Renderer_Pipeline::SMAAWeights,
-		RD::Renderer_Pipeline::SMAABlend
-	};
-};
-
-
-template<>
-struct PipelineBundleTraits<CMAA2PipelineSlot>
-{
-	static constexpr std::array mappings =
-	{
-		RD::Renderer_Pipeline::CMAA2Edges,
-		RD::Renderer_Pipeline::CMAA2DispatchArgs,
-		RD::Renderer_Pipeline::CMAA2ShapeCandidates,
-		RD::Renderer_Pipeline::CMAA2DeferredResolve
 	};
 };
 
@@ -484,14 +493,6 @@ struct PipelineBundleTraits<TAAPipelineSlot>
 	};
 };
 
-template<>
-struct PipelineBundleTraits<FXAAPipelineSlot>
-{
-	static constexpr std::array mappings =
-	{
-		RD::Renderer_Pipeline::FXAA
-	};
-};
 
 template<>
 struct PipelineBundleTraits<SkyboxPipelineSlot>
@@ -525,7 +526,6 @@ struct PipelineBundleTraits<OpaqueWireframePipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::Wireframe,
 		RD::Renderer_Pipeline::WireframeMesh
 	};
 };
@@ -592,3 +592,66 @@ struct PipelineBundleTraits<DrawBuildPipelineSlot>
 		RD::Renderer_Pipeline::DrawPlace
 	};
 };
+
+template<>
+struct PipelineBundleTraits<TlasInstancesPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::TlasInstances
+	};
+};
+
+template<>
+struct PipelineBundleTraits<RTSunShadowPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::NRDPrepare,
+		RD::Renderer_Pipeline::RTShadowTrace,
+	};
+};
+
+template<>
+struct PipelineBundleTraits<RTReflectionsPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::NRDPrepare,
+		RD::Renderer_Pipeline::ReflectClassify,
+		RD::Renderer_Pipeline::RTRayArgs,
+		RD::Renderer_Pipeline::RTReflectTrace
+	};
+};
+
+//template<>
+//struct PipelineBundleTraits<SMAAPipelineSlot>
+//{
+//	static constexpr std::array mappings =
+//	{
+//		RD::Renderer_Pipeline::SMAAEdges,
+//		RD::Renderer_Pipeline::SMAAWeights,
+//		RD::Renderer_Pipeline::SMAABlend
+//	};
+//};
+
+//template<>
+//struct PipelineBundleTraits<CMAA2PipelineSlot>
+//{
+//	static constexpr std::array mappings =
+//	{
+//		RD::Renderer_Pipeline::CMAA2Edges,
+//		RD::Renderer_Pipeline::CMAA2DispatchArgs,
+//		RD::Renderer_Pipeline::CMAA2ShapeCandidates,
+//		RD::Renderer_Pipeline::CMAA2DeferredResolve
+//	};
+//};
+//
+//template<>
+//struct PipelineBundleTraits<FXAAPipelineSlot>
+//{
+//	static constexpr std::array mappings =
+//	{
+//		RD::Renderer_Pipeline::FXAA
+//	};
+//};

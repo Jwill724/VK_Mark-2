@@ -121,3 +121,14 @@ void BindlessBDATable::ClearAssetBuffers(Allocator& allocator)
 	ClearGPUAddressBuffer(RD::Renderer_Buffer::MeshletVertices, allocator);
 	ClearGPUAddressBuffer(RD::Renderer_Buffer::MeshletTriangles, allocator);
 }
+
+AllocatedBuffer BindlessBDATable::DetachGPUAddressBuffer(RD::Renderer_Buffer slot)
+{
+	if (!ContainsGPUBuffer(slot)) return {};
+
+	AllocatedBuffer detached = std::move(m_gpuBuffers[Index(slot)]);
+	m_gpuBuffers[Index(slot)].Reset();
+	RemoveAddress(slot);
+
+	return detached;
+}

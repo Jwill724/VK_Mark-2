@@ -41,6 +41,14 @@ public:
 		return layouts;
 	}
 
+	void BindGlobalSetGraphics(
+		VkCommandBuffer cmd,
+		const PipelineLayoutConst& globalLayout);
+
+	void BindGlobalSetCompute(
+		VkCommandBuffer cmd,
+		const PipelineLayoutConst& globalLayout);
+
 	void BindDescriptorSetsGraphics(
 		VkCommandBuffer cmd,
 		VkDescriptorSet frameSet,

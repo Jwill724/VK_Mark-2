@@ -26,7 +26,6 @@ void RegisterVelocityResolvePass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsTaaOn() &&
 							ctx.frameState->InstancesActive() &&
 							ctx.frameState->IsTemporalValid() &&
 							!ctx.frameState->DebugRendering();

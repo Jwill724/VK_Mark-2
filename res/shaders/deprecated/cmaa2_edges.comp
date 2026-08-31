@@ -1,0 +1,218 @@
+//#version 450
+//
+//#extension GL_GOOGLE_include_directive : require
+//#extension GL_ARB_separate_shader_objects : require
+//
+//#include "../include/common.glsl"
+//#include "../include/cmaa2.glsl"
+//
+//layout(local_size_x = 16, local_size_y = 16) in;
+//
+//// Original implementation: https://github.com/GameTechDev/CMAA2/blob/master/Projects/CMAA2/CMAA2/CMAA2.hlsl
+//
+//layout(push_constant) uniform CMAA2Push {
+//	uint halfWidth;
+//	uint maxShapeCandidates;
+//	uint maxDeferredItems;
+//	uint maxDeferredLocations;
+//} pc;
+//
+//layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inTonemap;
+//
+//layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform uimage2D outWorkingEdges;
+//uint PackEdges(vec4 edges) {
+//	return uint(dot(edges, vec4(1.0, 2.0, 4.0, 8.0)));
+//}
+//
+//float RGBToLumaForEdges(vec3 colorLinearOrDisplay) {
+//	// this is what original FXAA (and consequently CMAA2) use by default - these coefficients correspond to Rec. 601 and those should be
+//	// used on gamma-compressed components (see https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients),
+//	float luma = dot(sqrt(max(colorLinearOrDisplay, vec3(0.0))), vec3(0.299, 0.587, 0.114));
+//	return luma;
+//}
+//
+//shared vec4 sharedFracEdgesH[16 * 16];
+//shared vec4 sharedFracEdgesV[16 * 16];
+//
+//void groupsharedLoadQuadHV(uint addr, out vec2 e00, out vec2 e10, out vec2 e01, out vec2 e11) {
+//	vec4 valH = sharedFracEdgesH[addr]; e00.y = valH.x; e10.y = valH.y; e01.y = valH.z; e11.y = valH.w;
+//	vec4 valV = sharedFracEdgesV[addr]; e00.x = valV.x; e10.x = valV.y; e01.x = valV.z; e11.x = valV.w;
+//}
+//
+//const float g_CMAA2_LocalContrastAdaptationAmount = 0.10; // (Intel HIGH preset)
+//
+//float computeLocalContrastV(int x, int y, vec2 neighbourhood[16]) {
+//	return max(
+//		max(neighbourhood[(x+1)*4+(y+0)].x, neighbourhood[(x+1)*4+(y+1)].x),
+//		max(neighbourhood[(x+2)*4+(y+0)].x, neighbourhood[(x+2)*4+(y+1)].x)
+//	) * g_CMAA2_LocalContrastAdaptationAmount;
+//}
+//float computeLocalContrastH(int x, int y, vec2 neighbourhood[16]) {
+//	return max(
+//		max(neighbourhood[(x+0)*4+(y+1)].y, neighbourhood[(x+1)*4+(y+1)].y),
+//		max(neighbourhood[(x+0)*4+(y+2)].y, neighbourhood[(x+1)*4+(y+2)].y)
+//	) * g_CMAA2_LocalContrastAdaptationAmount;
+//}
+//
+//void main() {
+//	uvec2 localID = gl_LocalInvocationID.xy;
+//	uvec2 groupID = gl_WorkGroupID.xy;
+//
+//	SceneData scene = getSceneData();
+//
+//	bool inOutputKernel =
+//		(localID.x != 0u) &&
+//		(localID.y != 0u) &&
+//		(localID.x != 15u) &&
+//		(localID.y != 15u);
+//
+//	// screen position in the input (expanded) kernel (shifted one 2x2 block up/left)
+//	ivec2 pixelPos = ivec2(groupID) * ivec2(14) + ivec2(localID) - ivec2(1);
+//	pixelPos *= 2;
+//
+//	uint fullWidth = uint(scene.viewportSize.x);
+//	uint fullHeight = uint(scene.viewportSize.y);
+//
+//	if (pixelPos.x < 0 || pixelPos.y < 0) return;
+//	if ((uint(pixelPos.x) + 2u) >= fullWidth || (uint(pixelPos.y) + 2u) >= fullHeight) return;
+//
+//	uint centerAddr = localID.x + localID.y * 16u;
+//
+//	// Edge detect from tonemap (luma path 1)
+//	float pixelLumas[8];
+//	for (uint i = 0u; i < 8u; i++) {
+//		ivec2 offset = ivec2(int(i % 3u), int(i / 3u));
+//		vec3 color = texelFetch(inTonemap, pixelPos + offset, 0).rgb;
+//		pixelLumas[i] = RGBToLumaForEdges(color);
+//	}
+//
+//	// qe0..qe3 are the 2x2 quad's vertical+horizontal diffs:
+//	// qe?.x = vertical edge strength, qe?.y = horizontal edge strength
+//	vec2 qe0;
+//	vec2 qe1;
+//	vec2 qe2;
+//	vec2 qe3;
+//
+//	// Top-left (0,0): compare (0,0)-(1,0) and (0,0)-(0,1)
+//	qe0.x = abs(pixelLumas[0] - pixelLumas[1]);
+//	qe0.y = abs(pixelLumas[0] - pixelLumas[3]);
+//
+//	// Top-right (1,0): compare (1,0)-(2,0) and (1,0)-(1,1)
+//	qe1.x = abs(pixelLumas[1] - pixelLumas[2]);
+//	qe1.y = abs(pixelLumas[1] - pixelLumas[4]);
+//
+//	// Bottom-left (0,1): compare (0,1)-(1,1) and (0,1)-(0,2)
+//	qe2.x = abs(pixelLumas[3] - pixelLumas[4]);
+//	qe2.y = abs(pixelLumas[3] - pixelLumas[6]);
+//
+//	// Bottom-right (1,1): compare (1,1)-(2,1) and (1,1)-(1,2)
+//	qe3.x = abs(pixelLumas[4] - pixelLumas[5]);
+//	qe3.y = abs(pixelLumas[4] - pixelLumas[7]);
+//
+//	sharedFracEdgesV[centerAddr] = vec4(qe0.x, qe1.x, qe2.x, qe3.x);
+//	sharedFracEdgesH[centerAddr] = vec4(qe0.y, qe1.y, qe2.y, qe3.y);
+//
+//	memoryBarrierShared();
+//	barrier();
+//
+//	if (!inOutputKernel) return;
+//
+//	float edgeThreshold = 0.07; // HIGH preset default (Intel)
+//
+//	// topRow and leftColumn come from neighbor threads in shared memory
+//	vec2 topRow     = sharedFracEdgesH[centerAddr - 16u].zw; // top row bottom edge (H)
+//	vec2 leftColumn = sharedFracEdgesV[centerAddr - 1u].yw;  // left col right edge (V)
+//
+//	// Load 4x4 neighbourhood from shared memory for local contrast adaptation.
+//	vec2 neighbourhood[16];
+//	vec2 dummy0, dummy1, dummy2;
+//
+//	groupsharedLoadQuadHV(centerAddr - 16u - 1u,  dummy0,                dummy1,                dummy2,                neighbourhood[0*4+0]);
+//	groupsharedLoadQuadHV(centerAddr - 16u,       dummy0,                dummy1,                neighbourhood[1*4+0],  neighbourhood[2*4+0]);
+//	groupsharedLoadQuadHV(centerAddr - 16u + 1u,  dummy0,                dummy1,                neighbourhood[3*4+0],  dummy2);
+//	groupsharedLoadQuadHV(centerAddr - 1u,        dummy0,                neighbourhood[0*4+1],  dummy1,                neighbourhood[0*4+2]);
+//	groupsharedLoadQuadHV(centerAddr + 1u,        neighbourhood[3*4+1],  dummy0,                neighbourhood[3*4+2],  dummy1);
+//	groupsharedLoadQuadHV(centerAddr - 1u + 16u,  dummy0,                neighbourhood[0*4+3],  dummy1,                dummy2);
+//	groupsharedLoadQuadHV(centerAddr + 16u,       neighbourhood[1*4+3],  neighbourhood[2*4+3],  dummy0,                dummy1);
+//
+//	// Patch in already-known values from registers
+//	neighbourhood[1*4+0].y = topRow.x;
+//	neighbourhood[2*4+0].y = topRow.y;
+//	neighbourhood[0*4+1].x = leftColumn.x;
+//	neighbourhood[0*4+2].x = leftColumn.y;
+//	neighbourhood[1*4+1] = qe0;
+//	neighbourhood[2*4+1] = qe1;
+//	neighbourhood[1*4+2] = qe2;
+//	neighbourhood[2*4+2] = qe3;
+//
+//	// Threshold with local contrast subtracted
+//	vec2 topRowBinary;
+//	topRowBinary.x = float((topRow.x - computeLocalContrastH(0, -1, neighbourhood)) > edgeThreshold);
+//	topRowBinary.y = float((topRow.y - computeLocalContrastH(1, -1, neighbourhood)) > edgeThreshold);
+//
+//	vec2 leftColBinary;
+//	leftColBinary.x = float((leftColumn.x - computeLocalContrastV(-1, 0, neighbourhood)) > edgeThreshold);
+//	leftColBinary.y = float((leftColumn.y - computeLocalContrastV(-1, 1, neighbourhood)) > edgeThreshold);
+//
+//	vec4 ce0, ce1, ce2, ce3;
+//
+//	ce0.x = float((qe0.x - computeLocalContrastV(0, 0, neighbourhood)) > edgeThreshold);
+//	ce0.y = float((qe0.y - computeLocalContrastH(0, 0, neighbourhood)) > edgeThreshold);
+//	ce1.x = float((qe1.x - computeLocalContrastV(1, 0, neighbourhood)) > edgeThreshold);
+//	ce1.y = float((qe1.y - computeLocalContrastH(1, 0, neighbourhood)) > edgeThreshold);
+//	ce2.x = float((qe2.x - computeLocalContrastV(0, 1, neighbourhood)) > edgeThreshold);
+//	ce2.y = float((qe2.y - computeLocalContrastH(0, 1, neighbourhood)) > edgeThreshold);
+//	ce3.x = float((qe3.x - computeLocalContrastV(1, 1, neighbourhood)) > edgeThreshold);
+//	ce3.y = float((qe3.y - computeLocalContrastH(1, 1, neighbourhood)) > edgeThreshold);
+//
+//	// left edges (z)
+//	ce0.z = leftColBinary.x;
+//	ce1.z = ce0.x;
+//	ce2.z = leftColBinary.y;
+//	ce3.z = ce2.x;
+//
+//	// top edges (w)
+//	ce0.w = topRowBinary.x;
+//	ce1.w = topRowBinary.y;
+//	ce2.w = ce0.y;
+//	ce3.w = ce1.y;
+//
+//	vec4 ce[4] = vec4[4](ce0, ce1, ce2, ce3);
+//
+//	// write packed edges + push candidates
+//	uint outEdges[4] = uint[4](0u, 0u, 0u, 0u);
+//
+//	for (uint i = 0u; i < 4u; i++) {
+//		ivec2 localPixelPos = pixelPos + pixelOffsets[i];
+//
+//		vec4 edges = ce[i];
+//
+//		// if there's at least one two edge corner, this is a candidate for simple or complex shape processing...
+//		bool isCandidate = (edges.x * edges.y + edges.y * edges.z + edges.z * edges.w + edges.w * edges.x) != 0;
+//
+//		if (isCandidate) {
+//			Cmaa2ControlBuffer control = getCMAA2ControlBuffer();
+//
+//			Cmaa2ShapeCandidatesBuffer candidates = getCMAA2ShapeCandidatesBuffer();
+//
+//			uint candidateIndex = atomicAdd(control.control[CMAA2_CTRL_SHAPE_CANDIDATE_COUNT], 1u);
+//			if (candidateIndex >= pc.maxShapeCandidates) break;
+//			candidates.pixelIDs[candidateIndex] = (uint(localPixelPos.x) << 18u) | (0u << 14u) | uint(localPixelPos.y);
+//		}
+//
+//		// Write out edges - we write out all, including empty pixels, to make sure shape detection edge tracing
+//		// doesn't continue on previous frame's edges that no longer exist.
+//		outEdges[i] = PackEdges(edges);
+//	}
+//
+//	// Pack edge data for uint format
+//	ivec2 dst0 = ivec2(pixelPos.x >> 1, pixelPos.y + 0);
+//	ivec2 dst1 = ivec2(pixelPos.x >> 1, pixelPos.y + 1);
+//
+//	uint packed0 = (outEdges[1] << 4) | outEdges[0];
+//	uint packed1 = (outEdges[3] << 4) | outEdges[2];
+//
+//	imageStore(outWorkingEdges, dst0, uvec4(packed0, 0u, 0u, 0u));
+//	imageStore(outWorkingEdges, dst1, uvec4(packed1, 0u, 0u, 0u));
+//}
+//

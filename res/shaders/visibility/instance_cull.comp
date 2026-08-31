@@ -9,15 +9,18 @@
 #include "../include/shadow.glsl"
 #include "../include/clustered.glsl"
 
-layout(local_size_x = 256) in;
+// EVERY renderer instance within InstanceInput processes through here to be culled to a VisibleInstance type.
+// Visibility bitmasks are tagged to each instance group (opaque, shadows, etc). Draw building uses this list,
+// to define a DrawInstanceIDs list that efficiently traverses InstanceInput buffer.
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform usampler2D inHiZ;
+layout(local_size_x = 256) in;
 
 void addVisibleStats(uint mask)
 {
 	switch(mask)
 	{
 		case VIS_SLOT_OPAQUE:
+		case VIS_SLOT_OPAQUE_MASKED:
 			atomicAdd(getGPUStatsBuffer().gpuStats.visibleOpaque, 1u);
 			return;
 		case VIS_SLOT_TRANSPARENT:
@@ -29,6 +32,7 @@ void addVisibleStats(uint mask)
 		case VIS_SLOT_CSM1:
 		case VIS_SLOT_CSM2:
 		case VIS_SLOT_CSM3:
+		case VIS_SLOT_VOLUMETRIC:
 			atomicAdd(getGPUStatsBuffer().gpuStats.visibleShadowCasters, 1u);
 			return;
 	}
@@ -59,13 +63,10 @@ void main()
 	SceneData sceneData                   = getSceneData();
 	ShadowCSM csm                         = getShadowCSM();
 
-	float maxMip = float(textureQueryLevels(inHiZ) - 1);
-
 	vec3  center = 0.5 * (worldAABB.vmin + worldAABB.vmax);
 	float radius = mesh.localBoundingRadius * max_world_scale(transform);
 
 	bool survives = (instance.flags & ALWAYS_VISIBLE) != 0u;
-	bool hiZValid = sceneData.temporal.z != 0u;
 
 	if (!survives)
 	{
@@ -76,15 +77,6 @@ void main()
 		// Frustum cull
 		if (sphere_in_side_planes(center, radius, pl, pr, pb, pt))
 			survives = true;
-
-		// Occlusion cull
-		if (survives && hiZValid && !DBG(disableOcclusionCull) && debug.renderingMode != RENDERING_MODE_MESH_SHADERS)
-		{
-			if (!sphere_hiz_visible(inHiZ, center, radius, maxMip, vp))
-			{
-				survives = false;
-			}
-		}
 	}
 
 	uint visMask = 0u;
@@ -98,15 +90,14 @@ void main()
 	if (survives)
 	{
 		// primary
-		if ((instance.flags & PASS_OPAQUE) != 0u && !isAlphaMasked)
+		if ((instance.flags & PASS_OPAQUE) != 0u)
 		{
-			visMask |= (1u << VIS_SLOT_OPAQUE);
-			markVisible(visCounters, VIS_SLOT_OPAQUE, statsTracking);
-		}
-		else if ((instance.flags & PASS_OPAQUE) != 0u && (isAlphaMasked || isDoubleSided || isFoliage))
-		{
-			visMask |= (1u << VIS_SLOT_OPAQUE_MASKED);
-			markVisible(visCounters, VIS_SLOT_OPAQUE_MASKED, statsTracking);
+			uint slot = (isAlphaMasked || isDoubleSided || isFoliage)
+				? VIS_SLOT_OPAQUE_MASKED
+				: VIS_SLOT_OPAQUE;
+
+			visMask |= (1u << slot);
+			markVisible(visCounters, slot, statsTracking);
 		}
 		else if ((instance.flags & PASS_TRANSPARENT) != 0u)
 		{
@@ -142,15 +133,14 @@ void main()
 		}
 	}
 
-	// CSM — opaque only, test all instances
+	// Surface CSM — opaque only, test all instances
 	if (DBG(enableShadows) &&
+		debug.sunShadowFilter != SUN_SHADOW_FILTER_RT_SOFT &&
+		!DBG(csmAtlasCached) &&
 		(instance.flags & PASS_OPAQUE) != 0u &&
 		(instance.flags & CAST_CSM) != 0u)
 	{
 		ShadowCullDataBuffer shadowCull = getShadowCullDataBuffer();
-
-		bool isAlphaTested = (instance.flags & ALPHA_TESTED) != 0u;
-		bool isTree        = (instance.flags & IS_TREE) != 0u;
 
 		vec3 extentWS = 0.5 * (worldAABB.vmax - worldAABB.vmin);
 		float lsEpsilon = csm.params.w;
@@ -164,8 +154,8 @@ void main()
 						  : (c == 2u) ? activeCascades.z : activeCascades.w;
 			if (isActive == 0u) continue;
 
-			if (isAlphaTested && !isTree && c >= 2u) continue;
-			if (isAlphaTested &&  isTree && c >= 3u) continue;
+			if (isAlphaMasked && !isFoliage && c >= 2u) continue;
+			if (isAlphaMasked &&  isFoliage && c >= 3u) continue;
 
 			// sub-texel rejection — caster smaller than one shadow texel
 			// contributes nothing to this cascade
@@ -185,21 +175,64 @@ void main()
 		}
 	}
 
-	bool needsEntry = survives || (visMask != 0u);
+	// Volumetric shadows
+	if (DBG(enableVolumetrics) &&
+		(instance.flags & PASS_OPAQUE) != 0u &&
+		(instance.flags & CAST_CSM) != 0u)
+	{
+		VolumetricShadowInfo volShadow = getVolumetricShadowInfo();
+
+		vec3 extentWS = 0.5 * (worldAABB.vmax - worldAABB.vmin);
+
+		// Aggressive sub-texel caster rejection.
+		//
+		// Trees get more leniency because their small-scale
+		// silhouette contributes strongly to light shafts.
+		float minRadius = volShadow.cascadeWorldTexel * (isFoliage ? 0.5 : 1.0);
+
+		if (radius >= minRadius &&
+			casterOverlapsVolumetricReceivers(
+				center, extentWS,
+				volShadow.cascadeLightView,
+				volShadow.receiverLSMin.xyz,
+				volShadow.receiverLSMax.xyz,
+				volShadow.receiverLSMax.w,
+				volShadow.params.w))
+		{
+			visMask |= (1u << VIS_SLOT_VOLUMETRIC);
+			markVisible(visCounters, VIS_SLOT_VOLUMETRIC, statsTracking);
+		}
+	}
+
+	bool hasPrimary =
+		(visMask &
+			(VIS_PRIMARY_OPAQUE |
+			 VIS_PRIMARY_OPAQUE_MASKED |
+			 VIS_PRIMARY_TRANSPARENT)) != 0u;
+
+	bool needsEntry = visMask != 0u;
 
 	if (needsEntry)
 	{
 		uint visId = atomicAdd(visibleCount.count, 1u);
 
-		uint lodIdx = survives
-			? selectLODIndex(instance, center, radius, sceneData.cameraPos.xyz, sceneData.projUnjittered[1][1])
-			: LOD_IDX_SHADOW0;
+		uint primaryLodIdx = hasPrimary
+			? selectLODIndex(
+				instance,
+				center,
+				radius,
+				sceneData.cameraPos.xyz,
+				sceneData.projUnjittered[1][1])
+			: LOD_IDX_BASE;
 
 		VisibleInstance visInst;
-		visInst.instanceID   = instanceID;
-		visInst.lodIndex     = lodIdx;
-		visInst.selectedMesh = meshFromLODIndex(instance, lodIdx);
-		visInst.visMask      = visMask;
+
+		visInst.instanceID      = instanceID;
+		visInst.primaryLodIndex = primaryLodIdx;
+		visInst.primaryMesh     = meshFromLODIndex(
+			instance,
+			primaryLodIdx);
+		visInst.visMask         = visMask;
 
 		getVisibleInstanceBuffer().visibles[visId] = visInst;
 	}

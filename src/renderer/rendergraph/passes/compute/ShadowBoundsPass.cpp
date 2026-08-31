@@ -30,8 +30,9 @@ void RegisterShadowBoundsPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsHiZValid() &&
 							ctx.frameState->IsShadowsOn() &&
+							!ctx.frameState->IsCSMAtlasCached() &&
+							!ctx.frameState->RTShadowsEnabled() &&
 							ctx.frameState->InstancesActive();
 					})
 

@@ -20,7 +20,7 @@ void RegisterMaterialResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetPhase(RenderPhase::AsyncWindow)
+				.SetPhase(RenderPhase::Prepass)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)

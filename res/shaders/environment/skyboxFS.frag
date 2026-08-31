@@ -20,7 +20,7 @@ void main() {
 
 	SceneData scene = getSceneData();
 
-	vec3 skyColor = SampleCube(pc.skyboxID, dir).rgb;
+	vec3 skyColor = SampleCubeLod(pc.skyboxID, dir, 0).rgb;
 
 	vec3 sunDir = normalize(scene.sunlightDirection.xyz);
 	sunDir.y = -sunDir.y;

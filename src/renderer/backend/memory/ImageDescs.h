@@ -14,19 +14,41 @@ namespace RenderTargetDescs
 	inline ImageDesc Opaque(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "Opaque" };
+				 .usage  = Vulkan_ImageUsage::DrawColor,
+				 .debugName = "Opaque" };
+	}
+
+	inline ImageDesc PrevOpaqueHDR(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeRWTransfer,
+				 .mipLevels = 8, .bPerMipStorage = true,
+				 .debugName = "PrevOpaqueHDR" };
 	}
 
 	inline ImageDesc TransparentResolved(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "TransparentResolved" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = "TransparentResolved" };
 	}
 
 	inline ImageDesc TransparentAccumulation(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "TransparentAccumulation" };
+				 .usage  = Vulkan_ImageUsage::DrawColor,.debugName = "TransparentAccumulation" };
+	}
+
+	inline ImageDesc TransparentVelocityAccum(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::DrawColor, .debugName = "TransparentVelocityAccum" };
+	}
+
+	inline ImageDesc TransparentVelocityResolved(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "TransparentVelocityResolved" };
 	}
 
 	inline ImageDesc TransparentRevealage(Extents3D ext)
@@ -56,7 +78,7 @@ namespace RenderTargetDescs
 	inline ImageDesc PrevVelocity(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RG16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "PrevVelocity" };
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "PrevVelocity" };
 	}
 
 	inline ImageDesc Visibility(Extents3D ext)
@@ -65,54 +87,60 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "Visibility" };
 	}
 
-	inline ImageDesc ViewSpaceNormals(Extents3D ext)
+	inline ImageDesc ViewNormals(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RG8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "ViewSpaceNormals" };
+				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "ViewNormals" };
+	}
+
+	inline ImageDesc PrevViewNormals(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RG8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "PrevViewNormals" };
 	}
 
 	inline ImageDesc ToneMap(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "ToneMap" };
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "ToneMap" };
 	}
 
 	inline ImageDesc ColorHistory(Extents3D ext, uint32_t index)
 	{
 		// index disambiguates the two ping-pong slots in debug tools
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite,
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer,
 				 .debugName = (index == 0) ? "ColorHistoryA" : "ColorHistoryB" };
 	}
 
 	inline ImageDesc AAColor(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "AAColor" };
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "AAColor" };
 	}
 
 	inline ImageDesc GBufferAlbedoRough(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferAlbedoRough" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "GBufferAlbedoRough" };
 	}
 
 	inline ImageDesc GBufferNormalMaterial(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::R32U, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferNormalMaterial" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "GBufferNormalMaterial" };
 	}
 
 	inline ImageDesc GBufferEmissive(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "GBufferEmissive" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,.debugName = "GBufferEmissive" };
 	}
 
 	inline ImageDesc PostNonAAComposite(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "PostNonAAComposite" };
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "PostNonAAComposite" };
 	}
 
 	inline ImageDesc ScreenSpaceShadowMask(Extents3D ext)
@@ -133,12 +161,91 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "SMAAWeights" };
 	}
 
+	inline ImageDesc BentNormalAO(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BentNormalAO" };
+	}
+
+	inline ImageDesc IndirectSSGI(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "IndirectSSGI" };
+	}
+
 	// --- Half resolution ---
+
+	// --- NRD I/O  ---
+	inline ImageDesc NRDMotion(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "NRDMotion" };
+	}
+	inline ImageDesc NRDNormalRoughness(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::ABGRpacked, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "NRDNormalRoughness" };
+	}
+	inline ImageDesc NRDViewZ(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::R32F, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "NRDViewZ" };
+	}
+
+	inline ImageDesc RTReflectDenoised(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectDenoised" };
+	}
+
+	inline ImageDesc ReflectRadiance(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectRadiance" };
+	}
+
+	inline ImageDesc ReflectRoughness(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::R16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectRoughness" };
+	}
+
+	inline ImageDesc ReflectReprojection(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectReprojection" };
+	}
+
+	inline ImageDesc ReflectPrefiltered(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectPrefiltered" };
+	}
+
+	inline ImageDesc ReflectVariance(Extents3D halfExt, uint32_t index)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = (index == 0) ? "ReflectVarianceA" : "ReflectVarianceB" };
+	}
+
+	inline ImageDesc ReflectRayInfo(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RGBA32F, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "ReflectRayInfo" };
+	}
+
+	inline ImageDesc ReflectHistory(Extents3D halfExt, uint32_t index)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = (index == 0) ? "ReflectHistoryA" : "ReflectHistoryB" };
+	}
 
 	inline ImageDesc AOEdgeInfo(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::R8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOEdgeInfo" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,.debugName = "AOEdgeInfo" };
 	}
 
 	inline ImageDesc AORaw(Extents3D ext)
@@ -153,12 +260,6 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "AOTemp" };
 	}
 
-	inline ImageDesc BentNormalAO(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BentNormalAO" };
-	}
-
 	inline ImageDesc VolumetricLight(Extents3D halfExt)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
@@ -171,17 +272,52 @@ namespace RenderTargetDescs
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "VolumetricBlur" };
 	}
 
+	inline ImageDesc VolLightHistory(Extents3D halfExt, uint32_t index)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = (index == 0) ? "VolLightHistoryA" : "VolLightHistoryB" };
+	}
+
+	inline ImageDesc BentNormalAOHalf(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RGBA8unorm, .extent = ext,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BentNormalAOHalf" };
+	}
+
+	inline ImageDesc DiffuseRadiance(Extents3D halfExt, uint32_t index, uint32_t mipCount)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .mipLevels = mipCount, .bPerMipStorage = true,
+				 .debugName = (index == 0) ? "DiffuseRadianceA" : "DiffuseRadianceB" };
+	}
+
+	inline ImageDesc GIHistory(Extents3D halfExt, uint32_t index)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = (index == 0) ? "GIHistoryA" : "GIHistoryB" };
+	}
+
+	inline ImageDesc GIDenoisePing(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::BGRpacked, .extent = halfExt,
+				 .usage  = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = "GIDenoisePing" };
+	}
+
 	// CMAA2 uses { halfWidth, fullHeight }
 	inline ImageDesc CMAA2WorkingEdges(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::R8U, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite, .debugName = "CMAA2WorkingEdges" };
+				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "CMAA2WorkingEdges" };
 	}
 
 	inline ImageDesc BloomMipchain(Extents3D halfExt)
 	{
 		return { .format = Vulkan_Format::BGRpacked, .extent = halfExt,
-			.usage = Vulkan_ImageUsage::ComputeReadWrite, .mipLevels = 0, .bPerMipStorage = true,
+			.usage = Vulkan_ImageUsage::ComputeOnly, .mipLevels = 0, .bPerMipStorage = true,
 			.debugName = "BloomMipchain" };
 	}
 
@@ -208,11 +344,11 @@ namespace RenderTargetDescs
 				 .mipLevels = mipCount, .bPerMipStorage = true, .debugName = "HiZ" };
 	}
 
-	inline ImageDesc LinearizedMinHiZ(Extents3D ext, uint32_t mipCount)
+	inline ImageDesc LinearizedHiZ(Extents3D ext, uint32_t mipCount)
 	{
 		return { .format = Vulkan_Format::R32F, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::ComputeOnly,
-				 .mipLevels = mipCount, .bPerMipStorage = true, .debugName = "LinearizedMinHiZ" };
+				 .mipLevels = mipCount, .bPerMipStorage = true, .debugName = "LinearizedHiZ" };
 	}
 
 	// --- Shadow maps ---
@@ -228,6 +364,55 @@ namespace RenderTargetDescs
 		return { .format = Vulkan_Format::D32, .extent = { RD::FLASHLIGHT_SHADOW_MAP_X, RD::FLASHLIGHT_SHADOW_MAP_Y, 1 },
 				 .usage  = Vulkan_ImageUsage::ShadowMap, .debugName = "FlashlightShadowMap" };
 	}
+
+	// 2 cascade atlas
+	inline ImageDesc VolumetricShadowMap()
+	{
+		return { .format = Vulkan_Format::D16, .extent = { RD::VOL_SHADOW_MAP_X, RD::VOL_SHADOW_MAP_Y, 1 },
+				 .usage = Vulkan_ImageUsage::ShadowMap, .debugName = "VolumetricShadowMap" };
+	}
+
+	// --- RT shadows (full resolution) ---
+
+	inline ImageDesc RTShadowPenumbra(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R32F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "RTShadowPenumbra" };
+	}
+
+	inline ImageDesc RTShadowDenoised(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R16F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "RTShadowDenoised" };
+	}
+
+	inline ImageDesc NRDShadowNormalRoughness(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::ABGRpacked, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "NRDShadowNormalRoughness" };
+	}
+
+	inline ImageDesc NRDShadowViewZ(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::R32F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "NRDShadowViewZ" };
+	}
+
+
+	inline ImageDesc FroxelScatterExt(uint32_t index)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = { RD::FROXEL_GRID_X, RD::FROXEL_GRID_Y, RD::FROXEL_GRID_Z },
+				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .imageType = VK_IMAGE_TYPE_3D,
+				 .debugName = (index == 0) ? "FroxelScatterA" : "FroxelScatterB" };
+	}
+
+	inline ImageDesc FroxelIntegrated()
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = { RD::FROXEL_GRID_X, RD::FROXEL_GRID_Y, RD::FROXEL_GRID_Z },
+				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .imageType = VK_IMAGE_TYPE_3D, .debugName = "FroxelIntegrated" };
+	}
 }
 
 namespace EnvironmentMapDescs
@@ -235,32 +420,24 @@ namespace EnvironmentMapDescs
 	inline ImageDesc Skybox()
 	{
 		return { .format = Vulkan_Format::BGRpacked,
-				 .extent = { 512, 512, 1 },
-				 .usage  = Vulkan_ImageUsage::ComputeReadWrite,
+				 .extent = { RD::SKYBOX_EXTENT, RD::SKYBOX_EXTENT, 1 },
+				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .mipLevels = 0,
 				 .bIsCubemap = true, .debugName = "EnvSkybox" };
 	}
 
 	inline ImageDesc Specular(uint32_t mipCount)
 	{
 		return { .format = Vulkan_Format::RGBA16F,
-				 .extent = { 256, 256, 1 },
+				 .extent = { RD::SPECULAR_EXTENT, RD::SPECULAR_EXTENT, 1 },
 				 .usage  = Vulkan_ImageUsage::ComputeOnly,
 				 .mipLevels = mipCount, .bIsCubemap = true,
 				 .bPerMipStorage = true, .debugName = "EnvSpecular" };
 	}
 
-	inline ImageDesc Irradiance()
-	{
-		return { .format = Vulkan_Format::RGBA16F,
-				 .extent = { 32, 32, 1 },
-				 .usage  = Vulkan_ImageUsage::ComputeOnly,
-				 .bIsCubemap = true, .debugName = "EnvIrradiance" };
-	}
-
 	inline ImageDesc BRDFLut()
 	{
 		return { .format = Vulkan_Format::RG16F,
-				 .extent = { 128, 128, 1 },
+				 .extent = { RD::BRDF_EXTENT, RD::BRDF_EXTENT, 1 },
 				 .usage  = Vulkan_ImageUsage::ComputeOnly, .debugName = "BRDFLut" };
 	}
 }

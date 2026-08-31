@@ -1,0 +1,119 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive : require
+#extension GL_ARB_separate_shader_objects : require
+
+// Original XE_GTAO implementation
+// https://github.com/GameTechDev/XeGTAO/blob/master/Source/Rendering/Shaders/XeGTAO.hlsli
+
+#include "../include/common.glsl"
+#include "../include/depth.glsl"
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inDepthResolved;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outMip0;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_2) writeonly uniform image2D outMip1;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_3) writeonly uniform image2D outMip2;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_4) writeonly uniform image2D outMip3;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_5) writeonly uniform image2D outMip4;
+
+layout(push_constant) uniform PushConstantData {
+	float effectRadius;
+	float effectFalloffRange;
+	vec2 ndcToViewMul_x_PixelSize;
+	float radiusMultiplier;
+} pc;
+
+shared float g_scratch[8][8];
+
+float depthMIPFilter(float d0, float d1, float d2, float d3) {
+	float maxD = max(max(d0, d1), max(d2, d3));
+
+	const float depthRangeScale = 0.75;
+	float effectRadius = depthRangeScale * pc.effectRadius * pc.radiusMultiplier;
+	float falloffRange = pc.effectFalloffRange * effectRadius;
+	float falloffFrom  = effectRadius * (1.0 - pc.effectFalloffRange);
+	float falloffMul   = -1.0 / falloffRange;
+	float falloffAdd   = falloffFrom / falloffRange + 1.0;
+
+	float w0 = saturate((maxD - d0) * falloffMul + falloffAdd);
+	float w1 = saturate((maxD - d1) * falloffMul + falloffAdd);
+	float w2 = saturate((maxD - d2) * falloffMul + falloffAdd);
+	float w3 = saturate((maxD - d3) * falloffMul + falloffAdd);
+
+	return (w0*d0 + w1*d1 + w2*d2 + w3*d3) / (w0+w1+w2+w3);
+}
+
+void main() {
+	uvec2 tid  = gl_LocalInvocationID.xy;
+	uvec2 base = gl_GlobalInvocationID.xy;
+
+	SceneData scene = getSceneData();
+	const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
+
+	// MIP0
+	uvec2 pixCoord = base * 2u;
+	vec2  uv = (vec2(pixCoord) * 0.5) * fullPixelSize;
+
+	float depthLinearizeMult = scene.depthLinearizeMult;
+	float depthLinearizeAdd = scene.depthLinearizeAdd;
+
+	vec4 depths = textureGatherOffset(inDepthResolved, vec2(pixCoord) * fullPixelSize, ivec2(1), 0);
+	float d0 = screenToViewDepth(depths.w, depthLinearizeMult, depthLinearizeAdd);
+	float d1 = screenToViewDepth(depths.z, depthLinearizeMult, depthLinearizeAdd);
+	float d2 = screenToViewDepth(depths.x, depthLinearizeMult, depthLinearizeAdd);
+	float d3 = screenToViewDepth(depths.y, depthLinearizeMult, depthLinearizeAdd);
+
+	imageStore(outMip0, ivec2(pixCoord) + ivec2(0,0), vec4(d0));
+	imageStore(outMip0, ivec2(pixCoord) + ivec2(1,0), vec4(d1));
+	imageStore(outMip0, ivec2(pixCoord) + ivec2(0,1), vec4(d2));
+	imageStore(outMip0, ivec2(pixCoord) + ivec2(1,1), vec4(d3));
+
+	// MIP1
+	float dm1 = depthMIPFilter(d0, d1, d2, d3);
+	imageStore(outMip1, ivec2(base), vec4(dm1));
+	g_scratch[tid.x][tid.y] = dm1;
+
+	memoryBarrierShared();
+	barrier();
+
+	// MIP2
+	if (all(equal(tid.xy % 2u, uvec2(0u)))) {
+		float inTL = g_scratch[tid.x+0][tid.y+0];
+		float inTR = g_scratch[tid.x+1][tid.y+0];
+		float inBL = g_scratch[tid.x+0][tid.y+1];
+		float inBR = g_scratch[tid.x+1][tid.y+1];
+		float dm2 = depthMIPFilter(inTL, inTR, inBL, inBR);
+		imageStore(outMip2, ivec2(base / 2u), vec4(dm2));
+		g_scratch[tid.x][tid.y] = dm2;
+	}
+
+	memoryBarrierShared();
+	barrier();
+
+	// MIP3
+	if (all(equal(tid.xy % 4u, uvec2(0u)))) {
+		float inTL = g_scratch[tid.x+0][tid.y+0];
+		float inTR = g_scratch[tid.x+2][tid.y+0];
+		float inBL = g_scratch[tid.x+0][tid.y+2];
+		float inBR = g_scratch[tid.x+2][tid.y+2];
+		float dm3 = depthMIPFilter(inTL, inTR, inBL, inBR);
+		imageStore(outMip3, ivec2(base / 4u), vec4(dm3));
+		g_scratch[tid.x][tid.y] = dm3;
+	}
+
+	memoryBarrierShared();
+	barrier();
+
+	// MIP4
+	if (all(equal(tid.xy % 8u, uvec2(0u)))) {
+		float inTL = g_scratch[tid.x+0][tid.y+0];
+		float inTR = g_scratch[tid.x+4][tid.y+0];
+		float inBL = g_scratch[tid.x+0][tid.y+4];
+		float inBR = g_scratch[tid.x+4][tid.y+4];
+		float dm4 = depthMIPFilter(inTL, inTR, inBL, inBR);
+		imageStore(outMip4, ivec2(base / 8u), vec4(dm4));
+	}
+}

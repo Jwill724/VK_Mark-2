@@ -103,30 +103,38 @@ struct DispatchList {
 // UNIFORM BUFFER TYPES
 struct alignas(16) SceneInfo
 {
-	glm::mat4 view{};
-	glm::mat4 proj{};
-	glm::mat4 projUnjittered{};
-	glm::mat4 invView{};
-	glm::mat4 invProj{};
-	glm::mat4 viewProj{};
-	glm::mat4 prevViewProjUnjittered{};
-	glm::mat4 prevView{};
-	glm::mat4 viewProjUnjittered{};
+	glm::mat4 view = glm::mat4{1.0f};
+	glm::mat4 proj = glm::mat4{1.0f};
+	glm::mat4 projUnjittered{1.0f};
+	glm::mat4 invView{1.0f};
+	glm::mat4 prevInvView{1.0f};
+	glm::mat4 invProj{1.0f};
+	glm::mat4 viewProj{1.0f};
+	glm::mat4 prevViewProjUnjittered{1.0f};
+	glm::mat4 prevView{1.0f};
+	glm::mat4 viewProjUnjittered{1.0f};
 	// x = frameNumber, y = historyValid (0/1), z = Hi-Z valid(0/1)
-	glm::uvec4 temporal{};
+	glm::uvec4 temporal{0};
 	// x = current jitter x ndc
 	// y = current jitter y
 	// z = previous jitter x
 	// w = previous jitter y
-	glm::vec4 temporalJitter{};
+	glm::vec4 temporalJitter{0.0f};
+	glm::vec4 taaMipParams{0.0f}; // .x = bias (negative, 0 = off), .y = fade start lod, .z = 1 / fade span
+	glm::vec4 sunlightDirection{0.0f};
 	// w for sun power
-	glm::vec4 sunlightDirection{};
-	glm::vec4 sunlightColor{};
-	glm::vec4 cameraPos{};         // xyz pos
-	glm::vec4 cameraClips{};       // .x near and .y far
-	glm::vec4 viewportSize{};      // .x and .y for width and height, .z for pixel count
-	glm::vec4 pixelSizes{};        // .x/.y = 1 / full m_extent .z/.w = = 1 / half m_extent
-	glm::mat4 flashlightVP{};
+	glm::vec4 sunlightColor{0.0f};
+	glm::vec4 cameraPos{0.0f};         // xyz pos
+	glm::vec4 cameraClips{0.0f};       // .x near and .y far
+	glm::vec4 viewportSize{0.0f};      // .x and .y for width and height, .z for pixel count
+	glm::vec4 pixelSizes{0.0f};        // .x/.y = 1 / full m_extent .z/.w = = 1 / half m_extent
+
+	glm::vec2 tanHalfFov;              // 1 / proj[0][0], 1 / proj[1][1]
+	float depthLinearizeMult;          // -proj[3][2]
+	float depthLinearizeAdd;           //  proj[2][2]
+	glm::vec2 ndcToViewMult;           // tanHalfFov.x *  2, tanHalfFov.y * -2
+	glm::vec2 ndcToViewAdd;            // tanHalfFov.x * -1, tanHalfFov.y *  1
+	glm::mat4 flashlightVP{0.0f};
 };
 
 struct alignas(16) DirectionalCSMInfo
@@ -139,8 +147,32 @@ struct alignas(16) DirectionalCSMInfo
 	glm::vec4 params{ 0.0f };
 	// xy = uvScale, zw = uvOffset (per cascade)
 	glm::vec4 atlasUV[RD::MAX_SHADOW_CASCADES]{};
-	glm::vec4 maxFilterRadiusTexels{};
-	glm::vec4 cascadeWorldTexels{};
+	glm::vec4 maxPcfFilterRadiusTexels{0.0f};
+	glm::vec4 maxPcssFilterRadiusTexels{0.0f};
+	glm::vec4 cascadeWorldTexels{0.0f};
+	// x = tan(sunAngularRadius), y = minFilterRadiusTexels,
+	// z = searchRadiusScale, w = maxNormalOffsetTexels
+	glm::vec4 pcss{ 0.0f };
+	// x = contactOffsetTexels, y = offsetGapFraction
+	glm::vec4 pcssBias{ 0.0f };
+};
+
+struct alignas(16) VolumetricShadowInfo
+{
+	glm::mat4 cascadeVP;
+	glm::mat4 cascadeLightView;
+	glm::vec4 params;
+	// x = shadow map ID
+	// y = enabled
+	// z = shadow texel size
+	// w = light-space epsilon
+
+	glm::vec4 receiverLSMin;
+	glm::vec4 receiverLSMax;
+
+	float cascadeWorldTexel;
+
+	float pad0[3];
 };
 
 struct ShadowControl
@@ -149,6 +181,17 @@ struct ShadowControl
 	float bias                       = 0.0001f;
 	float shadowFar                  = 1000.0f;
 	float lsEpsilon                  = 1.0f;
+
+	float sunAngularRadiusDeg        = 1.5f;
+	float minFilterRadiusTexels      = 0.75f;
+	float searchRadiusScale          = 1.0f;
+	float maxNormalOffsetTexels      = 4.0f;
+
+	float pcssContactOffsetTexels = 1.0f;
+	float pcssOffsetGapFraction = 0.25f;
+
+	glm::vec4 pcssMaxRadiusTexels = { 9.0f, 6.0f, 4.0f, 2.0f };
+
 	// Doubles the far depth range
 	bool enableShadowDepthExtendHack = false;
 };

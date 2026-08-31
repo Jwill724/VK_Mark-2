@@ -5,10 +5,32 @@
 
 enum class MipStrategy : uint8_t
 {
-	SingleLevel,      // Upload mip 0 only, transition to ShaderRead
-	GenerateOnGPU,    // Upload mip 0, blit-generate remaining mips
-	//	PrebuiltMips    // upload all mips from CPU data (KTX/Basis path)
+	SingleLevel,    // Upload mip 0 only, transition to ShaderRead
+	GenerateOnGPU,  // Upload mip 0, blit-generate remaining mips
+	Precomputed,    // upload all mips from CPU data
 };
+
+enum class TextureFormat : uint32_t
+{
+	RGBA8 = 0,
+	BC7,
+	BC5,
+};
+
+struct TextureMipDesc
+{
+	uint32_t width = 0;
+	uint32_t height = 0;
+	uint32_t offset = 0;
+	uint32_t bytes = 0;
+};
+
+inline size_t MipByteSize(TextureFormat f, uint32_t w, uint32_t h)
+{
+	if (f == TextureFormat::RGBA8) return static_cast<size_t>(w) * h * 4u;
+	return static_cast<size_t>((w + 3u) / 4u) * ((h + 3u) / 4u) * 16u;
+}
+
 struct StagedTextureWrite
 {
 	VkBuffer     srcBuffer  = VK_NULL_HANDLE;
@@ -37,20 +59,25 @@ struct StagedTextureWrite
 
 struct PendingTextureUpload
 {
-	AllocatedImage*                 image    = nullptr;
-	std::vector<StagedTextureWrite> writes   = {};
-	MipStrategy                     strategy = MipStrategy::GenerateOnGPU;
+	AllocatedImage* image = nullptr;
+	std::vector<StagedTextureWrite> writes;
+	MipStrategy                     strategy = MipStrategy::SingleLevel;
 };
 
 struct TextureUploadDesc
 {
-	AllocatedImage* image      = nullptr;
-	const void*     pixelData  = nullptr;  // mip 0 always required
-	size_t          pixelBytes = 0;        // bytes per pixel
-	MipStrategy     strategy   = MipStrategy::GenerateOnGPU;
+	AllocatedImage* image = nullptr;
+	const void* pixelData = nullptr;
+	size_t                          pixelBytes = 0;   // legacy: bytes per texel
+	size_t                          byteSize = 0;   // explicit total; 0 = derive
+	std::span<const TextureMipDesc> mips;             // empty = single level 0
+	MipStrategy                     strategy = MipStrategy::SingleLevel;
 
 	bool IsValid() const noexcept
 	{
-		return image && image->IsValid() && pixelData && pixelBytes > 0;
+		return image != nullptr
+			&& image->IsValid()
+			&& pixelData != nullptr
+			&& (byteSize > 0 || pixelBytes > 0);
 	}
 };

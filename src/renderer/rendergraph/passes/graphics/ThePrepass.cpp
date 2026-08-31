@@ -12,16 +12,15 @@
 struct PrepassVariant
 {
 	uint32_t                    slot;
-	BasePrepassPipelineSlot     vertexPipe;
-	BasePrepassPipelineSlot     meshPipe;
+	BasePrepassPipelineSlot     pipe;
 };
 
 static constexpr PrepassVariant kPrepassVariants[] =
 {
 	{ RD::VIS_SLOT_OPAQUE,
-	  BasePrepassPipelineSlot::Prepass,       BasePrepassPipelineSlot::PrepassMesh },
+	  BasePrepassPipelineSlot::PrepassMesh },
 	{ RD::VIS_SLOT_OPAQUE_MASKED,
-	  BasePrepassPipelineSlot::PrepassMasked, BasePrepassPipelineSlot::PrepassMaskedMesh },
+	  BasePrepassPipelineSlot::PrepassMaskedMesh },
 };
 
 // Shared attachment setup — phase 2 flips the load ops
@@ -32,7 +31,7 @@ static void BuildPrepassAttachments(
 {
 	const auto& depthResolved    = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 	const auto& visibility       = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
-	const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
+	const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
 
 	AttachmentDesc prepassDepth{};
 	prepassDepth.imageView   = depthResolved.m_imageView;
@@ -71,43 +70,30 @@ static void RecordPrepassDraw(
 {
 	VkCommandBuffer cmd  = ctx.commandBuffer;
 	const auto& frameCtx = ctx.frameCtx;
-	const bool bMeshPath = ctx.frameState->IsMeshShaderPath();
 
 	const auto taskBuffer  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer;
-	const auto drawBuffer  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 	const auto countBuffer = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 	const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
 
 	for (const PrepassVariant& variant : kPrepassVariants)
 	{
-		if (bMeshPath)
-		{
-			PrepassTaskPush push{};
-			push.slot  = variant.slot;
-			push.phase = phase;
-			pso.SetPush(push);
+		PrepassTaskPush push{};
+		push.slot = variant.slot;
+		push.phase = phase;
+		pso.SetPush(push);
 
-			pso.BindReadImage(
-				pass.pushWriter,
-				RD::PUSH_BINDING_READ_1,
-				hiZ,
-				ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ));
+		pso.BindReadImage(
+			pass.pushWriter,
+			RD::PUSH_BINDING_READ_1,
+			hiZ,
+			ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ));
 
-			pso.DrawMeshTasksIndirectCount(
-				cmd, variant.slot,
-				taskBuffer, countBuffer,
-				pass.pipelines[static_cast<size_t>(variant.meshPipe)],
-				pass.pushWriter);
-		}
-		else
-		{
-			pso.DrawIndexedIndirectCount(
-				cmd, variant.slot,
-				drawBuffer, countBuffer,
-				pass.pipelines[static_cast<size_t>(variant.vertexPipe)],
-				pass.pushWriter);
-		}
+		pso.DrawMeshTasksIndirectCount(
+			cmd, variant.slot,
+			taskBuffer, countBuffer,
+			pass.pipelines[static_cast<size_t>(variant.pipe)],
+			pass.pushWriter);
 	}
 }
 
@@ -140,7 +126,7 @@ void RegisterThePrepass(
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::ViewSpaceNormals,
+					RD::Renderer_RenderTarget::ViewNormals,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 
@@ -181,8 +167,7 @@ void RegisterThePrepassLate(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->InstancesActive() &&
-							ctx.frameState->IsMeshShaderPath();
+							ctx.frameState->InstancesActive();
 					})
 
 				.ReadResource(
@@ -200,7 +185,7 @@ void RegisterThePrepassLate(
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::ViewSpaceNormals,
+					RD::Renderer_RenderTarget::ViewNormals,
 					RD::ImageAccess::GraphicsColorWrite,
 					RD::ImageAccess::Read)
 

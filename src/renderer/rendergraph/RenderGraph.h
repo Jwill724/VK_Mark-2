@@ -76,6 +76,9 @@ public:
 	void InvalidateTrackedLayouts()
 	{
 		m_trackedLayouts.fill(RD::ImageAccess::Undefined);
+
+		for (auto& pass : m_passes)
+			pass.pushWriter.Clear();
 	}
 
 	void NotifyLayout(RD::Renderer_RenderTarget target, RD::ImageAccess access)

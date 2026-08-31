@@ -10,6 +10,88 @@ namespace RD = RendererDefinitions;
 // ------------------------
 // Push descriptor writing
 // ------------------------
+void PushDescriptorWriter::Reserve(size_t descriptorCount)
+{
+	m_pushImageInfos.reserve(descriptorCount);
+	m_pushWrites.reserve(descriptorCount);
+	m_pushInfoIndices.reserve(descriptorCount);
+}
+
+void PushDescriptorWriter::BeginBatch()
+{
+	if (!m_bPushed) return;
+
+	m_pushImageInfos.clear();
+	m_pushBufferInfos.clear();
+	m_pushWrites.clear();
+	m_pushInfoIndices.clear();
+	m_bPushed = false;
+}
+
+void PushDescriptorWriter::WritePushCombinedImage(
+	uint32_t binding, VkImageView view, VkImageLayout layout, VkSampler sampler)
+{
+	ASSERT(view != VK_NULL_HANDLE && sampler != VK_NULL_HANDLE);
+	BeginBatch();
+
+	m_pushInfoIndices.push_back(static_cast<uint32_t>(m_pushImageInfos.size()));
+	m_pushImageInfos.emplace_back(VkDescriptorImageInfo{ sampler, view, layout });
+
+	m_pushWrites.emplace_back(VkWriteDescriptorSet{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstBinding = binding,
+		.descriptorCount = 1u,
+		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER });
+}
+
+void PushDescriptorWriter::WritePushSampledImage(
+	uint32_t binding, VkImageView view, VkImageLayout layout)
+{
+	ASSERT(view != VK_NULL_HANDLE);
+	BeginBatch();
+
+	m_pushInfoIndices.push_back(static_cast<uint32_t>(m_pushImageInfos.size()));
+	m_pushImageInfos.emplace_back(VkDescriptorImageInfo{ VK_NULL_HANDLE, view, layout });
+
+	m_pushWrites.emplace_back(VkWriteDescriptorSet{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstBinding = binding,
+		.descriptorCount = 1u,
+		.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE });
+}
+
+void PushDescriptorWriter::WritePushStorageImage(uint32_t binding, VkImageView view)
+{
+	ASSERT(view != VK_NULL_HANDLE);
+	BeginBatch();
+
+	m_pushInfoIndices.push_back(static_cast<uint32_t>(m_pushImageInfos.size()));
+	m_pushImageInfos.emplace_back(
+		VkDescriptorImageInfo{ VK_NULL_HANDLE, view, VK_IMAGE_LAYOUT_GENERAL });
+
+	m_pushWrites.emplace_back(VkWriteDescriptorSet{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstBinding = binding,
+		.descriptorCount = 1u,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE });
+}
+
+void PushDescriptorWriter::WritePushUniformBuffer(
+	uint32_t binding, VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range)
+{
+	ASSERT(buffer != VK_NULL_HANDLE && range > 0);
+	BeginBatch();
+
+	m_pushInfoIndices.push_back(static_cast<uint32_t>(m_pushBufferInfos.size()));
+	m_pushBufferInfos.emplace_back(VkDescriptorBufferInfo{ buffer, offset, range });
+
+	m_pushWrites.emplace_back(VkWriteDescriptorSet{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstBinding = binding,
+		.descriptorCount = 1u,
+		.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER });
+}
+
 void PushDescriptorWriter::WritePushImage(
 	uint32_t binding,
 	const AllocatedImage& image,
@@ -17,61 +99,47 @@ void PushDescriptorWriter::WritePushImage(
 	VkSampler sampler,
 	uint32_t storageViewIndex)
 {
-	m_bEnablePushDescriptor = true;
-
-	VkDescriptorType type = sampler != VK_NULL_HANDLE ?
-		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER :
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-
 	ASSERT(image.m_imageView != VK_NULL_HANDLE);
 
 	VkImageView view = image.m_imageView;
-	if (storageViewIndex != UINT32_MAX && storageViewIndex < image.m_mipLevels)
-		view = image.m_vStorageViews[static_cast<size_t>(storageViewIndex)];
+	if (storageViewIndex != UINT32_MAX && storageViewIndex < image.m_vStorageViews.size())
+		view = image.m_vStorageViews[storageViewIndex];
 
-	m_imageWriteGroups.emplace_back(ImageWriteGroup{
-		.binding     = binding,
-		.type        = type,
-		.dstSet      = VK_NULL_HANDLE,
-		.imageInfos  = { {sampler, view, layout } }
-	});
+	if (sampler != VK_NULL_HANDLE)
+		WritePushCombinedImage(binding, view, layout, sampler);
+	else
+		WritePushStorageImage(binding, view);
 }
 
 void PushDescriptorWriter::UpdatePushLayout(
 	VkCommandBuffer cmd,
 	VkPipelineBindPoint bindPoint,
-	VkPipelineLayout pipelineLayout)
+	VkPipelineLayout pipelineLayout,
+	uint32_t setIndex)
 {
-	if (!m_bEnablePushDescriptor) return;
+	if (m_pushWrites.empty()) return;
 
 	ASSERT(pipelineLayout != VK_NULL_HANDLE);
 
-	std::vector<VkWriteDescriptorSet> writes;
-	writes.reserve(m_imageWriteGroups.size());
-
-	for (const auto& group : m_imageWriteGroups)
+	for (size_t i = 0; i < m_pushWrites.size(); ++i)
 	{
-		ASSERT(group.imageInfos.size() == 1);
+		VkWriteDescriptorSet& w = m_pushWrites[i];
 
-		writes.emplace_back(VkWriteDescriptorSet{
-			.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstBinding      = group.binding,
-			.descriptorCount = 1,
-			.descriptorType  = group.type,
-			.pImageInfo      = group.imageInfos.data()
-		});
+		if (w.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+			w.pBufferInfo = &m_pushBufferInfos[m_pushInfoIndices[i]];
+		else
+			w.pImageInfo = &m_pushImageInfos[m_pushInfoIndices[i]];
 	}
 
 	vkCmdPushDescriptorSet(
 		cmd,
 		bindPoint,
 		pipelineLayout,
-		RD::PUSH_SET,
-		static_cast<uint32_t>(writes.size()),
-		writes.data());
+		setIndex,
+		static_cast<uint32_t>(m_pushWrites.size()),
+		m_pushWrites.data());
 
-	Clear();
-	m_bEnablePushDescriptor = false;
+	m_bPushed = true;
 }
 
 // ---------------------------------
@@ -96,6 +164,7 @@ void DescriptorWriter::WriteBuffer(
 
 		case RD::FRAME_BINDING_SCENE:
 		case RD::FRAME_BINDING_CSM:
+		case RD::FRAME_BINDING_VOLUMETRIC:
 		case RD::FRAME_BINDING_CLUSTERED:
 			bufferType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 			break;
@@ -163,6 +232,30 @@ void DescriptorWriter::WriteInlineUniform(
 	vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
 }
 
+void DescriptorWriter::WriteAccelerationStructure(
+	uint32_t binding,
+	VkAccelerationStructureKHR tlas,
+	VkDescriptorSet set)
+{
+	VkAccelerationStructureKHR& handle = m_accelHandles.emplace_back(tlas);
+
+	VkWriteDescriptorSetAccelerationStructureKHR& asInfo = m_accelInfos.emplace_back(
+		VkWriteDescriptorSetAccelerationStructureKHR{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+			.accelerationStructureCount = 1,
+			.pAccelerationStructures = &handle
+		});
+
+	m_accelWrites.emplace_back(VkWriteDescriptorSet{
+		.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.pNext           = &asInfo,
+		.dstSet          = set,
+		.dstBinding      = binding,
+		.descriptorCount = 1,
+		.descriptorType  = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
+	});
+}
+
 void DescriptorWriter::UpdateSet(VkDevice device, VkDescriptorSet set)
 {
 	std::vector<VkWriteDescriptorSet> imageWrites;
@@ -202,6 +295,20 @@ void DescriptorWriter::UpdateSet(VkDevice device, VkDescriptorSet set)
 			device,
 			static_cast<uint32_t>(m_bufferWrites.size()),
 			m_bufferWrites.data(),
+			0,
+			nullptr);
+		m_bShouldClearWrites = true;
+	}
+
+	if (!m_accelWrites.empty())
+	{
+		for (auto& w : m_accelWrites)
+			w.dstSet = set;
+
+		vkUpdateDescriptorSets(
+			device,
+			static_cast<uint32_t>(m_accelWrites.size()),
+			m_accelWrites.data(),
 			0,
 			nullptr);
 		m_bShouldClearWrites = true;

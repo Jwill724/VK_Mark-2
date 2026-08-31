@@ -43,11 +43,6 @@ layout(push_constant) uniform LensFlarePush {
 	float pad3;
 } pc;
 
-// Simple soft-knee threshold (bloom-style).
-// threshold = start, knee = softness range.
-float softThreshold(float value, float threshold, float knee);
-
-
 void main()
 {
 	ivec2 outDim = imageSize(outFlareBright);

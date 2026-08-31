@@ -10,26 +10,34 @@ void RenderGraph::Sync(
 	const RD::RenderStateInfo& frameState,
 	const RenderPassExecutionContext& ctx)
 {
-	ASSERT(frameState.RenderMode() != static_cast<uint32_t>(RD::RenderingMode::UNDEFINED)
-		&& "Missing rendering mode.");
 	ASSERT(!m_bGraphDirty && "Build() must run before Sync()");
 
+	const bool rtInstanceActivityChanged =
+		(m_recentFrameState.GetRTInstanceCount() == 0u) !=
+		(frameState.GetRTInstanceCount() == 0u);
+
 	const bool stateChanged =
-		(m_recentFrameState.CopyPostAAImage()     != frameState.CopyPostAAImage())     ||
 		(m_recentFrameState.DebugRenderFastPath() != frameState.DebugRenderFastPath()) ||
-		(m_recentFrameState.FlashlightOn()        != frameState.FlashlightOn())        ||
-		(m_recentFrameState.IsObbLineOn()         != frameState.IsObbLineOn())         ||
-		(m_recentFrameState.IsTemporalValid()     != frameState.IsTemporalValid())     ||
-		(m_recentFrameState.IsHiZValid()          != frameState.IsHiZValid())          ||
-		(m_recentFrameState.DrawImgui()           != frameState.DrawImgui())           ||
-		(m_recentFrameState.RenderMode()          != frameState.RenderMode())          ||
-		(m_recentFrameState.InstancesActive()     != frameState.InstancesActive() && frameState.InstancesActive() == 0u) ||
-		(m_recentFrameState.LightsActive()        != frameState.LightsActive()    && frameState.LightsActive()    == 0u);
+		(m_recentFrameState.FlashlightOn() != frameState.FlashlightOn()) ||
+		(m_recentFrameState.IsObbLineOn() != frameState.IsObbLineOn()) ||
+		(m_recentFrameState.IsTemporalValid() != frameState.IsTemporalValid()) ||
+		(m_recentFrameState.IsHiZValid() != frameState.IsHiZValid()) ||
+		(m_recentFrameState.DrawImgui() != frameState.DrawImgui()) ||
+		(m_recentFrameState.IsVolumetricsOn() != frameState.IsVolumetricsOn()) ||
+		(m_recentFrameState.IsShadowsOn() != frameState.IsShadowsOn()) ||
+		(m_recentFrameState.IsCSMAtlasCached() != frameState.IsCSMAtlasCached()) ||
+		(m_recentFrameState.IsNRDActive() != frameState.IsNRDActive()) ||
+		rtInstanceActivityChanged ||
+		(m_recentFrameState.RTReflectionsEnabled() != frameState.RTReflectionsEnabled()) ||
+		(m_recentFrameState.RTShadowsEnabled() != frameState.RTShadowsEnabled()) ||
+		(m_recentFrameState.IsScreenSpaceShadowsOn() != frameState.IsScreenSpaceShadowsOn()) ||
+		(m_recentFrameState.InstancesActive() != frameState.InstancesActive()) ||
+		(m_recentFrameState.LightsActive() != frameState.LightsActive());
 
+	// Always consume the newest state, including count changes that don't
+	// affect graph topology.
+	m_recentFrameState = frameState;
 	m_recentFrameState.m_bStateChanged = stateChanged;
-
-	if (stateChanged)
-		m_recentFrameState = frameState;
 
 	// shouldExecute reads only frameState / frameCtx flags, all final by
 	// this point, so the active set is exact.
@@ -39,7 +47,7 @@ void RenderGraph::Sync(
 	{
 		BuildBatches();
 		m_prevActiveMask = m_activeMask;
-		m_bBatchesDirty  = false;
+		m_bBatchesDirty = false;
 	}
 
 	// Every frame: simulate layouts from the persistent tracker and bake per-pass barrier lists.
@@ -242,14 +250,22 @@ void RenderGraph::ValidateConcurrentBatches() const
 
 		if (bEitherWrites)
 		{
+			fmt::print(
+				"RenderGraph concurrent batch write mismatch: {}\n",
+				static_cast<uint32_t>(target)
+			);
 			ASSERT(false);
 		}
 		else
 		{
+			fmt::print(
+				"RenderGraph concurrent batch layout mismatch on image: {}\n",
+				static_cast<uint32_t>(target)
+			);
+
 			ASSERT(false);
 		}
 	}
-
 }
 
 // =====================================================================

@@ -12,13 +12,6 @@ static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
 		win->FlagResized();
 }
 
-bool Window::IsMinimized() const
-{
-	int width = 0, height = 0;
-	glfwGetFramebufferSize(m_windowHandle, &width, &height);
-	return width == 0 || height == 0;
-}
-
 bool Window::IsOpen() const
 {
 	return !(glfwWindowShouldClose(m_windowHandle));

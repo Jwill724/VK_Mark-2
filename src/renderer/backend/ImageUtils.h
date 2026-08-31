@@ -143,4 +143,14 @@ namespace ImageUtils
 		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
 		bool compareEnabled = false,
 		VkBorderColor borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK);
+
+	VkSampler CreateSamplerAddr(
+		VkDevice device,
+		VkFilter filter,
+		VkSamplerAddressMode addressU,
+		VkSamplerAddressMode addressV,
+		VkSamplerAddressMode addressW,
+		float maxLod,
+		float maxAnisotropy,
+		VkSamplerMipmapMode mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR);
 }

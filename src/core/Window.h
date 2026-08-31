@@ -38,8 +38,6 @@ public:
 		return bWasResized;
 	}
 
-	bool IsMinimized() const;
-
 private:
 	GLFWwindow* m_windowHandle = nullptr;
 	std::string m_windowName;

@@ -37,7 +37,7 @@ void RegisterGBufferDebugPass(
 					RD::ImageAccess::Read)
 				.ReadResource(RD::Renderer_RenderTarget::GBufferEmissive,
 					RD::ImageAccess::Read)
-				.ReadResource(RD::Renderer_RenderTarget::ViewSpaceNormals,
+				.ReadResource(RD::Renderer_RenderTarget::ViewNormals,
 					RD::ImageAccess::Read)
 				.ReadResource(RD::Renderer_RenderTarget::BentNormalAO,
 					RD::ImageAccess::Read)
@@ -62,7 +62,7 @@ void RegisterGBufferDebugPass(
 						const auto& normalMat = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial);
 						const auto& emissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive);
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto& vsNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewSpaceNormals);
+						const auto& vsNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
 						const auto& bentAo = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BentNormalAO);
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);

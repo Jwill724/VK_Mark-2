@@ -22,29 +22,36 @@ void RegisterTemporalCopyPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsTaaOn() &&
 							ctx.frameState->InstancesActive() &&
-							ctx.frameState->IsTemporalValid() &&
-							!ctx.frameState->DebugRendering();
+							ctx.frameState->IsTemporalValid();
 					})
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::DepthResolved,
 					RD::ImageAccess::TransferSrc)
- 
+
 				.ReadResource(
 					RD::Renderer_RenderTarget::Velocity,
 					RD::ImageAccess::TransferSrc)
- 
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::ViewNormals,
+					RD::ImageAccess::TransferSrc)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::PrevDepthResolved,
 					RD::ImageAccess::TransferDst,
 					RD::ImageAccess::DepthRead)
- 
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::PrevViewNormals,
+					RD::ImageAccess::TransferDst,
+					RD::ImageAccess::ComputeRead)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::PrevVelocity,
 					RD::ImageAccess::TransferDst,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -53,11 +60,14 @@ void RegisterTemporalCopyPass(
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& prevDepthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved);
+						const auto& viewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
+						const auto& prevViewSpaceNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevViewNormals);
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
 						const auto& prevVelocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity);
 
-						ImageUtils::ImageCopyNoBarrier(cmd, depthResolved, prevDepthResolved);
-						ImageUtils::ImageCopyNoBarrier(cmd, velocity,      prevVelocity);
+						ImageUtils::ImageCopyNoBarrier(cmd, depthResolved,    prevDepthResolved);
+						ImageUtils::ImageCopyNoBarrier(cmd, velocity,         prevVelocity);
+						ImageUtils::ImageCopyNoBarrier(cmd, viewSpaceNormals, prevViewSpaceNormals);
 					});
 		});
 }

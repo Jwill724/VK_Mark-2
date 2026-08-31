@@ -18,11 +18,10 @@ enum class RenderPhase : uint32_t
 	Visibility,
 	Prepass,
 	AsyncWindow,
-	Shading,
+	Lighting,
 
 	Temporal,
 	PostProcess,
-	PostAA,
 	Present,
 
 	Count

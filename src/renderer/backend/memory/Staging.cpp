@@ -98,32 +98,54 @@ void StagingBuffer::CopyCommand(VkCommandBuffer cmd, StagedWrite write) noexcept
 	vkCmdCopyBuffer(cmd, write.srcBuffer, write.dstBuffer, 1, &copy);
 }
 
-PendingTextureUpload StagingBuffer::StageTexture(const void* data, size_t pixelBytes, AllocatedImage& image)
+PendingTextureUpload StagingBuffer::StageTexture(
+	const void* data, size_t byteSize, AllocatedImage& image,
+	std::span<const TextureMipDesc> mips)
 {
 	ASSERT(data != nullptr);
+	ASSERT(byteSize > 0);
 
-	const size_t width  = image.Width();
-	const size_t height = image.Height();
-	const size_t depth  = std::max(static_cast<uint32_t>(image.Depth()), 1u);
 	const size_t layers = image.m_bIsCubemap ? 6u : std::max(image.m_arrayLayers, 1u);
-	const size_t bytes  = width * height * depth * layers * pixelBytes;
 
-	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(4u));
-	const size_t offset    = Suballocate(bytes, alignment);
+	const size_t alignment = std::max(m_atomSize, static_cast<size_t>(16u));
+	const size_t offset = Suballocate(byteSize, alignment);
 
-	std::memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, bytes);
+	std::memcpy(static_cast<uint8_t*>(m_staging.m_mappedPtr) + offset, data, byteSize);
 
 	PendingTextureUpload pending{};
 	pending.image = &image;
-	pending.writes.emplace_back(StagedTextureWrite{
-		.srcBuffer  = m_staging.m_buffer,
-		.dstImage   = image.m_image,
-		.srcOffset  = static_cast<VkDeviceSize>(offset),
-		.extent     = { image.m_extent.Width(), image.m_extent.Height(), image.m_extent.Depth() },
-		.mipLevel   = 0,
-		.baseLayer  = 0,
-		.layerCount = static_cast<uint32_t>(layers)
-	});
+
+	if (mips.empty())
+	{
+		pending.writes.emplace_back(StagedTextureWrite{
+			.srcBuffer = m_staging.m_buffer,
+			.dstImage = image.m_image,
+			.srcOffset = static_cast<VkDeviceSize>(offset),
+			.extent = { image.m_extent.Width(), image.m_extent.Height(), image.m_extent.Depth() },
+			.mipLevel = 0,
+			.baseLayer = 0,
+			.layerCount = static_cast<uint32_t>(layers)
+			});
+	}
+	else
+	{
+		pending.writes.reserve(mips.size());
+
+		for (uint32_t level = 0; level < static_cast<uint32_t>(mips.size()); ++level)
+		{
+			const TextureMipDesc& mip = mips[level];
+
+			pending.writes.emplace_back(StagedTextureWrite{
+				.srcBuffer = m_staging.m_buffer,
+				.dstImage = image.m_image,
+				.srcOffset = static_cast<VkDeviceSize>(offset + mip.offset),
+				.extent = { mip.width, mip.height, 1u },
+				.mipLevel = level,
+				.baseLayer = 0,
+				.layerCount = 1u
+				});
+		}
+	}
 
 	return pending;
 }
@@ -133,12 +155,14 @@ void StagingBuffer::TextureCopyCommand(VkCommandBuffer cmd, const PendingTexture
 	for (const auto& w : upload.writes)
 	{
 		VkBufferImageCopy copy = w.ToBufferImageCopy();
-		vkCmdCopyBufferToImage(cmd, w.srcBuffer, w.dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+		vkCmdCopyBufferToImage(cmd, w.srcBuffer, w.dstImage,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 	}
 }
 
 void StagingBuffer::TextureCopyBatch(VkCommandBuffer cmd, const std::vector<PendingTextureUpload>& batch) const noexcept
 {
+
 	for (const auto& upload : batch)
 		TextureCopyCommand(cmd, upload);
 }
@@ -153,8 +177,23 @@ void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUp
 	for (auto& desc : descs)
 	{
 		ASSERT(desc.IsValid());
-		auto upload     = StageTexture(desc.pixelData, desc.pixelBytes, *desc.image);
+
+		size_t bytes = desc.byteSize;
+		if (bytes == 0)
+		{
+			const auto& img = *desc.image;
+			const size_t layers = img.m_bIsCubemap ? 6u : std::max(img.m_arrayLayers, 1u);
+
+			bytes = static_cast<size_t>(img.Width()) * img.Height()
+				* std::max(img.Depth(), 1u) * layers * desc.pixelBytes;
+
+			ASSERT(desc.pixelBytes > 0 &&
+				"Block-compressed uploads must supply an explicit byteSize");
+		}
+
+		auto upload = StageTexture(desc.pixelData, bytes, *desc.image, desc.mips);
 		upload.strategy = desc.strategy;
+
 		uploads.emplace_back(std::move(upload));
 	}
 
@@ -166,25 +205,25 @@ void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUp
 	for (const auto& upload : uploads)
 	{
 		barriers.emplace_back(VkImageMemoryBarrier2{
-			.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask     = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			.srcAccessMask    = VK_ACCESS_2_NONE,
-			.dstStageMask     = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
-			.dstAccessMask    = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-			.oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
-			.newLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			.image            = upload.image->m_image,
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+			.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			.image = upload.image->m_image,
 			.subresourceRange = {
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0, VK_REMAINING_MIP_LEVELS,
 				0, VK_REMAINING_ARRAY_LAYERS
 			}
-		});
+			});
 	}
 
 	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
 	dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
-	dep.pImageMemoryBarriers    = barriers.data();
+	dep.pImageMemoryBarriers = barriers.data();
 	vkCmdPipelineBarrier2(cmd, &dep);
 
 	TextureCopyBatch(cmd, uploads);
@@ -194,7 +233,8 @@ void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUp
 		if (upload.strategy == MipStrategy::GenerateOnGPU)
 			ImageUtils::GenerateMipLevels(cmd, *upload.image);
 		else
-			ImageUtils::TransitionLayout(cmd, *upload.image, RD::ImageAccess::TransferDst, RD::ImageAccess::Read);
+			ImageUtils::TransitionLayout(cmd, *upload.image,
+				RD::ImageAccess::TransferDst, RD::ImageAccess::Read);
 	}
 }
 

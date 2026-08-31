@@ -42,8 +42,8 @@ void RegisterLensFlarePass(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::Read)
 
-				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
-				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
+					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
@@ -95,7 +95,7 @@ void RegisterLensFlarePass(
 
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
-							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(ctx.scene->GetSceneData().temporal.x));
+							: ctx.imageTable->GetRenderTarget(TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex()).write);
 
 						const auto& drawExtent = graph.GetDrawExtent();
 						pass.scope = ComputeScope{{ drawExtent.Width() / 4, drawExtent.Height() / 4 }};

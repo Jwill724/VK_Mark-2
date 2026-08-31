@@ -30,9 +30,9 @@ void main()
 	uvec2 vpSize = uvec2(scene.viewportSize.xy);
 	if (any(greaterThanEqual(gid, vpSize))) return;
 
-	uint view = debug.debugView;
-	uint caps = debugCapsForMode(debug.renderingMode);
-	if (view == DBG_OFF || !debugViewSupported(caps, view)) return;
+	if (debug.debugView == DBG_OFF) return;
+
+	bool temporalOn = (scene.taaMipParams.x < 0.0) && debugViewTemporal(debug.debugView);
 
 	ivec2 px = ivec2(gid);
 	vec2  uv = (vec2(gid) + 0.5) / vec2(vpSize);
@@ -45,7 +45,7 @@ void main()
 
 	if (!isSky)
 	{
-		switch (view)
+		switch (debug.debugView)
 		{
 			case DBG_ALBEDO:
 				result = texelFetch(gbAlbedoRough, px, 0).rgb;
@@ -68,7 +68,9 @@ void main()
 				break;
 
 			case DBG_SSAO:
-				result = vec3(texture(aoFinal, uv).a);
+				result = temporalOn
+					? vec3(texture(aoFinal, uv).a)
+					: vec3(texelFetch(aoFinal, ivec2(uv * vec2(textureSize(aoFinal, 0))), 0).a);
 				break;
 
 			case DBG_SS_SHADOWS:
@@ -93,9 +95,7 @@ void main()
 				break;
 
 			case DBG_VIS_TRIANGLE:
-				result = (debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
-					? debugHashColor(visMeshletID(ids.y) * 131u + visLocalTri(ids.y))
-					: debugHashColor(ids.y);
+				result = debugHashColor(visMeshletID(ids.y) * 131u + visLocalTri(ids.y));
 				break;
 
 			case DBG_VIS_LOD:
@@ -105,10 +105,6 @@ void main()
 			case DBG_MESHLETS:
 				result = debugHashColor(visMeshletID(ids.y));
 				break;
-
-//			case DBG_MESHLET_FACING:
-//				result = visFrontFacing(ids.y) ? vec3(0.2, 0.8, 0.2) : vec3(0.9, 0.2, 0.2);
-//				break;
 
 			default:
 				break;

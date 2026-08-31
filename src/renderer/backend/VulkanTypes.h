@@ -114,6 +114,13 @@ enum class Vulkan_Format
 	RG32U       = VK_FORMAT_R32G32_UINT,
 	R32F        = VK_FORMAT_R32_SFLOAT,
 	R8U         = VK_FORMAT_R8_UINT,
+	R16unorm    = VK_FORMAT_R16_UNORM,
+	RG16snorm   = VK_FORMAT_R16G16_SNORM,
+	RGBA16snorm = VK_FORMAT_R16G16B16A16_SNORM,
+	RG32F       = VK_FORMAT_R32G32_SFLOAT,
+	BC7srgb     = VK_FORMAT_BC7_SRGB_BLOCK,
+	BC7unorm    = VK_FORMAT_BC7_UNORM_BLOCK,
+	BC5unorm    = VK_FORMAT_BC5_UNORM_BLOCK,
 	Undefined   = VK_FORMAT_UNDEFINED
 };
 
@@ -130,7 +137,7 @@ enum class Vulkan_ImageUsage
 				 | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 				 | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 
-	ComputeReadWrite = VK_IMAGE_USAGE_STORAGE_BIT
+	ComputeRWTransfer = VK_IMAGE_USAGE_STORAGE_BIT
 					 | VK_IMAGE_USAGE_SAMPLED_BIT
 					 | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
 					 | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -353,7 +360,8 @@ enum class Vulkan_DescriptorType
 	UNIFORM          = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
 	INLINE           = VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK,
 	COMBINED_SAMPLER = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-	STORAGE          = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+	STORAGE          = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+	ACCEL_STRUCT     = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
 };
 
 // -------------
@@ -362,36 +370,49 @@ enum class Vulkan_DescriptorType
 
 enum class Vulkan_BufferUsage
 {
-	BDA_POINTER   = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-					VK_BUFFER_USAGE_TRANSFER_DST_BIT   |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	BDA_POINTER    = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+					 VK_BUFFER_USAGE_TRANSFER_DST_BIT   |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 
-	INDIRECT      = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
-					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
-					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	INDIRECT       = VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
+				 	 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					 VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+				 	 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 
-	VERTEX        = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT   |
-					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
-					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	VERTEX         = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT   |
+				 	 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+				 	 VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					 VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
 
-	INDEX         = VK_BUFFER_USAGE_INDEX_BUFFER_BIT    |
-					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
-					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	INDEX          = VK_BUFFER_USAGE_INDEX_BUFFER_BIT    |
+					 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					 VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					 VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
 
-	BDA_SRC_COPY  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT    |
-					VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
-					VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	BDA_SRC_COPY   = VK_BUFFER_USAGE_TRANSFER_SRC_BIT    |
+					 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  |
+					 VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 
-	UNIFORM       = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+	UNIFORM        = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 
-	VERTEX_PULL   = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-					VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+	VERTEX_PULL    = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
 
-	READ_BACK     = VK_BUFFER_USAGE_TRANSFER_DST_BIT
+	AS_BUILD_INPUT = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+					 VK_BUFFER_USAGE_TRANSFER_DST_BIT    |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+					 VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+
+	AS_STORAGE     = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	AS_SCRATCH     = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+					 VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+	READ_BACK      = VK_BUFFER_USAGE_TRANSFER_DST_BIT
 };
 
 // -----
@@ -516,6 +537,12 @@ static constexpr ImageBarrierInfo GetImageSyncScope(RD::ImageAccess access)
 					 VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
 					 VK_IMAGE_LAYOUT_GENERAL };
 
+		case RD::ImageAccess::ComputeReadStorage:
+			return { VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+					 VK_ACCESS_2_SHADER_SAMPLED_READ_BIT |
+					 VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+					 VK_IMAGE_LAYOUT_GENERAL };
+
 		case RD::ImageAccess::GraphicsColorWrite:
 			return { VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 					 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT |
@@ -576,6 +603,23 @@ static void PrepassPhaseBarrier(VkCommandBuffer cmd)
 	vkCmdPipelineBarrier2(cmd, &di);
 }
 
+static void ASMemoryBarrier(
+	VkCommandBuffer cmd,
+	VkPipelineStageFlags2 srcStage, VkAccessFlags2 srcAccess,
+	VkPipelineStageFlags2 dstStage, VkAccessFlags2 dstAccess)
+{
+	VkMemoryBarrier2 mb{ VK_STRUCTURE_TYPE_MEMORY_BARRIER_2 };
+	mb.srcStageMask  = srcStage;
+	mb.srcAccessMask = srcAccess;
+	mb.dstStageMask  = dstStage;
+	mb.dstAccessMask = dstAccess;
+
+	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.memoryBarrierCount = 1;
+	di.pMemoryBarriers    = &mb;
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
 // -------------------
 // Devices and queues
 // -------------------
@@ -621,13 +665,57 @@ struct SwapchainSupportDetails
 	std::vector<VkPresentModeKHR> presentModes{};
 };
 
+struct DeviceProperties
+{
+	VkPhysicalDeviceProperties2                        core{};
+	VkPhysicalDeviceLimits                             limits{};
+	VkPhysicalDeviceAccelerationStructurePropertiesKHR accelStruct{};
+	VkPhysicalDeviceMeshShaderPropertiesEXT            meshShader{};
+	VkPhysicalDeviceSubgroupProperties                 subgroup{};
+	VkPhysicalDeviceDescriptorIndexingProperties       descriptorIndexing{};
+	VkPhysicalDevicePushDescriptorProperties           pushDescriptor{};
+
+	void Query(VkPhysicalDevice pDevice)
+	{
+		VkPhysicalDeviceAccelerationStructurePropertiesKHR as{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR };
+		VkPhysicalDeviceMeshShaderPropertiesEXT ms{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT };
+		VkPhysicalDeviceSubgroupProperties sg{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES };
+		VkPhysicalDeviceDescriptorIndexingProperties di{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES };
+		VkPhysicalDevicePushDescriptorProperties pd{
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES };
+
+		VkPhysicalDeviceProperties2 props2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+		props2.pNext = &as;
+		as.pNext     = &ms;
+		ms.pNext     = &sg;
+		sg.pNext     = &di;
+		di.pNext     = &pd;
+		pd.pNext     = nullptr;
+
+		vkGetPhysicalDeviceProperties2(pDevice, &props2);
+
+		core        = props2;
+		core.pNext  = nullptr;
+		limits      = props2.properties.limits;
+
+		accelStruct = as;  accelStruct.pNext        = nullptr;
+		meshShader  = ms;  meshShader.pNext         = nullptr;
+		subgroup    = sg;  subgroup.pNext           = nullptr;
+		descriptorIndexing = di; descriptorIndexing.pNext = nullptr;
+		pushDescriptor     = pd; pushDescriptor.pNext     = nullptr;
+	}
+};
+
 struct PhysicalDeviceCandidate
 {
 	std::string name;
 	VkPhysicalDevice pDevice = VK_NULL_HANDLE;
 
-	VkPhysicalDeviceProperties properties;
-	VkPhysicalDeviceLimits     limits;
+	DeviceProperties props;
 
 	QueueFamilyIndices queueIndices;
 	SwapchainSupportDetails swapchainSupport;
@@ -679,9 +767,11 @@ struct ImageDesc
 	Vulkan_Format            format         = Vulkan_Format::Undefined;
 	Extents3D                extent         = { 0, 0, 0 };
 	Vulkan_ImageUsage        usage          = Vulkan_ImageUsage::ComputeOnly;
+	VkImageType              imageType      = VK_IMAGE_TYPE_2D;
 	uint32_t                 mipLevels      = 1;   // 0 = auto-calculate
 	uint32_t                 arrayLayers    = 1;
 	bool                     bIsCubemap     = false;
 	bool                     bPerMipStorage = false;
+	bool                     bIsConcurrent  = false;
 	std::string              debugName;
 };

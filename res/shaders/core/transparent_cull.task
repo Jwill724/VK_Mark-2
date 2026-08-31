@@ -1,0 +1,117 @@
+#version 450
+
+#extension GL_EXT_mesh_shader                  : require
+#extension GL_KHR_shader_subgroup_ballot       : require
+#extension GL_KHR_shader_subgroup_arithmetic   : require
+#extension GL_ARB_shader_draw_parameters       : require
+#extension GL_GOOGLE_include_directive         : require
+#extension GL_ARB_separate_shader_objects      : require
+
+#include "../include/common.glsl"
+#include "../include/meshlet_cull.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+
+layout(local_size_x = TASK_GROUP_SIZE) in;
+
+taskPayloadSharedEXT MeshletPayload payload;
+
+shared uint sPayloadCount;
+
+// Not used here
+layout(push_constant) uniform ForwardPush
+{
+	vec2 halfTexel;
+	uint specularID;
+	uint brdfID;
+	float oitDepthScale;
+	float bounceFeedback;
+	float giIntensity;
+	uint flashlightShadowMapID;
+	uint flashlightCookieTexID;
+} pc;
+
+
+void main()
+{
+	TaskDispatch td = getTaskDispatchBuffer().taskDispatch[
+		streamTaskBase(VIS_SLOT_TRANSPARENT) + gl_DrawIDARB];
+
+	uint packedID      = getDrawInstanceIDsBuffer().ids[td.instanceBase + gl_WorkGroupID.y];
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[visInstanceID(packedID)];
+
+	mat4 model      = getInstanceTransform(inst);
+	SceneData scene = getSceneData();
+
+	if (gl_LocalInvocationIndex == 0u)
+	{
+		payload.packedID     = packedID;
+		payload.vertexOffset = td.vertexOffset;
+	}
+
+	vec4 pl, pr, pb, pt;
+	get_frustum_side_planes(scene.viewProj, pl, pr, pb, pt);
+
+	float worldScale = max_world_scale(model);
+
+	uint local     = gl_WorkGroupID.x * TASK_GROUP_SIZE + gl_LocalInvocationIndex;
+	uint meshletID = td.meshletOffset + local;
+
+	bool inRange = local < td.meshletCount;
+	bool drawn   = false;
+
+	if (inRange)
+	{
+		Meshlet ml = getMeshletBuffer().meshlets[meshletID];
+
+		vec3  centerWS = (model * vec4(ml.center, 1.0)).xyz;
+		float radiusWS = ml.radius * worldScale;
+
+		drawn =
+			sphere_in_side_planes(
+				centerWS,
+				radiusWS,
+				pl,
+				pr,
+				pb,
+				pt);
+
+		if (drawn &&
+			(inst.flags & DOUBLE_SIDED) == 0u &&
+			meshletConeCulled(
+				ml,
+				model,
+				centerWS,
+				radiusWS,
+				vec4(scene.cameraPos.xyz, 1.0),
+				1.0))
+		{
+			drawn = false;
+		}
+	}
+
+	if (gl_LocalInvocationIndex == 0u)
+		sPayloadCount = 0u;
+
+	barrier();
+
+	uvec4 ballot  = subgroupBallot(drawn);
+	uint  sgCount = subgroupBallotBitCount(ballot);
+
+	uint sgBase = 0u;
+
+	if (subgroupElect())
+		sgBase = atomicAdd(sPayloadCount, sgCount);
+
+	sgBase = subgroupBroadcastFirst(sgBase);
+
+	if (drawn)
+	{
+		payload.meshletIndices[
+			sgBase + subgroupBallotExclusiveBitCount(ballot)] = meshletID;
+	}
+
+	barrier();
+
+	EmitMeshTasksEXT(sPayloadCount, 1u, 1u);
+}

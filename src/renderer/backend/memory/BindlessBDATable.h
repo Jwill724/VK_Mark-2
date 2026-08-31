@@ -49,6 +49,8 @@ public:
 
 	void ClearAssetBuffers(Allocator& allocator);
 
+	AllocatedBuffer DetachGPUAddressBuffer(RD::Renderer_Buffer slot);
+
 private:
 	void SetAddress(RD::Renderer_Buffer slot, uint64_t address);
 	void RemoveAddress(RD::Renderer_Buffer slot);

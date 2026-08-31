@@ -15,10 +15,41 @@
 #include "core/Window.h"
 #include "core/JobSystem.h"
 #include "core/Environment.h"
-#include "core/AssetUploadTypes.h"
+#include "core/asset/AssetUploadTypes.h"
+
+#ifndef NDEBUG
+
+#define RESIZE_TRACE(...) \
+	do { \
+		fmt::print(stderr, __VA_ARGS__); \
+		fmt::print(stderr, "\n"); \
+	} while (0)
+
+#else
+
+#define RESIZE_TRACE(...) ((void)0)
+
+#endif
+
+// TODO: List of shit that must get fixed.
+// - TAA jitter on thin and edge geometry, influenced most with higher luminance.
+//   Appears in transparent rendering and volumetrics passing through edges of geometry will jitter bad.
+//   The jitter doesn't seem to fully adhere to the frame rate but jitter just becomes a bit slower/smoother at high fps.
+//   Some mild ghosting with dynamic objects and some materials will have aliasing in motion, likely due to mip bias.
 
 static_assert(sizeof(InstanceInput)   == SIZEOF_INSTANCE_INPUT);
 static_assert(sizeof(DrawBin)         == SIZEOF_DRAW_BIN);
+static_assert(sizeof(VkAccelerationStructureInstanceKHR) == SIZEOF_RT_INSTANCE);
+
+inline constexpr bool LensFlareOn           = true;
+inline constexpr bool ChromaticAberrationOn = true;
+inline constexpr bool BloomOn               = true;
+inline constexpr bool VolumetricsOn         = true;
+inline constexpr bool ShadowsOn             = true;
+inline constexpr bool rtReflectionsOn       = true;
+inline constexpr bool ScreenSpaceShadowsOn  = true;
+inline constexpr bool ProfilerViewOn        = false;
+inline constexpr bool SettingsTabOn         = true;
 
 void Renderer::Init(
 	const Window& window,
@@ -27,16 +58,17 @@ void Renderer::Init(
 	SetDrawExtent(window.GetExtent());
 
 	InitRenderSettings(
-		RD::RenderingMode::MESH_SHADERS,
 		LensFlareOn,
 		ChromaticAberrationOn,
 		BloomOn,
 		ShadowsOn,
 		ScreenSpaceShadowsOn,
 		VolumetricsOn,
-		RD::AntiAliasingMethod::AA_CMAA2,
-		RD::AmbientOcclusionMethod::AO_GTAO_BENT_NORMALS,
+		rtReflectionsOn,
+		RD::AntiAliasingMethod::AA_TAA,
+		RD::GIMethod::VBGI,
 		RD::ShadowQuality::High,
+		RD::SunShadowFilter::RT_SOFT,
 		ProfilerViewOn,
 		SettingsTabOn);
 
@@ -128,6 +160,8 @@ void Renderer::Init(
 	// =============================
 	// === Global resource setup ===
 
+	m_device->InitCrashMarkers(m_framesInFlight, 64);
+
 	// --------
 	// Buffers
 	//---------
@@ -140,8 +174,18 @@ void Renderer::Init(
 		m_allocator);
 
 	m_globalAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::SHIrradiance,
+		GPU_BYTES_SH_IRRADIANCE,
+		m_allocator);
+
+	m_globalAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::InstanceInputs,
 		GPU_BYTES_INSTANCE_INPUT,
+		m_allocator);
+
+	m_globalAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::RTRows,
+		GPU_BYTES_RT_ROWS,
 		m_allocator);
 
 	m_globalAddressTable.AddGPUBufferToAddressTable(
@@ -153,10 +197,6 @@ void Renderer::Init(
 		RD::Renderer_Buffer::DrawBinKeys,
 		GPU_BYTES_DRAW_BIN_KEYS,
 		m_allocator);
-
-
-	m_clusterBufferSizes.UpdateClusterBufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
-	m_cmaa2BufferSizes.UpdateCmaa2BufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
 
 	// ===================
 	// === Image setup ===
@@ -204,35 +244,21 @@ void Renderer::Init(
 
 	m_allocator.GlobalStaging.Reset();
 
-	// ==========================
-	// === Environment setup ====
-
-	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
-		auto cmdpool = m_device->GetThreadCommandPool(threadCtx.threadID, QueueType::Graphics);
-
-		std::vector<PipelineHandle> envPipelines = {
-			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::HDRToCubemap),
-			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::DiffuseIrradiance),
-			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::SpecularPrefilter),
-			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::BRDFLUT) // Not apart of env set
-		};
-		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
-			{
-				BakeEnvironmentMaps(
-					cmd,
-					m_bindlessImageTable,
-					envPipelines);
-			}, cmdpool, QueueType::Graphics);
-	});
+	const auto& shIrradianceBuffer = m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::SHIrradiance);
 
 	// Global address table and luminance buffer upload
-	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
+	jobSystem.SubmitJob([&, shIrradianceBuffer](ThreadContext& threadCtx) {
 		auto cmdpool = m_device->GetThreadCommandPool(threadCtx.threadID, QueueType::Transfer);
 
 		auto stageCopyLuminance = m_allocator.GlobalStaging.Stage(
 			m_luminanceSums,
 			GPU_BYTES_LUMINANCE,
 			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Luminance).m_buffer);
+
+		auto stageCopyShIrr = m_allocator.GlobalStaging.Stage(
+			m_shIrradiance,
+			GPU_BYTES_SH_IRRADIANCE,
+			shIrradianceBuffer.m_buffer);
 
 		auto stageCopyGlobalAddrTable = m_allocator.GlobalStaging.Stage(
 			m_globalAddressTable.GetAddrPtrTable().data(),
@@ -241,44 +267,131 @@ void Renderer::Init(
 
 		m_allocator.GlobalStaging.Flush();
 
-		m_device->RecordDeferredCommand([&, stageCopyLuminance, stageCopyGlobalAddrTable](VkCommandBuffer cmd)
+		m_device->RecordDeferredCommand([&,
+			shIrradianceBuffer, stageCopyLuminance, stageCopyShIrr, stageCopyGlobalAddrTable](VkCommandBuffer cmd)
 		{
 			m_allocator.GlobalStaging.CopyCommand(cmd, stageCopyLuminance);
+			m_allocator.GlobalStaging.CopyCommand(cmd, stageCopyShIrr);
 			m_allocator.GlobalStaging.CopyCommand(cmd, stageCopyGlobalAddrTable);
+
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd,
+				shIrradianceBuffer,
+				m_device->GetContext());
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd,
+				m_globalAddressTable.GetTableBuffer(),
+				m_device->GetContext());
 		}, cmdpool, QueueType::Transfer);
 	});
 
 	jobSystem.Wait();
 
-	m_device->SubmitDeferredCommands(QueueType::Graphics);
 	m_device->SubmitDeferredCommands(QueueType::Transfer);
 
 	m_allocator.GlobalStaging.Reset();
+
+	// ==========================
+	// === Environment setup ====
+
+	jobSystem.SubmitJob([&, shIrradianceBuffer](ThreadContext& threadCtx) {
+		auto cmdpool = m_device->GetThreadCommandPool(threadCtx.threadID, QueueType::Graphics);
+
+		std::vector<PipelineHandle> envPipelines = {
+			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::HDRToCubemap),
+			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::SHIrradiance),
+			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::SpecularPrefilter),
+			m_pipelineManager->GetHandle(RD::Renderer_Pipeline::BRDFLUT) // Not apart of env set
+		};
+		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+			{
+				BufferBarriers::TransferWriteToComputeRead(
+					cmd,
+					m_globalAddressTable.GetTableBuffer(),
+					m_device->GetContext());
+
+				BufferBarriers::TransferWriteToComputeWrite(
+					cmd,
+					shIrradianceBuffer,
+					m_device->GetContext());
+
+				m_mainWriter.WriteBuffer(
+					RD::ADDRESS_TABLE_BINDING,
+					m_globalAddressTable.GetTableBuffer(),
+					m_descriptorManager->GetGlobalSet());
+
+				m_mainWriter.UpdateSet(
+					m_device->GetContext().device,
+					m_descriptorManager->GetGlobalSet());
+
+				m_globalAddressTable.ClearDirty();
+
+				m_descriptorManager->BindGlobalSetCompute(
+					cmd,
+					m_pipelineManager->GetGlobalLayout());
+
+				BakeEnvironmentMaps(
+					cmd,
+					m_bindlessImageTable,
+					envPipelines);
+
+				BufferBarriers::ComputeWriteToRead(
+					cmd,
+					shIrradianceBuffer);
+
+			}, cmdpool, QueueType::Graphics);
+	});
+	jobSystem.Wait();
+
+	m_device->SubmitDeferredCommands(QueueType::Graphics);
 
 	// ===============================
 	// === Global descriptor setup ===
 
 	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
 		m_bindlessImageTable.BuildInitialCombinedSamplerArray();
-	});
+		});
 
 	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
 		m_bindlessImageTable.BuildInitialSamplerCubeArray();
-	});
+		});
+
+
+	m_nrdReflectContext.Init(
+		*m_device,
+		m_allocator,
+		{ (m_drawExtent.Width() + 1u) / 2u, (m_drawExtent.Height() + 1u) / 2u },
+		NRDContext::DenoiserMode::Reflections);
+
+	m_nrdShadowContext.Init(
+		*m_device,
+		m_allocator,
+		m_drawExtent,
+		NRDContext::DenoiserMode::Shadows);
+
+	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
+		auto cmdGfxPool = m_device->GetThreadCommandPool(threadCtx.threadID, QueueType::Graphics);
+		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+			{
+				m_bindlessImageTable.TransitionRenderTargetsFromUndefined(cmd);
+			}, cmdGfxPool, QueueType::Graphics);
+		});
+
+	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
+		auto cmdCompPool = m_device->GetThreadCommandPool(threadCtx.threadID, QueueType::Compute);
+		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+			{
+				m_nrdReflectContext.RecordPoolInit(cmd);
+				m_nrdShadowContext.RecordPoolInit(cmd);
+			}, cmdCompPool, QueueType::Compute);
+		});
 
 	jobSystem.Wait();
 
-	{
-		auto cmdPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Graphics);
-
-		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
-		{
-			m_bindlessImageTable.TransitionRenderTargetsFromUndefined(cmd);
-		}, cmdPool, QueueType::Graphics);
-
-		m_device->SubmitDeferredCommands(QueueType::Graphics);
-		m_device->GetGraphicsQueue().WaitIdle();
-	}
+	m_device->SubmitDeferredCommands(QueueType::Graphics);
+	m_device->SubmitDeferredCommands(QueueType::Compute);
+	m_device->GetGraphicsQueue().WaitIdle();
+	m_device->GetComputeQueue().WaitIdle();
 
 	m_bindlessImageTable.FreeEquirects(m_allocator);
 
@@ -288,34 +401,40 @@ void Renderer::Init(
 
 	World::Init(m_bindlessImageTable);
 
-	auto& smaaPush = m_profiler.smaaTexturesIds;
-	smaaPush.id0 = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::SMAASearch).m_bindlessID;
-	smaaPush.id1 = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::SMAAArea).m_bindlessID;
-
 	auto& forwardPush = m_profiler.forwardPush;
 	forwardPush.flashlightCookieTexID = LightingSystem::_mainFlashLight.m_cookieGoboID;
 	forwardPush.flashlightShadowMapID = LightingSystem::_mainFlashLight.m_shadowMapID;
-	forwardPush.brdfID = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::Brdf).m_bindlessID;
+
+	uint32_t brdfID = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::Brdf).m_bindlessID;
+
+	forwardPush.brdfID = brdfID;
+	m_profiler.reflectPush.brdfID = brdfID;
 
 	m_profiler.lensFlareSettings.rainbowLUTIndex = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::RainbowLut).m_bindlessID;
 
-	m_profiler.ssaoSettings.hilbertLutID = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::HilbertCurveLut).m_bindlessID;
+	uint32_t hilbertCurveID = m_bindlessImageTable.GetStaticTexture(RD::Renderer_Texture::HilbertCurveLut).m_bindlessID;
+	m_profiler.ssgiSettings.hilbertLutID = hilbertCurveID;
+	m_profiler.reflectPush.hilbertLutID = hilbertCurveID;
+	m_profiler.rtShadowPush.hilbertLutID = hilbertCurveID;
 }
 
 // Only called after swapchain presented and queue wait
 void Renderer::CheckCSMAtlasExtentUpdate()
 {
-	if (m_currentShadowQuality != m_profiler.shadowQuality)
-	{
-		StallDevice();
-		m_currentShadowQuality = m_profiler.shadowQuality;
-		m_bindlessImageTable.UpdateCSMAtlasExtent(m_currentShadowQuality, m_allocator);
-		m_renderGraph.NotifyLayout(
-			RD::Renderer_RenderTarget::DirectionalCSMAtlas,
-			RD::ImageAccess::Undefined);
-		const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
-		World::GetScene().InitCSMInfo(csmAtlas.Width(), csmAtlas.Height(), csmAtlas.m_bindlessID);
-	}
+	if (m_currentShadowQuality == m_profiler.shadowQuality) return;
+
+	StallDevice();
+	m_currentShadowQuality = m_profiler.shadowQuality;
+	m_bindlessImageTable.UpdateCSMAtlasExtent(m_currentShadowQuality, m_allocator);
+
+	if (m_bindlessImageTable.IsShadowAtlasCached()) return;
+
+	m_renderGraph.NotifyLayout(
+		RD::Renderer_RenderTarget::DirectionalCSMAtlas,
+		RD::ImageAccess::Undefined);
+
+	const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
+	World::GetScene().InitCSMInfo(csmAtlas.Width(), csmAtlas.Height(), csmAtlas.m_bindlessID);
 }
 
 void Renderer::CheckGlobalDescriptorSetSync()
@@ -373,18 +492,24 @@ void Renderer::CheckGlobalDescriptorSetSync()
 void Renderer::InitFrameResources(uint32_t threadCount)
 {
 	m_framesInFlight = m_swapchain.GetImageCount();
-
 	fmt::println("Frames in flight:[{}]", m_framesInFlight);
+
+	m_rtRayListLayout.Update(m_drawExtent.Width(), m_drawExtent.Height());
+	m_clusterBufferSizes.UpdateClusterBufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
 
 	for (uint32_t i = 0; i < m_framesInFlight; ++i)
 	{
 		m_frameContexts[i].Init(
 			i,
 			threadCount,
-			m_drawExtent,
 			*m_device,
 			*m_descriptorManager,
 			m_allocator);
+
+		m_frameContexts[i].m_cachedDrawExtent = m_drawExtent;
+
+		m_frameContexts[i].CreateClusterBuffers(m_clusterBufferSizes, m_allocator);
+		m_frameContexts[i].CreateRTRayListBuffer(m_rtRayListLayout, m_allocator);
 	}
 }
 
@@ -432,16 +557,17 @@ void Renderer::EndAssetTimer()
 }
 
 void Renderer::InitRenderSettings(
-	RD::RenderingMode renderMode,
 	bool enableLensFlare,
 	bool enableChromaticAberration,
 	bool enableBloom,
 	bool enableShadows,
 	bool enableSSS,
 	bool enableVolumetrics,
+	bool enableRTReflections,
 	RD::AntiAliasingMethod aaMode,
-	RD::AmbientOcclusionMethod aoMode,
+	RD::GIMethod giMode,
 	RD::ShadowQuality shadowQuality,
+	RD::SunShadowFilter sunShadowFilter,
 	bool enableProfilerView,
 	bool enableSettings)
 {
@@ -453,19 +579,19 @@ void Renderer::InitRenderSettings(
 	toggles.enableShadows             = enableShadows             ? 1u : 0u;
 	toggles.enableSSS                 = enableSSS                 ? 1u : 0u;
 	toggles.enableVolumetrics         = enableVolumetrics         ? 1u : 0u;
+	toggles.enableRTReflections       = enableRTReflections       ? 1u : 0u;
 
-	toggles.renderingMode = static_cast<uint32_t>(renderMode);
-
-	toggles.bloomIntensity = 0.06;
+	toggles.bloomIntensity = 0.04;
 
 	toggles.aaMode = static_cast<uint32_t>(aaMode);
-	toggles.aoMode = static_cast<uint32_t>(aoMode);
+	toggles.giMode = static_cast<uint32_t>(giMode);
 
 	toggles.enableProfilerView = enableProfilerView ? 1u : 0u;
 	toggles.enableSettings     = enableSettings     ? 1u : 0u;
 
 	m_currentShadowQuality = shadowQuality;
 	m_profiler.shadowQuality = shadowQuality;
+	toggles.sunShadowFilter = static_cast<uint32_t>(sunShadowFilter);
 
 	toggles.depthScale = 1.0f / World::GetScene().GetCamera().GetFarClip();
 }
@@ -487,6 +613,7 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 		asset->instances       = std::move(batch.instances);
 		asset->nodeTransforms  = std::move(batch.nodeTransforms);
 		asset->localToNodeSlot = std::move(batch.localToNodeSlot);
+		asset->lights          = std::move(batch.lights);
 		asset->virtualInstance = batch.virtualInstance;
 		assets.push_back(asset);
 	}
@@ -507,8 +634,7 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 	{
 		for (const auto& t : batch.textures)
 			if (t.IsValid())
-				totalTexBytes += AllocatedBuffer::AlignUp(
-					static_cast<size_t>(t.width * t.height) * t.PixelBytes(), 4u);
+				totalTexBytes += AllocatedBuffer::AlignUp(t.pixelData.size(), 4u);
 
 		// TODO: Eventually add a way to subtract from this initial count
 		assetCounts.totalVertexCount += static_cast<uint32_t>(batch.vertices.size());
@@ -588,6 +714,54 @@ void Renderer::UploadScenes(std::vector<SceneUploadBatch>&& batches)
 		m_device->SubmitDeferredCommands(QueueType::Transfer);
 		m_device->GetTransferQueue().WaitIdle();
 		m_allocator.GlobalStaging.Reset();
+	}
+
+	// ---- BLAS builds -----
+	{
+		auto cmdPool = m_device->GetThreadCommandPool(
+			JobSystem::RENDER_THREAD, QueueType::Graphics);
+
+		AllocatedBuffer scratch{};
+
+		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+		{
+			m_blasAddresses = BuildMeshBLAS(cmd, scratch);
+		}, cmdPool, QueueType::Graphics);
+
+		m_device->SubmitDeferredCommands(QueueType::Graphics);
+		m_device->GetGraphicsQueue().WaitIdle();
+		m_allocator.FreeBuffer(scratch);
+
+		if (!m_blasAddresses.empty())
+		{
+			m_globalAddressTable.AddGPUBufferToAddressTable(
+				RD::Renderer_Buffer::BLASAddresses,
+				m_blasAddresses.size() * sizeof(uint64_t),
+				m_allocator);
+
+			auto transferPool = m_device->GetThreadCommandPool(
+				JobSystem::RENDER_THREAD, QueueType::Transfer);
+
+			m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+			{
+				auto write = m_allocator.GlobalStaging.Stage(
+					m_blasAddresses.data(),
+					m_blasAddresses.size() * sizeof(uint64_t),
+					m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::BLASAddresses).m_buffer);
+
+				m_allocator.GlobalStaging.Flush();
+				m_allocator.GlobalStaging.CopyCommand(cmd, write);
+
+				BufferBarriers::TransferReleaseOnGraphics(
+					cmd,
+					m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::BLASAddresses),
+					m_device->GetContext());
+			}, transferPool, QueueType::Transfer);
+
+			m_device->SubmitDeferredCommands(QueueType::Transfer);
+			m_device->GetTransferQueue().WaitIdle();
+			m_allocator.GlobalStaging.Reset();
+		}
 	}
 
 	// ---- Materials — transfer queue ----
@@ -859,16 +1033,28 @@ void Renderer::BatchUploadMaterials(
 		for (auto& desc : batch.materials)
 		{
 			Material mat{};
-			mat.albedoID         = resolve(desc.albedoTexIdx,    RD::Renderer_Texture::White);
-			mat.metalRoughnessID = resolve(desc.metalRoughTexIdx,RD::Renderer_Texture::MetalRough);
-			mat.normalID         = resolve(desc.normalTexIdx,    RD::Renderer_Texture::Normal);
-			mat.emissiveID       = resolve(desc.emissiveTexIdx,  RD::Renderer_Texture::Dummy);
-			mat.colorFactor      = desc.colorFactor;
-			mat.metalRoughFactors= desc.metalRoughFactors;
-			mat.emissiveColor    = desc.emissiveColor;
-			mat.emissiveStrength = desc.emissiveStrength;
-			mat.alphaCutoff      = desc.alphaCutoff;
-			mat.normalScale      = desc.normalScale;
+			mat.albedoID            = resolve(desc.albedoTexIdx,     RD::Renderer_Texture::White);
+			mat.metalRoughnessID    = resolve(desc.metalRoughTexIdx, RD::Renderer_Texture::White);
+			mat.normalID            = resolve(desc.normalTexIdx,     RD::Renderer_Texture::Normal);
+			mat.emissiveID          = resolve(desc.emissiveTexIdx,   RD::Renderer_Texture::Dummy);
+			mat.colorFactor         = desc.colorFactor;
+			mat.metalRoughFactors   = desc.metalRoughFactors;
+			mat.emissiveColor       = desc.emissiveColor;
+			mat.emissiveStrength    = desc.emissiveStrength;
+			mat.alphaCutoff         = desc.alphaCutoff;
+			mat.normalScale         = desc.normalScale;
+			mat.ior                 = desc.ior;
+			mat.specularFactor      = desc.specularFactor;
+			mat.clearcoatFactor     = desc.clearcoatFactor;
+			mat.clearcoatRough      = desc.clearcoatRough;
+			mat.diffuseTransFactor  = desc.diffuseTransFactor;
+			mat.transmissionFactor  = desc.transmissionFactor;
+			mat.sheenColor          = desc.sheenColor;
+			mat.sheenRough          = desc.sheenRough;
+			mat.shadingModel        = desc.shadingModel;
+			mat.thicknessFactor     = desc.thicknessFactor;
+			mat.attenuationColor    = desc.attenuationColor;
+			mat.attenuationDistance = desc.attenuationDistance;
 
 			const uint32_t globalID = static_cast<uint32_t>(m_materials.size());
 			desc.globalMaterialID   = globalID;
@@ -910,6 +1096,131 @@ void Renderer::BatchUploadMaterials(
 }
 
 
+std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuffer& outScratch)
+{
+	const auto& meshes = m_registeredMeshes.GetMeshes();
+	const auto& lods   = m_registeredMeshes.GetLods();
+
+	const VkDeviceAddress vtxAddr = m_globalAddressTable
+		.GetGPUBuffer(RD::Renderer_Buffer::Vertex).m_address;
+	const VkDeviceAddress idxAddr = m_globalAddressTable
+		.GetGPUBuffer(RD::Renderer_Buffer::Index).m_address;
+
+	std::vector<bool> needsBLAS(meshes.size(), false);
+	for (size_t i = 0; i < meshes.size(); ++i)
+		if ((lods[i].flags & MESH_FLAG_IS_LOD_VARIANT) == 0u)
+			needsBLAS[i] = true;
+
+	std::vector<uint32_t> buildList;
+	for (size_t i = 0; i < meshes.size(); ++i)
+		if (needsBLAS[i] && meshes[i].indexCount >= 3)
+			buildList.push_back(static_cast<uint32_t>(i));
+
+	ASSERT(!buildList.empty());
+
+	std::vector<VkAccelerationStructureGeometryKHR> geoms(buildList.size());
+	std::vector<VkAccelerationStructureBuildGeometryInfoKHR> builds(buildList.size());
+	std::vector<VkAccelerationStructureBuildRangeInfoKHR> ranges(buildList.size());
+	std::vector<VkDeviceSize> sizes(buildList.size());
+
+	VkDeviceSize totalASBytes = 0;
+	VkDeviceSize maxScratch   = 0;
+
+	for (size_t i = 0; i < buildList.size(); ++i)
+	{
+		const Mesh& m = meshes[buildList[i]];
+
+		auto& g = geoms[i];
+		g = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
+		g.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+		g.flags        = 0;
+
+		auto& tri = g.geometry.triangles;
+		tri.sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+		tri.pNext        = nullptr;
+		tri.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
+		tri.vertexData.deviceAddress = vtxAddr + static_cast<VkDeviceSize>(m.vertexOffset) * sizeof(Vertex);
+		tri.vertexStride = sizeof(Vertex);
+		tri.maxVertex    = m.vertexCount - 1;
+		tri.indexType    = VK_INDEX_TYPE_UINT32;
+		tri.indexData.deviceAddress = idxAddr + static_cast<VkDeviceSize>(m.firstIndex) * sizeof(uint32_t);
+		tri.transformData.deviceAddress = 0;
+
+		auto& b = builds[i];
+		b = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
+		b.type          = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		b.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+		b.mode          = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+		b.geometryCount = 1;
+		b.pGeometries   = &geoms[i];
+
+		const uint32_t primCount = m.indexCount / 3u;
+		ranges[i] = { primCount, 0, 0, 0 };
+
+		VkAccelerationStructureBuildSizesInfoKHR sizeInfo{
+			VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR };
+		vkGetAccelerationStructureBuildSizesKHR(
+			m_device->GetContext().device,
+			VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+			&b, &primCount, &sizeInfo);
+
+		sizes[i]      = AllocatedBuffer::AlignUp(sizeInfo.accelerationStructureSize, MIN_SSBO_ALIGNMENT_BYTES);
+		totalASBytes += sizes[i];
+		maxScratch    = std::max(maxScratch, sizeInfo.buildScratchSize);
+	}
+
+	const VkDeviceSize scratchAlign = m_device->GetMinASScratchAlignment();
+
+	m_blasStorage = m_allocator.AllocateBuffer({
+		totalASBytes, Vulkan_BufferUsage::AS_STORAGE, HeapType::GPU_Local, false, "BLASStorage" });
+
+	AllocatedBuffer scratch = m_allocator.AllocateBuffer({
+		maxScratch + scratchAlign, Vulkan_BufferUsage::AS_SCRATCH, HeapType::GPU_Local, false, "BLASScratch" });
+
+	const VkDeviceAddress scratchAddr =
+		(scratch.m_address + scratchAlign - 1) & ~(scratchAlign - 1);
+
+	std::vector<uint64_t> blasAddresses(meshes.size(), 0ull);
+	m_blasHandles.resize(buildList.size());
+
+	VkDeviceSize offset = 0;
+
+	for (size_t i = 0; i < buildList.size(); ++i)
+	{
+		VkAccelerationStructureCreateInfoKHR ci{
+			VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
+		ci.buffer = m_blasStorage.m_buffer;
+		ci.offset = offset;
+		ci.size   = sizes[i];
+		ci.type   = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+		VK_CHECK(vkCreateAccelerationStructureKHR(
+			m_device->GetContext().device, &ci, nullptr, &m_blasHandles[i]));
+
+		offset += sizes[i];
+
+		builds[i].dstAccelerationStructure  = m_blasHandles[i];
+		builds[i].scratchData.deviceAddress = scratchAddr;
+
+		ASSERT((scratchAddr % scratchAlign) == 0);
+		ASSERT(scratchAddr + maxScratch <= scratch.m_address + scratch.m_bytesSize);
+
+		const VkAccelerationStructureBuildRangeInfoKHR* pRange = &ranges[i];
+		vkCmdBuildAccelerationStructuresKHR(cmd, 1, &builds[i], &pRange);
+		BufferBarriers::ASBuildToASBuild(cmd);
+
+		VkAccelerationStructureDeviceAddressInfoKHR addrInfo{
+			VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR };
+		addrInfo.accelerationStructure = m_blasHandles[i];
+
+		blasAddresses[buildList[i]] = vkGetAccelerationStructureDeviceAddressKHR(
+			m_device->GetContext().device, &addrInfo);
+	}
+
+	outScratch = scratch;
+	return blasAddresses;
+}
+
 
 
 // ===============================================
@@ -925,11 +1236,25 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	auto& debug = m_profiler.debugToggles;
 
 	const auto& scene = World::GetScene();
+	const auto& sceneData = scene.GetSceneData();
 
-	World::UpdateWorldState(frameCtx, m_allocator, m_profiler, window);
+	UpdateShadowMode();
+
+	World::UpdateWorldState(
+		m_frameNumber,
+		m_drawExtent,
+		frameCtx,
+		m_allocator,
+		m_profiler,
+		window,
+		m_renderGraphState.TemporalAllowed());
 
 	frameCtx.SetTemporalResult(scene.GetTemporalResult() && !IsFirstFrame());
-	frameCtx.SetHiZValidResult(scene.GetSceneData().temporal.z);
+	frameCtx.SetHiZValidResult(scene.GetHiZTemporalResult());
+
+	m_renderGraphState.SetTemporalIndex(static_cast<uint64_t>(sceneData.temporal.x));
+
+	uint64_t noiseIndex = m_renderGraphState.GetTemporalIndex() % 64u;
 
 	bool instanceUploadNeeded = false;
 
@@ -939,55 +1264,105 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		World::_loadedScenes,
 		m_registeredMeshes.GetMeshes(),
 		m_registeredMeshes.GetLods(),
-		m_materialFlagsIDs);
+		m_materialFlagsIDs,
+		m_blasAddresses);
 
 	frameCtx.FlagInstanceInputUpload(instanceUploadNeeded);
 
-	if (frameCtx.IsInstanceInputsUploadNeeded())
+	const bool rtDirty = instanceUploadNeeded || scene.HasDynamicTransformChanges();
+
+	if (rtDirty)
 	{
-		m_drawBinTableBuild = DrawPreparation::BuildDrawBinTable(World::GetInstanceState().gpuInputs);
+		for (uint32_t i = 0; i < m_framesInFlight; ++i)
+			m_frameContexts[i].MarkTlasDirty();
 	}
+
+	if (frameCtx.IsInstanceInputsUploadNeeded())
+		m_drawBinTableBuild = DrawPreparation::BuildDrawBinTable(World::GetInstanceState().gpuInputs);
 
 	auto& forwardPush = m_profiler.forwardPush;
 	auto& lumaPush = m_profiler.lumaExposureSettings;
 	auto& taaPush = m_profiler.taaSettings;
+	auto& reflectPush = m_profiler.reflectPush;
+	auto& rtShadowPush = m_profiler.rtShadowPush;
+	auto& nrdRPush = m_profiler.nrdReflectPush;
+	auto& nrdSPush = m_profiler.nrdShadowPush;
 
-	const float rawDt = std::max(float(m_profiler.getStats().deltaSecondsRaw), 1e-5f);
+	glm::vec2 fullPixelSize = glm::vec2(sceneData.pixelSizes);
+
+	const float rawDt = std::max(m_profiler.getStats().deltaSecondsRaw, 1e-5f);
 	taaPush.invDeltaTime = 1.0f / rawDt;
-	taaPush.deltaTime    = std::clamp(rawDt, 1.0f / RD::TARGET_FPS_240, 1.0f / 30.0f);
 
-	uint32_t tilesX = m_drawExtent.Width() / 16u;
-	uint32_t tilesY = m_drawExtent.Height() / 16u;
+	uint32_t tilesX = (m_drawExtent.Width() + 15u) / 16u;
+	uint32_t tilesY = (m_drawExtent.Height() + 15u) / 16u;
 	lumaPush.totalLumaTiles = tilesX * tilesY;
 	lumaPush.cameraExposure = m_profiler.toneMappingSettings.cameraExposure;
+
+	glm::vec2 halfResSize = {
+		static_cast<float>(m_rtRayListLayout.halfWidth),
+		static_cast<float>(m_rtRayListLayout.halfHeight)
+	};
+
+	glm::vec2 halfResTexel = 1.0f / halfResSize;
+
+	nrdRPush.resSize = halfResSize;
+	nrdRPush.resTexel = halfResTexel;
+	nrdRPush.writeMotion = 1u;
+
+	// Full screen sizes
+	nrdSPush.resSize = glm::vec2(sceneData.viewportSize); // .xy
+	nrdSPush.resTexel = fullPixelSize;
+	nrdSPush.writeMotion = 0u;
+
+	// RT Shadow push
+	{
+		rtShadowPush.resolution = nrdSPush.resSize;
+		rtShadowPush.invResolution = nrdSPush.resTexel;
+	}
+
+	// reflection push
+	{
+		reflectPush.halfResSize = halfResSize;
+		reflectPush.halfResTexel = halfResTexel;
+		reflectPush.noiseIndex = noiseIndex;
+		reflectPush.rayCapacity = m_rtRayListLayout.capacities[RD::RT_RAY_SLOT_REFLECT];
+	}
 
 	if (m_activeEnvSet != debug.activeEnvMap)
 	{
 		m_activeEnvSet = debug.activeEnvMap;
 
 		const auto& envSet = m_bindlessImageTable.GetEnvironmentSet(m_activeEnvSet);
-		forwardPush.diffuseID = envSet.irradiance.m_bindlessID;
 		forwardPush.specularID = envSet.specular.m_bindlessID;
+
+		reflectPush.specularID = envSet.specular.m_bindlessID;
+		reflectPush.skyboxID = envSet.skybox.m_bindlessID;
 	}
+
+	forwardPush.reflectRoughCutoff = reflectPush.reflectRoughnessCutoff;
+	forwardPush.reflectRoughFade = reflectPush.roughnessFadeStart;
+	forwardPush.halfTexel = halfResTexel;
 
 	debug.enableWireframe = m_profiler.enableWireframeView;
 
 	debug.enableFlashlight = LightingSystem::_mainFlashLight.IsFlashLightOn();
 
 	debug.activeInstanceCount = World::GetInstanceState().gpuInputs.size();
-	debug.activeLightCount = LightingSystem::GetActiveLightCount();
-
+	debug.activeLightCount = LightingSystem::GetLightBufferCount();
+	debug.activeRTInstances = World::GetInstanceState().rtInstanceCount;
 	{
-		const uint32_t caps = RD::DebugCapsForMode(
-			static_cast<RD::RenderingMode>(debug.renderingMode));
+		auto& ssgiPush = m_profiler.ssgiSettings;
 
-		if (!RD::DebugViewSupported(caps, debug.debugView)) {
-			debug.debugView = static_cast<uint32_t>(RD::DebugView::Off);
-		}
+		ssgiPush.ndcToViewMul_x_PixelSize = sceneData.ndcToViewMult * fullPixelSize;
+
+		ssgiPush.noiseIndex = noiseIndex;
+		ssgiPush.isFinalPass = 0u; // Reset each frame
 	}
 
 	m_renderGraphState.UpdateToggles(debug);
-	m_renderGraphState.UpdateTemporal(frameCtx.IsTemporalValid(), frameCtx.IsHiZValid());
+	m_renderGraphState.UpdateTemporal(
+		frameCtx.IsTemporalValid(),
+		frameCtx.IsHiZValid());
 
 	m_renderGraphState.ResetDebugMask();
 	// Priority order
@@ -1011,20 +1386,40 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		*m_device,
 		m_allocator,
 		World::GetInstanceState().gpuInputs,
+		World::GetInstanceState().rtRows,
 		World::GetScene(), // Needs reference
 		LightingSystem::_globalLightList,
 		frameCtx.IsTemporalValid() && m_renderGraphState.IsTaaOn());
 
+	if (m_renderGraphState.IsNRDActive())
+	{
+		m_nrdReflectContext.SetFrameSettings(
+			sceneData,
+			m_bindlessImageTable,
+			m_profiler.getStats().deltaSecondsRaw,
+			frameCtx.IsTemporalValid() && !IsFirstFrame());
+
+		m_nrdShadowContext.SetFrameSettings(
+			sceneData,
+			m_bindlessImageTable,
+			m_profiler.getStats().deltaSecondsRaw,
+			frameCtx.IsTemporalValid() && !IsFirstFrame());
+	}
+
 	new (&m_renderPassExecutionContext) RenderPassExecutionContext
 	{
 		.commandBuffer = frameCtx.GetPrimaryCommandBuffer(), // placeholder
-		.frameCtx      = &frameCtx,
-		.profiler      = &m_profiler,
-		.imageTable    = &m_bindlessImageTable,
-		.bufferTable   = &m_globalAddressTable,
-		.scene         = &scene,
-		.frameState    = &m_renderGraphState,
-		.swapchain     = &m_swapchain
+		.frameCtx = &frameCtx,
+		.profiler = &m_profiler,
+		.imageTable = &m_bindlessImageTable,
+		.bufferTable = &m_globalAddressTable,
+		.scene = &scene,
+		.frameState = &m_renderGraphState,
+		.swapchain = &m_swapchain,
+		.NRDReflect = &m_nrdReflectContext,
+		.NRDShadow = &m_nrdShadowContext,
+		.descriptorManager = m_descriptorManager.get(),
+		.pipelineManager = m_pipelineManager.get()
 	};
 
 	m_renderGraph.SetAsyncComputeEnabled(m_profiler.enableAsyncCompute);
@@ -1043,14 +1438,19 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 
 // =============================================
-// // Start of the frame
+// Start of the frame
 // === CLEAR DATA AND AQUIRE SWAPCHAIN INDEX ===
 bool Renderer::PrepareFrame()
 {
 	auto& frameCtx = GetCurrentFrame();
 
+	if (m_resize.IsPending()) return true;
+
 	// Must always wait first
-	m_swapchain.WaitOnInFlightFence(frameCtx.m_frameIndex);
+	auto fenceResult = m_swapchain.WaitOnInFlightFence(frameCtx.m_frameIndex);
+	if (fenceResult == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Wait_On_In_Flight_Fence");
+
+	m_device->ResetCrashMarkers(frameCtx.m_frameIndex);
 
 	// Gpu timings
 	if (m_device->GetGraphicsQueue().SupportsTimestamps() &&
@@ -1128,19 +1528,21 @@ bool Renderer::PrepareFrame()
 
 	// Next swapchain image
 	auto swapResult = m_swapchain.AcquireNextImage(frameCtx.m_frameIndex);
+	if (swapResult == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Acquire_Next_Image");
 
 	// This condition should basically never occur
-	if (swapResult == VK_ERROR_OUT_OF_DATE_KHR || swapResult == VK_SUBOPTIMAL_KHR)
+	if (swapResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		m_device->GetGraphicsQueue().WaitIdle();
-		StallDevice();
-		m_bHasDrawExtentResized = true;
-		return m_bHasDrawExtentResized;
+		m_resize.Request(ResizeReason::AcquireOutOfDate);
+		return true;
 	}
-	INVARIANT(swapResult == VK_SUCCESS);
+
+	INVARIANT(swapResult == VK_SUCCESS || swapResult == VK_SUBOPTIMAL_KHR);
 
 	// In use swapchain image
 	m_swapchain.MarkInFlightFrameIndex(frameCtx.m_frameIndex);
+
+	vmaSetCurrentFrameIndex(m_allocator.GetVma(), static_cast<uint32_t>(m_frameNumber));
 
 	frameCtx.FreeStashedCmds(m_device->GetContext());
 
@@ -1167,28 +1569,13 @@ bool Renderer::PrepareFrame()
 		frameCtx.m_bDebugLineRendering = wantsDebug;
 	}
 
-	if (m_activeRenderingMode != static_cast<RD::RenderingMode>(debug.renderingMode))
-	{
-		StallDevice();
-		m_activeRenderingMode = static_cast<RD::RenderingMode>(debug.renderingMode);
-
-		for (uint32_t i = 0; i < m_framesInFlight; ++i)
-			m_frameContexts[i].InvalidateMeshletVisibility();
-	}
-
-	const bool bMeshPath =
-		m_activeRenderingMode == RD::RenderingMode::MESH_SHADERS;
-
-	if (bMeshPath)
-	{
-		frameCtx.SwapMeshletVisibility();
-	}
-
 	if (frameCtx.DoesCachedExtentNeedUpdate(m_drawExtent.Width(), m_drawExtent.Height()))
 	{
 		frameCtx.CreateClusterBuffers(m_clusterBufferSizes, m_allocator);
-		frameCtx.CreateCMAA2Buffers(m_cmaa2BufferSizes, m_allocator);
+		frameCtx.CreateRTRayListBuffer(m_rtRayListLayout, m_allocator);
 	}
+
+	frameCtx.SwapMeshletVisibility();
 
 	// Handles initialization and any updates during runtime
 	if (frameCtx.m_gpuAddressTable.IsTableDirty())
@@ -1202,7 +1589,7 @@ bool Renderer::PrepareFrame()
 		m_profiler.gpuStats = *frameCtx.m_statsMapped;
 	}
 
-	return m_bHasDrawExtentResized; // Should be false
+	return m_resize.IsPending();
 }
 
 // ===============================================
@@ -1210,6 +1597,8 @@ bool Renderer::PrepareFrame()
 bool Renderer::SubmitFrame()
 {
 	auto& frameCtx = GetCurrentFrame();
+
+	const uint64_t transferWaitForG1 = frameCtx.transferWaitValue;
 
 	auto& graphicsQ = m_device->GetGraphicsQueue();
 	auto& transferQ = m_device->GetTransferQueue();
@@ -1224,25 +1613,16 @@ bool Renderer::SubmitFrame()
 
 	std::vector<VkSemaphoreSubmitInfo> firstBatchWaits;
 
-	const auto curTransferSignal = transferQ.GetCurrentSignalValue();
-	if (frameCtx.transferWaitValue != UINT64_MAX &&
-		frameCtx.transferWaitValue <= curTransferSignal)
-	{
-		firstBatchWaits.emplace_back(TimelineWait(
-			transferQ.GetTimelineSemaphore(),
-			frameCtx.transferWaitValue,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT));
-	}
-
 	if (frameCtx.transferWaitValue != UINT64_MAX)
 	{
+		ASSERT(frameCtx.transferWaitValue <= transferQ.GetCurrentSignalValue(),
+			"Transfer wait %llu ahead of signalled %llu.",
+			frameCtx.transferWaitValue, transferQ.GetCurrentSignalValue());
+
 		firstBatchWaits.emplace_back(TimelineWait(
 			transferQ.GetTimelineSemaphore(),
 			frameCtx.transferWaitValue,
-			VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT     |
-			VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT      |
-			VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT    |
-			VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT));
+			VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT));
 
 		frameCtx.transferWaitValue = UINT64_MAX;
 	}
@@ -1258,11 +1638,17 @@ bool Renderer::SubmitFrame()
 
 		firstBatchWaits.emplace_back(BinaryWait(presentSem, kAcquireStages));
 
-		graphicsQ.SubmitFrame(
+		VK_CHECK(vkResetFences(
+			m_device->GetContext().device,
+			1,
+			&fence));
+
+		auto gfxResult = graphicsQ.SubmitFrame(
 			firstBatchWaits,
 			frameCtx.GetGraphicsPrimary(0u),
 			renderSem,
 			fence);
+		if (gfxResult == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Graphics_Submit_Single");
 	}
 	else
 	{
@@ -1271,7 +1657,7 @@ bool Renderer::SubmitFrame()
 			"Async path expects exactly %u graphics batches, got %u.",
 			MAX_GRAPHICS_PRIMARIES, schedule.graphicsBatchCount);
 
-		// ---- G0: visibility + prepass + HiZ + handoff transitions ----
+		// ---- G0 ----
 		const uint64_t g0 = graphicsQ.AdvanceTimeline();
 		{
 			const VkSemaphoreSubmitInfo signals[] = {
@@ -1285,7 +1671,7 @@ bool Renderer::SubmitFrame()
 				VK_NULL_HANDLE);
 		}
 
-		// ---- C0: SSAO, clustered lights, contact shadows ----
+		// ---- C0 ----
 		const uint64_t c0 = computeQ.AdvanceTimeline();
 		{
 			const VkSemaphoreSubmitInfo waits[] = {
@@ -1306,16 +1692,26 @@ bool Renderer::SubmitFrame()
 				VK_NULL_HANDLE);
 		}
 
-		// ---- G1: CSM, flashlight shadow, material resolve ----
+		// ---- G1 ----
 		{
+			std::vector<VkSemaphoreSubmitInfo> g1Waits;
+
+			if (transferWaitForG1 != UINT64_MAX)
+			{
+				g1Waits.emplace_back(TimelineWait(
+					transferQ.GetTimelineSemaphore(),
+					transferWaitForG1,
+					VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT));
+			}
+
 			graphicsQ.Submit2(
-				{},                                   // no waits
+				g1Waits,
 				frameCtx.GetGraphicsPrimary(1u),
-				{},                                   // no signals
-				VK_NULL_HANDLE);                      // no fence
+				{},
+				VK_NULL_HANDLE);
 		}
 
-		// ---- G2: shading -> transparent -> volumetrics -> post ->
+		// ---- G2  ----
 		{
 			const VkSemaphoreSubmitInfo waits[] = {
 				TimelineWait(
@@ -1324,59 +1720,186 @@ bool Renderer::SubmitFrame()
 				BinaryWait(presentSem, kAcquireStages)
 			};
 
-			graphicsQ.SubmitFrame(
+			VK_CHECK(vkResetFences(
+				m_device->GetContext().device,
+				1,
+				&fence));
+
+			auto gfxResult = graphicsQ.SubmitFrame(
 				std::vector<VkSemaphoreSubmitInfo>(std::begin(waits), std::end(waits)),
 				frameCtx.GetGraphicsPrimary(2u),
 				renderSem,
 				fence);
+
+			if (gfxResult == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Graphics_Submit_Async");
 		}
 	}
 
 	// ---- present + resize handling: ----
-	auto swapResult = presentQ.Present(
+	auto presentResult = presentQ.Present(
 		m_swapchain.GetSwapchainHandle(),
 		m_swapchain.GetCurrentSwapchainImageIndex(),
 		renderSem);
+	if (presentResult == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Swapchain_Present");
 
-	if (swapResult == VK_ERROR_OUT_OF_DATE_KHR || swapResult == VK_SUBOPTIMAL_KHR)
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
 	{
-		if (graphicsQ.GetQueue() != presentQ.GetQueue())
-			presentQ.WaitIdle();
-		else
-			graphicsQ.WaitIdle();
-
-		// Extra security
-		StallDevice();
-
-		m_bHasDrawExtentResized = true;
+		m_resize.Request(ResizeReason::PresentOutOfDate);
 		CheckCSMAtlasExtentUpdate();
-		return m_bHasDrawExtentResized;
+		m_frameNumber++;
+		return true;
 	}
-	else
-	{
-		INVARIANT(swapResult == VK_SUCCESS);
-	}
+
+	INVARIANT(presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR);
 
 	CheckCSMAtlasExtentUpdate();
 	m_frameNumber++;
-	return m_bHasDrawExtentResized;
+	return m_resize.IsPending();
 }
 
 void Renderer::TickVramUsage()
 {
-	if (m_profiler.getStats().vramQueryTimerSeconds >= 5.0f)
+	if (m_profiler.debugToggles.enableProfilerView)
 	{
-		m_profiler.getStats().vramQueryTimerSeconds -= 5.0f;
 		m_profiler.SetVRAMUsage(m_allocator.GetTotalVRAMUsage());
 	}
 }
+
+bool Renderer::ResolveResize(Extents2D liveExtent)
+{
+	//RESIZE_TRACE("[Resize] enter phase={} reason={} coalesced={} live={}x{} draw={}x{} gen={}",
+	//	ResizeCoordinator::ToString(m_resize.GetPhase()),
+	//	ResizeCoordinator::ToString(m_resize.GetReason()),
+	//	m_resize.GetCoalesced(),
+	//	liveExtent.Width(), liveExtent.Height(),
+	//	m_drawExtent.Width(), m_drawExtent.Height(),
+	//	m_resize.GetGeneration());
+
+	if (!m_resize.IsPending())
+	{
+		if (liveExtent.Width() == m_drawExtent.Width() &&
+			liveExtent.Height() == m_drawExtent.Height())
+			return true;
+
+		RESIZE_TRACE("[Resize] extent mismatch, self-requesting");
+		m_resize.Request(ResizeReason::WindowEvent);
+	}
+
+	if (!m_resize.CanApply(liveExtent))
+	{
+		RESIZE_TRACE("[Resize] BLOCKED phase={} live={}x{}",
+			ResizeCoordinator::ToString(
+				m_resize.GetPhase()), liveExtent.Width(), liveExtent.Height());
+		return false;
+	}
+
+	m_resize.EnterDrain();
+	RESIZE_TRACE("[Resize] drain begin");
+	DrainFrameContexts();
+	RESIZE_TRACE("[Resize] drain end");
+
+	m_resize.EnterApply();
+	RESIZE_TRACE("[Resize] apply begin -> {}x{}", liveExtent.Width(), liveExtent.Height());
+	UpdateDrawExtentUsage(liveExtent);
+	RESIZE_TRACE("[Resize] extent applied, rebuilding contexts");
+	RebuildFrameContexts();
+	RESIZE_TRACE("[Resize] rebuild end");
+
+	m_resize.Complete(m_drawExtent);
+	RESIZE_TRACE("[Resize] complete gen={} phase={} coalesced={}",
+		m_resize.GetGeneration(),
+		ResizeCoordinator::ToString(m_resize.GetPhase()),
+		m_resize.GetCoalesced());
+
+	ValidateExtentCoherence();
+	RESIZE_TRACE("[Resize] validated");
+
+	return true;
+}
+
+void Renderer::DrainFrameContexts()
+{
+	const auto& ctxDevice = m_device->GetContext();
+
+	StallDevice();
+
+	for (uint32_t i = 0; i < m_framesInFlight; ++i)
+	{
+		auto& frameCtx = m_frameContexts[i];
+
+		frameCtx.FreeStashedCmds(ctxDevice);
+		frameCtx.m_cpuDeletionQueue.Flush();
+
+		frameCtx.InvalidateMeshletVisibility();
+
+		frameCtx.ResetDrawExtentCache();
+
+		frameCtx.m_bHasTimestampResultsPending = false;
+		frameCtx.m_bHasComputeTimestampsPending.store(false, std::memory_order_relaxed);
+		frameCtx.m_timestampPassUsed.fill(false);
+		frameCtx.m_timestampPassUsedCompute.fill(false);
+
+		if (frameCtx.m_graphicsTimestampPool != VK_NULL_HANDLE)
+			vkResetQueryPool(ctxDevice.device, frameCtx.m_graphicsTimestampPool, 0u, TIMESTAMP_QUERY_COUNT);
+
+		if (frameCtx.m_computeTimestampPool != VK_NULL_HANDLE)
+			vkResetQueryPool(ctxDevice.device, frameCtx.m_computeTimestampPool, 0u, TIMESTAMP_QUERY_COUNT);
+
+		frameCtx.transferWaitValue = UINT64_MAX;
+	}
+}
+
+void Renderer::RebuildFrameContexts()
+{
+	for (uint32_t i = 0; i < m_framesInFlight; ++i)
+	{
+		auto& frameCtx = m_frameContexts[i];
+		frameCtx.SetTemporalResult(false);
+		frameCtx.SetHiZValidResult(false);
+	}
+
+	m_renderGraphState.UpdateTemporal(false, false);
+}
+
+void Renderer::ValidateExtentCoherence()
+{
+	const uint32_t w = m_drawExtent.Width();
+	const uint32_t h = m_drawExtent.Height();
+
+	INVARIANT(w > 0u && h > 0u);
+
+	if (!m_bindlessImageTable.IsShadowAtlasCached())
+	{
+		const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(
+			RD::Renderer_RenderTarget::DirectionalCSMAtlas);
+		const auto& csmWidth = World::GetScene().GetCSMAtlasWidth();
+		const auto& csmHeight = World::GetScene().GetCSMAtlasHeight();
+
+		ASSERT(csmAtlas.Width() == csmWidth,
+			"CSM atlas is %u wide, scene believes %u.",
+			csmAtlas.Width(), csmHeight);
+	}
+
+	ASSERT(m_rtRayListLayout.halfWidth == (w + 1u) / 2u &&
+		m_rtRayListLayout.halfHeight == (h + 1u) / 2u,
+		"RTRayListLayout %ux%u stale against extent %ux%u.",
+		m_rtRayListLayout.halfWidth, m_rtRayListLayout.halfHeight, w, h);
+
+	const auto& opaque = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+	ASSERT(opaque.Width() == w && opaque.Height() == h,
+		"Opaque target %ux%u stale against extent %ux%u.",
+		opaque.Width(), opaque.Height(), w, h);
+}
+
 
 void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 {
 	SetDrawExtent(newWindowExtent);
 
-	const uint32_t width  = m_drawExtent.Width();
+	const uint32_t width = m_drawExtent.Width();
 	const uint32_t height = m_drawExtent.Height();
+
+	RESIZE_TRACE("RESIZE before swapchain");
 
 	m_swapchain.ResizeSwapchain(
 		m_device->GetContext(),
@@ -1384,36 +1907,60 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 		m_device->GetSwapchainSupportDetails(),
 		newWindowExtent);
 
-	ASSERT(m_swapchain.GetImageCount() == m_framesInFlight,
-		"Swapchain image count changed on resize (%u -> %u); frame contexts are not sized for this.",
-		m_framesInFlight, m_swapchain.GetImageCount());
+	RESIZE_TRACE("RESIZE swapchain complete");
 
+	ASSERT(
+		m_swapchain.GetImageCount() == m_framesInFlight,
+		"Swapchain image count changed on resize (%u -> %u); frame contexts are not sized for this.",
+		m_framesInFlight,
+		m_swapchain.GetImageCount());
+
+	m_rtRayListLayout.Update(width, height);
 	m_clusterBufferSizes.UpdateClusterBufferSizes(width, height);
-	m_cmaa2BufferSizes.UpdateCmaa2BufferSizes(width, height);
 	m_renderGraph.SetDrawExtent(m_drawExtent);
 
-	m_bindlessImageTable.UpdateRenderTargets({ width, height, 1u }, m_allocator);
-	m_renderGraph.InvalidateTrackedLayouts();
+	m_bindlessImageTable.UpdateRenderTargets({width, height, 1u}, m_allocator);
 
 	{
-		auto cmdPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Graphics);
+		auto cmdGfxPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Graphics);
 
 		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
-		{
-			m_bindlessImageTable.TransitionRenderTargetsFromUndefined(cmd);
-		}, cmdPool, QueueType::Graphics);
+			{
+				m_bindlessImageTable.TransitionRenderTargetsFromUndefined(cmd);
+			}, cmdGfxPool, QueueType::Graphics);
 
 		m_device->SubmitDeferredCommands(QueueType::Graphics);
 		m_device->GetGraphicsQueue().WaitIdle();
 	}
 
-	m_bHasDrawExtentResized = false;
+	m_nrdReflectContext.Resize(
+		m_allocator,
+		{ (width + 1u) / 2u, (height + 1u) / 2u });
+
+	m_nrdShadowContext.Resize(
+		m_allocator,
+		m_drawExtent);
+
+	{
+		auto cmdCompPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Compute);
+
+		m_device->RecordDeferredCommand([&](VkCommandBuffer cmd)
+			{
+				m_nrdReflectContext.RecordPoolInit(cmd);
+				m_nrdShadowContext.RecordPoolInit(cmd);
+			}, cmdCompPool, QueueType::Compute);
+
+		m_device->SubmitDeferredCommands(QueueType::Compute);
+		m_device->GetComputeQueue().WaitIdle();
+	}
+
+	m_renderGraph.InvalidateTrackedLayouts();
 }
 
 void Renderer::TimestampPoolStart(FrameContext& frameCtx, VkCommandBuffer cmd)
 {
 	if (!m_device->GetGraphicsQueue().SupportsTimestamps()) return;
-	if (frameCtx.m_graphicsTimestampPool == VK_NULL_HANDLE)  return;
+	if (frameCtx.m_graphicsTimestampPool == VK_NULL_HANDLE) return;
 
 	vkCmdWriteTimestamp2(
 		cmd,
@@ -1483,6 +2030,11 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx, VkCommandBuffer cmd
 
 		BufferBarriers::TransferWriteToComputeRead(
 			cmd,
+			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::RTRows),
+			m_device->GetContext());
+
+		BufferBarriers::TransferWriteToComputeRead(
+			cmd,
 			m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys),
 			m_device->GetContext());
 
@@ -1507,6 +2059,8 @@ void Renderer::BarrierDynamicBuffers(FrameContext& frameCtx, VkCommandBuffer cmd
 
 void Renderer::RecordRenderCommand(JobSystem& jobSystem)
 {
+	ValidateExtentCoherence();
+
 	auto& frameCtx = GetCurrentFrame();
 	auto& frameAddrTable = frameCtx.m_gpuAddressTable;
 
@@ -1526,52 +2080,63 @@ void Renderer::RecordRenderCommand(JobSystem& jobSystem)
 
 	RecordHooks hooks;
 
+	m_checkpointPassCounter.store(0, std::memory_order_relaxed);
+
 	hooks.onFrameBegin = [&](VkCommandBuffer cmd)
-	{
-		TimestampPoolStart(frameCtx, cmd);
-		BarrierDynamicBuffers(frameCtx, cmd);
-	};
+		{
+			m_device->SetCheckpoint(cmd, "Frame_Begin");
+			TimestampPoolStart(frameCtx, cmd);
+			BarrierDynamicBuffers(frameCtx, cmd);
+		};
 
 	hooks.onFrameEnd = [&](VkCommandBuffer cmd)
-	{
-		TimestampPoolEnd(frameCtx, cmd);
-	};
+		{
+			TimestampPoolEnd(frameCtx, cmd);
+			m_device->SetCheckpoint(cmd, "Frame_End");
+		};
 
 	hooks.onAsyncBatchEnd = [&](VkCommandBuffer cmd)
-	{
-		m_profiler.CollectTracyCompute(cmd);
-	};
-
+		{
+			m_profiler.CollectTracyCompute(cmd);
+			m_device->SetCheckpoint(cmd, "Async_Batch_End");
+		};
 
 	hooks.bindPrologue = [&](VkCommandBuffer cmd, PassQueue queue)
-	{
-		if (queue == PassQueue::Graphics)
 		{
-			m_descriptorManager->BindDescriptorSetsGraphics(
-				cmd,
-				frameCtx.m_frameSet,
-				m_pipelineManager->GetGlobalLayout());
+			const uint32_t idx = m_checkpointPassCounter.fetch_add(1, std::memory_order_relaxed);
+			const QueueType qType =
+				(queue == PassQueue::Graphics) ? QueueType::Graphics : QueueType::Compute;
 
-			m_descriptorManager->BindDescriptorSetsCompute(
-				cmd,
-				frameCtx.m_frameSet,
-				m_pipelineManager->GetGlobalLayout());
-		}
-		else
-		{
-			m_descriptorManager->BindDescriptorSetsCompute(
-				cmd,
-				frameCtx.m_frameSet,
-				m_pipelineManager->GetGlobalLayout());
-		}
+			m_device->MarkPassBegin(cmd, qType, frameCtx.m_frameIndex, idx);
+			m_device->MarkPassEnd(cmd, qType, frameCtx.m_frameIndex, idx);
 
-		if (queue == PassQueue::Graphics && bBindIndexBuffer)
-		{
-			const auto indexBuffer =
-				m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;
-			vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		}
-	};
+			if (queue == PassQueue::Graphics)
+			{
+				m_descriptorManager->BindDescriptorSetsGraphics(
+					cmd,
+					frameCtx.m_frameSet,
+					m_pipelineManager->GetGlobalLayout());
+
+				m_descriptorManager->BindDescriptorSetsCompute(
+					cmd,
+					frameCtx.m_frameSet,
+					m_pipelineManager->GetGlobalLayout());
+			}
+			else
+			{
+				m_descriptorManager->BindDescriptorSetsCompute(
+					cmd,
+					frameCtx.m_frameSet,
+					m_pipelineManager->GetGlobalLayout());
+			}
+
+			if (queue == PassQueue::Graphics && bBindIndexBuffer)
+			{
+				const auto indexBuffer =
+					m_globalAddressTable.GetGPUBuffer(RD::Renderer_Buffer::Index).m_buffer;
+				vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+			}
+		};
 
 	m_renderGraph.RecordFrame(
 		m_renderPassExecutionContext,
@@ -1580,10 +2145,53 @@ void Renderer::RecordRenderCommand(JobSystem& jobSystem)
 		hooks);
 }
 
+void Renderer::UpdateShadowMode()
+{
+	// Physical CSM residency follows the CURRENT requested shadow mode,
+	// not the previous frame's RenderStateInfo.
+	const bool wantsRTShadows =
+		m_profiler.debugToggles.enableShadows != 0u &&
+		m_profiler.debugToggles.sunShadowFilter ==
+		static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT);
+
+	const bool csmAtlasCached = m_bindlessImageTable.IsShadowAtlasCached();
+
+	if (wantsRTShadows && !csmAtlasCached)
+	{
+		StallDevice();
+
+		m_bindlessImageTable.FreeCSMAtlas(m_allocator);
+
+		m_renderGraph.NotifyLayout(
+			RD::Renderer_RenderTarget::DirectionalCSMAtlas,
+			RD::ImageAccess::Undefined);
+	}
+	else if (!wantsRTShadows && csmAtlasCached)
+	{
+		StallDevice();
+
+		m_bindlessImageTable.RecreateCSMAtlas(m_allocator);
+
+		m_renderGraph.NotifyLayout(
+			RD::Renderer_RenderTarget::DirectionalCSMAtlas,
+			RD::ImageAccess::Undefined);
+
+		const auto& csmAtlas = m_bindlessImageTable.GetRenderTarget(
+			RD::Renderer_RenderTarget::DirectionalCSMAtlas);
+		World::GetScene().InitCSMInfo(csmAtlas.Width(), csmAtlas.Height(), csmAtlas.m_bindlessID);
+	}
+
+	// Now expose the FINAL physical state for this frame.
+	m_profiler.debugToggles.csmAtlasCached = m_bindlessImageTable.IsShadowAtlasCached();
+}
 
 void Renderer::StallDevice()
 {
-	m_device->IdleDevice();
+	const VkResult result = vkDeviceWaitIdle(m_device->GetContext().device);
+
+	if (result == VK_ERROR_DEVICE_LOST) m_device->DumpDeviceState("Stall_Device");
+
+	VK_CHECK(result);
 }
 
 void Renderer::FreeAllAssetTextures()
@@ -1604,6 +2212,7 @@ void Renderer::UnloadAllScenes()
 	m_registeredMeshes = MeshRegistry{};
 	m_materials.clear();
 	m_materialFlagsIDs.clear();
+	m_blasAddresses.clear();
 	m_globalAddressTable.ClearAssetBuffers(m_allocator);
 	m_profiler.assetCounts.Clear();
 
@@ -1620,6 +2229,14 @@ void Renderer::Cleanup()
 #endif
 
 	DestroyRenderGraph();
+
+	m_nrdReflectContext.Shutdown(m_device->GetContext().device, m_allocator);
+	m_nrdShadowContext.Shutdown(m_device->GetContext().device, m_allocator);
+
+	for (auto as : m_blasHandles)
+		vkDestroyAccelerationStructureKHR(m_device->GetContext().device, as, nullptr);
+	m_blasHandles.clear();
+	m_allocator.FreeBuffer(m_blasStorage);
 
 	m_bindlessImageTable.Shutdown(m_device->GetContext().device, m_allocator);
 	m_globalAddressTable.Shutdown(m_allocator);

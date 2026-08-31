@@ -1,0 +1,24 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/rt_core.glsl"
+
+layout(local_size_x = 1) in;
+
+layout(push_constant) uniform RTArgsPush
+{
+	uint raySlot;     // RT method
+	uint argsSlot;    // Indirect args stream
+	uint groupSize;   // 64 default
+	uint rayCapacity; // Equal to some pixel count
+} ap;
+
+void main()
+{
+	RTRayListBuffer rays = getRTRayListBuffer();
+	DispatchIndirectArgsBuffer args = getIndirectDispatchBuffer();
+
+	uint groups = (rtRayCount(rays, ap.raySlot, ap.rayCapacity) + ap.groupSize - 1u) / ap.groupSize;
+	args.args[ap.argsSlot] = uvec4(max(groups, 1u), 1u, 1u, 0u);
+}

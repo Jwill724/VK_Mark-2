@@ -14,7 +14,6 @@ struct DeviceContext;
 class DescriptorManager;
 class DescriptorWriter;
 class Allocator;
-struct Cmaa2BufferSizes;
 struct ClusterBufferSizes;
 
 enum class QueueType;
@@ -30,7 +29,6 @@ public:
 	void Init(
 		uint32_t frameIndex,
 		uint32_t threadSlotCount,
-		Extents2D drawExtent,
 		Device& device,
 		DescriptorManager& descriptorsManager,
 		Allocator& allocator);
@@ -55,12 +53,6 @@ public:
 	void DestroyDebugBuffers(Allocator& allocator);
 	void CreateDebugBuffers(Allocator& allocator);
 
-	void CreateCMAA2Buffers(
-		const Cmaa2BufferSizes& cmaa2BufSizes,
-		Allocator& allocator);
-
-	void Cmaa2Reset(Allocator& allocator);
-
 	const AllocatedBuffer& GetGPUBuffer(RD::Renderer_Buffer buffer) const { return m_gpuAddressTable.GetGPUBuffer(buffer); }
 
 	const RD::PassTimestampRange& GetTimestampRange(RD::Renderer_Pass pass) const
@@ -69,7 +61,7 @@ public:
 	}
 
 	bool IsTemporalValid() const noexcept { return m_bIsTemporalValid; }
-	bool IsHiZValid()      const noexcept { return m_bIsHiZValid && m_bIsTemporalValid; }
+	bool IsHiZValid()      const noexcept { return m_bIsHiZValid; }
 
 	VkCommandPool  GetTransferPool()  const { return m_transferPool; }
 	uint64_t&      GetTransferWaitValue()   { return transferWaitValue; }
@@ -92,10 +84,11 @@ public:
 		return false;
 	}
 
-	const Extents2D& GetCachedExtent() const { return m_cachedDrawExtent; }
+	void ResetDrawExtentCache() { m_cachedDrawExtent = {}; }
 
 	void AssignSceneUniform(AllocatedBuffer buffer, const Allocator& allocator);
 	void AssignCSMUniform(AllocatedBuffer buffer, const Allocator& allocator);
+	void AssignVolumetricShadowUniform(AllocatedBuffer buffer, const Allocator& allocator);
 
 	void IsFlashlightStateVersionOld(uint32_t version) noexcept
 	{
@@ -153,8 +146,6 @@ public:
 	void FlagInstanceInputUpload(bool flag) { m_bInstanceInputUploadNeeded = flag; }
 	void ClearInstanceInputUploadFlag() { m_bInstanceInputUploadNeeded = false; }
 
-	CMAA2Push& GetCMAA2Push() { return m_cmaa2Push; }
-
 	const LightClustersData& GetClusterData() const { return m_clusterData; }
 
 	const AllocatedBuffer& GetStatsReadbackBuffer() const { return m_statsReadback; }
@@ -190,6 +181,19 @@ public:
 	}
 	void MeshletVisibilityBufferValid() { m_bMeshletVisInitialized = true; }
 	void InvalidateMeshletVisibility() noexcept { m_bMeshletVisInitialized = false; }
+
+	void MarkTlasDirty()  noexcept { m_bTlasDirty = true; }
+	void ClearTlasFlag()  noexcept { m_bTlasDirty = false; }
+	bool IsTlasDirty()    const noexcept { return m_bTlasDirty; }
+
+	VkAccelerationStructureKHR GetTLAS() const noexcept { return m_tlas; }
+	VkDeviceAddress GetTlasScratchAddress() const noexcept { return m_tlasScratchAddress; }
+
+	void CreateRTRayListBuffer(const RTRayListLayout& sizes, Allocator& allocator);
+
+	VkDescriptorSet GetFrameSet() const noexcept { return m_frameSet; }
+
+	void DeferredClearGPUBuffer(RD::Renderer_Buffer slot, Allocator& allocator);
 
 private:
 	uint32_t m_frameIndex = 0u;
@@ -237,8 +241,6 @@ private:
 	void SetHiZValidResult(bool result) { m_bIsHiZValid = result; }
 	bool m_bIsHiZValid = false;
 
-	CMAA2Push m_cmaa2Push;
-
 	LightClustersData m_clusterData;
 
 	bool m_bDebugLineRendering = false;
@@ -263,12 +265,22 @@ private:
 	const GPUStats* m_statsMapped = nullptr;
 
 	AllocatedBuffer m_directionalCSM_UBO;
+	AllocatedBuffer m_volumetricShadow_UBO;
 	AllocatedBuffer m_sceneInfo_UBO;
 
 	bool m_bClusterUniformWriteNeeded = false;
 	AllocatedBuffer m_clustered_UBO;
 
 	VkDescriptorSet m_frameSet = VK_NULL_HANDLE;
+
+	void CreateTLAS(Device& device, Allocator& allocator);
+
+	bool m_bTlasDirty = true;
+	bool m_bTlasWriteNeeded = true;
+	AllocatedBuffer            m_tlasStorage;
+	VkAccelerationStructureKHR m_tlas = VK_NULL_HANDLE;
+	AllocatedBuffer            m_tlasScratch;
+	VkDeviceAddress            m_tlasScratchAddress = 0;
 
 	DeletionQueue m_cpuDeletionQueue;
 };

@@ -49,7 +49,7 @@ void Swapchain::Create(
 	createInfo.clipped = VK_TRUE;
 
 
-	uint32_t qFamIndices[] {
+	uint32_t qFamIndices[]{
 		deviceCtx.queueIndices.graphicsFamily.value(),
 		deviceCtx.queueIndices.presentFamily.value()
 	};
@@ -116,7 +116,7 @@ void Swapchain::Create(
 	{
 		m_imageAvailableSemaphores[imgIdx] = GPUQueue::CreateNewSemaphore(m_logicalDeviceCopy);
 		m_renderFinishedSemaphores[imgIdx] = GPUQueue::CreateNewSemaphore(m_logicalDeviceCopy);
-		m_inFlightFences[imgIdx]           = GPUQueue::CreateNewFence(m_logicalDeviceCopy);
+		m_inFlightFences[imgIdx] = GPUQueue::CreateNewFence(m_logicalDeviceCopy);
 	}
 }
 
@@ -126,27 +126,47 @@ void Swapchain::ResizeSwapchain(
 	const SwapchainSupportDetails& swapchainSupport,
 	Extents2D windowExtent)
 {
+	if (m_swapchain == VK_NULL_HANDLE) return;
+
 	Cleanup();
-	Create(deviceCtx, surface, swapchainSupport, windowExtent);
+
+	Create(
+		deviceCtx,
+		surface,
+		swapchainSupport,
+		windowExtent);
 }
 
 void Swapchain::Cleanup()
 {
-	if (m_swapchain != VK_NULL_HANDLE)
-	{
-		vkDestroySwapchainKHR(m_logicalDeviceCopy, m_swapchain, nullptr);
-		m_swapchain = VK_NULL_HANDLE;
-	}
-
 	for (uint32_t i = 0; i < m_imageCount; ++i)
 	{
-		auto& view = m_views[i];
-		ImageUtils::DestroyImageView(m_logicalDeviceCopy, view);
+		if (m_views[i] != VK_NULL_HANDLE)
+		{
+			ImageUtils::DestroyImageView(
+				m_logicalDeviceCopy,
+				m_views[i]);
+		}
 
-		GPUQueue::DestroyFence(m_logicalDeviceCopy, m_inFlightFences[i]);
-		GPUQueue::DestroySemaphore(m_logicalDeviceCopy, m_imageAvailableSemaphores[i]);
-		GPUQueue::DestroySemaphore(m_logicalDeviceCopy, m_renderFinishedSemaphores[i]);
+		GPUQueue::DestroyFence(
+			m_logicalDeviceCopy,
+			m_inFlightFences[i]);
+
+		GPUQueue::DestroySemaphore(
+			m_logicalDeviceCopy,
+			m_imageAvailableSemaphores[i]);
+
+		GPUQueue::DestroySemaphore(
+			m_logicalDeviceCopy,
+			m_renderFinishedSemaphores[i]);
 	}
+
+	vkDestroySwapchainKHR(
+		m_logicalDeviceCopy,
+		m_swapchain,
+		nullptr);
+
+	m_swapchain = VK_NULL_HANDLE;
 
 	Reset();
 }
@@ -155,11 +175,16 @@ void Swapchain::Cleanup()
 // Render swapchain use
 // ---------------------
 
-void Swapchain::WaitOnInFlightFence(uint32_t frameIndex) const
+VkResult Swapchain::WaitOnInFlightFence(uint32_t frameIndex) const
 {
 	VkFence fence = m_inFlightFences[frameIndex];
-	VK_CHECK(vkWaitForFences(m_logicalDeviceCopy, 1, &fence, VK_TRUE, UINT64_MAX));
-	VK_CHECK(vkResetFences(m_logicalDeviceCopy, 1, &fence));
+
+	return vkWaitForFences(
+		m_logicalDeviceCopy,
+		1,
+		&fence,
+		VK_TRUE,
+		UINT64_MAX);
 }
 
 VkResult Swapchain::AcquireNextImage(uint32_t frameIndex) const

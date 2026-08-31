@@ -15,12 +15,16 @@ static VmaAllocationCreateFlags HeapTypeToVmaFlags(HeapType heap, size_t size) n
 
 void Allocator::Init(const DeviceContext& ctx)
 {
-	VmaAllocatorCreateInfo allocInfo {
-		.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+	VmaAllocatorCreateInfo allocInfo{
+		.flags =
+		VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
+		VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT,
 		.physicalDevice = ctx.physicalDevice,
 		.device = ctx.device,
-		.instance = ctx.instance
+		.instance = ctx.instance,
+		.vulkanApiVersion = VK_API_VERSION_1_4
 	};
+
 	VK_CHECK(vmaCreateAllocator(&allocInfo, &m_vmaAlloc));
 
 	m_deviceCtx = ctx;
@@ -42,19 +46,25 @@ VRAMStats Allocator::GetTotalVRAMUsage() const
 	vmaGetHeapBudgets(m_vmaAlloc, budgets);
 
 	VkPhysicalDeviceMemoryProperties memoryProperties{};
-	vkGetPhysicalDeviceMemoryProperties(m_deviceCtx.physicalDevice, &memoryProperties);
+	vkGetPhysicalDeviceMemoryProperties(
+		m_deviceCtx.physicalDevice,
+		&memoryProperties);
 
 	VRAMStats stats{};
 
 	for (uint32_t heapIndex = 0; heapIndex < memoryProperties.memoryHeapCount; ++heapIndex)
 	{
 		const bool isDeviceLocal =
-			(memoryProperties.memoryHeaps[heapIndex].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
+			(memoryProperties.memoryHeaps[heapIndex].flags &
+				VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0;
 
 		if (!isDeviceLocal) continue;
 
-		stats.used += budgets[heapIndex].usage;
-		stats.budget += budgets[heapIndex].budget;
+		const VmaBudget& heap = budgets[heapIndex];
+		stats.used += heap.statistics.allocationBytes;
+		stats.committed += heap.statistics.blockBytes;
+		stats.driverUsed += heap.usage;
+		stats.budget += heap.budget;
 	}
 
 	return stats;
@@ -77,11 +87,11 @@ AllocatedBuffer Allocator::AllocateGPUBuffer(
 
 	switch (slot)
 	{
-		case RD::Renderer_Buffer::IndirectDraws:
 		case RD::Renderer_Buffer::IndirectDrawCounts:
 		case RD::Renderer_Buffer::DispatchIndirectArgs:
 		case RD::Renderer_Buffer::TaskDispatch:
 		case RD::Renderer_Buffer::DebugDraw:
+		case RD::Renderer_Buffer::RTRayList:
 			desc.usage = Vulkan_BufferUsage::INDIRECT;
 			break;
 		case RD::Renderer_Buffer::Vertex:
@@ -94,6 +104,9 @@ AllocatedBuffer Allocator::AllocateGPUBuffer(
 			break;
 		case RD::Renderer_Buffer::DrawStats:
 			desc.usage = Vulkan_BufferUsage::BDA_SRC_COPY;
+			break;
+		case RD::Renderer_Buffer::RTInstances:
+			desc.usage = Vulkan_BufferUsage::AS_BUILD_INPUT;
 			break;
 	}
 
@@ -244,7 +257,7 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 
 	VkImageCreateInfo imgInfo{};
 	imgInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imgInfo.imageType     = VK_IMAGE_TYPE_2D;
+	imgInfo.imageType     = desc.imageType;
 	imgInfo.extent        = vkExtent;
 	imgInfo.format        = imgFormat;
 	imgInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
@@ -252,6 +265,21 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 	imgInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
 	imgInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
 	imgInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	std::array<uint32_t, 2> qFamilies{};
+	if (desc.bIsConcurrent)
+	{
+		const uint32_t g = m_deviceCtx.queueIndices.graphicsFamily.value();
+		const uint32_t c = m_deviceCtx.queueIndices.computeFamily.value();
+
+		if (g != c)
+		{
+			qFamilies = { g, c };
+			imgInfo.sharingMode = VK_SHARING_MODE_CONCURRENT;
+			imgInfo.queueFamilyIndexCount = 2u;
+			imgInfo.pQueueFamilyIndices = qFamilies.data();
+		}
+	}
 
 	// mipmapping
 	imgInfo.mipLevels = 1;
@@ -309,7 +337,13 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount     = newImage.m_arrayLayers;
 
-	viewInfo.viewType = newImage.m_bIsCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D;
+	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
+	if (desc.imageType & VK_IMAGE_TYPE_3D)
+	{
+		viewType = VK_IMAGE_VIEW_TYPE_3D;
+	}
+
+	viewInfo.viewType = newImage.m_bIsCubemap ? VK_IMAGE_VIEW_TYPE_CUBE : viewType;
 
 	newImage.m_aspect = aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT ? ImageAspect::Depth : ImageAspect::Color;
 
@@ -317,7 +351,7 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 
 	// storage view creation
 	if (desc.usage == Vulkan_ImageUsage::DrawColor ||
-		desc.usage == Vulkan_ImageUsage::ComputeReadWrite ||
+		desc.usage == Vulkan_ImageUsage::ComputeRWTransfer ||
 		desc.usage == Vulkan_ImageUsage::ComputeOnly)
 	{
 		// Per-mip storage views
@@ -352,7 +386,9 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 			newImage.m_vStorageViews.resize(1);
 
 			VkImageViewCreateInfo storageViewInfo = viewInfo;
-			storageViewInfo.viewType              = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+			storageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+			storageViewInfo.subresourceRange.baseMipLevel = 0;
+			storageViewInfo.subresourceRange.levelCount   = 1;
 
 			VK_CHECK(vkCreateImageView(m_deviceCtx.device, &storageViewInfo, nullptr, &newImage.m_vStorageViews[0]));
 		}

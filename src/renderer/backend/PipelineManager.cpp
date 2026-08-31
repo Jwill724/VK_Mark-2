@@ -23,12 +23,6 @@ void PM::RegisterPipelines()
 	};
 
 	// === Graphics ===
-	reg(RP::Prepass,           {{ RS::Prepass_v,        SS::VERTEX_STAGE   },
-								{ RS::Prepass_f,        SS::FRAGMENT_STAGE }});
-
-	reg(RP::PrepassMasked,     {{ RS::PrepassMasked_v,  SS::VERTEX_STAGE   },
-								{ RS::PrepassMasked_f,  SS::FRAGMENT_STAGE }});
-
 	reg(RP::PrepassMesh,       {{ RS::MeshletCull_t,    SS::TASK_STAGE     },
 								{ RS::Prepass_m,        SS::MESH_STAGE     },
 								{ RS::Prepass_f,        SS::FRAGMENT_STAGE }});
@@ -40,23 +34,24 @@ void PM::RegisterPipelines()
 	reg(RP::ShadowMesh,  {{ RS::Shadow_t,  SS::TASK_STAGE },
 						  { RS::Shadow_m,  SS::MESH_STAGE }});
 
-	reg(RP::Wireframe,   {{ RS::Wireframe_v,   SS::VERTEX_STAGE   },
-						  { RS::Wireframe_f,   SS::FRAGMENT_STAGE }});
+	reg(RP::ShadowMeshMaskedD32, { { RS::Shadow_t,        SS::TASK_STAGE },
+								   { RS::ShadowMasked_m,  SS::MESH_STAGE },
+								   { RS::ShadowMasked_f,  SS::FRAGMENT_STAGE } });
+
+	reg(RP::ShadowMeshMaskedD16, { { RS::Shadow_t,        SS::TASK_STAGE },
+								   { RS::ShadowMasked_m,  SS::MESH_STAGE },
+								   { RS::ShadowMasked_f,  SS::FRAGMENT_STAGE } });
 
 	reg(RP::WireframeMesh, {{ RS::MeshletCull_t,   SS::TASK_STAGE },
 							{ RS::Wireframe_m,     SS::MESH_STAGE },
 							{ RS::Wireframe_f,     SS::FRAGMENT_STAGE }});
 
-	reg(RP::Prepass,     {{ RS::Prepass_v,     SS::VERTEX_STAGE   },
-						  { RS::Prepass_f,     SS::FRAGMENT_STAGE }});
-
-	reg(RP::Shadow,      {{ RS::Shadow_v,      SS::VERTEX_STAGE   }});
-
 	reg(RP::Skybox,      {{ RS::Skybox_v,      SS::VERTEX_STAGE   },
 						  { RS::Skybox_f,      SS::FRAGMENT_STAGE }});
 
-	reg(RP::TransparentForward, {{ RS::Forward_v,     SS::VERTEX_STAGE   },
-								{  RS::Transparent_f, SS::FRAGMENT_STAGE }});
+	reg(RP::TransparentForward, {{ RS::TransparentCull_t, SS::TASK_STAGE },
+								 { RS::TransparentDraw_m, SS::MESH_STAGE },
+								 { RS::Transparent_f, SS::FRAGMENT_STAGE }});
 
 	reg(RP::LineDebug,   {{ RS::LineDebug_v,     SS::VERTEX_STAGE   },
 						  { RS::LineDebug_f,     SS::FRAGMENT_STAGE }});
@@ -76,27 +71,23 @@ void PM::RegisterPipelines()
 	regC(RP::HiZGen,                    RS::HiZGen_c);
 	regC(RP::HDRToCubemap,              RS::HDRToCubemap_c);
 	regC(RP::SpecularPrefilter,         RS::SpecularPrefilter_c);
-	regC(RP::DiffuseIrradiance,         RS::DiffuseIrradiance_c);
+	regC(RP::SHIrradiance,              RS::SHIrradiance_c);
 	regC(RP::BRDFLUT,                   RS::BRDFLUT_c);
-	regC(RP::SSAO,                      RS::SSAO_c);
-	regC(RP::SSAOFilter,                RS::SSAOFilter_c);
-	regC(RP::SSAODenoise,               RS::SSAODenoise_c);
-	regC(RP::SSAODepthPrefilter,        RS::SSAODepthPrefilter_c);
+	regC(RP::VBGI,                      RS::VBGI_c);
+	regC(RP::BilateralUpsample,         RS::BilateralUpsample_c);
+	regC(RP::GIAccumulate,              RS::GIAccumulate_c);
+	regC(RP::AODenoise,                 RS::AODenoise_c);
+	regC(RP::GIDenoise,                 RS::GIDenoise_c);
+	regC(RP::HiZPrefilter,              RS::HiZPrefilter_c);
 	regC(RP::VolumetricLight,           RS::VolumetricLight_c);
 	regC(RP::VolumetricLightBlur,       RS::VolumetricLightBlur_c);
+	regC(RP::VolumetricLightResolve,    RS::VolumetricLightResolve_c);
 	regC(RP::FlareBright,               RS::FlareBright_c);
 	regC(RP::FlareGen,                  RS::FlareGen_c);
 	regC(RP::BloomDownsample,           RS::BloomDownsample_c);
 	regC(RP::BloomUpsample,             RS::BloomUpsample_c);
-	regC(RP::SMAAEdges,                 RS::SMAAEdges_c);
-	regC(RP::SMAAWeights,               RS::SMAAWeights_c);
-	regC(RP::SMAABlend,                 RS::SMAABlend_c);
-	regC(RP::FXAA,                      RS::FXAA_c);
 	regC(RP::TAA,                       RS::TAA_c);
-	regC(RP::CMAA2Edges,                RS::CMAA2Edges_c);
-	regC(RP::CMAA2ShapeCandidates,      RS::CMAA2ShapeCandidates_c);
-	regC(RP::CMAA2DeferredResolve,      RS::CMAA2DeferredResolve_c);
-	regC(RP::CMAA2DispatchArgs,         RS::CMAA2DispatchArgs_c);
+	regC(RP::TransparentClusterBounds,  RS::TransparentClusterBounds_c);
 	regC(RP::ClusterTileSliceRanges,    RS::ClusterTileSliceRanges_c);
 	regC(RP::ClusterCount,              RS::ClusterCount_c);
 	regC(RP::ClusterScanOffsets,        RS::ClusterScanOffsets_c);
@@ -115,51 +106,53 @@ void PM::RegisterPipelines()
 	regC(RP::DebugArgs,                 RS::DebugArgs_c);
 	regC(RP::DebugBuild,                RS::DebugBuild_c);
 	regC(RP::GBufferDebug,              RS::GBufferDebug_c);
+	regC(RP::NRDPrepare,                RS::NRDPrepare_c);
+
+	regC(RP::TlasInstances,             RS::TlasInstances_c);
+	regC(RP::RTRayArgs,                 RS::RTRayArgs_c);
+	regC(RP::RTShadowTrace,             RS::RTShadowTrace_c);
+	regC(RP::ReflectClassify,           RS::ReflectClassify_c);
+	regC(RP::RTReflectTrace,            RS::RTReflectTrace_c);
 
 	// === Presets ===
-	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].polygonMode      = VK_POLYGON_MODE_LINE;
-	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].depthCompareOp   = VK_COMPARE_OP_GREATER;
-	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].cullMode         = VK_CULL_MODE_BACK_BIT;
-	m_pipelinePresets[static_cast<size_t>(RP::Wireframe)].enableDepthWrite = true;
-
-	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].polygonMode      = VK_POLYGON_MODE_LINE;
-	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].enableDepthWrite = true;
-	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].depthCompareOp   = VK_COMPARE_OP_GREATER;
-
-	auto& prepass                    = m_pipelinePresets[static_cast<size_t>(RP::Prepass)];
-	prepass.colorFormats             = { Vulkan_Format::RG32U, Vulkan_Format::RG8unorm };
-	prepass.depthFormat              = Vulkan_Format::D32;
-	prepass.depthCompareOp           = VK_COMPARE_OP_GREATER;
-	prepass.cullMode                 = VK_CULL_MODE_BACK_BIT;
-	prepass.enableDepthWrite         = true;
-
-	auto& shadow                     = m_pipelinePresets[static_cast<size_t>(RP::Shadow)];
-	shadow.depthFormat               = Vulkan_Format::D32;
-	shadow.depthCompareOp            = VK_COMPARE_OP_LESS;
-	shadow.cullMode                  = VK_CULL_MODE_FRONT_BIT;
-	shadow.enableDepthWrite          = true;
-
-	m_pipelinePresets[static_cast<size_t>(RP::ShadowMesh)] = shadow;
-
-	m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)] = prepass;
-
-	// Alpha tested double sided support, no cull
-	auto& prepassMasked = m_pipelinePresets[static_cast<size_t>(RP::PrepassMasked)];
-	prepassMasked = prepass;
-	prepassMasked.cullMode = VK_CULL_MODE_NONE;
-
-	// Cone culling is skipped for double sided
-	m_pipelinePresets[static_cast<size_t>(RP::PrepassMaskedMesh)] = prepassMasked;
-
 	auto& wireMesh = m_pipelinePresets[static_cast<size_t>(RP::WireframeMesh)];
-	wireMesh  = m_pipelinePresets[static_cast<size_t>(RP::Wireframe)];
+	wireMesh.polygonMode      = VK_POLYGON_MODE_LINE;
+	wireMesh.depthCompareOp   = VK_COMPARE_OP_GREATER;
+	wireMesh.cullMode         = VK_CULL_MODE_BACK_BIT;
+	wireMesh.enableDepthWrite = true;
 
 	// Adjust for _EQUAL of Prepass
 	wireMesh.enableDepthBias = true;
 	wireMesh.depthBiasConstant = 1.75f;
 	wireMesh.depthBiasSlope = 1.25f;
 
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].polygonMode      = VK_POLYGON_MODE_LINE;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].enableDepthWrite = true;
+	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].depthCompareOp   = VK_COMPARE_OP_GREATER;
+
+	auto& prepass                    = m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)];
+	prepass.colorFormats             = { Vulkan_Format::RG32U, Vulkan_Format::RG8unorm };
+	prepass.depthFormat              = Vulkan_Format::D32;
+	prepass.depthCompareOp           = VK_COMPARE_OP_GREATER;
+	prepass.cullMode                 = VK_CULL_MODE_BACK_BIT;
+	prepass.enableDepthWrite         = true;
+
+	auto& shadow                     = m_pipelinePresets[static_cast<size_t>(RP::ShadowMesh)];
+	shadow.depthFormat               = Vulkan_Format::D32;
+	shadow.depthCompareOp            = VK_COMPARE_OP_LESS;
+	shadow.cullMode                  = VK_CULL_MODE_NONE;
+	shadow.enableDepthWrite          = true;
+
+	m_pipelinePresets[static_cast<size_t>(RP::ShadowMeshMaskedD32)] = shadow;
+
+	m_pipelinePresets[static_cast<size_t>(RP::ShadowMeshMaskedD16)] = shadow;
+	m_pipelinePresets[static_cast<size_t>(RP::ShadowMeshMaskedD16)].depthFormat = Vulkan_Format::D16;
+
+	// Cone culling is skipped for double sided
+	auto& prepassMasked = m_pipelinePresets[static_cast<size_t>(RP::PrepassMaskedMesh)];
+	prepassMasked = prepass;
+	prepassMasked.cullMode = VK_CULL_MODE_NONE;
 
 	VkPipelineColorBlendAttachmentState accumBlend{};
 	accumBlend.blendEnable         = VK_TRUE;
@@ -182,12 +175,23 @@ void PM::RegisterPipelines()
 	revealBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 	revealBlend.alphaBlendOp        = VK_BLEND_OP_ADD;
 
+	VkPipelineColorBlendAttachmentState velocityAccumBlend{};
+	velocityAccumBlend.blendEnable = VK_TRUE;
+	velocityAccumBlend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT;
+	velocityAccumBlend.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	velocityAccumBlend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	velocityAccumBlend.colorBlendOp = VK_BLEND_OP_ADD;
+	velocityAccumBlend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	velocityAccumBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	velocityAccumBlend.alphaBlendOp = VK_BLEND_OP_ADD;
+
+
 	auto& transparent                = m_pipelinePresets[static_cast<size_t>(RP::TransparentForward)];
-	transparent.colorFormats         = { Vulkan_Format::RGBA16F, Vulkan_Format::R16F };
+	transparent.colorFormats         = { Vulkan_Format::RGBA16F, Vulkan_Format::R16F, Vulkan_Format::RG16F };
 	transparent.depthFormat          = Vulkan_Format::D32;
 	transparent.enableBlending       = true;
 	transparent.depthCompareOp       = VK_COMPARE_OP_GREATER;
-	transparent.blendAttachments     = { accumBlend, revealBlend };
+	transparent.blendAttachments     = { accumBlend, revealBlend, velocityAccumBlend };
 }
 
 // All pipelines use this one layout

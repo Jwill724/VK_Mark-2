@@ -7,6 +7,8 @@
 
 #include "../include/common.glsl"
 #include "../include/meshlet_cull.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
 
 layout(local_size_x = TASK_GROUP_SIZE) in;
 layout(triangles, max_vertices = MESHLET_MAX_VERTS, max_primitives = MESHLET_MAX_TRIS) out;

@@ -1,0 +1,132 @@
+#version 450
+
+#extension GL_EXT_mesh_shader             : require
+#extension GL_GOOGLE_include_directive    : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/meshlet_cull.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+
+layout(local_size_x = TASK_GROUP_SIZE) in;
+
+layout(triangles, max_vertices = MESHLET_MAX_VERTS, max_primitives = MESHLET_MAX_TRIS) out;
+
+taskPayloadSharedEXT MeshletPayload payload;
+
+layout(location = 0)  out vec3  outColor[];
+layout(location = 1)  out vec2  outUV[];
+layout(location = 2)  out vec3  outWorldPos[];
+layout(location = 3)  out vec4  outViewPos[];
+layout(location = 4)  out vec3  outNormal[];
+layout(location = 5)  out vec3  outTangent[];
+layout(location = 6)  out float outTangentW[];
+layout(location = 7)  flat out uint outMaterialID[];
+layout(location = 8)  flat out uint outBHasNormalMap[];
+layout(location = 9)  out vec4  outCurrClip[];
+layout(location = 10) out vec4  outPrevClip[];
+
+// Not used here
+layout(push_constant) uniform ForwardPush
+{
+	vec2 halfTexel;
+	uint specularID;
+	uint brdfID;
+	float oitDepthScale;
+	float bounceFeedback;
+	float giIntensity;
+	uint flashlightShadowMapID;
+	uint flashlightCookieTexID;
+} pc;
+
+void main()
+{
+	uint meshletID = payload.meshletIndices[gl_WorkGroupID.x];
+	Meshlet ml     = getMeshletBuffer().meshlets[meshletID];
+
+	uint vc = uint(ml.vertexCount);
+	uint tc = uint(ml.triangleCount);
+
+	SetMeshOutputsEXT(vc, tc);
+
+	uint packedID      = payload.packedID;
+	uint instanceID    = visInstanceID(packedID);
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[instanceID];
+
+	SceneData scene = getSceneData();
+	mat4 model       = getInstanceTransform(inst);
+
+	mat3 normalMat = mat3(model);
+
+	MeshletVertsBuffer mv = getMeshletVertsBuffer();
+
+	for (uint i = gl_LocalInvocationIndex; i < vc; i += TASK_GROUP_SIZE)
+	{
+		int vtxIdx = int(
+			mv.verts[ml.vertexOffset + i] +
+			payload.vertexOffset);
+
+		vec2  uv;
+		vec4  color;
+		vec3  normal;
+		vec3  tangent;
+		float tangentW;
+		vec3  position;
+
+		unpackVertex(
+			vtxIdx,
+			uv,
+			color,
+			normal,
+			tangent,
+			tangentW,
+			position);
+
+		vec4 worldPos4 = model * vec4(position, 1.0);
+
+		gl_MeshVerticesEXT[i].gl_Position =
+			scene.viewProj * worldPos4;
+
+		outColor[i]    = color.xyz;
+		outUV[i]       = uv;
+		outWorldPos[i] = worldPos4.xyz;
+		outViewPos[i]  = scene.view * worldPos4;
+
+		outNormal[i]   = normalMat * normal;
+		outTangent[i]  = normalMat * tangent;
+		outTangentW[i] = tangentW;
+
+		outMaterialID[i] =
+			inst.materialID;
+
+		outBHasNormalMap[i] =
+			uint((inst.flags & HAS_NORMALS) != 0u);
+
+		outCurrClip[i] =
+			scene.viewProjUnjittered * worldPos4;
+
+		vec4 prevWorld4 = worldPos4;
+
+		if (isDynamicTransform(inst.transformID))
+		{
+			prevWorld4 =
+				getMotionMatricesBuffer().matrices[transformIndex(inst.transformID)] * worldPos4;
+		}
+
+		outPrevClip[i] =
+			scene.prevViewProjUnjittered * prevWorld4;
+	}
+
+	MeshletTrisBuffer mt = getMeshletTrisBuffer();
+
+	for (uint t = gl_LocalInvocationIndex; t < tc; t += TASK_GROUP_SIZE)
+	{
+		uint b = ml.triangleOffset + t * 3u;
+
+		gl_PrimitiveTriangleIndicesEXT[t] = uvec3(
+			uint(mt.tris[b + 0u]),
+			uint(mt.tris[b + 1u]),
+			uint(mt.tris[b + 2u]));
+	}
+}

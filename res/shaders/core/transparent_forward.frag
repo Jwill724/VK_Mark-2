@@ -3,10 +3,13 @@
 #extension GL_GOOGLE_include_directive    : require
 #extension GL_ARB_separate_shader_objects : require
 
-#include "../include/common.glsl"
 #include "../include/clustered.glsl"
+#include "../include/common.glsl"
 #include "../include/pbr.glsl"
+#include "../include/depth.glsl"
+#include "../include/shadow.glsl"
 #include "../include/lighting.glsl"
+#include "../include/nrd_common.glsl"
 
 layout(location = 0) in vec3 inColor;
 layout(location = 1) in vec2 inUV;
@@ -17,91 +20,114 @@ layout(location = 5) in vec3 inTangent;
 layout(location = 6) in float inTangentW;
 layout(location = 7) flat in uint inMaterialID;
 layout(location = 8) flat in uint inBHasNormalMap;
+layout(location = 9) in vec4 inCurrClip;
+layout(location = 10) in vec4 inPrevClip;
 
 layout(location = 0) out vec4  outAccum;
 layout(location = 1) out float outReveal;
+layout(location = 2) out vec2 outVelocity;
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D rtShadowDenoised;
 
 layout(push_constant) uniform ForwardPush
 {
-	uint diffuseID;
+	vec2 halfTexel;
 	uint specularID;
 	uint brdfID;
 	float oitDepthScale;
+	float bounceFeedback;
+	float giIntensity;
+	uint flashlightShadowMapID;
+	uint flashlightCookieTexID;
 } pc;
 
 void main()
 {
-	Material mat    = getMaterialBuffer().materials[inMaterialID];
-	SceneData scene = getSceneData();
-	const vec4 base = SampleTextureBias(mat.albedoID, inUV, scene.viewportSize.w) * mat.colorFactor;
-	float alpha     = base.a;
-	vec3  albedo    = inColor * base.rgb;
+	Material  mat     = getMaterialBuffer().materials[inMaterialID];
+	SceneData scene   = getSceneData();
+	float mipBias     = scene.taaMipParams.x;
+	const vec4 base   = SampleTextureBias(mat.albedoID, inUV, mipBias) * mat.colorFactor;
+	float      alpha  = base.a;
+	vec3       albedo = inColor * base.rgb;
+
+	uint visibleLightCount = getVisibleLightCountBuffer().count;
 
 	ClusteredData clusteredData = getClusteredData();
-	DebugToggles debug          = getDebugToggles();
+	DebugToggles  debug         = getDebugToggles();
 
 	float viewDepth = -inViewPos.z;
+	vec2  fragCoord = gl_FragCoord.xy;
 
-	const vec3 geometricNormalWS = normalize(inNormal);
+	const float faceSign          = gl_FrontFacing ? 1.0 : -1.0;
+	const vec3  geometricNormalWS = normalize(inNormal) * faceSign;
 	vec3 N = geometricNormalWS;
 
 	if (inBHasNormalMap == 1u)
 	{
-		vec3 normalTex = SampleTextureBias(mat.normalID, inUV, scene.viewportSize.w).rgb;
+		vec2 nxy = SampleTextureBias(mat.normalID, inUV, mipBias).rg * 2.0 - 1.0;
+		nxy *= mat.normalScale;
+
+		float nz = sqrt(max(1.0 - dot(nxy, nxy), 0.0));
+		vec3  normalTS = vec3(nxy, nz);
 
 		vec3 T   = normalize(inTangent - geometricNormalWS * dot(geometricNormalWS, inTangent));
-		vec3 B   = cross(geometricNormalWS, T) * inTangentW;
+		vec3 B   = cross(geometricNormalWS, T) * inTangentW * faceSign;
 		mat3 tbn = mat3(T, B, geometricNormalWS);
 
-		vec3 normalTS = normalTex * 2.0 - 1.0;
-		normalTS.xy  *= mat.normalScale;
-		normalTS      = normalize(normalTS);
-
 		N = normalize(tbn * normalTS);
+
 	}
 
-	// Only need g and b
-	vec3 metalRough = SampleTextureBias(mat.metalRoughnessID, inUV, scene.viewportSize.w).rgb;
-	vec3 emissT     = SampleTextureBias(mat.emissiveID,       inUV, scene.viewportSize.w).rgb;
+	vec3  metalRough = SampleTextureBias(mat.metalRoughnessID, inUV, mipBias).rgb;
+	vec3  emissT     = SampleTextureBias(mat.emissiveID,       inUV, mipBias).rgb;
 
-	float rough  = metalRough.g * mat.metalRoughFactors.y;
-	float metal  = metalRough.b * mat.metalRoughFactors.x;
+	float rough = metalRough.g * mat.metalRoughFactors.y;
+	float metal = metalRough.b * mat.metalRoughFactors.x;
 
-	vec3 emissive = emissT * (mat.emissiveColor * mat.emissiveStrength);
+	vec3 emissive = emissT * (mat.emissiveColor * (mat.emissiveStrength * EMISSIVE_STRENGTH_BOOST));
+
+	Surface surf = makeSurface(inWorldPos, N, scene.cameraPos.xyz, albedo, metal, rough, mat, pc.brdfID);
 
 	vec3 sunColor = scene.sunlightColor.rgb * scene.sunlightColor.a;
-	vec3 V        = normalize(scene.cameraPos.xyz - inWorldPos);
 	vec3 L        = normalize(scene.sunlightDirection.xyz);
-	vec3 H        = normalize(V + L);
 
-	float NdotV = max(dot(N, V), 0.0);
-	float NdotL = max(dot(N, L), 0.0);
-	float LdotH = max(dot(L, H), 0.0);
+	float sunShadow = 1.0;
 
-	vec3 F0 = mix(vec3(0.04), albedo, metal);
-	vec3 F  = F_SchlickRoughness(F0, NdotV, rough);
-	vec3 kD = (1.0 - F) * (1.0 - metal);
+	if (DBG(enableShadows))
+	{
+		if (debug.sunShadowFilter == SUN_SHADOW_FILTER_RT_SOFT)
+		{
+			ivec2 shadowPixel = ivec2(gl_FragCoord.xy);
 
-	// Disney/Frostbite direct lighting
-	vec3 diff = DisneyDiffuse(albedo, rough, NdotV, NdotL, LdotH);
-	vec3 spec = BRDF_Specular(NdotV, NdotL, N, V, H, F0, rough);
+			sunShadow = SIGMA_BackEnd_UnpackShadow(
+				texelFetch(rtShadowDenoised, shadowPixel, 0).r);
+		}
+		else if (!DBG(csmAtlasCached))
+		{
+			sunShadow = sampleSunShadowCSM(
+				inWorldPos,
+				geometricNormalWS,
+				L,
+				viewDepth,
+				fragCoord,
+				debug.sunShadowFilter,
+				false);
+		}
+	}
 
-	vec2 brdf = SampleTexture(pc.brdfID, vec2(NdotV, rough)).rg;
-	vec3 multiScatterComp = MultiScatterEnergyComp(F0, brdf);
-	spec *= multiScatterComp;
+	LightSample sun = evaluateDirectional(surf, L, sunColor);
 
-	// Sun direct — no shadow for transparents
-	vec3 direct = (diff + spec) * sunColor * NdotL;
+	vec3 direct = (sun.diffuse + sun.specular) * sunShadow;
 
-	// Cluster local lights
 	vec3 localLightColor = vec3(0.0);
-	if (debug.activeLightCount > 0u) {
-		LightBuffer       lightBuf           = getLightBuffer();
-		VisibleLightCount visibleCountBuf    = getVisibleLightCountBuffer();
-		VisibleLightIDs   visibleIDsBuf      = getVisibleLightIDsBuffer();
-		ClusterCounts     countsBuf          = getClusterCountsBuffer();
-		ClusterOffsets    offsetsBuf         = getClusterOffsetsBuffer();
-		ClusterLightIDs   clusterLightIDsBuf = getClusterLightIDsBuffer();
+	if (visibleLightCount > 0)
+	{
+		LightBuffer     lightBuf           = getLightBuffer();
+		ClusterCounts   countsBuf          = getClusterCountsBuffer();
+		ClusterOffsets  offsetsBuf         = getClusterOffsetsBuffer();
+		ClusterLightIDs clusterLightIDsBuf = getClusterLightIDsBuffer();
+
+		mat2 shadowHash = createHash(fragCoord);
 
 		ClusterGrid fragGrid = computeClusterGrid(
 			gl_FragCoord.xy, viewDepth,
@@ -109,50 +135,67 @@ void main()
 			clusteredData.tileSizeX, clusteredData.tileSizeY,
 			clusteredData.tileCountX, clusteredData.tileCountY,
 			clusteredData.zSlices,
-			scene.cameraClips.x, scene.cameraClips.y
-		);
+			scene.cameraClips.x, scene.cameraClips.y);
 
 		uint count  = min(countsBuf.counts[fragGrid.clusterIndex], clusteredData.maxLightsPerCluster);
 		uint offset = offsetsBuf.offsets[fragGrid.clusterIndex];
 
-		for (uint i = 0u; i < count; ++i) {
+		for (uint i = 0u; i < count; ++i)
+		{
 			LocalLight light = lightBuf.lights[clusterLightIDsBuf.lightIDs[offset + i]];
-			float unusedNdotL = 0.0;
 
-			if (light.lightType == LIGHT_TYPE_POINT) {
-				localLightColor += evaluatePointLight(
-					light, inWorldPos, scene.cameraPos.xyz,
-					N, V, NdotV, albedo, F0, rough, unusedNdotL);
+			const bool isFlashLight    = (light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u;
+			const bool isFlashLightOff = (light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u;
+			if (isFlashLight && isFlashLightOff) continue;
+
+			LightSample ls = evaluateLocalLight(light, surf, scene.cameraPos.xyz);
+			if (ls.NdotL <= 0.0 && ls.transNdotL <= 0.0) continue;
+
+			float atten = 1.0;
+
+			if (isFlashLight && (light.flags & LIGHT_FLAG_CASTS_SPOT_SHADOW) != 0u)
+			{
+				vec2  flashUV;
+				float flashZ;
+				projectToLightSpace(inWorldPos, scene.flashlightVP, flashUV, flashZ);
+
+				bool inUV = all(greaterThanEqual(flashUV, vec2(0.0)))
+						 && all(lessThanEqual(flashUV, vec2(1.0)));
+
+				if (inUV && flashZ >= 0.0 && flashZ <= 1.0)
+				{
+					float angleScale = 1.0 - saturate(ls.NdotL);
+					float bias       = MIN_SHADOW_BIAS * (0.25 + angleScale * 0.65);
+					atten *= PCFPoissonLow(shadowHash, pc.flashlightShadowMapID,
+										   flashUV, flashZ, bias, FLASHLIGHT_TEXEL_SIZE);
+				}
+
+				atten *= inUV ? pow(SampleTexture(pc.flashlightCookieTexID, flashUV).r, 2.0) : 0.0;
 			}
-			else if (light.lightType == LIGHT_TYPE_SPOT) {
-				const bool isFlashLight = (light.flags & LIGHT_FLAG_FLASHLIGHT) != 0u;
-				const bool isFlashLightOff = (light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u;
 
-				if (isFlashLight && isFlashLightOff) continue;
-
-				localLightColor += evaluateSpotLight(
-					light, inWorldPos, scene.cameraPos.xyz,
-					N, V, NdotV, albedo, F0, rough, unusedNdotL);
-			}
+			localLightColor += (ls.diffuse + ls.specular) * atten;
 		}
 	}
 
-	// IBL
-	vec3 iblSpec = sampleSpecIBL(V, N, rough, F0, brdf, pc.specularID);
-	iblSpec *= multiScatterComp;
+	uint envIndex = min(debug.activeEnvMap, MAX_ENV_SETS - 1u);
+	vec3 irradiance = sampleIrradiance(N, getSHIrradianceBuffer().shIrr[envIndex].sh);
 
-	vec3 iblDiff = sampleIrradiance(N, pc.diffuseID) * albedo;
+	vec3 ambientDiffuse;
+	vec3 ambientSpecular;
+	evaluateAmbient(ambientDiffuse, ambientSpecular, surf,
+					irradiance, vec3(0.0), 1.0, 1.0, pc.specularID);
 
-	vec3 ambientDiffuse  = kD * iblDiff;
-	vec3 ambientSpecular = iblSpec;
-	vec3 ambient         = ambientDiffuse + ambientSpecular;
-
-	vec3 color = direct + localLightColor + ambient;
+	vec3 color = direct + localLightColor + ambientDiffuse + ambientSpecular;
 
 	float z = viewDepth;
-	// Depth scale == 400.0 default
 	float w = alpha * clamp(0.03 / (1e-5 + pow(z / pc.oitDepthScale, 4.0)), 1e-2, 3e3);
 
 	outAccum  = vec4(color * alpha + emissive, alpha) * w;
 	outReveal = alpha;
+
+	vec2 currNdc = inCurrClip.xy / inCurrClip.w;
+	vec2 prevNdc = inPrevClip.xy / inPrevClip.w;
+	vec2 velocity = (currNdc - prevNdc) * vec2(0.5, -0.5);
+
+	outVelocity = velocity * (alpha * w);
 }

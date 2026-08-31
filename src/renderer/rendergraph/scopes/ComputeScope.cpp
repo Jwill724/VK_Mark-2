@@ -7,7 +7,8 @@
 void ComputeScope::DispatchComputePass(
 	VkCommandBuffer cmd,
 	const PipelineHandle& pipeHandle,
-	PushDescriptorWriter& pushWriter)
+	PushDescriptorWriter& pushWriter,
+	uint32_t pushSetIndex)
 {
 	vkCmdBindPipeline(cmd, pipeHandle.bindPoint, pipeHandle.pipeline);
 
@@ -16,7 +17,8 @@ void ComputeScope::DispatchComputePass(
 	pushWriter.UpdatePushLayout(
 		cmd,
 		pipeHandle.bindPoint,
-		pipeHandle.layout.pipelineLayout);
+		pipeHandle.layout.pipelineLayout,
+		pushSetIndex);
 
 	if (IsIndirect())
 	{
@@ -36,12 +38,15 @@ void ComputeScope::DispatchComputePass(
 		m_groupCountZ);
 }
 
-void ComputeScope::FillGpuBuffer(VkCommandBuffer cmd, const AllocatedBuffer& buf, uint32_t value)
+void ComputeScope::FillGpuBuffer(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf,
+	uint32_t value,
+	VkDeviceSize offset,
+	VkDeviceSize size)
 {
-	vkCmdFillBuffer(
-		cmd,
-		buf.m_buffer,
-		0u,
-		buf.m_bytesSize,
-		value);
+	if (size == VK_WHOLE_SIZE)
+		size = buf.m_bytesSize - offset;
+
+	vkCmdFillBuffer(cmd, buf.m_buffer, offset, size, value);
 }

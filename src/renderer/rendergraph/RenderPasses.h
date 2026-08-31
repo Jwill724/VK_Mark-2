@@ -28,11 +28,25 @@ void RegisterOpaqueLightingPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterRTShadowsPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterNRDDenoisePass(RenderGraph& graph);
+
 void RegisterInstanceCullPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
 void RegisterDrawBuildPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterTLASBuildPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
+void RegisterRTReflectionsPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
@@ -76,11 +90,15 @@ void RegisterHiZGenerationLatePass(
 	const std::vector<PipelineHandle> pipelines);
 // ==========================
 
-void RegisterLightCullingPass(
+void RegisterClusteredLightsPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
-void RegisterClusteredLightsPass(
+//void RegisterVolumetricFogPass(
+//	RenderGraph& graph,
+//	const std::vector<PipelineHandle> pipelines);
+
+void RegisterVolumetricShadowMapPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
@@ -128,7 +146,7 @@ void RegisterLuminanceExposurePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
-void RegisterSSAOPass(
+void RegisterSSGIPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 

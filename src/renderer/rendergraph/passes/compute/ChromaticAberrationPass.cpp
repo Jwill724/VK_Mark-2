@@ -20,7 +20,7 @@ void RegisterChromaticAberrationPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetPhase(RenderPhase::PostAA)
+				.SetPhase(RenderPhase::PostProcess)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
@@ -30,10 +30,6 @@ void RegisterChromaticAberrationPass(
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->DebugRendering();
 					})
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::AAColor,
-					RD::ImageAccess::Read)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::Tonemap,
@@ -57,27 +53,15 @@ void RegisterChromaticAberrationPass(
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
-						const auto& aaColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AAColor);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
 						const auto& postNonAA = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PostNonAAComposite);
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 
-						if (ctx.frameState->CopyPostAAImage())
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_1,
-								aaColor,
-								linearClampSampler);
-						}
-						else
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_1,
-								tonemap,
-								linearClampSampler);
-						}
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							tonemap,
+							linearClampSampler);
 
 						pso.BindWriteImage(
 							pass.pushWriter,

@@ -2,7 +2,11 @@
 
 #extension GL_GOOGLE_include_directive : require
 
+// Final draw instance ID packing into flat array for easy visibility buffer access.
+
 #include "../include/common.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
 
 layout(local_size_x = 256) in;
 

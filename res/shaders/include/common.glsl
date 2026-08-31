@@ -21,38 +21,87 @@
 
 const float PI      = 3.1415926535897932384626433832795;
 const float HALF_PI = 1.5707963267948966192313216916398;
+const float TWO_PI  = 6.2831853;
+
+const float EMISSIVE_STRENGTH_BOOST = 5.0f;
 
 const uint MAX_CASCADES = 4u;
 
 const uint MAX_ENV_SETS = 8u;
 
 const uint AA_OFF   = 0u;
-const uint AA_CMAA2 = 1u;
-const uint AA_SMAA  = 2u;
-const uint AA_FXAA  = 3u;
-const uint AA_TAA   = 4u;
+const uint AA_TAA   = 1u;
 
 //const uint TM_ACESFILM = 0u;
 //const uint TM_GT7      = 1u;
 
-const uint AO_OFF               = 0u;
-const uint AO_VBAO              = 1u;
-const uint AO_VBAO_BENT_NORMALS = 2u;
+const uint SUN_SHADOW_FILTER_PCF     = 0u;
+const uint SUN_SHADOW_FILTER_PCSS    = 1u;
+const uint SUN_SHADOW_FILTER_RT_SOFT = 2u;
+
+const uint OFF   = 0u;
+const uint VBAO  = 1u;
+const uint VBGI  = 2u;
+
+const uint MAX_FLT_UINT = 0x7F7FFFFFu;
 
 const uint MAX_LUMINANCE_GROUPS = 65536u;
 
-const float COLOR_HISTORY_MAX = 65504.0;   // RGBA16F
+const float COLOR_HISTORY_MAX  = 65504.0;  // RGBA16F
 const float RESOLVE_TARGET_MAX = 64512.0;  // r11f_g11f_b10f
 
-const float GTAO_RADIUS_MULTIPLIER = 1.457;
+const uint RT_MASK_OPAQUE       = 0x01u;
+const uint RT_MASK_ALPHA_TESTED = 0x02u;
+const uint RT_MASK_TRANSMISSIVE = 0x04u;
 
-const uint RENDERING_MODE_VISIBILITY_DEFERRED = 0u;
-const uint RENDERING_MODE_MESH_SHADERS        = 1u;
-const uint RENDERING_MODE_UNDEFINED           = 2u;
+const uint RT_INSTANCE_FLAG_TRIANGLE_FACING_CULL_DISABLE = 0x01u;
+const uint RT_INSTANCE_FLAG_FORCE_OPAQUE                 = 0x04u;
 
-// debug helpers
+const uint LIGHT_FLAG_DIRECTIONAL       = 1u << 0;
+const uint LIGHT_FLAG_POINT             = 1u << 1;
+const uint LIGHT_FLAG_SPOT              = 1u << 2;
+const uint LIGHT_FLAG_CASTS_SPOT_SHADOW = 1u << 3;
+const uint LIGHT_FLAG_FLASHLIGHT        = 1u << 4;
+const uint LIGHT_FLAG_FLASHLIGHT_OFF    = 1u << 5;
+
+// Determines switch between dispatching over clusters or lights
+const uint LIGHT_THRESHOLD = 500u;
+
+//const uint LIGHT_LIST_STATIC_COUNT     = 2u;
+//const uint LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
+//const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 1u;
+
+const uint LIGHT_LIST_STATIC_COUNT     = 1u;
+const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
+
+//const uint MAX_LIGHTS = 16384u;
+const uint MAX_LIGHTS = 2048u;
+
+const uint MAX_VISIBLE_LIGHTS = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
+
+const float SHADOW_FACE_SIGN = 1.0;
+
+const float MAX_REFRACT_OFFSET = 0.15;
+
+const float DOUBLE_SIDED_TRANS_FLOOR = 0.25;
+
+const uint SHADING_MODEL_STANDARD      = 0u;
+const uint SHADING_MODEL_CLEARCOAT     = 1u;
+const uint SHADING_MODEL_SHEEN         = 2u;
+const uint SHADING_MODEL_TRANSMISSION  = 3u;
+const uint SHADING_MODEL_DIFFUSE_TRANS = 4u;
+
 #define DBG(x) (debug.x != 0u)
 #define RET(rgb, a) { outFragColor = vec4((rgb), (a)); return; }
+
+const ivec2 AO_QUAD_PHASE[4] = ivec2[4](ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1));
+
+ivec2 aoQuadPhase(uint frameIndex, bool taaOn)
+{
+	return taaOn ? AO_QUAD_PHASE[frameIndex & 3u] : ivec2(0);
+}
+
+float LinearRough(float r) { return max(r * r, 0.001); }
 
 struct GPUStats
 {
@@ -81,6 +130,7 @@ struct SceneData
 	mat4 proj;
 	mat4 projUnjittered;
 	mat4 invView;
+	mat4 prevInvView;
 	mat4 invProj;
 	mat4 viewProj;
 	mat4 prevViewProjUnjittered;
@@ -88,16 +138,23 @@ struct SceneData
 	mat4 viewProjUnjittered;
 	uvec4 temporal;           // .x = frameNumber, .y = historyValid (0/1), z = Hi-Z valid(0/1)
 	vec4 temporalJitter;
+	vec4 taaMipParams;        // .x = bias (negative, 0 = off), .y = fade start lod, .z = 1 / fade span
 	// x = current jitter x ndc
 	// y = current jitter y
 	// z = previous jitter x
 	// w = previous jitter y
-	vec4 sunlightDirection;   // .w = power
-	vec4 sunlightColor;
+	vec4 sunlightDirection;
+	vec4 sunlightColor; // .w = power
 	vec4 cameraPos;           // xyz pos, .w exposure
 	vec4 cameraClips;         // .x near and .y far, .z invScreenWidth, .w invScreenHeight
 	vec4 viewportSize;        // .x and .y for width and height, .z for pixel count
 	vec4 pixelSizes;          // .x/.y = 1 / full extent .z/.w = = 1 / half extent
+
+	vec2 tanHalfFov;           // 1 / proj[0][0], 1 / proj[1][1]
+	float depthLinearizeMult;  // -proj[3][2]
+	float depthLinearizeAdd;   //  proj[2][2]
+	vec2 ndcToViewMult;        // tanHalfFov.x *  2, tanHalfFov.y * -2
+	vec2 ndcToViewAdd;         // tanHalfFov.x * -1, tanHalfFov.y *  1
 	mat4 flashlightVP;
 };
 
@@ -121,6 +178,24 @@ struct Material
 
 	vec3 emissiveColor;
 	float emissiveStrength;
+
+	float ior;
+	float specularFactor;
+
+	float clearcoatFactor;
+	float clearcoatRough;
+
+	vec3 sheenColor;
+	float sheenRough;
+
+	float transmissionFactor;
+	float diffuseTransFactor;
+
+	float thicknessFactor;
+	vec3 attenuationColor;
+	float attenuationDistance;
+
+	uint shadingModel;
 
 	uint albedoID;
 	uint metalRoughnessID;
@@ -181,10 +256,16 @@ struct Vertex
 	uint      colorRGBA8;
 };
 
-vec2 octEncode(vec3 n) {
+vec2 octSignNotZero(vec2 v)
+{
+	return vec2(v.x >= 0.0 ? 1.0 : -1.0, v.y >= 0.0 ? 1.0 : -1.0);
+}
+
+vec2 octEncode(vec3 n)
+{
 	float l1 = abs(n.x) + abs(n.y) + abs(n.z);
 	n /= max(l1, 1e-8);
-	if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * sign(n.xy);
+	if (n.z < 0.0) n.xy = (1.0 - abs(n.yx)) * octSignNotZero(n.xy);
 	return n.xy * 0.5 + 0.5;
 }
 
@@ -192,11 +273,7 @@ vec3 octDecode(vec2 e) {
 	vec3 v = vec3(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
 
 	if (v.z < 0.0) {
-		vec2 signNotZero = vec2(
-			(v.x >= 0.0) ? 1.0 : -1.0,
-			(v.y >= 0.0) ? 1.0 : -1.0
-		);
-		v.xy = (vec2(1.0) - abs(v.yx)) * signNotZero;
+		v.xy = (vec2(1.0) - abs(v.yx)) * octSignNotZero(v.xy);
 	}
 
 	return normalize(v);
@@ -242,7 +319,6 @@ float luminance(vec3 color) {
 	return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-5);
 }
 
-// helper: karis average
 // suppresses fireflies by weighting bright pixels less
 float KarisWeight(vec3 color)
 {
@@ -324,26 +400,58 @@ float hash(vec2 p) {
 	return float((u.x ^ u.y) * 3141592653u) / 4294967295.0;
 }
 
+float createPhase(vec2 pixelCoord)
+{
+	return interleavedGradientNoise(pixelCoord) * TWO_PI;
+}
+
+float createPhaseTemporal(vec2 pixelCoord, uint frameIndex)
+{
+	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
+	return interleavedGradientNoise(jitteredPixel) * TWO_PI;
+}
+
+mat2 phaseToRotation(float ang)
+{
+	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+}
+
 mat2 createHash(vec2 pixelCoord)
 {
-	float ang = interleavedGradientNoise(pixelCoord) * 6.2831853;
-	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+	return phaseToRotation(createPhase(pixelCoord));
 }
 
 mat2 createHashTemporal(vec2 pixelCoord, uint frameIndex)
 {
-	vec2 jitteredPixel = pixelCoord + float(frameIndex) * vec2(1.618033988, 1.324717957);
-	float ang = interleavedGradientNoise(jitteredPixel) * 6.2831853;
-	return mat2(cos(ang), -sin(ang), sin(ang), cos(ang));
+	return phaseToRotation(createPhaseTemporal(pixelCoord, frameIndex));
 }
 
-uint packNormalMaterial(vec3 N, float metal, uint matID)
+uint packNormalMetalModel(vec3 N, float metal, uint shadingModel)
 {
-	vec2 oct = octEncode(N);                                  // already [0,1]
-	uint ox  = uint(round(clamp(oct.x, 0.0, 1.0) * 2047.0));  // 11
-	uint oy  = uint(round(clamp(oct.y, 0.0, 1.0) * 2047.0));  // 11
-	uint m   = uint(round(clamp(metal,  0.0, 1.0) * 63.0));   // 6
-	return ox | (oy << 11) | (m << 22) | ((matID & 0xFu) << 28);
+	vec2 oct = octEncode(N);
+	uint ox  = uint(round(clamp(oct.x, 0.0, 1.0) * 2047.0));
+	uint oy  = uint(round(clamp(oct.y, 0.0, 1.0) * 2047.0));
+	uint m   = uint(round(clamp(metal,  0.0, 1.0) * 63.0));
+	return ox | (oy << 11) | (m << 22) | ((shadingModel & 0xFu) << 28);
+}
+
+void unpackNormalMetalModel(uint p, out vec3 N, out float metal, out uint shadingModel)
+{
+	vec2 oct;
+	oct.x        = float( p        & 0x7FFu) / 2047.0;
+	oct.y        = float((p >> 11) & 0x7FFu) / 2047.0;
+	metal        = float((p >> 22) & 0x3Fu)  / 63.0;
+	shadingModel =       (p >> 28) & 0xFu;
+	N            = octDecode(oct * 2.0 - 1.0);
+}
+
+void unpackNormalMetal(uint p, out vec3 N, out float metal)
+{
+	vec2 oct;
+	oct.x = float( p        & 0x7FFu) / 2047.0;
+	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
+	metal = float((p >> 22) & 0x3Fu)  / 63.0;
+	N     = octDecode(oct * 2.0 - 1.0);
 }
 
 vec3 unpackGBufferNormal(uint p)
@@ -359,29 +467,20 @@ float unpackGBufferMetal(uint p)
 	return float((p >> 22) & 0x3Fu)  / 63.0;
 }
 
-void unpackNormalMetal(uint p, out vec3 N, out float metal)
+vec4 unpackEdges(float _packedVal)
 {
-	vec2 oct;
-	oct.x = float( p        & 0x7FFu) / 2047.0;
-	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
-	metal = float((p >> 22) & 0x3Fu)  / 63.0;
-	N     = octDecode(oct * 2.0 - 1.0);
-}
+	uint packedVal = uint(_packedVal * 255.5);
+	vec4 edgesLRTB;
+	edgesLRTB.x = float((packedVal >> 6) & 0x03) / 3.0;          // there's really no need for mask (as it's an 8 bit input) but I'll leave it in so it doesn't cause any trouble in the future
+	edgesLRTB.y = float((packedVal >> 4) & 0x03) / 3.0;
+	edgesLRTB.z = float((packedVal >> 2) & 0x03) / 3.0;
+	edgesLRTB.w = float((packedVal >> 0) & 0x03) / 3.0;
 
-void unpackNormalMaterial(uint p, out vec3 N, out float metal, out uint matID)
-{
-	vec2 oct;
-	oct.x = float( p        & 0x7FFu) / 2047.0;
-	oct.y = float((p >> 11) & 0x7FFu) / 2047.0;
-	metal = float((p >> 22) & 0x3Fu)  / 63.0;
-	matID =       (p >> 28) & 0xFu;
-	N     = octDecode(oct * 2.0 - 1.0);
+	return saturate(edgesLRTB);
 }
 
 // Lighting struct
 struct LocalLight {
-	uint lightType;
-
 	vec3 position;
 	float radius;
 
@@ -393,6 +492,9 @@ struct LocalLight {
 
 	float outerCos;
 	uint flags;
+
+	float sourceRadius;
+	float sourceLength;
 };
 
 struct ShadowCSM {
@@ -404,8 +506,14 @@ struct ShadowCSM {
 	vec4 params;
 	// xy = uvScale, zw = uvOffset (per cascade)
 	vec4 atlasUV[MAX_CASCADES];
-	vec4 maxFilterRadiusTexels;
+	vec4 maxPcfFilterRadiusTexels;
+	vec4 maxPcssFilterRadiusTexels;
 	vec4 cascadeWorldTexels;
+	// x = tan(sunAngularRadius), y = minFilterRadiusTexels,
+	// z = searchRadiusScale, w = maxNormalOffsetTexels
+	vec4 pcss;
+	// x = contactOffsetTexels, y = offsetGapFraction
+	vec4 pcssBias;
 };
 
 struct ShadowCullData {
@@ -414,6 +522,24 @@ struct ShadowCullData {
 
 	// per-cascade active flag — 0 means no visible receivers, skip entirely
 	uvec4 cascadeActive;                // .x=c0 .y=c1 .z=c2 .w=c3
+};
+
+struct VolumetricShadowInfo
+{
+	mat4 cascadeVP;
+	mat4 cascadeLightView;
+	vec4 params;
+	// x = shadow map ID
+	// y = enabled
+	// z = shadow texel size
+	// w = light-space epsilon
+
+	vec4 receiverLSMin;
+	vec4 receiverLSMax;
+
+	float cascadeWorldTexel;
+
+	float pad0[3];
 };
 
 struct ClusteredData {
@@ -438,7 +564,7 @@ struct DebugToggles
 	uint enableFlashlight;
 
 	uint aaMode;
-	uint aoMode;
+	uint giMode;
 	uint enableShadows;
 	uint enableVolumetrics;
 
@@ -449,8 +575,8 @@ struct DebugToggles
 
 	float depthScale;
 	uint enableWireframe;
-	uint pad0;
-	uint pad1;
+	uint sunShadowFilter;
+	uint enableRTReflections;
 
 	uint enableProfilerView;
 	uint enableSettings;
@@ -461,6 +587,11 @@ struct DebugToggles
 	uint showTransparentOBBs;
 	uint activeInstanceCount;
 	uint activeLightCount;
+
+	uint activeRTInstances;
+	uint csmAtlasCached;
+	uint pad0;
+	uint pad1;
 };
 
 bool uintBool(uint x) { return x != 0u; }
@@ -557,6 +688,7 @@ MeshBuffer getMeshBuffer() {
 }
 
 // .x = exposure when applied in final tone map stage
+// .y = average luminance
 layout(buffer_reference, scalar) buffer LuminanceBuffer {
 	vec4 luminanceSums[MAX_LUMINANCE_GROUPS];
 };
@@ -589,7 +721,26 @@ StaticTransformsBuffer getStaticTransformsBuffer() {
 	return StaticTransformsBuffer(addr);
 }
 
+struct SphericalHarmonic
+{
+	vec3 sh[9];
+};
 
+layout(buffer_reference, scalar) buffer SHIrradianceBuffer {
+	SphericalHarmonic shIrr[MAX_ENV_SETS];
+};
+SHIrradianceBuffer getSHIrradianceBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_SHIrradiance);
+	return SHIrradianceBuffer(addr);
+}
+
+layout(buffer_reference, scalar) readonly buffer BlasAddressesBuffer {
+	uvec2 blasAddrs[];
+};
+BlasAddressesBuffer getBlasAddressesBuffer() {
+	uint64_t addr = getABTGlobalAddress(ABT_BLASAddresses);
+	return BlasAddressesBuffer(addr);
+}
 
 // ================================
 // === FRAME ssbo address table ===
@@ -615,9 +766,13 @@ ShadowCSM getShadowCSM() { return csm; }
 
 layout(set = FRAME_SET, binding = FRAME_BINDING_CLUSTERED) uniform ClusteredUBO {
 	ClusteredData clusteredData;
-} ;
+};
 ClusteredData getClusteredData() { return clusteredData; }
 
+layout(set = FRAME_SET, binding = FRAME_BINDING_VOLUMETRIC) uniform VolumetricShadowUBO {
+	VolumetricShadowInfo volShadow;
+};
+VolumetricShadowInfo getVolumetricShadowInfo() { return volShadow; }
 
 // ===========================================
 // === FRAME ADDRESSS TABLE BUFFER GETTERS ===
@@ -632,14 +787,14 @@ VisibleInstanceBuffer getVisibleInstanceBuffer() {
 	return VisibleInstanceBuffer(addr);
 }
 
-// indirect draws
-layout(buffer_reference, scalar) buffer IndirectDrawBuffer {
-	IndirectIndexedDrawCmd indirectDraws[];
-};
-IndirectDrawBuffer getIndirectDrawBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_IndirectDraws);
-	return IndirectDrawBuffer(addr);
-}
+//// indirect draws
+//layout(buffer_reference, scalar) buffer IndirectDrawBuffer {
+//	IndirectIndexedDrawCmd indirectDraws[];
+//};
+//IndirectDrawBuffer getIndirectDrawBuffer() {
+//	uint64_t addr = getABTFrameAddress(ABT_IndirectDraws);
+//	return IndirectDrawBuffer(addr);
+//}
 
 // pass gl_InstanceIndex
 layout(buffer_reference, scalar) buffer DrawInstanceIDsBuffer {
@@ -714,42 +869,42 @@ IndirectDrawCountsBuffer getIndirectDrawCountsBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_IndirectDrawCounts);
 	return IndirectDrawCountsBuffer(addr);
 }
-
-bool hasPrimaryVisibles()
-{
-	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
-	return (c.counts[VIS_SLOT_OPAQUE] + c.counts[VIS_SLOT_TRANSPARENT]) > 0u;
-}
-
-bool hasOpaqueVisibles()
-{
-	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_OPAQUE] > 0u;
-}
-
-bool hasCSMCasters()
-{
-	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
-	return (c.counts[VIS_SLOT_CSM0] +
-			c.counts[VIS_SLOT_CSM1] +
-			c.counts[VIS_SLOT_CSM2] +
-			c.counts[VIS_SLOT_CSM3]) > 0u;
-}
-
-bool hasCascadeCasters(uint cascadeSlot)
-{
-	return getInstanceVisibilityBuffer().counters.counts[cascadeSlot] > 0u;
-}
-
-bool hasFlashlightCasters()
-{
-	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_FLASHLIGHT] > 0u;
-}
-
-bool hasAnyVisibles()
-{
-	return getVisibleCountBuffer().count > 0u;
-}
-
+//
+//bool hasPrimaryVisibles()
+//{
+//	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
+//	return (c.counts[VIS_SLOT_OPAQUE] + c.counts[VIS_SLOT_TRANSPARENT]) > 0u;
+//}
+//
+//bool hasOpaqueVisibles()
+//{
+//	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_OPAQUE] > 0u;
+//}
+//
+//bool hasCSMCasters()
+//{
+//	VisibilityCounters c = getInstanceVisibilityBuffer().counters;
+//	return (c.counts[VIS_SLOT_CSM0] +
+//			c.counts[VIS_SLOT_CSM1] +
+//			c.counts[VIS_SLOT_CSM2] +
+//			c.counts[VIS_SLOT_CSM3]) > 0u;
+//}
+//
+//bool hasCascadeCasters(uint cascadeSlot)
+//{
+//	return getInstanceVisibilityBuffer().counters.counts[cascadeSlot] > 0u;
+//}
+//
+//bool hasFlashlightCasters()
+//{
+//	return getInstanceVisibilityBuffer().counters.counts[VIS_SLOT_FLASHLIGHT] > 0u;
+//}
+//
+//bool hasAnyVisibles()
+//{
+//	return getVisibleCountBuffer().count > 0u;
+//}
+//
 
 layout(buffer_reference, scalar) buffer ShadowCullDataBuffer {
 	ShadowCullData data;
@@ -791,7 +946,6 @@ GPUStatsBuffer getGPUStatsBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_DrawStats);
 	return GPUStatsBuffer(addr);
 }
-
 
 // Indirect dispatch arguments
 layout(buffer_reference, scalar) buffer DispatchIndirectArgsBuffer {
@@ -859,48 +1013,6 @@ DebugDrawBuffer getDebugDrawBuffer() {
 	return DebugDrawBuffer(addr);
 }
 
-// =====================
-// === CMAA2 buffers ===
-// =====================
-layout(buffer_reference, scalar) buffer Cmaa2ControlBuffer {
-	uint control[];
-};
-Cmaa2ControlBuffer getCMAA2ControlBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Cmaa2Control);
-	return Cmaa2ControlBuffer(addr);
-}
-
-layout(buffer_reference, scalar) buffer Cmaa2ShapeCandidatesBuffer {
-	uint pixelIDs[];
-};
-Cmaa2ShapeCandidatesBuffer getCMAA2ShapeCandidatesBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Cmaa2ShapeCandidates);
-	return Cmaa2ShapeCandidatesBuffer(addr);
-}
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredLocationsBuffer {
-	uint quadIDs[];
-};
-Cmaa2DeferredLocationsBuffer getCMAA2DeferredLocationsBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Cmaa2DeferredLocations);
-	return Cmaa2DeferredLocationsBuffer(addr);
-}
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredItemsBuffer {
-	uvec4 items[];
-};
-Cmaa2DeferredItemsBuffer getCMAA2DeferredItemsBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Cmaa2DeferredItems);
-	return Cmaa2DeferredItemsBuffer(addr);
-}
-
-layout(buffer_reference, scalar) buffer Cmaa2DeferredHeadsBuffer {
-	uint heads[];
-};
-Cmaa2DeferredHeadsBuffer getCMAA2DeferredHeadsBuffer() {
-	uint64_t addr = getABTFrameAddress(ABT_Cmaa2DeferredHeads);
-	return Cmaa2DeferredHeadsBuffer(addr);
-}
 
 // =================================
 // === clustered shading buffers ===
@@ -980,6 +1092,13 @@ ClusterScanScratch getClusterScratchBuffer() {
 	return ClusterScanScratch(addr);
 }
 
+layout(buffer_reference, scalar) buffer ClusterTileTransparentNear {
+	uint nearDepth[];
+};
+ClusterTileTransparentNear getClusterTileTransparentNearBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_ClusterTileTransparentNear);
+	return ClusterTileTransparentNear(addr);
+}
 
 // ==============================
 // === GLOBAL BINDLESS IMAGES ===
@@ -1013,17 +1132,6 @@ uvec4 SampleTexelFetch(uint id, ivec2 uv, int lod) {
 	return texelFetch(TEXU2D(id), uv, lod);
 }
 
-vec4 SampleTextureBias(uint id, vec2 uv, float bias) {
-	if (id == INVALID_TEXTURE_ID) {
-		return vec4(1.0);
-	}
-#if defined(GL_FRAGMENT_SHADER) || defined(FRAGMENT_SHADER)
-	return texture(TEX2D(id), uv, bias);
-#else
-	return textureLod(TEX2D(id), uv, 0.0);
-#endif
-}
-
 vec4 SampleTextureLod(uint id, vec2 uv, float lod) {
 	if (id == INVALID_TEXTURE_ID) {
 		return vec4(1.0);
@@ -1036,6 +1144,39 @@ vec4 SampleTextureGrad(uint id, vec2 uv, vec2 dx, vec2 dy) {
 		return vec4(1.0);
 	}
 	return textureGrad(TEX2D(id), uv, dx, dy);
+}
+
+vec4 SampleTextureGradTAA(uint id, vec2 uv, vec2 dx, vec2 dy, float artBias) {
+	if (id == INVALID_TEXTURE_ID) {
+		return vec4(1.0);
+	}
+
+	vec4  taa   = getSceneData().taaMipParams;
+	float scale = exp2(artBias);
+
+	if (taa.x != 0.0) {
+		vec2  texSize = vec2(textureSize(TEX2D(id), 0));
+		float rho     = max(length(dx * texSize), length(dy * texSize));
+		float lod     = log2(max(rho, 1e-6)) + artBias;
+		float fade    = 1.0 - saturate((lod - taa.y) * taa.z);
+		scale = exp2(artBias + taa.x * fade);
+	}
+
+	return textureGrad(TEX2D(id), uv, dx * scale, dy * scale);
+}
+
+vec4 SampleTextureBiasTAA(uint id, vec2 uv, float artBias) {
+	if (id == INVALID_TEXTURE_ID) {
+		return vec4(1.0);
+	}
+#if defined(GL_FRAGMENT_SHADER) || defined(FRAGMENT_SHADER)
+	vec4  taa  = getSceneData().taaMipParams;
+	float lod  = textureQueryLod(TEX2D(id), uv).y + artBias;
+	float fade = 1.0 - saturate((lod - taa.y) * taa.z);
+	return texture(TEX2D(id), uv, artBias + taa.x * fade);
+#else
+	return textureLod(TEX2D(id), uv, 0.0);
+#endif
 }
 
 vec4 SampleCube(uint id, vec3 dir) {
@@ -1059,6 +1200,18 @@ int SampleCubeQueryLevels(uint id) {
 	return textureQueryLevels(TEXCUBE(id));
 }
 
+vec4 SampleTextureBias(uint id, vec2 uv, float bias) {
+	if (id == INVALID_TEXTURE_ID) {
+		return vec4(1.0);
+	}
+// Only the fragment path is used, allows compilation in compute shader
+#if defined(GL_FRAGMENT_SHADER) || defined(FRAGMENT_SHADER)
+	return texture(TEX2D(id), uv, bias);
+#else
+	return textureLod(TEX2D(id), uv, 0.0);
+#endif
+}
+
 void unpackVertex(
 	int vertexId,
 	out vec2 uv,
@@ -1079,8 +1232,24 @@ void unpackVertex(
 
 	int ty = int(vtx.tangentY);
 	tangentHandedness = (ty >= 0) ? 1.0 : -1.0;
-	tangent = octDecode(vec2(snorm16ToFloat(int(vtx.tangentX)),
-							snorm16ToFloat(abs(ty))));
+
+	float octX = snorm16ToFloat(int(vtx.tangentX));
+	float octY = snorm16ToFloat(abs(ty)) * 2.0 - 1.0;
+
+	tangent = octDecode(vec2(octX, octY));
+}
+
+vec2 SpatioTemporalNoise(ivec2 pixCoord, uint texId, uint noiseIndex) {
+	uint index = SampleTexelFetch(texId, ivec2(pixCoord % 64), 0).r;
+	index += 288u * noiseIndex;
+	return vec2(fract(0.5 + index * vec2(0.75487766624669276005, 0.5698402909980532659114)));
+}
+
+vec2 GetPrevUV(vec4 prevClip)
+{
+	vec2 prevUv = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+	prevUv.y    = 1.0 - prevUv.y;
+	return prevUv;
 }
 
 #endif

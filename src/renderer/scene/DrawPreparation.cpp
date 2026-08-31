@@ -6,7 +6,7 @@
 #include "../backend/Device.h"
 #include "../backend/memory/ResourceAllocator.h"
 #include "../backend/BufferBarriers.h"
-#include "../../core/AssetUploadTypes.h"
+#include "../../core/asset/AssetUploadTypes.h"
 #include "../../common/ResourceTypes.h"
 #include "../frame/FrameContext.h"
 #include "renderer/RendererDefinitions.h"
@@ -141,6 +141,9 @@ static void BakeInstanceData(
 			if (matFlags & MATERIAL_FLAG_HAS_NORMAL_MAP)
 				flags |= InstanceFlags::HAS_NORMALS;
 
+			if (matFlags & MATERIAL_FLAG_TRANSMISSIVE)
+				flags |= InstanceFlags::TRANSMISSIVE;
+
 			// sun shadow casting
 			// opaque only, stripped from BLEND MATERIALS and INSTANCING
 			if ((flags & InstanceFlags::PASS_OPAQUE) &&
@@ -174,6 +177,18 @@ static void BakeInstanceData(
 				flags |= InstanceFlags::STATIC_OBJECT;
 			else
 				flags |= InstanceFlags::DYNAMIC_OBJECT;
+
+			// TLAS — opaque only, stripped from mass instancing
+			const bool rtMassInstanced =
+				gi.instancingMethod == RD::InstancingMethod::DrawMultiStatic ||
+				gi.instancingMethod == RD::InstancingMethod::DrawMultiDynamic;
+
+			const bool rtEligible =
+				((flags & InstanceFlags::PASS_OPAQUE) || (flags & InstanceFlags::TRANSMISSIVE)) &&
+				!rtMassInstanced;
+
+			if (rtEligible)
+				flags |= InstanceFlags::RT_VISIBLE;
 
 			// all instances start active; lazy shrink clears this
 			flags |= InstanceFlags::INSTANCE_ACTIVE;
@@ -271,9 +286,13 @@ static bool SyncCopyCount(InstanceState& vs, CoreSlab& slab, const VirtualInstan
 //	return rowCount > 0;
 //}
 
-static void RebuildActive(InstanceState& vs)
+static uint32_t RebuildActive(InstanceState& vs, const std::vector<uint64_t>& blasAddresses)
 {
 	vs.active.clear();
+	vs.rtRows.clear();
+
+	uint32_t rtCandidates = 0;
+
 	for (auto& [sid, slab] : vs.slabs)
 	{
 		const uint32_t stride = slab.stride;
@@ -281,10 +300,27 @@ static void RebuildActive(InstanceState& vs)
 		{
 			for (uint32_t local = 0; local < stride; ++local)
 			{
-				vs.active.push_back(slab.first + c * stride + local);
+				const uint32_t idx = slab.first + c * stride + local;
+				vs.active.push_back(idx);
+
+				const InstanceInput& row = vs.gpuInputs[idx];
+
+				constexpr uint32_t need = InstanceFlags::RT_VISIBLE | InstanceFlags::INSTANCE_ACTIVE;
+				if ((row.flags & need) != need) continue;
+				if (row.meshID >= blasAddresses.size() || blasAddresses[row.meshID] == 0ull) continue;
+
+				++rtCandidates;
+				if (vs.rtRows.size() < RD::MAX_RT_INSTANCES)
+					vs.rtRows.push_back(idx);
 			}
 		}
 	}
+
+	if (rtCandidates > RD::MAX_RT_INSTANCES)
+		fmt::println("[RT] {} eligible instances exceeds MAX_RT_INSTANCES ({}); clamping.",
+			rtCandidates, RD::MAX_RT_INSTANCES);
+
+	return static_cast<uint32_t>(vs.rtRows.size());
 }
 
 static uint32_t RegisterBin(BinTableBuild& table, uint32_t meshID, uint32_t materialID)
@@ -357,7 +393,8 @@ bool DrawPreparation::SyncInstanceInputs(
 	const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
 	const std::vector<Mesh>& meshData,
 	const std::vector<MeshLODs>& meshLods,
-	const std::vector<uint32_t>&  materialFlags)
+	const std::vector<uint32_t>& materialFlags,
+	const std::vector<uint64_t>& blasAddresses)
 {
 	bool gpuInputsDirty = false;
 
@@ -399,7 +436,8 @@ bool DrawPreparation::SyncInstanceInputs(
 
 	if (gpuInputsDirty)
 	{
-		RebuildActive(vs);
+		vs.rtInstanceCount = RebuildActive(vs, blasAddresses);
+
 		AssignMeshletVisibilityOffsets(vs.gpuInputs, meshData);
 	}
 
@@ -414,6 +452,7 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	Device&                           device,
 	Allocator&                        allocator,
 	const std::vector<InstanceInput>& instanceInputs,
+	const std::vector<uint32_t>&      rtRows,
 	Scene&                            scene,
 	const std::vector<LocalLight>&    lights,
 	bool                              bMotionNeeded)
@@ -439,6 +478,7 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 	struct UploadPlan
 	{
 		StagedWrite instanceInputs{};
+		StagedWrite rtRows{};
 		StagedWrite drawBinKeys{};
 		StagedWrite drawBinKeysDense{};
 		StagedWrite globalAddrTable{};
@@ -470,6 +510,7 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 		const size_t instBytes     = instanceInputs.size()        * sizeof(InstanceInput);
 		const size_t hashBytes     = drawBinKeys.hashTable.size() * sizeof(BinKey);
 		const size_t denseBytes    = drawBinKeys.denseKeys.size() * sizeof(glm::uvec2);
+		const size_t rtRowBytes    = rtRows.size()                * sizeof(uint32_t);
 
 		VkBuffer binKeyBuf = globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinKeys).m_buffer;
 
@@ -477,6 +518,11 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 			instanceInputs.data(),
 			instBytes,
 			globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs).m_buffer);
+
+		plan.rtRows = frameStaging.Stage(
+			rtRows.data(),
+			rtRowBytes,
+			globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::RTRows).m_buffer);
 
 		// hash table at offset 0
 		plan.drawBinKeys = frameStaging.Stage(
@@ -579,6 +625,7 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 		if (plan.instanceUploadNeeded)
 		{
 			frameStaging.CopyCommand(cmd, plan.instanceInputs);
+			frameStaging.CopyCommand(cmd, plan.rtRows);
 			frameStaging.CopyCommand(cmd, plan.drawBinKeys);
 			frameStaging.CopyCommand(cmd, plan.drawBinKeysDense);
 			frameStaging.CopyCommand(cmd, plan.globalAddrTable);
@@ -586,6 +633,10 @@ void DrawPreparation::UploadGPUBuffersForFrame(
 			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,
 				globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::InstanceInputs),
+				device.GetContext());
+			BufferBarriers::TransferReleaseOnGraphics(
+				cmd,
+				globalBDATable.GetGPUBuffer(RD::Renderer_Buffer::RTRows),
 				device.GetContext());
 			BufferBarriers::TransferReleaseOnGraphics(
 				cmd,

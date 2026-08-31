@@ -17,67 +17,66 @@ const uint ABT_MeshletVertices        = 7u;
 const uint ABT_MeshletTriangles       = 8u;
 const uint ABT_StaticTransforms       = 9u;
 const uint ABT_Luminance              = 10u;
+const uint ABT_SHIrradiance           = 11u;
+const uint ABT_BLASAddresses          = 12u;
+const uint ABT_RTRows                 = 13u;
 
 // --- Frame (written/reset each frame) ---
-const uint ABT_DynamicTransforms      = 11u;
-const uint ABT_MotionMatrices         = 12u;
-const uint ABT_Lights                 = 13u;
+const uint ABT_DynamicTransforms      = 14u;
+const uint ABT_MotionMatrices         = 15u;
+const uint ABT_Lights                 = 16u;
 
-const uint ABT_InstanceVisibility     = 14u;
-const uint ABT_MeshletVisibilityA     = 15u;
-const uint ABT_MeshletVisibilityB     = 16u;
+const uint ABT_RTInstances            = 17u;
+const uint ABT_RTInstanceCount        = 18u;
+const uint ABT_RTRayList              = 19u;
 
-const uint ABT_VisibleCount           = 17u;
+const uint ABT_InstanceVisibility     = 20u;
+const uint ABT_MeshletVisibilityA     = 21u;
+const uint ABT_MeshletVisibilityB     = 22u;
 
-const uint ABT_VisibleInstances       = 18u;
+const uint ABT_VisibleCount           = 23u;
 
-const uint ABT_InstanceCursors        = 19u;
+const uint ABT_VisibleInstances       = 24u;
 
-const uint ABT_InstanceStreams        = 20u;
+const uint ABT_InstanceCursors        = 25u;
 
-const uint ABT_DrawInstanceIDs        = 21u;
+const uint ABT_InstanceStreams        = 26u;
 
-const uint ABT_IndirectDraws          = 22u;
+const uint ABT_DrawInstanceIDs        = 27u;
 
-const uint ABT_IndirectDrawCounts     = 23u;
+const uint ABT_IndirectDrawCounts     = 28u;
 
-const uint ABT_DrawBins               = 24u;
+const uint ABT_DrawBins               = 29u;
 
-const uint ABT_DrawBinCounters        = 25u;
+const uint ABT_DrawBinCounters        = 30u;
 
-const uint ABT_ShadowCullData         = 26u;
+const uint ABT_ShadowCullData         = 31u;
 
-const uint ABT_DrawStats              = 27u;
+const uint ABT_DrawStats              = 32u;
 
-const uint ABT_DispatchIndirectArgs   = 28u;
+const uint ABT_DispatchIndirectArgs   = 33u;
 
-const uint ABT_TaskDispatch           = 29u;
+const uint ABT_TaskDispatch           = 34u;
 
-const uint ABT_DebugCounts            = 30u;
-const uint ABT_DebugItems             = 31u;
-const uint ABT_DebugVertex            = 32u;
-const uint ABT_DebugDraw              = 33u;
+const uint ABT_DebugCounts            = 35u;
+const uint ABT_DebugItems             = 36u;
+const uint ABT_DebugVertex            = 37u;
+const uint ABT_DebugDraw              = 38u;
 
 // Light culling
-const uint ABT_VisibleLightCount      = 34u;
-const uint ABT_VisibleLightIDs        = 35u;
+const uint ABT_VisibleLightCount      = 39u;
+const uint ABT_VisibleLightIDs        = 40u;
 
 // Clustered shading
-const uint ABT_ClusterCounts          = 36u;
-const uint ABT_ClusterOffsets         = 37u;
-const uint ABT_ClusterCursors         = 38u;
-const uint ABT_ClusterLightIDs        = 39u;
-const uint ABT_ClusterTileSliceRanges = 40u;
-const uint ABT_ClusterScanScratch     = 41u;
+const uint ABT_ClusterCounts              = 41u;
+const uint ABT_ClusterOffsets             = 42u;
+const uint ABT_ClusterCursors             = 43u;
+const uint ABT_ClusterLightIDs            = 44u;
+const uint ABT_ClusterTileSliceRanges     = 45u;
+const uint ABT_ClusterScanScratch         = 46u;
+const uint ABT_ClusterTileTransparentNear = 47u;
 
-// CMAA2
-const uint ABT_Cmaa2Control           = 42u;
-const uint ABT_Cmaa2ShapeCandidates   = 43u;
-const uint ABT_Cmaa2DeferredLocations = 44u;
-const uint ABT_Cmaa2DeferredItems     = 45u;
-const uint ABT_Cmaa2DeferredHeads     = 46u;
-
-const uint ABT_Count                  = 47u;
+const uint ABT_Count                      = 48u;
 
 
 // =============================
@@ -100,6 +99,8 @@ const uint GLOBAL_BINDING_COMBINED_SAMPLER  = 3u;
 const uint FRAME_BINDING_SCENE      = 1u;
 const uint FRAME_BINDING_CSM        = 2u;
 const uint FRAME_BINDING_CLUSTERED  = 3u;
+const uint FRAME_BINDING_VOLUMETRIC = 4u;
+const uint FRAME_BINDING_TLAS       = 5u;
 
 // Push bindings for images
 const uint PUSH_BINDING_READ_1   = 0u;
@@ -111,11 +112,13 @@ const uint PUSH_BINDING_READ_6   = 5u;
 const uint PUSH_BINDING_READ_7   = 6u;
 const uint PUSH_BINDING_READ_8   = 7u;
 const uint PUSH_BINDING_READ_9   = 8u;
-const uint PUSH_BINDING_WRITE_1  = 9u;
-const uint PUSH_BINDING_WRITE_2  = 10u;
-const uint PUSH_BINDING_WRITE_3  = 11u;
-const uint PUSH_BINDING_WRITE_4  = 12u;
-const uint PUSH_BINDING_WRITE_5  = 13u;
+const uint PUSH_BINDING_READ_10  = 9u;
+const uint PUSH_BINDING_READ_11  = 10u;
+const uint PUSH_BINDING_WRITE_1  = 11u;
+const uint PUSH_BINDING_WRITE_2  = 12u;
+const uint PUSH_BINDING_WRITE_3  = 13u;
+const uint PUSH_BINDING_WRITE_4  = 14u;
+const uint PUSH_BINDING_WRITE_5  = 15u;
 
 // Indirect dispatch args
 const uint INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE        = 0u;
@@ -126,13 +129,14 @@ const uint INDIRECT_DISPATCH_SLOT_STREAM_CSM0          = 4u;
 const uint INDIRECT_DISPATCH_SLOT_STREAM_CSM1          = 5u;
 const uint INDIRECT_DISPATCH_SLOT_STREAM_CSM2          = 6u;
 const uint INDIRECT_DISPATCH_SLOT_STREAM_CSM3          = 7u;
-const uint INDIRECT_DISPATCH_SLOT_SCATTER              = 8u;
-const uint INDIRECT_DISPATCH_SLOT_DEBUG_BUILD          = 9u;
-const uint INDIRECT_DISPATCH_SLOT_LIGHTS               = 10u;
-const uint INDIRECT_DISPATCH_SLOT_CLUSTERS             = 11u;
-const uint INDIRECT_DISPATCH_SLOT_CMAA2_SHAPES         = 12u;
-const uint INDIRECT_DISPATCH_SLOT_CMAA2_DEFERRED       = 13u;
-const uint INDIRECT_DISPATCH_SLOT_COUNT                = 14u;
+const uint INDIRECT_DISPATCH_SLOT_STREAM_VOLUMETRIC    = 8u;
+const uint INDIRECT_DISPATCH_SLOT_SCATTER              = 9u;
+const uint INDIRECT_DISPATCH_SLOT_DEBUG_BUILD          = 10u;
+const uint INDIRECT_DISPATCH_SLOT_LIGHTS               = 11u;
+const uint INDIRECT_DISPATCH_SLOT_CLUSTERS             = 12u;
+const uint INDIRECT_DISPATCH_SLOT_REFLECT_RAYS         = 13u;
+const uint INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    = 14u;
+const uint INDIRECT_DISPATCH_SLOT_COUNT                = 15u;
 
 // Visibility/Draw slots
 const uint VIS_SLOT_OPAQUE        = 0u;
@@ -143,8 +147,13 @@ const uint VIS_SLOT_CSM0          = 4u;
 const uint VIS_SLOT_CSM1          = 5u;
 const uint VIS_SLOT_CSM2          = 6u;
 const uint VIS_SLOT_CSM3          = 7u;
+const uint VIS_SLOT_VOLUMETRIC    = 8u;
 
-const uint VIS_SLOT_COUNT         = 8u;
+const uint VIS_SLOT_COUNT         = 9u;
 
+// Ray tracing ray slots
+const uint RT_RAY_SLOT_REFLECT      = 0u;
+const uint RT_RAY_SLOT_TRANSPARENCY = 1u;
+const uint RT_RAY_SLOT_COUNT        = 2u;
 
 #endif

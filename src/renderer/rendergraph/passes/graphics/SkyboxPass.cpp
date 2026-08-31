@@ -21,7 +21,7 @@ void RegisterSkyboxPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetPhase(RenderPhase::Shading)
+				.SetPhase(RenderPhase::Lighting)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)

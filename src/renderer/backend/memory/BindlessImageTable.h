@@ -3,11 +3,23 @@
 #include <renderer/backend/VulkanForward.h>
 #include "AllocatedImage.h"
 #include <renderer/RendererDefinitions.h>
-#include "../../../core/AssetUploadTypes.h"
+#include "../../../core/asset/AssetUploadTypes.h"
 #include <span>
 
-#define TAA_RESOLVED_A RD::Renderer_RenderTarget::ColorHistoryA
-#define TAA_RESOLVED_B RD::Renderer_RenderTarget::ColorHistoryB
+#define COLOR_RESOLVED_A RD::Renderer_RenderTarget::ColorHistoryA
+#define COLOR_RESOLVED_B RD::Renderer_RenderTarget::ColorHistoryB
+
+#define RADIANCE_RESOLVED_A RD::Renderer_RenderTarget::DiffuseRadianceA
+#define RADIANCE_RESOLVED_B RD::Renderer_RenderTarget::DiffuseRadianceB
+
+#define GI_RESOLVED_A RD::Renderer_RenderTarget::GIHistoryA
+#define GI_RESOLVED_B RD::Renderer_RenderTarget::GIHistoryB
+
+#define VOL_LIGHT_RESOLVED_A RD::Renderer_RenderTarget::VolLightHistoryA
+#define VOL_LIGHT_RESOLVED_B RD::Renderer_RenderTarget::VolLightHistoryB
+
+#define FROXEL_SCATTER_RESOLVED_A RD::Renderer_RenderTarget::FroxelScatterExtA
+#define FROXEL_SCATTER_RESOLVED_B RD::Renderer_RenderTarget::FroxelScatterExtB
 
 class Allocator;
 class StagingBuffer;
@@ -42,8 +54,13 @@ public:
 	const std::array<AllocatedImage, RD::RENDER_TARGET_COUNT>& GetRenderTargets()  const { return m_renderTargets; }
 	void TransitionRenderTargetsFromUndefined(VkCommandBuffer cmd);
 
-	// Shadow maps
+	// Quick resize for resolution swap
 	void UpdateCSMAtlasExtent(RD::ShadowQuality quality, Allocator& allocator);
+
+	// When rt shadows enable free up vram
+	// Cached info
+	void FreeCSMAtlas(Allocator& allocator);
+	void RecreateCSMAtlas(Allocator& allocator);
 
 	// --- Samplers ---
 	VkSampler GetSampler(RD::Renderer_Sampler slot) const;
@@ -115,15 +132,19 @@ public:
 	bool IsTableDirty() const noexcept { return m_bIsTableDirty; }
 	void ClearDirty() noexcept { m_bIsTableDirty = false; }
 
+	bool IsShadowAtlasCached() const noexcept { return m_cachedCsmAtlasInfo.isActive; }
+	uint32_t GetCachedCSMRes() const noexcept { return m_cachedCsmAtlasInfo.width; }
 private:
 	void CreateRenderTargets(Extents3D drawExtent, Allocator& allocator);
 	void CreateStaticTextures(Allocator& allocator);
 	void CreateEnvironmentSets(uint32_t setCount, Allocator& allocator);
 	void CreateShadowMaps(RD::ShadowQuality quality, Allocator& allocator);
+	void CreateFroxelFogTargets(Allocator& allocator);
 	void CreateSamplers(VkDevice device);
 
 	void FreeRenderTargets(Allocator& allocator);
 	void FreeShadowMaps(Allocator& allocator);
+	void FreeFroxelFogTargets(Allocator& allocator);
 	void FreeStaticTextures(Allocator& allocator);
 	void FreeEnvironmentSets(Allocator& allocator);
 	void FreeSamplers(VkDevice device);
@@ -147,10 +168,18 @@ private:
 	std::unordered_map<std::string, AssetTextureEntry>                          m_assetTextureCache{};
 	std::mutex                                                                  m_assetTextureCacheMutex{};
 
-	bool     m_bAreShadowsCreated = false;
+	bool     m_bAreShadowsCreated   = false;
+	bool     m_bAreFroxelFogCreated = false;
 	bool     m_bIsTableDirty      = false;
 	uint32_t m_cpuVersion         = 1u;
 	uint32_t m_gpuVersion         = 0u;
+
+	struct CachedCSMAtlasInfo
+	{
+		uint32_t csmAtlasBindlessID = UINT32_MAX;
+		uint32_t width = 0;
+		bool isActive = false;
+	} m_cachedCsmAtlasInfo{};
 
 	using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
 
@@ -181,27 +210,61 @@ private:
 	uint32_t m_staticTextureCombinedEnd = 0u;
 };
 
-namespace TaaHistory
+namespace TemporalHistory
 {
 	struct Slots
 	{
-		RD::Renderer_RenderTarget read;   // previous frame's TAA output (history to accumulate against)
-		RD::Renderer_RenderTarget write;  // this frame's TAA output (also what later passes sample)
+		RD::Renderer_RenderTarget read;   // previous frame's output (history to accumulate against)
+		RD::Renderer_RenderTarget write;  // this frame's output (also what later passes sample)
 	};
 
-	inline Slots Resolve(uint64_t frameIndex)
+	inline Slots GetColorHistorySlots(uint64_t frameIndex)
 	{
 		const bool odd = (frameIndex & 1ull) != 0ull;
 		return odd
-			? Slots{ RD::Renderer_RenderTarget::ColorHistoryB,    // read
-					 RD::Renderer_RenderTarget::ColorHistoryA }   // write
-			: Slots{ RD::Renderer_RenderTarget::ColorHistoryA,    // read
-					 RD::Renderer_RenderTarget::ColorHistoryB };  // write
+			? Slots{ RD::Renderer_RenderTarget::ColorHistoryB,
+					 RD::Renderer_RenderTarget::ColorHistoryA }
+			: Slots{ RD::Renderer_RenderTarget::ColorHistoryA,
+					 RD::Renderer_RenderTarget::ColorHistoryB };
 	}
 
-	// What every consumer downstream of TAA samples as resolved scene color.
-	inline RD::Renderer_RenderTarget Resolved(uint64_t frameIndex)
+	inline Slots GetDiffuseRadianceSlots(uint64_t frameIndex)
 	{
-		return Resolve(frameIndex).write;
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::DiffuseRadianceB,
+					 RD::Renderer_RenderTarget::DiffuseRadianceA }
+			: Slots{ RD::Renderer_RenderTarget::DiffuseRadianceA,
+					 RD::Renderer_RenderTarget::DiffuseRadianceB };
+	}
+
+	inline Slots GetGIHistorySlots(uint64_t frameIndex)
+	{
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::GIHistoryB,
+					 RD::Renderer_RenderTarget::GIHistoryA }
+			: Slots{ RD::Renderer_RenderTarget::GIHistoryA,
+					 RD::Renderer_RenderTarget::GIHistoryB };
+	}
+
+	inline Slots GetVolLightHistorySlots(uint64_t frameIndex)
+	{
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::VolLightHistoryB,
+					 RD::Renderer_RenderTarget::VolLightHistoryA }
+			: Slots{ RD::Renderer_RenderTarget::VolLightHistoryA,
+					 RD::Renderer_RenderTarget::VolLightHistoryB };
+	}
+
+	inline Slots GetFroxelScatterSlots(uint64_t frameIndex)
+	{
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::FroxelScatterExtB,
+					 RD::Renderer_RenderTarget::FroxelScatterExtA }
+			: Slots{ RD::Renderer_RenderTarget::FroxelScatterExtA,
+					 RD::Renderer_RenderTarget::FroxelScatterExtB };
 	}
 }

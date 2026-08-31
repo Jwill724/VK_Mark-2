@@ -9,6 +9,7 @@ struct StagedTextureWrite;
 struct AllocatedImage;
 struct PendingTextureUpload;
 struct TextureUploadDesc;
+struct TextureMipDesc;
 
 struct StagedWrite
 {
@@ -40,7 +41,9 @@ protected:
 
 public:
 	[[nodiscard]] StagedWrite          Stage(const void* data, size_t bytes, VkBuffer dst, VkDeviceSize dstOffset = 0);
-	[[nodiscard]] PendingTextureUpload StageTexture(const void* data, size_t pixelBytes, AllocatedImage& image);
+	[[nodiscard]] PendingTextureUpload StageTexture(
+		const void* data, size_t byteSize, AllocatedImage& image,
+		std::span<const TextureMipDesc> mips = {});
 
 	void CopyCommand       (VkCommandBuffer cmd, StagedWrite write) noexcept;
 	void TextureCopyCommand(VkCommandBuffer cmd, const PendingTextureUpload& upload) const noexcept;

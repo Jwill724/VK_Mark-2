@@ -1,0 +1,83 @@
+#version 450
+
+#extension GL_GOOGLE_include_directive    : require
+#extension GL_ARB_separate_shader_objects : require
+
+#include "../include/common.glsl"
+#include "../include/clustered.glsl"
+
+layout(local_size_x = 64) in;
+
+void main()
+{
+	uint visId = gl_GlobalInvocationID.x;
+	VisibleInstance vi = getVisibleInstanceBuffer().visibles[visId];
+	if ((vi.visMask & (1u << VIS_SLOT_TRANSPARENT)) == 0u ||
+		visId >= getVisibleCountBuffer().count) return;
+
+	SceneData     scene     = getSceneData();
+	ClusteredData clustered = getClusteredData();
+
+	InstanceInput instance = getInstanceInputBuffer().instanceInputs[vi.instanceID];
+	mat4 transform         = getInstanceTransform(instance);
+	Mesh mesh              = getMeshBuffer().meshes[vi.primaryMesh];
+	AABB worldAABB         = TransformAABB(mesh.localAABB, transform);
+
+	const mat4 vp   = scene.viewProjUnjittered;
+	const vec3 zRow = vec3(scene.view[0][2], scene.view[1][2], scene.view[2][2]);
+
+	vec2  ndcMin       = vec2( 1.0);
+	vec2  ndcMax       = vec2(-1.0);
+	float minViewDepth = scene.cameraClips.y;
+	bool  crossesNear  = false;
+
+	for (int i = 0; i < 8; ++i)
+	{
+		vec3 c = vec3(
+			(i & 1) != 0 ? worldAABB.vmax.x : worldAABB.vmin.x,
+			(i & 2) != 0 ? worldAABB.vmax.y : worldAABB.vmin.y,
+			(i & 4) != 0 ? worldAABB.vmax.z : worldAABB.vmin.z);
+
+		minViewDepth = min(minViewDepth, -(dot(zRow, c) + scene.view[3][2]));
+
+		vec4 clip = vp * vec4(c, 1.0);
+		if (clip.w <= 1e-6)
+		{
+			crossesNear = true;
+			continue;
+		}
+
+		vec2 ndc = clip.xy / clip.w;
+		ndcMin = min(ndcMin, ndc);
+		ndcMax = max(ndcMax, ndc);
+	}
+
+	if (crossesNear)
+	{
+		ndcMin = vec2(-1.0);
+		ndcMax = vec2( 1.0);
+	}
+
+	minViewDepth = max(minViewDepth, scene.cameraClips.x);
+
+	if (any(greaterThan(ndcMin, ndcMax))) return;
+
+	vec2 uvMin = vec2(ndcMin.x * 0.5 + 0.5, 0.5 - ndcMax.y * 0.5);
+	vec2 uvMax = vec2(ndcMax.x * 0.5 + 0.5, 0.5 - ndcMin.y * 0.5);
+
+	vec2 pMin = clamp(uvMin, 0.0, 1.0) * scene.viewportSize.xy;
+	vec2 pMax = clamp(uvMax, 0.0, 1.0) * scene.viewportSize.xy;
+
+	uvec2 tMin = uvec2(uvec2(pMin) / uvec2(clustered.tileSizeX, clustered.tileSizeY));
+	uvec2 tMax = uvec2(uvec2(pMax) / uvec2(clustered.tileSizeX, clustered.tileSizeY));
+
+	tMin = min(tMin, uvec2(clustered.tileCountX - 1u, clustered.tileCountY - 1u));
+	tMax = min(tMax, uvec2(clustered.tileCountX - 1u, clustered.tileCountY - 1u));
+
+	ClusterTileTransparentNear tnBuf = getClusterTileTransparentNearBuffer();
+	uint depthBits = floatBitsToUint(minViewDepth);
+
+	for (uint ty = tMin.y; ty <= tMax.y; ++ty)
+		for (uint tx = tMin.x; tx <= tMax.x; ++tx)
+			atomicMin(tnBuf.nearDepth[ty * clustered.tileCountX + tx], depthBits);
+}

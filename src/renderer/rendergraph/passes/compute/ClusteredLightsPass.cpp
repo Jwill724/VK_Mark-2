@@ -14,12 +14,13 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_LIGHT_CULL      = 0;
-static constexpr size_t PIPE_ID_TILE_RANGES     = 1;
-static constexpr size_t PIPE_ID_INDIRECT_ARGS   = 2;
-static constexpr size_t PIPE_ID_CLUSTER_COUNTS  = 3;
-static constexpr size_t PIPE_ID_CLUSTER_OFFSETS = 4;
-static constexpr size_t PIPE_ID_CLUSTER_IDS     = 5;
+static constexpr size_t PIPE_ID_LIGHT_CULL                  = 0;
+static constexpr size_t PIPE_ID_TRANSPARENT_CLUSTER_BOUNDS  = 1;
+static constexpr size_t PIPE_ID_TILE_RANGES                 = 2;
+static constexpr size_t PIPE_ID_INDIRECT_ARGS               = 3;
+static constexpr size_t PIPE_ID_CLUSTER_COUNTS              = 4;
+static constexpr size_t PIPE_ID_CLUSTER_OFFSETS             = 5;
+static constexpr size_t PIPE_ID_CLUSTER_IDS                 = 6;
 
 void RegisterClusteredLightsPass(
 	RenderGraph& graph,
@@ -31,20 +32,19 @@ void RegisterClusteredLightsPass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.RunOnAsyncCompute()
+				.SetPhase(RenderPhase::AsyncWindow)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
 							ctx.frameState->InstancesActive() &&
-							ctx.frameState->LightsActive() &&
 							!ctx.frameState->DebugRenderFastPath();
 					})
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::Read,
+					RD::ImageAccess::ComputeRead,
 					0u, VK_REMAINING_MIP_LEVELS)
 
 				.SetRecord(
@@ -71,19 +71,18 @@ void RegisterClusteredLightsPass(
 						const auto& clusterScanScratch  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterScanScratch);
 						const auto& clusterOffsets      = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterOffsets);
 
-						const auto& lightCountBuf       = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightCount);
-						const auto& visibleLightIdsBuf  = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightIDs);
+						const auto& lightCountBuf            = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightCount);
+						const auto& visibleLightIdsBuf       = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::VisibleLightIDs);
+						const auto& transparentClusterBounds = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ClusterTileTransparentNear);
 
 						const auto& hiZ       = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
 						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
-
-						const bool bAsync =
-							ctx.scheduleInfo->queue == PassQueue::AsyncCompute;
 
 						// Buffers reset to zero
 						pso.FillGpuBuffer(cmd, clusterCursors);
 						pso.FillGpuBuffer(cmd, clusterCounts);
 						pso.FillGpuBuffer(cmd, clusterScanScratch);
+						pso.FillGpuBuffer(cmd, transparentClusterBounds, RD::MAX_FLT_UINT);
 
 						pso.FillGpuBuffer(cmd, lightCountBuf);
 						B::CmdFillToComputeRW(cmd, lightCountBuf);
@@ -99,6 +98,21 @@ void RegisterClusteredLightsPass(
 
 						B::ComputeWriteToRead(cmd, lightCountBuf);
 						B::ComputeWriteToRead(cmd, visibleLightIdsBuf);
+
+
+						// ===========================
+						// Transparent Cluster Bounds
+						// ===========================
+
+						pso.UpdateExtent({ctx.frameState->GetInstanceCount(), 1});
+						pso.UpdateWorkgroups(WORKGROUP_64);
+
+						pso.DispatchComputePass(
+							cmd,
+							pass.pipelines[PIPE_ID_TRANSPARENT_CLUSTER_BOUNDS],
+							pass.pushWriter);
+
+						B::ComputeWriteToRead(cmd, transparentClusterBounds);
 
 
 						// ==========================
@@ -126,8 +140,7 @@ void RegisterClusteredLightsPass(
 						B::CmdFillToComputeRW(cmd, indirectArgs);
 						pso.ClearIndirect();
 
-						pso.UpdateWorkgroups(WORKGROUP_1);
-						pso.UpdateExtent({1, 1});
+						pso.UpdateWorkgroups(WORKGROUP_1, true);
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INDIRECT_ARGS], pass.pushWriter);
 						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
@@ -152,15 +165,7 @@ void RegisterClusteredLightsPass(
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLUSTER_IDS], pass.pushWriter);
 
-						if (bAsync)
-						{
-							// Semaphore carries it to the fragment stage.
-							B::ComputeWriteToRead(cmd, clusterScanScratch);
-						}
-						else
-						{
-							B::ComputeWriteToFragmentRead(cmd, clusterScanScratch);
-						}
+						B::ComputeWriteToRead(cmd, clusterScanScratch);
 					});
 		});
 }

@@ -30,7 +30,8 @@ namespace DrawPreparation
 		const std::unordered_map<ModelID, std::shared_ptr<ModelAsset>>& loaded,
 		const std::vector<Mesh>& meshData,
 		const std::vector<MeshLODs>& meshLods,
-		const std::vector<uint32_t>&  materialFlags);
+		const std::vector<uint32_t>& materialFlags,
+		const std::vector<uint64_t>& blasAddresses);
 
 	BinTableBuild BuildDrawBinTable(const std::vector<InstanceInput>& instances);
 
@@ -41,6 +42,7 @@ namespace DrawPreparation
 		Device&                           device,
 		Allocator&                        allocator,
 		const std::vector<InstanceInput>& instanceInputs,
+		const std::vector<uint32_t>&      rtRows,
 		Scene&                            scene,
 		const std::vector<LocalLight>&    lights,
 		bool                              bMotionNeeded);

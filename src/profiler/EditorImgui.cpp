@@ -426,22 +426,6 @@ namespace
 		return stats.cpuMsAverage.IsInitialized() ? stats.cpuMsAverage.Get() : 0.0f;
 	}
 
-	static bool isMeshMode(const RD::RenderToggles& dbg)
-	{
-		return static_cast<RD::RenderingMode>(dbg.renderingMode) == RD::RenderingMode::MESH_SHADERS;
-	}
-
-	// A mode switch can strand the selection on an unsupported view.
-	static void clampDebugViewToMode(RD::RenderToggles& dbg)
-	{
-		const uint32_t caps = RD::DebugCapsForMode(
-			static_cast<RD::RenderingMode>(dbg.renderingMode));
-
-		if (!RD::DebugViewSupported(caps, dbg.debugView)) {
-			dbg.debugView = static_cast<uint32_t>(RD::DebugView::Off);
-		}
-	}
-
 	// =========================================================================
 	// 5. Settings groups
 	// =========================================================================
@@ -493,47 +477,6 @@ namespace
 		}
 	}
 
-	static void groupRenderingMode(UIContext& ui)
-	{
-		RD::RenderToggles& dbg = *ui.dbg;
-
-		const char* renderModes[] = { "Visibility Deferred", "Mesh_Shaders" };
-
-		if (UIWidgets::comboU32("Active##rendermode", &dbg.renderingMode, renderModes, IM_ARRAYSIZE(renderModes)))
-		{
-			// Validate here too — the shading overlay selector only runs when
-			// the Debug category is the visible panel.
-			clampDebugViewToMode(dbg);
-		}
-	}
-
-	static void groupMeshShaderPath(UIContext& ui)
-	{
-		Profiler& profiler = *ui.profiler;
-
-		if (!isMeshMode(*ui.dbg))
-		{
-			ImGui::TextDisabled("Inactive (vertex path)");
-			return;
-		}
-
-		const auto& passStats = profiler.GetAllPassStats();
-
-		const float early = passGpuMs(passStats[(size_t)RD::Renderer_Pass::Prepass]);
-		const float late  = passGpuMs(passStats[(size_t)RD::Renderer_Pass::PrepassLate]);
-		const float total = early + late;
-
-		UI::MetricTable table("MeshPhases");
-		if (!table) return;
-
-		UI::metric("Prepass phase 1", fmt::format("{:.3f} ms", early));
-		UI::metric("Prepass phase 2", fmt::format("{:.3f} ms", late));
-
-		if (total > 0.0f) {
-			UI::metric("Phase 2 share", fmt::format("{:.1f}%", 100.0f * late / total));
-		}
-	}
-
 	static void groupAsyncCompute(UIContext& ui)
 	{
 		Profiler& profiler = *ui.profiler;
@@ -569,29 +512,22 @@ namespace
 		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
-		const char* aaModes[] = { "Off", "CMAA2", "SMAA", "FXAA", "TAA (WIP)" };
-		UIWidgets::comboU32("AA Method", &dbg.aaMode, aaModes, IM_ARRAYSIZE(aaModes));
+		auto& taaSettings = profiler.taaSettings;
 
-		if (dbg.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA))
-		{
-			auto& taaSettings = profiler.taaSettings;
-
-			ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.3f");
-			ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.01f, 1.0f, "%.3f");
-			ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 10.0f);
-			ImGui::SliderFloat("Sharpen", &taaSettings.sharpen, 0.0f, 1.0f);
-			ImGui::SliderFloat("Tau", &taaSettings.tau, 0.01f, 0.1f, "%.2f");
-		}
+		ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.85f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 30.0f);
+		ImGui::SliderFloat("Normal Disocclusion Scale", &taaSettings.normalDisocclusionScale, 5.0f, 25.0f);
+		ImGui::SliderFloat("Dark Clamp Boost", &taaSettings.darkClampBoost, 1.25f, 2.5f, "%.2f");
+		ImGui::SliderFloat("Sigma Floor Scale", &taaSettings.sigmaFloorScale, 0.01f, 0.05f, "%.2f");
+		ImGui::SliderFloat("Shading Change Scale", &taaSettings.shadingChangeScale, 0.1f, 5.0f);
+		ImGui::SliderFloat("Sharpen", &taaSettings.sharpen, 0.0f, 1.0f);
 	}
 
 	static void groupTransparency(UIContext& ui)
 	{
 		Profiler& profiler = *ui.profiler;
-
-		auto oitScale = profiler.forwardPush.oitDepthScale;
-
-		ImGui::SliderFloat("OIT Z Scale", &oitScale, 50.0f, 2000.0f, "%.0f");
-		profiler.forwardPush.oitDepthScale = oitScale;
+		ImGui::SliderFloat("OIT Z Scale", &profiler.forwardPush.oitDepthScale, 50.0f, 2000.0f, "%.0f");
 	}
 
 	static void groupSun(UIContext& ui)
@@ -607,7 +543,9 @@ namespace
 		ImGui::SliderFloat3("Sun Dir##light", glm::value_ptr(sunDir), -0.5f, 0.5f);
 		ImGui::SliderFloat3("Sun Color##light", glm::value_ptr(sunCol), 0.0f, 1.0f);
 
-		ImGui::SliderFloat("Sun Intensity##light", &sunI, 2.5f, 20.0f);
+		int sunInt = static_cast<float>(sunI);
+		ImGui::SliderInt("Sun Intensity##light", &sunInt, 0, 100);
+		sunI = static_cast<float>(sunInt);
 
 		scene.sunlightColor = glm::vec4(sunCol, sunI);
 		scene.sunlightDirection = glm::vec4(sunDir, 0.0f);
@@ -668,6 +606,7 @@ namespace
 
 		ImGui::SliderFloat("Lag Strength", &flashlightReal.m_lagStrength, 10.0, 100.0f);
 		ImGui::SliderFloat("Sway Strength", &flashlightReal.m_swayStrength, 0.001f, 0.1f, "%.3f");
+		ImGui::SliderFloat("Source Radius##light", &flashlight.sourceRadius, 0.02, 0.3f);
 		//ImGui::SliderFloat("light radius##light", &flashlight.radius, 5, 100.0f);
 		ImGui::SliderFloat("Intensity##light", &flashlight.intensity, 10.0f, 500.0f);
 		//ImGui::SliderFloat("light outer degree##light", &flashlight.outerDeg, 10.0f, 40.0f);
@@ -680,6 +619,37 @@ namespace
 		//ImGui::SliderFloat("near projection##light", &flashlight.nearProj, 0.1f, 3.0f);
 		//ImGui::SliderFloat("shadow bias##light", &flashlight.shadowBias, 0.0001f, 1.5f, "%.4f");
 		//ImGui::SliderFloat("radius texels##light", &flashlight.radiusTexels, 1.0f, 4.0f);
+	}
+
+
+	static void rtShadowParamsUI(RTShadowParams& p, const char* id, float tMaxMax)
+	{
+		auto label = [id](const char* name) {
+			static char buf[96];
+			snprintf(buf, sizeof(buf), "%s##%s", name, id);
+			return buf;
+			};
+
+		ImGui::SliderFloat(label("Ray TMin"), &p.rayTMin, 0.0001f, 0.1f, "%.4f",
+			ImGuiSliderFlags_Logarithmic);
+		ImGui::SliderFloat(label("Ray TMax"), &p.rayTMax, 5.0f, tMaxMax);
+
+		ImGui::SliderFloat(label("Normal Bias"), &p.normalBias, 0.0f, 0.25f, "%.3f");
+		ImGui::SetItemTooltip("Flat world-space offset along the surface normal.");
+
+		ImGui::SliderFloat(label("Slope Bias"), &p.rayBias, 0.0f, 1e-3f, "%.5f",
+			ImGuiSliderFlags_Logarithmic);
+		ImGui::SetItemTooltip("Scaled by distance from camera. Total = normal + slope * dist.");
+
+		//ImGui::SliderFloat(label("Sun Softness"), &p.sunSoftness, 0.0f, 2.0f);
+		//ImGui::SliderFloat(label("Shadow Mip Bias"), &p.mipBias, 0.0f, 6.0f);
+
+		//int taps = static_cast<int>(p.taps);
+		//if (ImGui::SliderInt(label("Shadow Taps"), &taps, 1, 4)) {
+		//	p.taps = static_cast<uint32_t>(taps);
+		//}
+
+		//UIWidgets::toggleU32(label("Alpha Tested Casters"), &p.alphaTested);
 	}
 
 	static void groupShadows(UIContext& ui)
@@ -696,26 +666,103 @@ namespace
 
 		if (!dbg.enableShadows) return;
 
-		const char* qualityModes[] = { "Low", "Medium", "High", "Ultra" };
-		int currentQuality = (int)profiler.shadowQuality;
-
-		if (ImGui::Combo("Shadow Quality", &currentQuality, qualityModes, IM_ARRAYSIZE(qualityModes))) {
-			profiler.shadowQuality = static_cast<RD::ShadowQuality>(currentQuality);
-		}
-
 		auto& shadowControl = World::GetScene().GetShadowControls();
-		int shadowFar = static_cast<int>(shadowControl.shadowFar);
-		ImGui::SliderInt("Shadow Far##rt", &shadowFar, 500, 1500);
-		if (shadowFar != static_cast<int>(shadowControl.shadowFar))
-		{
-			shadowControl.shadowFar = static_cast<float>(shadowFar);
-			World::GetScene().ShouldUpdateCascadeSplits();
+
+		ImGui::Spacing();
+		UI::separatorText("Sun Shadow Filter");
+
+		const char* sunFilterModes[] = { "PCF", "PCSS", "RT_Soft" };
+		int sunFilter = static_cast<int>(dbg.sunShadowFilter);
+
+		if (ImGui::Combo("Filter Mode##rt", &sunFilter, sunFilterModes, IM_ARRAYSIZE(sunFilterModes))) {
+			dbg.sunShadowFilter = static_cast<uint32_t>(sunFilter);
 		}
 
-		bool depthHack = shadowControl.enableShadowDepthExtendHack;
-		if (ImGui::Checkbox("Enable Depth Hack##rt", &depthHack)) {
-			shadowControl.enableShadowDepthExtendHack = depthHack;
-			World::GetScene().ShouldUpdateCascadeSplits();
+		const bool bRTSoft =
+			dbg.sunShadowFilter == static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT);
+
+		if (!bRTSoft)
+		{
+			const char* qualityModes[] = { "Low", "Medium", "High" };
+			int currentQuality = static_cast<int>(profiler.shadowQuality);
+
+			if (ImGui::Combo(
+				"Shadow Quality",
+				&currentQuality,
+				qualityModes,
+				IM_ARRAYSIZE(qualityModes)))
+			{
+				profiler.shadowQuality =
+					static_cast<RD::ShadowQuality>(currentQuality);
+			}
+
+			int shadowFar = static_cast<int>(shadowControl.shadowFar);
+
+			ImGui::SliderInt(
+				"Shadow Far##rt",
+				&shadowFar,
+				500,
+				1500);
+
+			if (shadowFar != static_cast<int>(shadowControl.shadowFar))
+			{
+				shadowControl.shadowFar = static_cast<float>(shadowFar);
+				World::GetScene().ShouldUpdateCascadeSplits();
+			}
+
+			bool depthHack = shadowControl.enableShadowDepthExtendHack;
+
+			if (ImGui::Checkbox("Enable Depth Hack##rt", &depthHack))
+			{
+				shadowControl.enableShadowDepthExtendHack = depthHack;
+				World::GetScene().ShouldUpdateCascadeSplits();
+			}
+
+			if (dbg.sunShadowFilter == static_cast<uint32_t>(RD::SunShadowFilter::PCSS))
+			{
+				ImGui::SliderFloat(
+					"Sun Angular Radius##rt",
+					&shadowControl.sunAngularRadiusDeg,
+					0.0f,
+					6.0f,
+					"%.2f deg");
+
+				ImGui::SliderFloat(
+					"Min Radius (texels)##rt",
+					&shadowControl.minFilterRadiusTexels,
+					0.25f,
+					4.0f,
+					"%.2f");
+
+				ImGui::SliderFloat(
+					"Search Scale##rt",
+					&shadowControl.searchRadiusScale,
+					0.5f,
+					2.0f,
+					"%.2f");
+
+				ImGui::SliderFloat(
+					"Max Normal Offset##rt",
+					&shadowControl.maxNormalOffsetTexels,
+					1.0f,
+					12.0f,
+					"%.1f");
+
+				ImGui::DragFloat4(
+					"Max Radius (texels)##rt",
+					&shadowControl.pcssMaxRadiusTexels.x,
+					0.1f,
+					1.0f,
+					48.0f,
+					"%.1f");
+			}
+		}
+		else
+		{
+			rtShadowParamsUI(
+				profiler.rtShadowPush.shadow,
+				"rtsh",
+				1500.0f);
 		}
 
 		ImGui::Spacing();
@@ -725,31 +772,109 @@ namespace
 			dbg.enableSSS = contact ? 1u : 0u;
 		}
 
-		if (dbg.enableSSS) {
+		if (dbg.enableSSS)
+		{
 			auto& contactShadowSettings = profiler.contactShadowsSettings;
-			ImGui::SliderFloat("Surface Thickness##rt", &contactShadowSettings.surfaceThickness, 0.001f, 0.05f, "%.3f");
-			ImGui::SliderFloat("Bilinear Threshold##rt", &contactShadowSettings.bilinearThreshold, 0.001f, 0.1f, "%.3f");
-			int shadowContrastInt = static_cast<int>(contactShadowSettings.shadowContrast);
-			ImGui::SliderInt("Shadow Contrast##rt", &shadowContrastInt, 1, 8);
-			contactShadowSettings.shadowContrast = static_cast<float>(shadowContrastInt);
+
+			ImGui::SliderFloat(
+				"Surface Thickness##rt",
+				&contactShadowSettings.surfaceThickness,
+				0.001f,
+				0.02f,
+				"%.3f");
+
+			ImGui::SliderFloat(
+				"Bilinear Threshold##rt",
+				&contactShadowSettings.bilinearThreshold,
+				0.001f,
+				0.5f,
+				"%.3f");
+
+			int shadowContrastInt =
+				static_cast<int>(contactShadowSettings.shadowContrast);
+
+			ImGui::SliderInt(
+				"Shadow Contrast##rt",
+				&shadowContrastInt,
+				1,
+				8);
+
+			contactShadowSettings.shadowContrast =
+				static_cast<float>(shadowContrastInt);
 		}
 	}
 
-	static void groupAmbientOcclusion(UIContext& ui)
+	static void groupSSGI(UIContext& ui)
 	{
 		RD::RenderToggles& dbg = *ui.dbg;
+		Profiler& profiler = *ui.profiler;
 
-		const char* aoModes[] = { "Off", "VBAO", "VBAO + Bent Normals" };
-		UIWidgets::comboU32("AO Method", &dbg.aoMode, aoModes, IM_ARRAYSIZE(aoModes));
+		const char* giModes[] = { "Off", "VBAO", "VBGI" };
+		UIWidgets::comboU32("GI Method", &dbg.giMode, giModes, IM_ARRAYSIZE(giModes));
 
-		//auto& ssaoSettings = profiler.ssaoSettings;
-		//if (dbg.aoMode != AO_OFF) {
-		//	// Core ao settings
-		//	//ImGui::SliderFloat("Radius##gtao", &ssaoSettings.effectRadius, 0.2f, 0.5f, "%.2f");
-		//	//ImGui::SliderFloat("Falloff Range##gtao", &ssaoSettings.effectFalloffRange, 0.20f, 1.0f, "%.3f");
-		//	//ImGui::SliderFloat("Filter Sharpness##gtao", &ssaoSettings.sharpness, 0.5f, 5.0f);
-		//	//ImGui::SliderFloat("Filter Radius##gtao", &ssaoSettings.radius, 1.0f, 6.0f);
-		//}
+		if (dbg.giMode == static_cast<uint32_t>(RD::GIMethod::OFF)) return;
+
+		auto& s = profiler.ssgiSettings;
+
+		ImGui::SeparatorText("Trace");
+		ImGui::SliderFloat("Effect Radius##ssgi", &s.effectRadius, 0.5f, 25.0f);
+		ImGui::SetItemTooltip("Occlusion radius, and the GI gather radius. Wider costs dependent fetches.");
+		ImGui::SliderFloat("Falloff Range##ssgi", &s.effectFalloffRange, 0.0f, 1.0f);
+
+		ImGui::SliderFloat("Sample Distribution Power##ssgi", &s.sampleDistributionPower, 1.0, 3.0);
+
+		ImGui::SeparatorText("Denoise");
+		ImGui::SliderFloat("Blur Beta##ssgi", &s.denoiseBlurBeta, 1.0f, 2.0f);
+		ImGui::SliderFloat("Upsample Depth Sigma##ssgi", &s.upsampleDepthSigma, 32.0f, 1024.0f);
+
+		if (dbg.giMode != static_cast<uint32_t>(RD::GIMethod::VBGI)) return;
+
+		auto& t = profiler.forwardPush;
+
+		ImGui::SeparatorText("Indirect");
+		ImGui::SliderFloat("GI Intensity##ssgi", &t.giIntensity, 0.0f, 25.0f);
+		ImGui::SliderFloat("Bounce Feedback##ssgi", &t.bounceFeedback, 0.0f, 1.0f);
+		ImGui::SetItemTooltip("Gain on the multi-bounce loop. Above ~0.85 bright rooms keep brightening.");
+		ImGui::SliderFloat("SH Fallback##ssgi", &s.giFallbackStrength, 0.0f, 1.0f);
+		ImGui::SetItemTooltip("Sky fill for sectors the trace closed but could not gather.");
+
+		ImGui::SeparatorText("Temporal");
+		ImGui::SliderFloat("Temporal Alpha##ssgi", &s.giTemporalAlpha, 0.02f, 0.5f, "%.3f");
+		ImGui::SetItemTooltip("Steady-state EMA rate. 0.08 converges over ~12 frames.");
+		ImGui::SliderFloat("Reproject Tolerance##ssgi", &s.giReprojTolerance, 0.02f, 0.3f, "%.3f");
+		ImGui::SliderFloat("Firefly Clamp##ssgi", &s.giClampMax, 0.5f, 32.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+	}
+
+	static void groupReflections(UIContext& ui)
+	{
+		RD::RenderToggles& dbg = *ui.dbg;
+		Profiler& profiler = *ui.profiler;
+
+		auto& rs = profiler.reflectPush;
+
+		UIWidgets::toggleU32("Enable RT Reflections##rtr", &dbg.enableRTReflections);
+
+		ImGui::SeparatorText("Ray");
+
+		ImGui::SliderFloat("Reflect Roughness Cutoff##rtr", &rs.reflectRoughnessCutoff, 0.05f, 1.0f);
+
+		int maxBouncesInt = static_cast<int>(rs.maxBounces);
+		if (ImGui::SliderInt("Max Bounces##rtr", &maxBouncesInt, 2, 3)) {
+			rs.maxBounces = static_cast<uint32_t>(maxBouncesInt);
+		}
+
+		int maxReflectLightsInt = static_cast<int>(rs.maxReflectLights);
+		if (ImGui::SliderInt("Max Reflected Lights##rtr", &maxReflectLightsInt, 50, 300)) {
+
+			rs.maxReflectLights = static_cast<uint32_t>(maxReflectLightsInt);
+		}
+
+		//ImGui::SeparatorText("Shadow Rays");
+		//rtShadowParamsUI(rs.shadow, "rtr", 500.0f);
+
+		ImGui::SeparatorText("Resolve");
+		ImGui::SliderFloat("Roughness Fade##rtr", &rs.roughnessFadeStart, 0.0f, 1.0f);
+		ImGui::SliderFloat("Ambient Scale##rtr", &rs.ambientScale, 0.0f, 4.0f);
 	}
 
 	static void groupVolumetrics(UIContext& ui)
@@ -763,23 +888,25 @@ namespace
 
 		UI::separatorText("Fog");
 
-		ImGui::SliderFloat("Density##vol", &volSettings.density, 0.0f, 0.1f, "%.3f");
-		ImGui::SliderFloat("Scattering##vol", &volSettings.scatteringStrength, 0.0f, 100.0f);
+		ImGui::SliderFloat("Density##vol", &volSettings.density, 0.0f, 0.03f, "%.3f");
+		ImGui::SliderFloat("Scattering##vol", &volSettings.scatteringStrength, 0.0f, 10.0f);
 		ImGui::SliderFloat("Extinction##vol", &volSettings.extinction, 0.0f, 1.0f);
 		ImGui::SliderFloat("Asymmetry Factor##vol", &volSettings.asymmetryFactor, 0.0f, 0.95f, "%.2f");
 		ImGui::SliderFloat("Height Falloff##vol", &volSettings.heightFalloff, 0.0f, 0.1f, "%.2f");
 
 		UI::separatorText("Ray March");
 
-		ImGui::SliderFloat("Max Distance##vol", &volSettings.maxDistance, 10.0f, 250.0f);
-		ImGui::SliderFloat("Min Transmittance##vol", &volSettings.minTransmittance, 0.9f, 1.0f, "%.2f");
-		ImGui::SliderInt("Beam Power##vol", &volSettings.beamPower, 2, 6);
+		ImGui::SliderFloat("Max Distance##vol", &volSettings.maxDistance, 10.0f, 300.0f);
 		ImGui::SliderFloat("Jitter Strength##vol", &volSettings.jitterStrength, 0.0f, 1.0f);
+
+		UI::separatorText("Temporal");
+		ImGui::SliderFloat("History Weight##vol", &volSettings.historyWeight, 0.85f, 0.95f, "%.2f");
+		ImGui::SliderFloat("Clip Gamma##vol", &volSettings.clipGamma, 1.0f, 2.0f, "%.2f");
 
 		UI::separatorText("Blur");
 
 		ImGui::SliderFloat("Blur Radius##vol", &volSettings.blurRadius, 1.0f, 4.0f, "%.0f");
-		ImGui::SliderFloat("Blur Depth Sigma##vol", &volSettings.blurDepthSigma, 0.005f, 0.02f, "%.3f");
+		ImGui::SliderFloat("Blur Depth Sigma##vol", &volSettings.blurDepthSigma, 0.1f, 2.0f, "%.2f");
 		ImGui::SliderFloat("Blur Weight Sigma##vol", &volSettings.blurWeightSigma, 0.5f, 2.0f, "%.2f");
 	}
 
@@ -811,10 +938,7 @@ namespace
 		ImGui::SliderFloat("Bloom Intensity", &profiler.debugToggles.bloomIntensity, 0.03, 0.2f, "%.2f");
 		ImGui::SliderFloat("Bloom Threshold", &bloom.bloomThreshold, 0.01f, 3.0f, "%.2f");
 		ImGui::SliderFloat("Bloom Knee", &bloom.bloomKnee, 0.01f, 2.0f, "%.2f");
-
-		int emissiveBoostInt = static_cast<int>(bloom.emissiveBoost);
-		ImGui::SliderInt("Emissive Boost", &emissiveBoostInt, 0, 50);
-		bloom.emissiveBoost = static_cast<float>(emissiveBoostInt);
+		ImGui::SliderFloat("Emissive Boost", &bloom.emissiveBoost, 0.0, 10.0, "%.2f");
 	}
 
 	static void groupChromaticAberration(UIContext& ui)
@@ -867,11 +991,6 @@ namespace
 	{
 		RD::RenderToggles& dbg = *ui.dbg;
 
-		const auto mode = static_cast<RD::RenderingMode>(dbg.renderingMode);
-		const uint32_t caps = RD::DebugCapsForMode(mode);
-
-		clampDebugViewToMode(dbg);
-
 		int current = static_cast<int>(dbg.debugView);
 
 		constexpr int columns = 3;
@@ -880,27 +999,14 @@ namespace
 		for (const RD::DebugViewEntry& entry : RD::DEBUG_VIEW_TABLE)
 		{
 			const uint32_t viewIndex = static_cast<uint32_t>(entry.view);
-			const bool supported = RD::DebugViewSupported(caps, viewIndex);
 
 			if (column != 0) {
 				ImGui::SameLine();
 			}
 
-			{
-				UI::DisabledScope disabled(!supported);
-
-				const std::string label = fmt::format("{}##dbgview", entry.label);
-				if (ImGui::RadioButton(label.c_str(), &current, static_cast<int>(viewIndex))) {
-					dbg.debugView = static_cast<uint32_t>(current);
-				}
-			}
-
-			if (!supported && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-				const char* modeName =
-					(mode == RD::RenderingMode::VISIBILITY_DEFERRED)
-					? "Visibility Deferred"
-					: "Mesh Shaders";
-				ImGui::SetTooltip("Not available in %s mode", modeName);
+			const std::string label = fmt::format("{}##dbgview", entry.label);
+			if (ImGui::RadioButton(label.c_str(), &current, static_cast<int>(viewIndex))) {
+				dbg.debugView = static_cast<uint32_t>(current);
 			}
 
 			column = (column + 1) % columns;
@@ -920,21 +1026,20 @@ namespace
 	// -------------------------------------------------------------------------
 	static const ControlGroup RENDER_GROUPS[] = {
 		{ "Camera",           &groupCamera,         false },
-		{ "Rendering Mode",   &groupRenderingMode,  true  },
-		{ "Mesh Shader Path", &groupMeshShaderPath, true  },
 		{ "Async Compute",    &groupAsyncCompute,   false },
 		{ "Anti-Aliasing",    &groupAntiAliasing,   true  },
 		{ "Transparency",     &groupTransparency,   false },
 	};
 
 	static const ControlGroup LIGHTING_GROUPS[] = {
-		{ "Sun",               &groupSun,              true  },
-		{ "Environment",       &groupEnvironment,      false },
-		{ "Local Lights",      &groupLocalLights,      true  },
-		{ "Flash Light",       &groupFlashlight,       false },
-		{ "Shadows",           &groupShadows,          true  },
-		{ "Ambient Occlusion", &groupAmbientOcclusion, false },
-		{ "Volumetrics",       &groupVolumetrics,      false },
+		{ "Sun",                 &groupSun,              true  },
+		{ "Shadows",             &groupShadows,          false },
+		{ "Reflections",         &groupReflections,      false },
+		{ "Global Illumination", &groupSSGI,             false },
+		{ "Local Lights",        &groupLocalLights,      false },
+		{ "Flash Light",         &groupFlashlight,       false },
+		{ "Volumetrics",         &groupVolumetrics,      false },
+		{ "Environment",         &groupEnvironment,      false },
 	};
 
 	static const ControlGroup POSTFX_GROUPS[] = {
@@ -958,8 +1063,8 @@ namespace
 	};
 
 	static const SettingsCategoryEntry SETTINGS_CATEGORIES[] = {
-		{ "Render",   RENDER_GROUPS,   IM_ARRAYSIZE(RENDER_GROUPS)   },
 		{ "Lighting", LIGHTING_GROUPS, IM_ARRAYSIZE(LIGHTING_GROUPS) },
+		{ "Render",   RENDER_GROUPS,   IM_ARRAYSIZE(RENDER_GROUPS)   },
 		{ "Post FX",  POSTFX_GROUPS,   IM_ARRAYSIZE(POSTFX_GROUPS)   },
 		{ "Debug",    DEBUG_GROUPS,    IM_ARRAYSIZE(DEBUG_GROUPS)    },
 	};
@@ -1099,14 +1204,25 @@ namespace
 		ImGui::Spacing();
 		UI::separatorText("Device");
 
-		const double usedMb   = double(stats.vramStats.used)   / (1024.0 * 1024.0);
+		const double usedMb = double(stats.vramStats.used) / (1024.0 * 1024.0);
+
 		const double budgetMb = double(stats.vramStats.budget) / (1024.0 * 1024.0);
-		const float  vramFrac = (budgetMb > 0.0) ? float(usedMb / budgetMb) : 0.0f;
+
+		const float vramFrac = (budgetMb > 0.0)
+			? float(usedMb / budgetMb)
+			: 0.0f;
 
 		UI::bar(
 			vramFrac,
-			fmt::format("{:.0f} / {:.0f} MB", usedMb, budgetMb).c_str(),
-			(vramFrac > 0.9f) ? Style::BAD : (vramFrac > 0.75f) ? Style::WARN : Style::BAR_GFX);
+			fmt::format(
+				"{:.0f} / {:.0f} MB",
+				usedMb,
+				budgetMb).c_str(),
+			(vramFrac > 0.9f)
+			? Style::BAD
+			: (vramFrac > 0.75f)
+			? Style::WARN
+			: Style::BAR_GFX);
 
 		ImGui::TextWrapped("%s", stats.gpuName.c_str());
 	}
@@ -1177,92 +1293,90 @@ namespace
 		const GPUStats& gpu = profiler.gpuStats;
 		const uint32_t mlDrawn = gpu.meshletsDrawnEarly + gpu.meshletsDrawnLate;
 
-		if (gpu.meshletsSubmitted == 0u)
-		{
-			ImGui::TextDisabled("No meshlet dispatches this frame.");
-			return;
-		}
+		//if (gpu.meshletsSubmitted == 0u)
+		//{
+		//	ImGui::TextDisabled("No meshlet dispatches this frame.");
+		//	return;
+		//}
 
-		const bool bOvercount = (mlDrawn > gpu.meshletsSubmitted);
+		//const bool bOvercount = (mlDrawn > gpu.meshletsSubmitted);
 
-		static uint32_t peakOvercount   = 0u;
-		static uint32_t overcountFrames = 0u;
-		static uint32_t quietFrames     = 0u;
+		//static uint32_t peakOvercount   = 0u;
+		//static uint32_t overcountFrames = 0u;
+		//static uint32_t quietFrames     = 0u;
 
-		constexpr uint32_t OVERCOUNT_DECAY_FRAMES = 60u;
+		//constexpr uint32_t OVERCOUNT_DECAY_FRAMES = 60u;
 
-		if (bOvercount)
-		{
-			peakOvercount = std::max(peakOvercount, mlDrawn - gpu.meshletsSubmitted);
-			++overcountFrames;
-			quietFrames = 0u;
-		}
-		else if (peakOvercount > 0u)
-		{
-			if (++quietFrames >= OVERCOUNT_DECAY_FRAMES)
-			{
-				peakOvercount   = 0u;
-				overcountFrames = 0u;
-				quietFrames     = 0u;
-			}
-		}
+		//if (bOvercount)
+		//{
+		//	peakOvercount = std::max(peakOvercount, mlDrawn - gpu.meshletsSubmitted);
+		//	++overcountFrames;
+		//	quietFrames = 0u;
+		//}
+		//else if (peakOvercount > 0u)
+		//{
+		//	if (++quietFrames >= OVERCOUNT_DECAY_FRAMES)
+		//	{
+		//		peakOvercount   = 0u;
+		//		overcountFrames = 0u;
+		//		quietFrames     = 0u;
+		//	}
+		//}
 
-		{
-			UI::MetricTable table("MeshletCounts");
-			if (table) {
-				UI::metric("Submitted", UI::formatCount(gpu.meshletsSubmitted));
+		//{
+		//	UI::MetricTable table("MeshletCounts");
+		//	if (table) {
+		//		UI::metric("Submitted", UI::formatCount(gpu.meshletsSubmitted));
 
-				if (bOvercount) {
-					UI::metric("Drawn", UI::formatCount(mlDrawn), Style::BAD);
-				}
-				else {
-					UI::metric("Drawn", UI::formatCount(mlDrawn));
-				}
+		//		if (bOvercount) {
+		//			UI::metric("Drawn", UI::formatCount(mlDrawn), Style::BAD);
+		//		}
+		//		else {
+		//			UI::metric("Drawn", UI::formatCount(mlDrawn));
+		//		}
 
-				UI::metric("Phase 1", UI::formatCount(gpu.meshletsDrawnEarly));
-				UI::metric("Phase 2", UI::formatCount(gpu.meshletsDrawnLate));
-			}
-		}
+		//		UI::metric("Phase 1", UI::formatCount(gpu.meshletsDrawnEarly));
+		//		UI::metric("Phase 2", UI::formatCount(gpu.meshletsDrawnLate));
+		//	}
+		//}
+		//ImGui::Spacing();
 
-		ImGui::Spacing();
+		//if (bOvercount)
+		//{
+		//	ImGui::TextColored(Style::BAD, "Drawn over submitted by %u",
+		//		mlDrawn - gpu.meshletsSubmitted);
+		//}
+		//else
+		//{
+		//	const float culledFrac =
+		//		float(gpu.meshletsSubmitted - mlDrawn) / float(gpu.meshletsSubmitted);
 
-		if (bOvercount)
-		{
-			ImGui::TextColored(Style::BAD, "Drawn over submitted by %u",
-				mlDrawn - gpu.meshletsSubmitted);
-		}
-		else
-		{
-			const float culledFrac =
-				float(gpu.meshletsSubmitted - mlDrawn) / float(gpu.meshletsSubmitted);
+		//	UI::bar(
+		//		culledFrac,
+		//		fmt::format("culled {:.1f}%", 100.0f * culledFrac).c_str(),
+		//		Style::BAR_ASYNC);
+		//}
 
-			UI::bar(
-				culledFrac,
-				fmt::format("culled {:.1f}%", 100.0f * culledFrac).c_str(),
-				Style::BAR_ASYNC);
-		}
+		//{
+		//	UI::MetricTable table("MeshletOvercount");
+		//	if (table)
+		//	{
+		//		if (peakOvercount > 0u)
+		//		{
+		//			UI::metric("Peak over", UI::formatCount(peakOvercount),
+		//				(overcountFrames > OVERCOUNT_DECAY_FRAMES) ? Style::BAD : Style::WARN);
+		//			UI::metric("Frames", fmt::format("{}", overcountFrames), Style::MUTED);
+		//		}
+		//		else
+		//		{
+		//			UI::metric("Peak over", "--", Style::MUTED);
+		//			UI::metric("Frames", "--", Style::MUTED);
+		//		}
+		//	}
+		//}
 
-		{
-			UI::MetricTable table("MeshletOvercount");
-			if (table)
-			{
-				if (peakOvercount > 0u)
-				{
-					UI::metric("Peak over", UI::formatCount(peakOvercount),
-						(overcountFrames > OVERCOUNT_DECAY_FRAMES) ? Style::BAD : Style::WARN);
-					UI::metric("Frames", fmt::format("{}", overcountFrames), Style::MUTED);
-				}
-				else
-				{
-					UI::metric("Peak over", "--", Style::MUTED);
-					UI::metric("Frames", "--", Style::MUTED);
-				}
-			}
-		}
-
-		ImGui::Spacing();
-		UI::separatorText("Cull reasons (phase 2)");
-
+		//ImGui::Spacing();
+		UI::separatorText("Cull Info");
 		{
 			const uint64_t reasonSum =
 				uint64_t(gpu.meshletsCulledFrustum) +
@@ -1410,8 +1524,8 @@ namespace
 	static const ControlGroup PROFILER_SECTIONS[] = {
 		{ "Frame",        &sectionFrame,        true  },
 		{ "GPU",          &sectionGpu,          true  },
-		{ "Visibility",   &sectionVisibility,   true  },
-		{ "Meshlets",     &sectionMeshlets,     true  },
+		{ "Visibility",   &sectionVisibility,   false },
+		{ "Culling",      &sectionMeshlets,     false },
 		{ "Pass Timings", &sectionPassTimings,  true  },
 		{ "Asset Data",   &sectionAssets,       false },
 	};

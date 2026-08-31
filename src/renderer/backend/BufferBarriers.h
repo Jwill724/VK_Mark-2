@@ -16,6 +16,9 @@ namespace BufferBarriers
 	void ComputeWriteToTransferRead(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
+	void ComputeReadToWrite(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
 
 	void ComputeWriteToIndirectRead(
 		VkCommandBuffer cmd,
@@ -28,6 +31,13 @@ namespace BufferBarriers
 	void CmdFillToMeshRW(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
+
+	void ComputeWriteToASBuildRead(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
+
+	void ASBuildToASBuild(VkCommandBuffer cmd);
+	void ASBuildToRayQueryRead(VkCommandBuffer cmd);
 
 	void ComputeWriteToFragmentRead(
 		VkCommandBuffer cmd,
@@ -55,6 +65,15 @@ namespace BufferBarriers
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf,
 		const DeviceContext& dCtx);
+
+	void TransferWriteToComputeWrite(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf,
+		const DeviceContext& dCtx);
+
+	void CmdFillToComputeAS(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
 
 	void TransferWriteToGraphicsRead(
 		VkCommandBuffer cmd,

@@ -6,6 +6,9 @@
 
 static void DefineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent) noexcept
 {
+	ASSERT(drawExtent.width > 0);
+	ASSERT(drawExtent.height > 0);
+
 	VkViewport viewport {
 		.x = 0.0f,
 		.y = static_cast<float>(drawExtent.height),
@@ -46,6 +49,9 @@ static void DefineViewportAndScissorAtlas(
 
 void GraphicsScope::ApplyViewport(VkCommandBuffer cmd)
 {
+	ASSERT(m_renderArea.extent.width > 0);
+	ASSERT(m_renderArea.extent.height > 0);
+
 	if (m_bHasAtlas)
 	{
 		DefineViewportAndScissorAtlas(
@@ -162,36 +168,6 @@ void GraphicsScope::DrawMeshTasksIndirectCount(
 		static_cast<uint64_t>(slot * 4u),
 		RD::MAX_TASK_DISPATCHES_BY_SLOT[slot],
 		RD::TASK_GROUP_SIZE);
-}
-
-void GraphicsScope::DrawIndexedIndirectCount(
-	VkCommandBuffer cmd,
-	uint32_t drawIndex,
-	VkBuffer indirectDrawBuffer,
-	VkBuffer indirectCountBuffer,
-	const PipelineHandle& pipeHandle,
-	PushDescriptorWriter& pushWriter)
-{
-	vkCmdBindPipeline(
-		cmd,
-		pipeHandle.bindPoint,
-		pipeHandle.pipeline);
-
-	BindPushConstant(cmd, pipeHandle);
-
-	pushWriter.UpdatePushLayout(
-		cmd,
-		pipeHandle.bindPoint,
-		pipeHandle.layout.pipelineLayout);
-
-	vkCmdDrawIndexedIndirectCount(
-		cmd,
-		indirectDrawBuffer,
-		RD::DRAW_BYTE_OFFSET_BY_SLOT[drawIndex],
-		indirectCountBuffer,
-		static_cast<uint64_t>(drawIndex * 4u),
-		RD::MAX_DRAWS_BY_SLOT[drawIndex],
-		RD::INDIRECT_CMD_SIZE);
 }
 
 void GraphicsScope::DrawIndirect(

@@ -9,6 +9,8 @@
 #include "../include/common.glsl"
 #include "../include/meshlet_cull.glsl"
 #include "../include/clustered.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
 
 layout(local_size_x = TASK_GROUP_SIZE) in;
 
@@ -49,11 +51,13 @@ void main()
 	uint meshletID = td.meshletOffset + local;
 	bool visible   = local < td.meshletCount;
 
+	bool twoSided = (inst.flags & (DOUBLE_SIDED | IS_TREE)) != 0u;
+
 	if (visible)
 	{
-		Meshlet ml     = getMeshletBuffer().meshlets[meshletID];
-		vec3  centerWS = (model * vec4(ml.center, 1.0)).xyz;
-		float radiusWS = ml.radius * worldScale;
+		Meshlet ml       = getMeshletBuffer().meshlets[meshletID];
+		vec3  centerWS   = (model * vec4(ml.center, 1.0)).xyz;
+		float radiusWS  = ml.radius * worldScale;
 
 		if (pc.cullDistance > 0.0 && pc.slot == VIS_SLOT_FLASHLIGHT)
 		{
@@ -64,8 +68,15 @@ void main()
 		if (visible)
 			visible = sphere_in_side_planes(centerWS, radiusWS, pl, pr, pb, pt);
 
-		if (visible)
-			visible = !meshletConeCulled(ml, model, centerWS, radiusWS, pc.eye, coneFlip);
+		if (visible && !twoSided)
+			visible = !meshletConeCulled(
+				ml,
+				model,
+				centerWS,
+				radiusWS,
+				pc.eye,
+				coneFlip
+			);
 	}
 
 	uvec4 ballot = subgroupBallot(visible);

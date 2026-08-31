@@ -8,7 +8,6 @@
 #include "../../../frame/FrameContext.h"
 
 static constexpr size_t PIPE_ID_WIREFRAME      = 0;
-static constexpr size_t PIPE_ID_WIREFRAME_MESH = 1;
 
 void RegisterWireframePass(
 	RenderGraph& graph,
@@ -51,12 +50,7 @@ void RegisterWireframePass(
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 						const auto& frameCtx = ctx.frameCtx;
 
-						const bool bMeshPath = ctx.frameState->IsMeshShaderPath();
-
 						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto indirectBuffer =
-							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer;
 
 						const auto indirectCountBuffer =
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
@@ -75,21 +69,18 @@ void RegisterWireframePass(
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
 						depthAttach.SetDepth(0);
 
-						if (bMeshPath)
-						{
-							pso.BindReadImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_READ_1,
-								ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ),
-								ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ),
-								VK_REMAINING_MIP_LEVELS,
-								RD::ImageAccess::MeshShaderRead);
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ),
+							ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ),
+							VK_REMAINING_MIP_LEVELS,
+							RD::ImageAccess::MeshShaderRead);
 
-							PrepassTaskPush push{};
-							push.slot  = RD::VIS_SLOT_OPAQUE;
-							push.phase = 2u;
-							pso.SetPush(push);
-						}
+						PrepassTaskPush push{};
+						push.slot = RD::VIS_SLOT_OPAQUE;
+						push.phase = 2u;
+						pso.SetPush(push);
 
 						pso.UpdateRenderInfo(
 							{ opaque.Width(), opaque.Height() },
@@ -97,26 +88,13 @@ void RegisterWireframePass(
 
 						pso.BeginRendering(cmd);
 
-						if (bMeshPath)
-						{
-							pso.DrawMeshTasksIndirectCount(
-								cmd,
-								RD::VIS_SLOT_OPAQUE,
-								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer,
-								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
-								pass.pipelines[PIPE_ID_WIREFRAME_MESH],
-								pass.pushWriter);
-						}
-						else
-						{
-							pso.DrawIndexedIndirectCount(
-								cmd,
-								RD::VIS_SLOT_OPAQUE,
-								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws).m_buffer,
-								frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
-								pass.pipelines[PIPE_ID_WIREFRAME],
-								pass.pushWriter);
-						}
+						pso.DrawMeshTasksIndirectCount(
+							cmd,
+							RD::VIS_SLOT_OPAQUE,
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer,
+							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
+							pass.pipelines[PIPE_ID_WIREFRAME],
+							pass.pushWriter);
 
 						pso.EndRendering(cmd);
 					});

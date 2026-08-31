@@ -4,6 +4,10 @@
 #extension GL_ARB_separate_shader_objects : require
 #include "../include/common.glsl"
 #include "../include/culling.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+
+// Core draw building stage using binned info to create an optimized array for instance access.
 
 layout(local_size_x = 256) in;
 
@@ -61,18 +65,16 @@ void main()
 
 	DrawBinCounterBuffer     binCounters = getDrawBinCounterBuffer();
 	DrawBinBuffer            bins        = getDrawBinBuffer();
-	IndirectDrawBuffer       draws       = getIndirectDrawBuffer();
 	IndirectDrawCountsBuffer drawCounts  = getIndirectDrawCountsBuffer();
 	TaskDispatchBuffer       tasks       = getTaskDispatchBuffer();
 	MeshBuffer               meshes      = getMeshBuffer();
 	DrawBinKeysBuffer        keyTable    = getDrawBinKeyBuffer();
 	DebugToggles             debug       = getDebugToggles();
 
-	bool isShadowStream = (slot >= VIS_SLOT_CSM0) || (slot == VIS_SLOT_FLASHLIGHT);
-	bool isTransparent = slot == VIS_SLOT_TRANSPARENT;
+	// Shadow draws start at flashlight shadow map
+	bool isShadowStream = (slot >= TASK_MAX_FLASHLIGHT);
 
-	// Region caps — one counter feeds both arrays, so each write is guarded
-	// against its own region. Transparent has a zero-width task region.
+	// Region caps — one counter feeds both arrays, so each write is guarded against its own region.
 	uint maxDraws = maxDrawsForSlot(slot);
 	uint maxTasks = maxTaskDispatches(slot);
 
@@ -107,26 +109,14 @@ void main()
 			uint firstIndex   = isShadowStream ? mesh.shadowFirstIndex : mesh.firstIndex;
 			uint instanceBase = streamInstanceBase(slot) + binOffset;
 
-			if (drawIdx < maxDraws)
-			{
-				IndirectIndexedDrawCmd cmd;
-				cmd.indexCount    = indexCount;
-				cmd.firstIndex    = firstIndex;
-				cmd.instanceCount = count;
-				cmd.vertexOffset  = int(mesh.vertexOffset);
-				cmd.firstInstance = instanceBase;
-
-				draws.indirectDraws[drawBase + drawIdx] = cmd;
-			}
-
-			// Task dispatch record — mesh shader path
-			if (maxTasks > 0u && drawIdx < maxTasks && debug.renderingMode == RENDERING_MODE_MESH_SHADERS)
+			// Task dispatch record
+			if (maxTasks > 0u && drawIdx < maxTasks)
 			{
 				uint meshletOffset  = isShadowStream ? mesh.shadowMeshletOffset : mesh.meshletOffset;
 				uint meshletCount   = isShadowStream ? mesh.shadowMeshletCount  : mesh.meshletCount;
 				uint visibilityBase = isShadowStream ? 0u : mesh.meshletVisibilityBase;
 
-				if (DBG(enableProfilerView) && slot == VIS_SLOT_OPAQUE)
+				if (DBG(enableProfilerView) && !isShadowStream)
 				{
 					atomicAdd(getGPUStatsBuffer().gpuStats.meshletsSubmitted, meshletCount * count);
 				}

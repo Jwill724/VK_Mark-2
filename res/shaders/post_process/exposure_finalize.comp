@@ -58,6 +58,6 @@ void main()
 
 		float exposure = pc.cameraExposure / Lavg;
 
-		lBuf.luminanceSums[0] = vec4(exposure, 0.0, 0.0, 0.0);
+		lBuf.luminanceSums[0] = vec4(exposure, Lavg, 0.0, 0.0);
 	}
 }

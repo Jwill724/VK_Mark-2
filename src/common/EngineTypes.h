@@ -7,6 +7,13 @@
 #include <array>
 #include <cstdint>
 
+#ifndef NDEBUG
+#include <cassert>
+#define ASSERT(x) assert(x)
+#else
+#define ASSERT(x) ((void)0)
+#endif
+
 // Very simple function fifo queue
 // Primary use for storing destruction for buffers and images.
 // Thanks vkguide
@@ -133,7 +140,7 @@ enum class ThreadRole
 	Worker
 };
 
-enum class GLTFJobType
+enum class AssetJobType
 {
 	LoadFile,
 	DecodeImages,

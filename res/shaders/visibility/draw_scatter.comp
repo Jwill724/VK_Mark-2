@@ -5,6 +5,10 @@
 
 #include "../include/common.glsl"
 #include "../include/culling.glsl"
+#include "../include/barycentric.glsl"
+#include "../include/visbuffer.glsl"
+
+// Utilizing pre-created bin lut for 
 
 layout(local_size_x = 256) in;
 
@@ -24,39 +28,97 @@ void routeToStream(uint slot, uint visibleID, uint meshID, uint materialID, uint
 	getInstanceStreamsBuffer().entries[slot * MAX_INSTANCES_PER_STREAM + cursor] = e;
 }
 
+void routeVisibleToStream(
+	uint slot,
+	uint visibleID,
+	VisibleInstance vis,
+	InstanceInput instance)
+{
+	uint lodIdx = resolveLODIndexForStream(
+		vis,
+		instance,
+		slot);
+
+	uint meshID = resolveMeshForStream(
+		vis,
+		instance,
+		slot);
+
+	routeToStream(
+		slot,
+		visibleID,
+		meshID,
+		instance.materialID,
+		lodIdx);
+}
+
 void main()
 {
 	uint visibleID = gl_GlobalInvocationID.x;
+
 	uint total = getIndirectDispatchBuffer().args[INDIRECT_DISPATCH_SLOT_SCATTER].w;
+
 	if (visibleID >= total) return;
 
-	VisibleInstance vis    = getVisibleInstanceBuffer().visibles[visibleID];
+	VisibleInstance vis = getVisibleInstanceBuffer().visibles[visibleID];
+
 	InstanceInput instance = getInstanceInputBuffer().instanceInputs[vis.instanceID];
 
+	// Primary surface stream.
 	if ((vis.visMask & VIS_PRIMARY_OPAQUE) != 0u)
 	{
-		routeToStream(VIS_SLOT_OPAQUE, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
+		routeVisibleToStream(
+			VIS_SLOT_OPAQUE,
+			visibleID,
+			vis,
+			instance);
 	}
 	else if ((vis.visMask & VIS_PRIMARY_OPAQUE_MASKED) != 0u)
 	{
-		routeToStream(VIS_SLOT_OPAQUE_MASKED, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
+		routeVisibleToStream(
+			VIS_SLOT_OPAQUE_MASKED,
+			visibleID,
+			vis,
+			instance);
 	}
 	else if ((vis.visMask & VIS_PRIMARY_TRANSPARENT) != 0u)
 	{
-		routeToStream(VIS_SLOT_TRANSPARENT, visibleID, vis.selectedMesh, instance.materialID, vis.lodIndex);
+		routeVisibleToStream(
+			VIS_SLOT_TRANSPARENT,
+			visibleID,
+			vis,
+			instance);
 	}
 
+	// Flashlight shadow.
 	if ((vis.visMask & VIS_FLASHLIGHT) != 0u)
 	{
-		routeToStream(VIS_SLOT_FLASHLIGHT, visibleID, instance.shadowLod0, instance.materialID, LOD_IDX_SHADOW0);
+		routeVisibleToStream(
+			VIS_SLOT_FLASHLIGHT,
+			visibleID,
+			vis,
+			instance);
 	}
 
+	// Surface CSM.
 	for (uint c = 0u; c < MAX_CASCADES; ++c)
 	{
-		if ((vis.visMask & (VIS_CSM0 << c)) != 0u)
-		{
-			uint sIdx = selectShadowLODIndex(instance, c);
-			routeToStream(VIS_SLOT_CSM0 + c, visibleID, meshFromLODIndex(instance, sIdx), instance.materialID, sIdx);
-		}
+		if ((vis.visMask & (VIS_CSM0 << c)) == 0u) continue;
+
+		routeVisibleToStream(
+			VIS_SLOT_CSM0 + c,
+			visibleID,
+			vis,
+			instance);
+	}
+
+	// Volumetric shadow.
+	if ((vis.visMask & VIS_VOLUMETRIC) != 0u)
+	{
+		routeVisibleToStream(
+			VIS_SLOT_VOLUMETRIC,
+			visibleID,
+			vis,
+			instance);
 	}
 }

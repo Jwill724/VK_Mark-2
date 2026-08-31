@@ -49,7 +49,6 @@ void RegisterDrawBuildPass(
 						const auto& drawBinCountersBuffer      = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::DrawBinCounters);
 						const auto& indirectDrawCountsBuffer   = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts);
 						const auto& drawInstanceIDsBuffer      = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::DrawInstanceIDs);
-						const auto& indirectDrawsBuffer        = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDraws);
 						const auto& instanceCursorsBuffer      = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::InstanceCursors);
 						const auto& dispatchIndirectArgsBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::DispatchIndirectArgs);
 						const auto& instanceStreamsBuffer      = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::InstanceStreams);
@@ -85,7 +84,6 @@ void RegisterDrawBuildPass(
 						B::ComputeWriteToRead(cmd, drawBinsBuffer);
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);
 						B::ComputeWriteToIndirectRead(cmd, indirectDrawCountsBuffer);
-						B::ComputeWriteToIndirectRead(cmd, indirectDrawsBuffer);
 
 						// ==================
 						// === DRAW PLACE ===
@@ -103,14 +101,7 @@ void RegisterDrawBuildPass(
 
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);
 
-						if (ctx.frameState->IsMeshShaderPath())
-						{
-							B::ComputeWriteToTaskRead(cmd, drawInstanceIDsBuffer);
-						}
-						else
-						{
-							B::ComputeWriteToVertexRead(cmd, drawInstanceIDsBuffer);
-						}
+						B::ComputeWriteToTaskRead(cmd, drawInstanceIDsBuffer);
 					});
 		});
 }

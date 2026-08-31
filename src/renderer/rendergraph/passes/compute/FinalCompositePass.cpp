@@ -28,8 +28,8 @@ void RegisterFinalCompositePass(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::Read)
 
-				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
-				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
+					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
@@ -54,12 +54,6 @@ void RegisterFinalCompositePass(
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
-				// Possible cmaa2 write
-				.WriteResource(
-					RD::Renderer_RenderTarget::AAColor,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
-
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -79,9 +73,8 @@ void RegisterFinalCompositePass(
 
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
-							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x)));
+							: ctx.imageTable->GetRenderTarget(TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex()).write);
 
-						const auto& aaColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AAColor);
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
@@ -96,23 +89,6 @@ void RegisterFinalCompositePass(
 							RD::PUSH_BINDING_WRITE_1,
 							tonemap);
 
-						if (ctx.frameState->CopyPostAAImage() &&
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_CMAA2) &&
-							!ctx.frameState->DebugRendering())
-						{
-							pso.BindWriteImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_WRITE_2,
-								aaColor);
-						}
-						else
-						{
-							pso.BindWriteImage(
-								pass.pushWriter,
-								RD::PUSH_BINDING_WRITE_2,
-								tonemap);
-						}
-
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
@@ -125,8 +101,8 @@ void RegisterFinalCompositePass(
 							transparent,
 							linearSampler);
 
-						if (ctx.profiler->debugToggles.enableVolumetrics &&
-							ctx.profiler->debugToggles.enableShadows &&
+						if (ctx.frameState->IsVolumetricsOn() &&
+							ctx.scene->GetVolumetricShadowInfo().params.y != 0.0f &&
 							!ctx.frameState->DebugRendering())
 						{
 							pso.BindReadImage(

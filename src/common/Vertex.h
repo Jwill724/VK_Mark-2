@@ -111,11 +111,11 @@ inline void EncodeOctahedral_Tangent(Vertex& vertex, const glm::vec4& t)
 
 	int16_t tx = static_cast<int16_t>(glm::clamp(
 		static_cast<int>(std::round(enc.x * 32767.0f)), -32767, 32767));
-	int16_t ty = static_cast<int16_t>(glm::clamp(
-		static_cast<int>(std::round(enc.y * 32767.0f)), -32767, 32767));
 
-	// Flip sign of Y to encode tangentW, avoiding zero
-	if (ty == 0) ty = 1; // guard: zero has no sign
+	const float yBiased = enc.y * 0.5f + 0.5f;
+	int16_t ty = static_cast<int16_t>(glm::clamp(
+		static_cast<int>(std::round(yBiased * 32767.0f)), 1, 32767));
+
 	if (t.w < 0.0f) ty = -ty;
 
 	vertex.tangentX = tx;

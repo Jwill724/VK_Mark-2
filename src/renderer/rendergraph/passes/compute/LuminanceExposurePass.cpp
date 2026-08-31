@@ -33,8 +33,8 @@ void RegisterLuminanceExposurePass(
 					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::Read)
 
-				.ReadResource(TAA_RESOLVED_A, RD::ImageAccess::Read)
-				.ReadResource(TAA_RESOLVED_B, RD::ImageAccess::Read)
+				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
+					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
@@ -52,9 +52,12 @@ void RegisterLuminanceExposurePass(
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
 						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
 
+						uint32_t frameIndex = ctx.scene->GetSceneData().temporal.x;
+						const auto& resolvedTaa = TemporalHistory::GetColorHistorySlots(static_cast<uint64_t>(frameIndex)).write;
+
 						const auto& opaque = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
-							: ctx.imageTable->GetRenderTarget(TaaHistory::Resolved(static_cast<uint64_t>(ctx.scene->GetSceneData().temporal.x)));
+							: ctx.imageTable->GetRenderTarget(resolvedTaa);
 
 						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);

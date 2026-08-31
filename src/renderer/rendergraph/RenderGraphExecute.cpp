@@ -45,25 +45,28 @@ void RenderGraph::Build(
 	RegisterInstanceCullPass(*this,        pipeManager.GetBundle<InstanceCullPipelineSlot>());
 	RegisterDrawBuildPass(*this,           pipeManager.GetBundle<DrawBuildPipelineSlot>());
 
-	// --- Prepass & HiZ ---
+	// --- Prepass & HiZ & Material resolve and other stuff ------
 	RegisterThePrepass(*this,              pipeManager.GetBundle<BasePrepassPipelineSlot>());
 	RegisterHiZGenerationPass(*this,       pipeManager.GetBundle<HiZGenerationPipelineSlot>());
 	RegisterThePrepassLate(*this,          pipeManager.GetBundle<BasePrepassPipelineSlot>());
 	RegisterHiZGenerationLatePass(*this,   pipeManager.GetBundle<HiZGenerationPipelineSlot>());
 	RegisterVelocityResolvePass(*this,     pipeManager.GetBundle<VelocityResolvePipelineSlot>());
+	RegisterMaterialResolvePass(*this,     pipeManager.GetBundle<MaterialResolvePipelineSlot>());
 
 	RegisterWireframePass(*this,           pipeManager.GetBundle<OpaqueWireframePipelineSlot>());
 
-	// --- Shadow raster ---
 	RegisterDirectionalCSMPass(*this,      pipeManager.GetBundle<DirectionalCSMPipelineSlot>());
 	RegisterFlashlightShadowMapPass(*this, pipeManager.GetBundle<FlashlightShadowPipelineSlot>());
-
-	// --- Material resolve ---
-	RegisterMaterialResolvePass(*this,     pipeManager.GetBundle<MaterialResolvePipelineSlot>());
-
-	// --- LightingAO ---
-	RegisterSSAOPass(*this,                pipeManager.GetBundle<SSAOPipelineSlot>());
+	RegisterVolumetricShadowMapPass(*this, pipeManager.GetBundle<VolumetricShadowPipelineSlot>());
+	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
 	RegisterClusteredLightsPass(*this,     pipeManager.GetBundle<ClusteredLightsPipelineSlot>());
+
+	// --- Lighting ---
+	RegisterTLASBuildPass(*this,           pipeManager.GetBundle<TlasInstancesPipelineSlot>());
+	RegisterRTShadowsPass(*this,           pipeManager.GetBundle<RTSunShadowPipelineSlot>());
+	RegisterRTReflectionsPass(*this,       pipeManager.GetBundle<RTReflectionsPipelineSlot>());
+	RegisterNRDDenoisePass(*this);
+	RegisterSSGIPass(*this,                pipeManager.GetBundle<SSGIPipelineSlot>());
 	RegisterContactShadowsPass(*this,      pipeManager.GetBundle<SSContactShadowPipelineSlot>());
 
 	// --- Opaque + Skybox ---
@@ -73,9 +76,6 @@ void RenderGraph::Build(
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
 	RegisterTransparentResolvePass(*this,  pipeManager.GetBundle<TransparentResolvePipelineSlot>());
-
-	// --- Volumetrics ---
-	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
 
 	// --- Debug Line ---
 	RegisterDebugDrawBuildPass(*this,      pipeManager.GetBundle<DebugBuildPipelineSlot>());
@@ -93,10 +93,6 @@ void RenderGraph::Build(
 	// --- Debug gbuffer ---
 	RegisterGBufferDebugPass(*this,        pipeManager.GetBundle<GBufferDebugPipelineSlot>());
 
-	// --- Post AA ---
-	RegisterCMAA2Pass(*this,               pipeManager.GetBundle<CMAA2PipelineSlot>());
-	RegisterSMAAPass(*this,                pipeManager.GetBundle<SMAAPipelineSlot>());
-	RegisterFXAAPass(*this,                pipeManager.GetBundle<FXAAPipelineSlot>());
 	RegisterChromaticAberrationPass(*this, pipeManager.GetBundle<ChromaticAberrationPipelineSlot>());
 
 	// --- Final ---
@@ -295,6 +291,8 @@ void RenderGraph::AssembleGraphicsBatch(
 		ctx.commandBuffer = primary;
 		ctx.scheduleInfo  = &info;
 		ctx.threadSlot    = JobSystem::RENDER_THREAD;
+
+		pass.pushWriter.Clear();
 
 		pass.record(ctx, pass);
 

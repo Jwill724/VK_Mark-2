@@ -6,6 +6,9 @@
 
 constexpr float kMaxHiZTranslation = 1.5f;
 constexpr float kMaxHiZRotationDeg = 15.0f;
+constexpr float kTaaMipBias        = -0.5f;
+constexpr float kTaaBiasFadeLod    = 2.0f;
+constexpr float kTaaBiasFadeSpan   = 4.0f;
 static constexpr uint32_t TAA_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
 
 static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex);
@@ -46,28 +49,38 @@ void Scene::InitScene(glm::vec3 spawn)
 	m_currentJitterNDC = glm::vec2(0.0f);
 	m_previousJitterNDC = glm::vec2(0.0f);
 
-	m_lastViewProjUnjittered = glm::mat4(1.0f);
-	//m_lastViewProjJittered = glm::mat4(1.0f);
-
-	m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 10.0f);    // golden sun
-	// m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 10.0f); // white
+	m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.55f, 0.2f, 50.0f);    // golden sun
+	//m_sceneInfo.sunlightColor = glm::vec4(1.0f, 0.96f, 0.87f, 50.0f); // white
 	m_sceneInfo.sunlightDirection = glm::vec4(0.36f, 0.46f, -0.09f, 0.0f);
+
+	m_shadowControl.shadowFar = m_shadowFar;
 }
 
 bool Scene::UpdateCamera(
 	Extents2D drawExtent,
 	Profiler& profiler,
-	GLFWwindow* window)
+	GLFWwindow* window,
+	bool isTemporalAllowed)
 {
 	bool isTemporalInvalid = false;
 
 	const auto& aaMode = profiler.debugToggles.aaMode;
+	const bool jitterOn = (aaMode == TAA_U32) && isTemporalAllowed;
 
-	if (aaMode != m_lastAaMode)
+	if (aaMode != m_lastAaMode || jitterOn != m_lastJitterOn)
 	{
 		m_lastAaMode = aaMode;
+		m_lastJitterOn = jitterOn;
 		isTemporalInvalid = true;
 	}
+
+	ASSERT(drawExtent.Width() > 0u && drawExtent.Height() > 0u,
+		"UpdateCamera got a degenerate extent %ux%u.",
+		drawExtent.Width(), drawExtent.Height());
+
+	const glm::mat4 lastView               = m_sceneInfo.view;
+	const glm::mat4 lastInvView            = m_sceneInfo.invView;
+	const glm::mat4 lastViewProjUnjittered = m_sceneInfo.viewProjUnjittered;
 
 	float width  = static_cast<float>(drawExtent.Width());
 	float height = static_cast<float>(drawExtent.Height());
@@ -103,11 +116,15 @@ bool Scene::UpdateCamera(
 
 	glm::vec2 jitterNDC = glm::vec2(0.0f);
 
-	if (aaMode == TAA_U32)
+	if (jitterOn)
 	{
 		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
 		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
 	}
+
+	m_sceneInfo.prevView               = lastView;
+	m_sceneInfo.prevInvView            = lastInvView;
+	m_sceneInfo.prevViewProjUnjittered = lastViewProjUnjittered;
 
 	m_currentJitterNDC = jitterNDC;
 	m_curCamProjJittered = ApplyProjectionJitter(m_curCamProjUnjittered, m_currentJitterNDC);
@@ -119,7 +136,7 @@ bool Scene::UpdateCamera(
 	m_sceneInfo.view = m_curCamView;
 	m_sceneInfo.invView = glm::inverse(m_curCamView);
 
-	if (aaMode == TAA_U32)
+	if (jitterOn)
 	{
 		m_sceneInfo.proj = m_curCamProjJittered;
 		m_sceneInfo.invProj = glm::inverse(m_curCamProjJittered);
@@ -139,20 +156,31 @@ bool Scene::UpdateCamera(
 
 		m_sceneInfo.temporalJitter = glm::vec4(0.0f);
 	}
-	m_sceneInfo.prevViewProjUnjittered = m_lastViewProjUnjittered;
+
+	m_sceneInfo.tanHalfFov.x = 1.0f / m_sceneInfo.proj[0][0];
+	m_sceneInfo.tanHalfFov.y = 1.0f / m_sceneInfo.proj[1][1];
+
+	m_sceneInfo.depthLinearizeMult = -m_sceneInfo.proj[3][2];
+	m_sceneInfo.depthLinearizeAdd = m_sceneInfo.proj[2][2];
+
+	if (m_sceneInfo.depthLinearizeMult * m_sceneInfo.depthLinearizeAdd < 0.0)
+	{
+		m_sceneInfo.depthLinearizeAdd = -m_sceneInfo.depthLinearizeAdd;
+	}
+
+	m_sceneInfo.ndcToViewMult = glm::vec2(
+		m_sceneInfo.tanHalfFov.x * 2.0f,
+		m_sceneInfo.tanHalfFov.y * -2.0f);
+
+	m_sceneInfo.ndcToViewAdd = glm::vec2(
+		m_sceneInfo.tanHalfFov.x * -1.0f,
+		m_sceneInfo.tanHalfFov.y * 1.0f);
 
 	m_sceneInfo.projUnjittered = m_curCamProjUnjittered;
 
 	m_sceneInfo.viewProjUnjittered = currentViewProjUnjittered; // unjittered current — velocity curr NDC
 
 	m_sceneInfo.cameraPos = glm::vec4(m_camera.GetPosition(), 0.0f);
-
-	m_lastViewProjUnjittered = currentViewProjUnjittered;
-
-	//m_lastViewProjJittered = currentViewProjJittered;
-
-	m_sceneInfo.prevView = m_lastView;
-	m_lastView = m_curCamView;
 
 	if (m_sceneInfo.viewportSize.x != width || m_sceneInfo.viewportSize.y != height)
 	{
@@ -184,7 +212,12 @@ bool Scene::UpdateCamera(
 		isTemporalInvalid = true;
 	}
 
-	m_sceneInfo.viewportSize.w = (aaMode == TAA_U32) ? -1.0f : 0.0f;
+	// For when preforming upscaling
+	// const float mipBias = std::log2(drawExtent / displayWidth) - 0.5f;
+
+	m_sceneInfo.taaMipParams = jitterOn
+		? glm::vec4(kTaaMipBias, kTaaBiasFadeLod, 1.0f / kTaaBiasFadeSpan, 0.0f)
+		: glm::vec4(0.0f, 0.0f, 1.0f, 0.0f);
 
 	return isTemporalInvalid;
 }
@@ -210,6 +243,52 @@ void Scene::BuildMotionMatrices(bool bMotionNeeded, bool bTemporalValid)
 	}
 
 	m_prevDynamicTransforms = m_dynamicTransforms;
+}
+
+static float HaltonSequence(uint32_t index, uint32_t base)
+{
+	float f = 1.0, r = 0.0;
+	while (index > 0)
+	{
+		f /= static_cast<float>(base);
+		r += f * float(index % base);
+		index /= base;
+	}
+	return r;
+}
+
+static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex)
+{
+
+	uint32_t index = (frameIndex % RD::TAA_SAMPLE_COUNT) + 1u;
+
+	glm::vec2 jitter;
+	jitter.x = HaltonSequence(index, 2u);
+	jitter.y = HaltonSequence(index, 3u);
+	jitter -= glm::vec2(0.5f);
+	return jitter;
+}
+
+static glm::vec2 ConvertJitterPixelsToNDC(
+	const glm::vec2 jitterPixels,
+	const float width,
+	const float height)
+{
+	glm::vec2 jitterNDC = glm::vec2(0.0f);
+
+	jitterNDC.x = (2.0f * jitterPixels.x) / width;
+	jitterNDC.y = (2.0f * jitterPixels.y) / height;
+
+	return jitterNDC;
+}
+
+static glm::mat4 ApplyProjectionJitter(
+	glm::mat4 proj,
+	const glm::vec2 jitterNDC)
+{
+	proj[2][0] += jitterNDC.x;
+	proj[2][1] += jitterNDC.y;
+	return proj;
 }
 
 // =============================
@@ -258,6 +337,9 @@ void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bind
 		atlasHeight / tilesPerRow
 	};
 
+	m_csmAtlasWidth = atlasWidth;
+	m_csmAtlasHeight = atlasHeight;
+
 	const uint32_t borderPixels = 2;
 
 	for (uint32_t cascadeIndex = 0; cascadeIndex < RD::MAX_SHADOW_CASCADES; ++cascadeIndex)
@@ -268,16 +350,49 @@ void Scene::InitCSMInfo(uint32_t atlasWidth, uint32_t atlasHeight, uint32_t bind
 		m_csmInfo.atlasUV[cascadeIndex] = BuildAtlasUV(atlasExtent, tileExtent, tileX, tileY, borderPixels);
 	}
 
-	m_csmAtlasTileRes = static_cast<float>(atlasWidth / 2u);
+	m_csmAtlasTileRes = static_cast<float>(atlasWidth / tilesPerRow);
+
+	m_pcssTexel = 1.0f / static_cast<float>(atlasWidth);
+	m_pcfTexel = 1.0f / m_csmAtlasTileRes;
 
 	m_shadowControl.splitLambda = 0.97f;
 	m_csmInfo.params.x = static_cast<float>(bindlessID);
 	m_csmInfo.params.y = static_cast<float>(RD::MAX_SHADOW_CASCADES);
-	m_csmInfo.params.z = 1.0f / m_csmAtlasTileRes;
 	m_csmInfo.params.w = m_shadowControl.lsEpsilon;
-	m_csmInfo.maxFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+	m_csmInfo.maxPcfFilterRadiusTexels = { 1.0f, 1.1f, 1.2f, 1.5f };
+
+	UpdatePCSSParams();
 
 	m_bShouldSplitsUpdate = true;
+}
+
+void Scene::UpdatePCSSParams()
+{
+	// Gaussian-weighted Vogel disk: exp(-2d^2) over a uniform-area disk pulls the
+	// effective RMS radius to ~0.83 of nominal.
+	static constexpr float PCSS_KERNEL_RMS = 0.83f;
+
+	m_csmInfo.pcss.x = std::tan(glm::radians(m_shadowControl.sunAngularRadiusDeg)) / PCSS_KERNEL_RMS;
+	m_csmInfo.pcss.y = m_shadowControl.minFilterRadiusTexels;
+	m_csmInfo.pcss.z = m_shadowControl.searchRadiusScale;
+	m_csmInfo.pcss.w = std::max(m_shadowControl.maxNormalOffsetTexels, 1.0f);
+
+	m_csmInfo.maxPcssFilterRadiusTexels = m_shadowControl.pcssMaxRadiusTexels;
+
+	m_csmInfo.pcssBias.x = m_shadowControl.pcssContactOffsetTexels;
+	m_csmInfo.pcssBias.y = m_shadowControl.pcssOffsetGapFraction;
+}
+
+void Scene::UpdateShadowTexel(RD::SunShadowFilter filterMode)
+{
+	if (filterMode == RD::SunShadowFilter::PCF)
+	{
+		m_csmInfo.params.z = m_pcfTexel;
+	}
+	else
+	{
+		m_csmInfo.params.z = m_pcssTexel;
+	}
 }
 
 // Two great starting points to learn cascade shadow maps
@@ -297,6 +412,8 @@ void Scene::UpdateCSMInfo()
 		0.160f,
 		0.500f // sss carries last cascade
 	};
+
+	UpdatePCSSParams();
 
 	const auto lightDir = GetLightDir();
 
@@ -384,49 +501,167 @@ void Scene::UpdateCSMInfo()
 	}
 }
 
-static float HaltonSequence(uint32_t index, uint32_t base)
+void Scene::InitVolumetricShadowInfo(
+	uint32_t shadowWidth,
+	uint32_t shadowHeight,
+	uint32_t bindlessID)
 {
-	float f = 1.0, r = 0.0;
-	while (index > 0) {
-		f /= static_cast<float>(base);
-		r += f * float(index % base);
-		index /= base;
+	assert(shadowWidth == shadowHeight);
+
+	m_volumetricShadowTileRes = static_cast<float>(shadowWidth);
+
+	m_volumetricShadowInfo.params.x = static_cast<float>(bindlessID);
+
+	m_volumetricShadowInfo.params.z = 1.0f / m_volumetricShadowTileRes;
+
+	m_volumetricShadowInfo.params.w = m_shadowControl.lsEpsilon;
+}
+
+void Scene::UpdateVolumetricShadowInfo(float maxDistance)
+{
+	constexpr float SHADOW_SUN_MARGIN = glm::radians(50.0f);
+	
+	const glm::vec3 lightDir = GetLightDir();
+	
+	const glm::vec3 cameraForward =
+		-glm::normalize(glm::vec3(m_sceneInfo.invView[2]));
+	
+	const float tanHalfFovX = m_sceneInfo.tanHalfFov.x;
+	const float tanHalfFovY = m_sceneInfo.tanHalfFov.y;
+	
+	const float viewLightAngle =
+		std::acos(
+			glm::clamp(
+				glm::dot(cameraForward, lightDir),
+				-1.0f,
+				1.0f));
+	
+	const float halfFovDiagonal =
+		std::atan(
+			std::sqrt(
+				tanHalfFovX * tanHalfFovX +
+				tanHalfFovY * tanHalfFovY));
+	
+	const float visibleSunAngle = viewLightAngle - halfFovDiagonal;
+	
+	if (visibleSunAngle >= glm::half_pi<float>() - SHADOW_SUN_MARGIN)
+	{
+		m_volumetricShadowInfo.params.y = 0.0f;
+		return;
 	}
-	return r;
-}
 
-static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex)
-{
-	const uint32_t sequenceLength = 8u;
-	uint32_t index = (frameIndex % sequenceLength) + 1u;
+	m_volumetricShadowInfo.params.y = 1.0f;
 
-	glm::vec2 jitter;
-	jitter.x = HaltonSequence(index, 2u);
-	jitter.y = HaltonSequence(index, 3u);
-	jitter -= glm::vec2(0.5f);
-	return jitter;
-}
+	const float nearClip = m_camera.GetNearClip();
+	const float farClip = m_camera.GetFarClip();
 
-static glm::vec2 ConvertJitterPixelsToNDC(
-	const glm::vec2 jitterPixels,
-	const float width,
-	const float height)
-{
-	glm::vec2 jitterNDC = glm::vec2(0.0f);
+	const float fogFar =
+		glm::clamp(
+			maxDistance,
+			nearClip + 0.001f,
+			farClip);
 
-	jitterNDC.x = (2.0f * jitterPixels.x) / width;
-	jitterNDC.y = (2.0f * jitterPixels.y) / height;
+	const glm::mat4 invView = m_sceneInfo.invView;
 
-	return jitterNDC;
-}
+	glm::vec3 cornersWS[8];
 
-static glm::mat4 ApplyProjectionJitter(
-	glm::mat4 proj,
-	const glm::vec2 jitterNDC)
-{
-	proj[2][0] += jitterNDC.x;
-	proj[2][1] += jitterNDC.y;
-	return proj;
+	uint32_t cornerIndex = 0u;
+
+	for (uint32_t zSide = 0u; zSide < 2u; ++zSide)
+	{
+		const float z =
+			(zSide == 0u)
+			? nearClip
+			: fogFar;
+
+		const float x = z * tanHalfFovX;
+		const float y = z * tanHalfFovY;
+
+		for (uint32_t corner = 0u; corner < 4u; ++corner)
+		{
+			const glm::vec3 viewPos = glm::vec3(
+				(corner & 1u) != 0u ? x : -x,
+				(corner & 2u) != 0u ? y : -y,
+				-z);
+
+			cornersWS[cornerIndex++] = glm::vec3(invView * glm::vec4(viewPos, 1.0f));
+		}
+	}
+
+	glm::vec3 frustumCenter(0.0f);
+
+	for (const glm::vec3& corner : cornersWS)
+	{
+		frustumCenter += corner;
+	}
+
+	frustumCenter *= 1.0f / 8.0f;
+
+	float radius = 0.0f;
+
+	for (const glm::vec3& corner : cornersWS)
+	{
+		radius = std::max(radius, glm::length(corner - frustumCenter));
+	}
+
+	float worldUnitsPerTexel = (radius * 2.0f) / m_volumetricShadowTileRes;
+
+	radius = std::ceil(radius / worldUnitsPerTexel) * worldUnitsPerTexel;
+
+	worldUnitsPerTexel = (radius * 2.0f) / m_volumetricShadowTileRes;
+
+	m_volumetricShadowInfo.cascadeWorldTexel = worldUnitsPerTexel;
+
+	const glm::vec3 lightPos = frustumCenter + lightDir;
+
+	const glm::mat4 lightView =
+		glm::lookAtRH(
+			lightPos,
+			frustumCenter,
+			glm::vec3(0.0f, 1.0f, 0.0f));
+
+	m_volumetricShadowInfo.cascadeLightView = lightView;
+
+	glm::vec3 receiverLSMin(FLT_MAX);
+	glm::vec3 receiverLSMax(-FLT_MAX);
+
+	for (const glm::vec3& corner : cornersWS)
+	{
+		const glm::vec3 cornerLS = glm::vec3(lightView * glm::vec4(corner, 1.0f));
+
+		receiverLSMin = glm::min(receiverLSMin, cornerLS);
+		receiverLSMax = glm::max(receiverLSMax, cornerLS);
+	}
+
+	m_volumetricShadowInfo.receiverLSMin = glm::vec4(receiverLSMin, 0.0f);
+	m_volumetricShadowInfo.receiverLSMax = glm::vec4(receiverLSMax, 0.0f);
+
+	const float casterExtension = radius;
+
+	const float minZ = receiverLSMin.z;
+	const float maxZ = receiverLSMax.z + casterExtension;
+
+	const glm::mat4 lightProj =
+		glm::orthoRH_ZO(
+			-radius,
+			radius,
+			-radius,
+			radius,
+			minZ,
+			maxZ);
+
+	glm::mat4 shadowMatrix = lightProj * lightView;
+
+	glm::vec3 shadowOrigin = glm::vec3(shadowMatrix * glm::vec4(glm::vec3(0.0f), 1.0f));
+
+	shadowOrigin *= m_volumetricShadowTileRes * 0.5f;
+	const glm::vec3 roundedOrigin = glm::round(shadowOrigin);
+	glm::vec3 roundOffset = roundedOrigin - shadowOrigin;
+	roundOffset *= 2.0f / m_volumetricShadowTileRes;
+	roundOffset.z = 0.0f;
+	shadowMatrix[3] += glm::vec4(roundOffset, 0.0f);
+
+	m_volumetricShadowInfo.cascadeVP = shadowMatrix;
 }
 
 static int bend_min(const int a, const int b) { return a > b ? b : a; }

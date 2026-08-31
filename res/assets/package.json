@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2"
+  }
+}

@@ -28,7 +28,6 @@ void RegisterContactShadowsPass(
 					[](const RenderPassExecutionContext& ctx)
 					{
 						return
-							ctx.frameState->IsShadowsOn() &&
 							ctx.frameState->IsScreenSpaceShadowsOn() &&
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->IsWireframeOn();

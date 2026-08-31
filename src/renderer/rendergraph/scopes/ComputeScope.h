@@ -3,9 +3,11 @@
 #include "../RenderGraphResources.h"
 #include "EngineTypes.h"
 
+constexpr Extents3D WORKGROUP_32x32 { 32u, 32u, 1u };
 constexpr Extents3D WORKGROUP_16x16 { 16u, 16u, 1u };
 constexpr Extents3D WORKGROUP_8x8 { 8u, 8u, 1u };
 constexpr Extents3D WORKGROUP_256 { 256u, 1u, 1u };
+constexpr Extents3D WORKGROUP_64 { 64u, 1u, 1u };
 constexpr Extents3D WORKGROUP_1 { 1u, 1u, 1u };
 constexpr Extents3D WORKGROUP_NONE { 0u, 0u, 0u };
 
@@ -26,6 +28,7 @@ public:
 	void UpdateWorkgroups(Extents3D size, bool skipAutoGroupComputation = false)
 	{
 		m_workgroupSize = size;
+
 		if (m_workgroupSize.IsDefined() && skipAutoGroupComputation)
 		{
 			m_bSkipGroups = true;
@@ -50,12 +53,16 @@ public:
 		m_bSkipGroups = false;
 	}
 
-	void FillGpuBuffer(VkCommandBuffer cmd, const AllocatedBuffer& buf, uint32_t value = 0u);
+	void FillGpuBuffer(VkCommandBuffer cmd, const AllocatedBuffer& buf,
+		uint32_t value = 0u,
+		VkDeviceSize offset = 0,
+		VkDeviceSize size = VK_WHOLE_SIZE);
 
 	void DispatchComputePass(
 		VkCommandBuffer cmd,
 		const PipelineHandle& pipeHandle,
-		PushDescriptorWriter& pushWriter);
+		PushDescriptorWriter& pushWriter,
+		uint32_t pushSetIndex = RD::PUSH_SET);
 
 private:
 	Extents2D m_extent{ 0u, 0u };

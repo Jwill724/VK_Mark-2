@@ -1,29 +1,6 @@
 #ifndef CLUSTERED_GLSL
 #define CLUSTERED_GLSL
 
-//const uint LIGHT_TYPE_DIRECTIONAL = 0u;
-const uint LIGHT_TYPE_POINT       = 0u;
-const uint LIGHT_TYPE_SPOT        = 1u;
-
-const uint LIGHT_FLAG_CASTS_SPOT_SHADOW = 1u << 0;
-const uint LIGHT_FLAG_FLASHLIGHT        = 1u << 1;
-const uint LIGHT_FLAG_FLASHLIGHT_OFF    = 1u << 2;
-
-// Determines switch between dispatching over clusters or lights
-const uint LIGHT_THRESHOLD = 500u;
-
-//const uint LIGHT_LIST_STATIC_COUNT     = 2u;
-//const uint LIGHT_LIST_SLOT_DIRECTIONAL = 0u;
-//const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 1u;
-
-const uint LIGHT_LIST_STATIC_COUNT     = 1u;
-const uint LIGHT_LIST_SLOT_FLASHLIGHT  = 0u;
-
-//const uint MAX_LIGHTS = 16384u;
-const uint MAX_LIGHTS = 2048u;
-
-const uint MAX_VISIBLE_LIGHTS = MAX_LIGHTS - LIGHT_LIST_STATIC_COUNT;
-
 struct ClusterGrid {
 	uvec2 tileCoord;
 	uint tileIndex;

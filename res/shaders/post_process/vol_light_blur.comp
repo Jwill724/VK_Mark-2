@@ -1,0 +1,112 @@
+#version 450
+
+#extension GL_ARB_separate_shader_objects : require
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+#include "../include/depth.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+const ivec2 kSubsampleOffsets[4] = ivec2[4](
+	ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1)
+);
+
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inVolumetricLight;
+layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outBlurVolumetric;
+
+layout(push_constant) uniform VolumetricPush
+{
+	float density;
+	float scatteringStrength;
+	float extinction;
+	float heightFalloff;
+
+	float maxDistance;
+	float jitterStrength;
+	float asymmetryFactor;
+	float minTransmittance;
+
+	int   beamPower;
+
+	float blurRadius;
+	float blurDepthSigma;
+	float blurWeightSigma;
+
+	vec2  blurDirection;
+
+	float historyWeight;
+	float clipGamma;
+} pc;
+
+float linearizeVolumetricDepth(float deviceDepth, float mult, float add)
+{
+	return min(screenToViewDepth(max(deviceDepth, DEPTH_EPSILON_REVERSED_Z), mult, add), 1e6);
+}
+
+void main()
+{
+	ivec2 pixelCoord  = ivec2(gl_GlobalInvocationID.xy);
+	ivec2 halfResSize = imageSize(outBlurVolumetric);
+
+	if (any(greaterThanEqual(pixelCoord, halfResSize))) return;
+
+	vec4 centerValue = texelFetch(inVolumetricLight, pixelCoord, 0);
+
+	int radius = int(pc.blurRadius);
+	if (radius <= 0) {
+		imageStore(outBlurVolumetric, pixelCoord, centerValue);
+		return;
+	}
+
+	SceneData scene = getSceneData();
+
+	ivec2 fullResSize   = textureSize(inDepth, 0);
+	ivec2 subOffset     = kSubsampleOffsets[scene.temporal.x & 3u];
+	ivec2 stepDirection = ivec2(round(pc.blurDirection));
+
+	ivec2 centerFull = min(pixelCoord * 2 + subOffset, fullResSize - 1);
+	float centerDepth = linearizeVolumetricDepth(
+		texelFetch(inDepth, centerFull, 0).r,
+		scene.depthLinearizeMult,
+		scene.depthLinearizeAdd);
+
+	float sigma = (pc.blurWeightSigma > 0.0)
+		? pc.blurWeightSigma
+		: max(float(radius), 1.0) * 0.5;
+
+	float twoSigma2      = 2.0 * sigma * sigma;
+	float depthSigma     = max(pc.blurDepthSigma, 1e-4);
+	float twoDepthSigma2 = 2.0 * depthSigma * depthSigma;
+	float invCenterDepth = 1.0 / max(centerDepth, 1e-4);
+
+	vec3  accumulatedColor = centerValue.rgb;
+	float weightSum        = 1.0;
+
+	for (int i = 1; i <= radius; ++i) {
+		float tapDistance   = float(i);
+		float spatialWeight = exp(-(tapDistance * tapDistance) / twoSigma2);
+
+		for (int s = 0; s < 2; ++s) {
+			ivec2 offset  = stepDirection * (s == 0 ? i : -i);
+			ivec2 tapHalf = clamp(pixelCoord + offset, ivec2(0), halfResSize - 1);
+			ivec2 tapFull = min(tapHalf * 2 + subOffset, fullResSize - 1);
+
+			float tapDepth = linearizeVolumetricDepth(
+				texelFetch(inDepth, tapFull, 0).r,
+				scene.depthLinearizeMult,
+				scene.depthLinearizeAdd);
+
+			float depthDiff = (tapDepth - centerDepth) * invCenterDepth;
+			float weight    = spatialWeight * exp(-(depthDiff * depthDiff) / twoDepthSigma2);
+
+			accumulatedColor += texelFetch(inVolumetricLight, tapHalf, 0).rgb * weight;
+			weightSum        += weight;
+		}
+	}
+
+	accumulatedColor /= max(weightSum, 1e-6);
+
+	imageStore(outBlurVolumetric, pixelCoord, vec4(accumulatedColor, centerValue.a));
+}

@@ -34,14 +34,6 @@ public:
 		const PipelineHandle& pipeline,
 		PushDescriptorWriter& writer);
 
-	void DrawIndexedIndirectCount(
-		VkCommandBuffer cmd,
-		uint32_t drawIndex,
-		VkBuffer indirectDrawBuffer,
-		VkBuffer indirectCountBuffer,
-		const PipelineHandle& pipeHandle,
-		PushDescriptorWriter& pushWriter);
-
 	void DrawIndirect(
 		VkCommandBuffer cmd,
 		VkBuffer indirectDrawBuffer,

@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "LightingSystem.h"
+#include "../../core/asset/AssetUploadTypes.h"
 
 namespace LightingSystem
 {
@@ -9,7 +10,9 @@ namespace LightingSystem
 
 	std::vector<LocalLight> _globalLightList;
 	uint32_t _activeLightCount = 0u;
+	uint32_t _lightBufferCount = 0u;
 	const uint32_t& GetActiveLightCount() { return _activeLightCount; }
+	const uint32_t& GetLightBufferCount() { return _lightBufferCount; }
 
 	static bool isLightIDAlive(uint32_t lightID) {
 		if (lightID >= _lightIDTable.alive.size()) return false;
@@ -74,11 +77,11 @@ namespace LightingSystem
 		uint32_t newID = allocateLightID();
 
 		LocalLight defaultLight{};
-		defaultLight.type = LightType::Point;
+		defaultLight.flags |= RD::LIGHT_FLAG_POINT;
 		defaultLight.color = glm::vec3(1.0f);
 		defaultLight.position = glm::vec3(0.0f);
 		defaultLight.radius = 1.5f;
-		defaultLight.intensity = 2.5f;
+		defaultLight.intensity = 5.0f;
 
 		activateLight(std::move(defaultLight), newID);
 	}
@@ -103,9 +106,12 @@ namespace LightingSystem
 			(rand03 * 2.0f - 1.0f) * (posRange * 1.5f)
 		);
 
-		randomLight.type = LightType::Point;
-		randomLight.radius = 1.0f;
-		randomLight.intensity = 4.0f;
+		randomLight.flags |= RD::LIGHT_FLAG_POINT;
+		randomLight.radius = 4.0f;
+		randomLight.intensity = 20.0f;
+
+		const float rand09 = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+		randomLight.sourceRadius = glm::mix(0.03f, 0.30f, rand09 * rand09);
 
 		glm::vec3 colorA = glm::vec3(rand06, rand07, rand08);
 		const float minColor = 0.1f;
@@ -204,6 +210,45 @@ void LightingSystem::Init()
 	}
 }
 
+uint32_t LightingSystem::AddSceneLight(const SceneLightDesc& desc)
+{
+	uint32_t typeFlag = 0u;
+	switch (desc.type)
+	{
+	case 0u: typeFlag = RD::LIGHT_FLAG_POINT; break;
+	case 1u: typeFlag = RD::LIGHT_FLAG_SPOT;  break;
+	default: return UINT32_MAX;
+	}
+
+	if (_globalLightList.size() >= RD::MAX_LIGHTS)
+	{
+		fmt::println("[LightingSystem] Scene light dropped: at MAX_LIGHTS ({})", RD::MAX_LIGHTS);
+		return UINT32_MAX;
+	}
+
+	LocalLight light{};
+	light.flags |= typeFlag;
+	light.position = desc.position;
+	light.direction = desc.direction;
+	light.color = desc.color;
+	light.intensity = desc.intensity;
+	light.radius = desc.range;
+	light.innerCos = desc.innerCos;
+	light.outerCos = desc.outerCos;
+	light.sourceRadius = 0.0f;
+	light.sourceLength = 0.0f;
+
+	const uint32_t id = allocateLightID();
+	activateLight(std::move(light), id);
+	return id;
+}
+
+void LightingSystem::RemoveSceneLight(uint32_t lightID)
+{
+	if (lightID == UINT32_MAX) return;
+	destroyLight(lightID);
+}
+
 void LightingSystem::SetTargetActiveLightCount(uint32_t targetCount) {
 	uint32_t currentCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
 
@@ -270,6 +315,7 @@ bool Flashlight::UpdateFlashLight(
 	}
 
 	intensity = LightingSystem::_flashlightSettings.intensity;
+	sourceRadius = LightingSystem::_flashlightSettings.sourceRadius;
 
 	// Matrix update
 	if (m_bLightStateUpdated)
@@ -328,12 +374,10 @@ bool LightingSystem::UpdateLightList()
 	}
 	_lightIDTable.cleanupIDs.clear();
 
-	uint32_t activeCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
-
 	for (uint32_t sourceID : _lightIDTable.newCopiedIDs) {
-		if (activeCount >= RD::MAX_LIGHTS) {
-			fmt::println("[LightingSystem::UpdateLightList] copy break: activeCount={} max={}",
-				activeCount,
+		if (_globalLightList.size() >= RD::MAX_LIGHTS) {
+			fmt::println("[LightingSystem::UpdateLightList] copy break: listSize={} max={}",
+				_globalLightList.size(),
 				RD::MAX_LIGHTS
 			);
 			break;
@@ -352,39 +396,31 @@ bool LightingSystem::UpdateLightList()
 
 		uint32_t newID = allocateLightID();
 
-		fmt::println("[LightingSystem::UpdateLightList] copy: sourceID={} -> newID={} (activeBefore={})",
-			sourceID,
-			newID,
-			activeCount
-		);
-
 		LocalLight copiedLight = *sourceLight;
 		activateLight(std::move(copiedLight), newID);
 
-		++activeCount;
 		listChanged = true;
 	}
 	_lightIDTable.newCopiedIDs.clear();
 
 	uint32_t createCount = _lightIDTable.newIDCount;
 
-	while (createCount > 0 && activeCount < RD::MAX_LIGHTS) {
+	while (createCount > 0 && _globalLightList.size() < RD::MAX_LIGHTS) {
 		createRandomLight();
 		--createCount;
-		++activeCount;
-
 		listChanged = true;
 	}
 
 	_lightIDTable.newIDCount = 0u;
 
-	_activeLightCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
+	_lightBufferCount = static_cast<uint32_t>(_globalLightList.size());
 
+	_activeLightCount = static_cast<uint32_t>(_lightIDTable.activeLightIDs.size());
 	if (_mainFlashLight.IsFlashLightOn()) {
-		_activeLightCount++;
+		++_activeLightCount;
 	}
 
-	ASSERT(_activeLightCount <= RD::MAX_LIGHTS);
+	ASSERT(_lightBufferCount <= RD::MAX_LIGHTS);
 
 	return listChanged;
 }
@@ -439,6 +475,7 @@ bool LightingSystem::UpdateDynamicLightsOrbit(float deltaTime) {
 void LightingSystem::Cleanup() {
 	_lightIDTable.Clear();
 	_activeLightCount = 0u;
+	_lightBufferCount = 0u;
 	_globalLightList.clear();
 }
 
@@ -446,9 +483,10 @@ void Flashlight::Init(uint32_t shadowMapID, uint32_t cookieGoboID)
 {
 	m_shadowMapID = shadowMapID;
 	m_cookieGoboID = cookieGoboID;
-	type = LightType::Spot;
+	flags |= RD::LIGHT_FLAG_SPOT;
 	intensity = LightingSystem::_flashlightSettings.intensity;
 	radius = LightingSystem::_flashlightSettings.radius;
+	sourceRadius = LightingSystem::_flashlightSettings.sourceRadius;
 
 	outerCos = std::cos(glm::radians(LightingSystem::_flashlightSettings.outerDeg));
 	innerCos = std::cos(glm::radians(LightingSystem::_flashlightSettings.innerDeg));

@@ -20,7 +20,7 @@ void RegisterTransparentResolvePass(
 		[&](RenderPassBuilder& builder)
 		{
 			builder
-				.SetPhase(RenderPhase::Shading)
+				.SetPhase(RenderPhase::Lighting)
 
 				.SetExecutionCondition(
 					[](const RenderPassExecutionContext& ctx)
@@ -36,8 +36,17 @@ void RegisterTransparentResolvePass(
 					RD::Renderer_RenderTarget::TransparentRevealage,
 					RD::ImageAccess::Read)
 
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentVelocityAccum,
+					RD::ImageAccess::Read)
+
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentResolved,
+					RD::ImageAccess::Write,
+					RD::ImageAccess::Read)
+
+				.WriteResource(
+					RD::Renderer_RenderTarget::TransparentVelocityResolved,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
@@ -55,6 +64,8 @@ void RegisterTransparentResolvePass(
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
+						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
+						const auto& transparentVelocityResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityResolved);
 						const auto& transparentReveal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
 						const auto& transparentResolve = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
@@ -70,10 +81,21 @@ void RegisterTransparentResolvePass(
 							transparentReveal,
 							nearestClampSampler);
 
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_3,
+							transparentVelocityAccum,
+							nearestClampSampler);
+
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							transparentResolve);
+
+						pso.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_2,
+							transparentVelocityResolved);
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,

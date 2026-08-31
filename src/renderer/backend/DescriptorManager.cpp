@@ -16,13 +16,14 @@ void DescriptorManager::InitDescriptors(VkDevice device)
 
 	std::vector<PoolSizeRatio> poolSizes
 	{
-		{ SSBO,               static_cast<float>(RD::MAX_FRAMES_IN_FLIGHT) },
-		{ UNIFORM,            static_cast<float>(RD::MAX_FRAMES_IN_FLIGHT) },
-		{ COMBINED_SAMPLER,   static_cast<float>(RD::MAX_SAMPLER_CUBE_IMAGES + RD::MAX_COMBINED_SAMPLERS_IMAGES) },
-		{ INLINE,             static_cast<float>(kDebugInlineBytes) },
+		{ SSBO,             1.0f },
+		{ UNIFORM,          4.0f },
+		{ ACCEL_STRUCT,     1.0f },
+		{ COMBINED_SAMPLER, static_cast<float>(RD::MAX_SAMPLER_CUBE_IMAGES + RD::MAX_COMBINED_SAMPLERS_IMAGES)
+							/ static_cast<float>(RD::MAX_FRAMES_IN_FLIGHT) },
+		{ INLINE,           static_cast<float>(kDebugInlineBytes) },
 	};
 	InitSetPools(device, RD::MAX_FRAMES_IN_FLIGHT, poolSizes);
-
 
 	// ===================
 	// === UNIFIED SET ===
@@ -65,6 +66,8 @@ void DescriptorManager::InitDescriptors(VkDevice device)
 	AddBinding(RD::FRAME_BINDING_SCENE, UNIFORM, ALL_STAGES);
 	AddBinding(RD::FRAME_BINDING_CSM, UNIFORM, ALL_STAGES);
 	AddBinding(RD::FRAME_BINDING_CLUSTERED, UNIFORM, ALL_STAGES);
+	AddBinding(RD::FRAME_BINDING_VOLUMETRIC, UNIFORM, ALL_STAGES);
+	AddBinding(RD::FRAME_BINDING_TLAS, ACCEL_STRUCT, ALL_STAGES);
 
 	size_t frameSetID = static_cast<size_t>(RD::DescriptorSlot::Frame);
 	m_descriptorDefs[frameSetID].descriptorLayout = CreateSetLayout(device);
@@ -78,7 +81,7 @@ void DescriptorManager::InitDescriptors(VkDevice device)
 	ClearBinding();
 
 	// Readable inputs
-	for (uint32_t i = RD::PUSH_BINDING_READ_1; i <= RD::PUSH_BINDING_READ_9; i++) {
+	for (uint32_t i = RD::PUSH_BINDING_READ_1; i <= RD::PUSH_BINDING_READ_11; i++) {
 		AddBinding(i, COMBINED_SAMPLER, IMAGE_STAGES);
 	}
 
@@ -107,6 +110,28 @@ VkDescriptorSet DescriptorManager::AllocateFrameDescriptorSet(VkDevice device)
 	ASSERT(frameLayout != VK_NULL_HANDLE && "Create the frame layout first!");
 
 	return AllocateDescriptor(device, frameLayout);
+}
+
+void DescriptorManager::BindGlobalSetGraphics(
+	VkCommandBuffer cmd,
+	const PipelineLayoutConst& globalLayout)
+{
+	const VkDescriptorSet set[1] { GetGlobalSet() };
+
+	vkCmdBindDescriptorSets(cmd,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		globalLayout.pipelineLayout, 0, 1, set, 0, nullptr);
+}
+
+void DescriptorManager::BindGlobalSetCompute(
+	VkCommandBuffer cmd,
+	const PipelineLayoutConst& globalLayout)
+{
+	const VkDescriptorSet set[1] { GetGlobalSet() };
+
+	vkCmdBindDescriptorSets(cmd,
+		VK_PIPELINE_BIND_POINT_COMPUTE,
+		globalLayout.pipelineLayout, 0, 1, set, 0, nullptr);
 }
 
 void DescriptorManager::BindDescriptorSetsGraphics(

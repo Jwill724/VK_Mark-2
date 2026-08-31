@@ -21,6 +21,8 @@ const uint ALWAYS_VISIBLE         = 1u << 12;
 const uint IS_TREE                = 1u << 13;
 const uint HAS_NORMALS            = 1u << 14;
 const uint INSTANCE_ACTIVE        = 1u << 15;
+const uint RT_VISIBLE             = 1u << 16;
+const uint TRANSMISSIVE           = 1u << 17;
 
 // Stored in VisibleInstance
 const uint VIS_PRIMARY_OPAQUE        = 1u << 0;
@@ -31,8 +33,9 @@ const uint VIS_CSM0                  = 1u << 4;
 const uint VIS_CSM1                  = 1u << 5;
 const uint VIS_CSM2                  = 1u << 6;
 const uint VIS_CSM3                  = 1u << 7;
+const uint VIS_VOLUMETRIC            = 1u << 8;
 
-const uint VISIBILITY_TYPE_COUNT = 8u;
+const uint VISIBILITY_TYPE_COUNT = 9u;
 
 const uint LOD_IDX_LOD0    = 0u;
 const uint LOD_IDX_LOD1    = 1u;
@@ -42,24 +45,6 @@ const uint LOD_IDX_BASE    = 4u;   // LOD_ENABLED off -> instance.meshID
 const uint LOD_IDX_SHADOW0 = 5u;
 const uint LOD_IDX_SHADOW1 = 6u;
 const uint LOD_IDX_SHADOW2 = 7u;
-
-const uint LOD_PACK_SHIFT   = 28u;
-const uint LOD_PACK_PAYLOAD = (1u << LOD_PACK_SHIFT) - 1u;   // 0x0FFFFFFF
-const uint LOD_PACK_MASK    = 7u;
-const uint LOD_PACK_TRIP    = 1u << 31u;
-
-uint visMeshletID(uint g)   { return g >> 8u; }
-uint visLocalTri(uint g)    { return (g >> 1u) & 0x7Fu; }
-bool visFrontFacing(uint g) { return (g & 1u) != 0u; }
-
-uint packVisID(uint instanceID, uint lodIdx)
-{
-	return (instanceID & LOD_PACK_PAYLOAD)
-		 | ((lodIdx & LOD_PACK_MASK) << LOD_PACK_SHIFT)
-		 | LOD_PACK_TRIP;
-}
-uint visInstanceID(uint packed) { return packed & LOD_PACK_PAYLOAD; }
-uint visLODIndex(uint packed)   { return (packed >> LOD_PACK_SHIFT) & LOD_PACK_MASK; }
 
 const uint TRANSFORM_DYNAMIC_BIT = 1u << 31;
 const uint TRANSFORM_INDEX_MASK  = ~TRANSFORM_DYNAMIC_BIT;
@@ -89,8 +74,8 @@ struct InstanceInput
 struct VisibleInstance
 {
 	uint instanceID;
-	uint lodIndex;
-	uint selectedMesh;
+	uint primaryLodIndex;
+	uint primaryMesh;
 	uint visMask;
 };
 
@@ -99,31 +84,42 @@ struct InstanceCursors
 	uint cursors[VIS_SLOT_COUNT];
 };
 
-uint meshFromLODIndex(InstanceInput inst, uint idx)
+uint meshFromLODIndex(InstanceInput instance, uint lodIdx)
 {
-	if (idx == LOD_IDX_LOD0)    return inst.lod0;
-	if (idx == LOD_IDX_LOD1)    return inst.lod1;
-	if (idx == LOD_IDX_LOD2)    return inst.lod2;
-	if (idx == LOD_IDX_LOD3)    return inst.lod3;
-	if (idx == LOD_IDX_BASE)    return inst.meshID;
-	if (idx == LOD_IDX_SHADOW0) return inst.shadowLod0;
-	if (idx == LOD_IDX_SHADOW1) return inst.shadowLod1;
-	return inst.shadowLod2;
+	switch (lodIdx)
+	{
+		case LOD_IDX_LOD0:    return instance.lod0;
+		case LOD_IDX_LOD1:    return instance.lod1;
+		case LOD_IDX_LOD2:    return instance.lod2;
+		case LOD_IDX_LOD3:    return instance.lod3;
+
+		case LOD_IDX_BASE:    return instance.meshID;
+
+		case LOD_IDX_SHADOW0: return instance.shadowLod0;
+		case LOD_IDX_SHADOW1: return instance.shadowLod1;
+		case LOD_IDX_SHADOW2: return instance.shadowLod2;
+
+		default:              return instance.meshID;
+	}
 }
 
-uint packStreamBin(uint binID, uint lodIdx)
+uint selectLODIndex(
+	InstanceInput instance,
+	vec3 center,
+	float radius,
+	vec3 camPos,
+	float projScaleY)
 {
-	return (binID & LOD_PACK_PAYLOAD) | ((lodIdx & LOD_PACK_MASK) << LOD_PACK_SHIFT);
-}
-uint streamBinID(uint packed)    { return packed & LOD_PACK_PAYLOAD; }
-uint streamLODIndex(uint packed) { return (packed >> LOD_PACK_SHIFT) & LOD_PACK_MASK; }
-
-uint selectLODIndex(InstanceInput instance, vec3 center, float radius, vec3 camPos, float projScaleY)
-{
-	if ((instance.flags & LOD_ENABLED) == 0u) return LOD_IDX_BASE;
+	if ((instance.flags & LOD_ENABLED) == 0u)
+	{
+		return LOD_IDX_BASE;
+	}
 
 	float dist = max(length(center - camPos) - radius, 0.0);
-	float screenRadius = (dist > 0.0) ? (radius * projScaleY) / dist : 1.0;
+
+	float screenRadius = (dist > 0.0)
+		? (radius * projScaleY) / dist
+		: 1.0;
 
 	if      (screenRadius < 0.02) return LOD_IDX_LOD3;
 	else if (screenRadius < 0.05) return LOD_IDX_LOD2;
@@ -133,28 +129,153 @@ uint selectLODIndex(InstanceInput instance, vec3 center, float radius, vec3 camP
 
 uint selectShadowLODIndex(InstanceInput instance, uint cascadeIndex)
 {
-	uint slot;
-	if      (cascadeIndex == 0u) slot = 0u;
-	else if (cascadeIndex == 2u) slot = 1u;
-	else if (cascadeIndex == 1u) slot = 0u;
-	else                         slot = 2u;
+	uint lodIdx;
 
+	// Surface CSM:
+	// C0 -> shadow0
+	// C1 -> shadow0
+	// C2 -> shadow1
+	// C3 -> shadow2
+	switch (cascadeIndex)
+	{
+		case 0u:
+		case 1u:
+			lodIdx = LOD_IDX_SHADOW0;
+			break;
+
+		case 2u:
+			lodIdx = LOD_IDX_SHADOW1;
+			break;
+
+		default:
+			lodIdx = LOD_IDX_SHADOW2;
+			break;
+	}
+
+	// Preserve more silhouette detail for alpha-tested trees.
 	bool isAlphaTested = (instance.flags & ALPHA_TESTED) != 0u;
 	bool isTree        = (instance.flags & IS_TREE) != 0u;
-	if (isAlphaTested && isTree && slot > 0u)
-		slot -= 1u;
 
-	return LOD_IDX_SHADOW0 + slot;
+	if (isAlphaTested && isTree && lodIdx > LOD_IDX_SHADOW0)
+	{
+		lodIdx -= 1u;
+	}
+
+	return lodIdx;
 }
 
-uint selectLOD(InstanceInput instance, vec3 center, float radius, vec3 camPos, float projScaleY)
+uint selectVolumetricShadowLODIndex(InstanceInput instance)
 {
-	return meshFromLODIndex(instance, selectLODIndex(instance, center, radius, camPos, projScaleY));
+	// Foliage so god rays can hit through leaves
+	if ((instance.flags & IS_TREE) != 0u)
+	{
+		return LOD_IDX_SHADOW1;
+	}
+
+	return LOD_IDX_SHADOW2;
 }
 
-uint selectShadowLOD(InstanceInput instance, uint cascadeIndex)
+uint selectFlashlightShadowLODIndex(InstanceInput instance)
 {
-	return meshFromLODIndex(instance, selectShadowLODIndex(instance, cascadeIndex));
+	return LOD_IDX_SHADOW0;
 }
 
+uint selectLOD(
+	InstanceInput instance,
+	vec3 center,
+	float radius,
+	vec3 camPos,
+	float projScaleY)
+{
+	uint lodIdx = selectLODIndex(
+		instance,
+		center,
+		radius,
+		camPos,
+		projScaleY);
+
+	return meshFromLODIndex(instance, lodIdx);
+}
+
+uint selectShadowLOD(
+	InstanceInput instance,
+	uint cascadeIndex)
+{
+	uint lodIdx = selectShadowLODIndex(
+		instance,
+		cascadeIndex);
+
+	return meshFromLODIndex(instance, lodIdx);
+}
+
+uint selectVolumetricShadowLOD(InstanceInput instance)
+{
+	uint lodIdx = selectVolumetricShadowLODIndex(instance);
+
+	return meshFromLODIndex(instance, lodIdx);
+}
+
+uint selectFlashlightShadowLOD(
+	InstanceInput instance)
+{
+	uint lodIdx = selectFlashlightShadowLODIndex(instance);
+
+	return meshFromLODIndex(instance, lodIdx);
+}
+
+uint resolveLODIndexForStream(
+	VisibleInstance vi,
+	InstanceInput instance,
+	uint slot)
+{
+	switch (slot)
+	{
+		case VIS_SLOT_OPAQUE:
+		case VIS_SLOT_OPAQUE_MASKED:
+		case VIS_SLOT_TRANSPARENT:
+			return vi.primaryLodIndex;
+
+		case VIS_SLOT_FLASHLIGHT:
+			return selectFlashlightShadowLODIndex(instance);
+
+		case VIS_SLOT_CSM0:
+			return selectShadowLODIndex(instance, 0u);
+
+		case VIS_SLOT_CSM1:
+			return selectShadowLODIndex(instance, 1u);
+
+		case VIS_SLOT_CSM2:
+			return selectShadowLODIndex(instance, 2u);
+
+		case VIS_SLOT_CSM3:
+			return selectShadowLODIndex(instance, 3u);
+
+		case VIS_SLOT_VOLUMETRIC:
+			return selectVolumetricShadowLODIndex(instance);
+
+		default:
+			return LOD_IDX_BASE;
+	}
+}
+
+uint resolveMeshForStream(
+	VisibleInstance vi,
+	InstanceInput instance,
+	uint slot)
+{
+	switch (slot)
+	{
+		case VIS_SLOT_OPAQUE:
+		case VIS_SLOT_OPAQUE_MASKED:
+		case VIS_SLOT_TRANSPARENT:
+			return vi.primaryMesh;
+	}
+
+	uint lodIdx = resolveLODIndexForStream(
+		vi,
+		instance,
+		slot);
+
+	return meshFromLODIndex(instance, lodIdx);
+}
 #endif

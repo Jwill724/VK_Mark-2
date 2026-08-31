@@ -84,7 +84,6 @@ void Profiler::BeginFrame()
 	m_stats.deltaSecondsRaw         = static_cast<float>(std::max(clampedDelta, 0.0));
 
 	m_stats.deltaTime.Add(m_stats.deltaSecondsRaw);
-	m_stats.vramQueryTimerSeconds  += m_stats.deltaSecondsRaw;
 
 	rendererWasStalled = (deltaSeconds > 0.05);
 }
@@ -183,8 +182,7 @@ Profiler::ScopedPass::ScopedPass(
 	m_cpuStartTicks = queryPerformanceCounterTicks();
 	m_gpuZone       = m_profiler->BeginTracyGpuZone(cmd, ID, threadSlot, queue);
 
-	if (m_frameCtx == nullptr || m_cmd == VK_NULL_HANDLE)
-		return;
+	if (m_frameCtx == nullptr || m_cmd == VK_NULL_HANDLE) return;
 
 	const auto& range = m_frameCtx->m_passTimestampRanges[idx];
 	ASSERT(range.beginQuery < range.endQuery);

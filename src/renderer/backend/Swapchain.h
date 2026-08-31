@@ -24,7 +24,7 @@ public:
 		Extents2D windowExtent);
 
 	// Called during frame context prepartion
-	void WaitOnInFlightFence(uint32_t frameIndex) const;
+	VkResult WaitOnInFlightFence(uint32_t frameIndex) const;
 	VkResult AcquireNextImage(uint32_t frameIndex) const;
 	void MarkInFlightFrameIndex(uint32_t frameIndex);
 
@@ -82,5 +82,6 @@ private:
 		m_renderFinishedSemaphores.clear();
 		m_inFlightFences.clear();
 		m_imageInFlightFrame.clear();
+		m_imageCount = 0;
 	}
 };

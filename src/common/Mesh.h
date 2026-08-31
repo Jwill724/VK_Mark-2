@@ -11,6 +11,7 @@ inline constexpr uint32_t MESH_FLAG_IS_LOD                = 1u << 0;
 inline constexpr uint32_t MESH_FLAG_GOOD_OCCLUDEE         = 1u << 1;
 inline constexpr uint32_t MESH_LOD_FLAG_FORCE_SHADOW_LOD0 = 1u << 2;
 inline constexpr uint32_t MESH_FLAG_IS_LOD_VARIANT        = 1u << 3;
+inline constexpr uint32_t MESH_FLAG_ALPHA_TESTED          = 1u << 4;
 
 struct Mesh
 {

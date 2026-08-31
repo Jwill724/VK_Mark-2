@@ -12,17 +12,19 @@ layout(local_size_x = 256) in;
 void main()
 {
 	uint lightIndex = gl_GlobalInvocationID.x;
+
 	DebugToggles debug = getDebugToggles();
+	SceneData scene = getSceneData();
+	bool IsHiZInvalid = scene.temporal.y == 0; // Using regular temporal check
 	uint lightCount = debug.activeLightCount;
-	if (lightIndex >= lightCount) return;
+	if (lightIndex >= lightCount || IsHiZInvalid) return;
 
 	LocalLight light = getLightBuffer().lights[lightIndex];
 
 	// skip flashlight when toggled off
 	if ((light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u) return;
 
-	SceneData sceneData = getSceneData();
-	mat4 vp = sceneData.viewProjUnjittered;
+	mat4 vp = scene.viewProjUnjittered;
 
 	vec4 pl, pr, pb, pt;
 	get_frustum_side_planes(vp, pl, pr, pb, pt);

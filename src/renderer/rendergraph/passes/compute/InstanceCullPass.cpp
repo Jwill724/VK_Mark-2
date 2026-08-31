@@ -8,7 +8,6 @@
 #include "../../RenderGraphResources.h"
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
-#include "../../../backend/memory/BindlessImageTable.h"
 
 namespace B = BufferBarriers;
 
@@ -26,10 +25,6 @@ void RegisterInstanceCullPass(
 			builder
 				.SetPhase(RenderPhase::Visibility)
 				.ForceExecution()
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::HiZ,
-					RD::ImageAccess::Read)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -52,29 +47,21 @@ void RegisterInstanceCullPass(
 						const auto& indirectDrawCountsBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts);
 						const auto& visibleInstancesBuffer = bdaTable.GetGPUBuffer(RD::Renderer_Buffer::VisibleInstances);
 
-						const auto& hiz = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
-						const auto hizSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
+						const auto& visB = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityB);
+						pso.FillGpuBuffer(cmd, visB, 0u, 0, VK_WHOLE_SIZE);
+						BufferBarriers::CmdFillToMeshRW(cmd, visB);
 
-						if (ctx.frameState->IsMeshShaderPath())
+						const auto& rtRayList = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTRayList);
+						pso.FillGpuBuffer(cmd, rtRayList, 0u, 0, RTRayListLayout::HEADER_BYTES);
+						B::CmdFillToComputeRW(cmd, rtRayList);
+
+						if (!frameCtx->IsMeshletVisibilityBufferInitialized())
 						{
-							const auto& visB = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityB);
-							vkCmdFillBuffer(cmd, visB.m_buffer, 0, VK_WHOLE_SIZE, 0u);
-							BufferBarriers::CmdFillToMeshRW(cmd, visB);
-
-							if (!frameCtx->IsMeshletVisibilityBufferInitialized())
-							{
-								const auto& visA = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityA);
-								vkCmdFillBuffer(cmd, visA.m_buffer, 0, VK_WHOLE_SIZE, 0u);
-								BufferBarriers::CmdFillToMeshRW(cmd, visA);
-								frameCtx->MeshletVisibilityBufferValid();
-							}
+							const auto& visA = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::MeshletVisibilityA);
+							pso.FillGpuBuffer(cmd, visA, 0u, 0, VK_WHOLE_SIZE);
+							BufferBarriers::CmdFillToMeshRW(cmd, visA);
+							frameCtx->MeshletVisibilityBufferValid();
 						}
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_1,
-							hiz,
-							hizSampler);
 
 						pso.FillGpuBuffer(cmd, instanceVisibilityBuffer);
 						pso.FillGpuBuffer(cmd, visibleCountBuffer);

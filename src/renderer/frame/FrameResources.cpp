@@ -77,6 +77,8 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 
 	clusterScanScratchBytes = 4u;
 
+	tileTransparentNearBytes = static_cast<size_t>(tileCount) * sizeof(uint32_t);
+
 	clusterCountsBytes =
 		AllocatedBuffer::AlignUp(clusterCountsBytes, MIN_SSBO_ALIGNMENT_BYTES);
 
@@ -94,4 +96,26 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 
 	clusterScanScratchBytes =
 		AllocatedBuffer::AlignUp(clusterScanScratchBytes, MIN_SSBO_ALIGNMENT_BYTES);
+
+	tileTransparentNearBytes =
+		AllocatedBuffer::AlignUp(tileTransparentNearBytes, MIN_SSBO_ALIGNMENT_BYTES);
+}
+
+void RTRayListLayout::Update(uint32_t screenWidth, uint32_t screenHeight)
+{
+	halfWidth = (screenWidth + 1u) / 2u;
+	halfHeight = (screenHeight + 1u) / 2u;
+
+	const uint32_t halfPixels = halfWidth * halfHeight;
+
+	capacities[RD::RT_RAY_SLOT_REFLECT] = halfPixels;
+	capacities[RD::RT_RAY_SLOT_TRANSPARENCY] = 0u;
+
+	uint32_t cursor = 0u;
+	for (uint32_t i = 0; i < RD::RT_RAY_SLOT_COUNT; ++i)
+	{
+		cursor += capacities[i];
+	}
+
+	totalBytes = HEADER_BYTES + cursor * sizeof(uint32_t);
 }

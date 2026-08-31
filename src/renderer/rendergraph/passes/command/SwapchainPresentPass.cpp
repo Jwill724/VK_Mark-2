@@ -27,13 +27,8 @@ void RegisterSwapchainPresentPass(
 					RD::ImageAccess::TransferSrc)
  
 				.ReadResource(
-					RD::Renderer_RenderTarget::AAColor,
-					RD::ImageAccess::TransferSrc)
- 
-				.ReadResource(
 					RD::Renderer_RenderTarget::Tonemap,
 					RD::ImageAccess::TransferSrc)
-
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -41,12 +36,10 @@ void RegisterSwapchainPresentPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& postNonAAComposite = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PostNonAAComposite);
-						const auto& aaColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::AAColor);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
 						const auto& swapchain = ctx.swapchain;
 
 						AllocatedImage srcImage;
-
 						if (ctx.profiler->debugToggles.enableChromaticAberration &&
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->DebugRendering())
@@ -55,8 +48,7 @@ void RegisterSwapchainPresentPass(
 						}
 						else
 						{
-							srcImage = (ctx.frameState->CopyPostAAImage() &&
-								!ctx.frameState->DebugRendering()) ? aaColor : tonemap;
+							srcImage = tonemap;
 						}
 
 						I::SwapchainPresentCopy(cmd, *swapchain, srcImage);

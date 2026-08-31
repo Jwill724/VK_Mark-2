@@ -71,3 +71,31 @@ RenderPassBuilder& RenderPassBuilder::SetPhase(RenderPhase phase)
 	m_desc.phase = phase;
 	return *this;
 }
+
+RenderPassBuilder& RenderPassBuilder::HistoryResource(
+	RD::Renderer_RenderTarget slotA,
+	RD::Renderer_RenderTarget slotB,
+	RD::ImageAccess enterAccess,
+	RD::ImageAccess exitAccess,
+	bool bIsWrite,
+	bool bManualExitTransition)
+{
+	ASSERT(slotA != slotB && "History pair needs two distinct slots");
+
+	const RD::Renderer_RenderTarget slots[2] = { slotA, slotB };
+
+	for (const auto target : slots)
+	{
+		m_desc.resources.emplace_back(RenderResourceUsage{
+			.target = target,
+			.enterAccess = enterAccess,
+			.exitAccess = exitAccess,
+			.baseMip = 0,
+			.mipCount = 1,
+			.bIsWrite = bIsWrite,
+			.bManualExitTransition = bManualExitTransition
+		});
+	}
+
+	return *this;
+}
