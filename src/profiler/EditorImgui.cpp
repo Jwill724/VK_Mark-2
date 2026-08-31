@@ -1000,11 +1000,20 @@ namespace
 		{
 			const uint32_t viewIndex = static_cast<uint32_t>(entry.view);
 
+			// Cascade visualization only applies to raster sun shadows.
+			if (entry.view == RD::DebugView::Cascades &&
+				(!dbg.enableShadows ||
+					dbg.sunShadowFilter == static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT)))
+			{
+				continue;
+			}
+
 			if (column != 0) {
 				ImGui::SameLine();
 			}
 
 			const std::string label = fmt::format("{}##dbgview", entry.label);
+
 			if (ImGui::RadioButton(label.c_str(), &current, static_cast<int>(viewIndex))) {
 				dbg.debugView = static_cast<uint32_t>(current);
 			}

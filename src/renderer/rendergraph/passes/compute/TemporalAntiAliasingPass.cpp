@@ -9,7 +9,6 @@
 #include "../../../backend/memory/BindlessBDATable.h"
 #include "../../../backend/BufferBarriers.h"
 #include "../../../../profiler/Profiler.h"
-#include "../../../scene/Scene.h"
 #include "../../../backend/ImageUtils.h"
 
 namespace I = ImageUtils;
@@ -62,7 +61,11 @@ void RegisterTAAPass(
 					RD::ImageAccess::Read)
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
+					RD::ImageAccess::Read)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::TransparentAccumulation,
 					RD::ImageAccess::Read)
 
 				.ReadResource(
@@ -70,7 +73,7 @@ void RegisterTAAPass(
 					RD::ImageAccess::Read)
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::TransparentVelocityResolved,
+					RD::Renderer_RenderTarget::TransparentVelocityAccum,
 					RD::ImageAccess::Read)
 
 				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
@@ -94,9 +97,10 @@ void RegisterTAAPass(
 						const auto& prevVelocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity);
 						const auto& viewNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
 						const auto& prevViewNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevViewNormals);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 						const auto& transparentRevealage = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
-						const auto& transparentVelocityResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityResolved);
+						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
+						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
 						const auto taaHistorySampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::TaaHistory);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
@@ -110,7 +114,7 @@ void RegisterTAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							opaque,
+							hdrScene,
 							nearestClampSampler);
 
 						pso.BindReadImage(
@@ -166,7 +170,13 @@ void RegisterTAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_10,
-							transparentVelocityResolved,
+							transparentAccum,
+							nearestClampSampler);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_11,
+							transparentVelocityAccum,
 							nearestClampSampler);
 
 						pso.BindWriteImage(

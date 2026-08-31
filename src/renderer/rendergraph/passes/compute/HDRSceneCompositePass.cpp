@@ -10,12 +10,12 @@
 
 static constexpr size_t PIPE_ID_MAIN = 0;
 
-void RegisterTransparentResolvePass(
+void RegisterHDRSceneCompositePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines)
 {
 	graph.AddPass(
-		"Transparent_Resolve",
+		"HDR_Scene_Composite",
 		pipelines,
 		[&](RenderPassBuilder& builder)
 		{
@@ -40,13 +40,12 @@ void RegisterTransparentResolvePass(
 					RD::Renderer_RenderTarget::TransparentVelocityAccum,
 					RD::ImageAccess::Read)
 
-				.WriteResource(
-					RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Write,
+				.ReadResource(
+					RD::Renderer_RenderTarget::Opaque,
 					RD::ImageAccess::Read)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::TransparentVelocityResolved,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::Write,
 					RD::ImageAccess::Read)
 
@@ -56,7 +55,7 @@ void RegisterTransparentResolvePass(
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
-							RD::Renderer_Pass::TransparentResolve,
+							RD::Renderer_Pass::HDRSceneComposite,
 							pass.passName);
 
 						const auto& drawExtent = graph.GetDrawExtent();
@@ -65,37 +64,38 @@ void RegisterTransparentResolvePass(
 
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
 						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
-						const auto& transparentVelocityResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityResolved);
 						const auto& transparentReveal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
-						const auto& transparentResolve = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
+						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
+							opaque,
+							nearestClampSampler);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_2,
 							transparentAccum,
 							nearestClampSampler);
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_2,
+							RD::PUSH_BINDING_READ_3,
 							transparentReveal,
 							nearestClampSampler);
 
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_3,
+							RD::PUSH_BINDING_READ_4,
 							transparentVelocityAccum,
 							nearestClampSampler);
 
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
-							transparentResolve);
-
-						pso.BindWriteImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_WRITE_2,
-							transparentVelocityResolved);
+							hdrScene);
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,

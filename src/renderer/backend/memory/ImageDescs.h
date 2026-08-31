@@ -18,19 +18,11 @@ namespace RenderTargetDescs
 				 .debugName = "Opaque" };
 	}
 
-	inline ImageDesc PrevOpaqueHDR(Extents3D ext)
+	inline ImageDesc HDRScene(Extents3D ext)
 	{
-		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage = Vulkan_ImageUsage::ComputeRWTransfer,
-				 .mipLevels = 8, .bPerMipStorage = true,
-				 .debugName = "PrevOpaqueHDR" };
-	}
-
-	inline ImageDesc TransparentResolved(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeOnly,
-				 .debugName = "TransparentResolved" };
+		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = "HDRScene" };
 	}
 
 	inline ImageDesc TransparentAccumulation(Extents3D ext)
@@ -43,12 +35,6 @@ namespace RenderTargetDescs
 	{
 		return { .format = Vulkan_Format::RG16F, .extent = ext,
 				 .usage = Vulkan_ImageUsage::DrawColor, .debugName = "TransparentVelocityAccum" };
-	}
-
-	inline ImageDesc TransparentVelocityResolved(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::RG16F, .extent = ext,
-				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "TransparentVelocityResolved" };
 	}
 
 	inline ImageDesc TransparentRevealage(Extents3D ext)

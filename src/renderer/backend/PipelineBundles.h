@@ -186,9 +186,9 @@ enum class SkyboxPipelineSlot : uint8_t
 };
 
 
-enum class TransparentResolvePipelineSlot : uint8_t
+enum class HDRSceneCompositePipelineSlot : uint8_t
 {
-	Resolve,
+	Composite,
 
 	Count
 };
@@ -504,11 +504,11 @@ struct PipelineBundleTraits<SkyboxPipelineSlot>
 };
 
 template<>
-struct PipelineBundleTraits<TransparentResolvePipelineSlot>
+struct PipelineBundleTraits<HDRSceneCompositePipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::TransparentResolve
+		RD::Renderer_Pipeline::HDRSceneComposite
 	};
 };
 

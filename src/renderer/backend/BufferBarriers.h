@@ -32,6 +32,10 @@ namespace BufferBarriers
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);
 
+	void TLASInstanceReuseToCmdFill(
+		VkCommandBuffer cmd,
+		const AllocatedBuffer& buf);
+
 	void ComputeWriteToASBuildRead(
 		VkCommandBuffer cmd,
 		const AllocatedBuffer& buf);

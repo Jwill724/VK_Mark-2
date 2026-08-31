@@ -20,6 +20,7 @@ enum class ModelID // TODO: This goes somewhere else, not here
 	SponzaIntelCurtains,
 	SponzaIntelIvy,
 	SponzaIntelTree,
+	SanMiguel,
 	Bistro,
 	BistroExt,
 	MRSpheres,
@@ -32,7 +33,6 @@ enum class ModelID // TODO: This goes somewhere else, not here
 	Mech,
 	YellowMech,
 	Mini,
-	SanMiguel,
 
 	//DarkRoom,
 	//CornellBox,

@@ -144,7 +144,7 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ScreenSpaceVolumetricLightPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\rendergraph\passes\compute\TransparentResolvePass.cpp">
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\HDRSceneCompositePass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\rendergraph\passes\compute\TemporalAntiAliasingPass.cpp">
@@ -710,7 +710,7 @@
     <None Include="res\shaders\core\transparent_forward.frag">
       <Filter>res\shaders\core</Filter>
     </None>
-    <None Include="res\shaders\core\transparent_resolve.comp">
+    <None Include="res\shaders\core\hdr_scene_composite.comp">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\core\prepassFS.frag">

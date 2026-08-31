@@ -8,6 +8,7 @@ lib/
 
 # Visual Studio
 *.sln
+*.slnx
 *.user
 *.VC.db
 *.ipch

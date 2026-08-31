@@ -27,56 +27,55 @@ const uint ABT_MotionMatrices         = 15u;
 const uint ABT_Lights                 = 16u;
 
 const uint ABT_RTInstances            = 17u;
-const uint ABT_RTInstanceCount        = 18u;
-const uint ABT_RTRayList              = 19u;
+const uint ABT_RTRayList              = 18u;
 
-const uint ABT_InstanceVisibility     = 20u;
-const uint ABT_MeshletVisibilityA     = 21u;
-const uint ABT_MeshletVisibilityB     = 22u;
+const uint ABT_InstanceVisibility     = 19u;
+const uint ABT_MeshletVisibilityA     = 20u;
+const uint ABT_MeshletVisibilityB     = 21u;
 
-const uint ABT_VisibleCount           = 23u;
+const uint ABT_VisibleCount           = 22u;
 
-const uint ABT_VisibleInstances       = 24u;
+const uint ABT_VisibleInstances       = 23u;
 
-const uint ABT_InstanceCursors        = 25u;
+const uint ABT_InstanceCursors        = 24u;
 
-const uint ABT_InstanceStreams        = 26u;
+const uint ABT_InstanceStreams        = 25u;
 
-const uint ABT_DrawInstanceIDs        = 27u;
+const uint ABT_DrawInstanceIDs        = 26u;
 
-const uint ABT_IndirectDrawCounts     = 28u;
+const uint ABT_IndirectDrawCounts     = 27u;
 
-const uint ABT_DrawBins               = 29u;
+const uint ABT_DrawBins               = 28u;
 
-const uint ABT_DrawBinCounters        = 30u;
+const uint ABT_DrawBinCounters        = 29u;
 
-const uint ABT_ShadowCullData         = 31u;
+const uint ABT_ShadowCullData         = 30u;
 
-const uint ABT_DrawStats              = 32u;
+const uint ABT_DrawStats              = 31u;
 
-const uint ABT_DispatchIndirectArgs   = 33u;
+const uint ABT_DispatchIndirectArgs   = 32u;
 
-const uint ABT_TaskDispatch           = 34u;
+const uint ABT_TaskDispatch           = 33u;
 
-const uint ABT_DebugCounts            = 35u;
-const uint ABT_DebugItems             = 36u;
-const uint ABT_DebugVertex            = 37u;
-const uint ABT_DebugDraw              = 38u;
+const uint ABT_DebugCounts            = 34u;
+const uint ABT_DebugItems             = 35u;
+const uint ABT_DebugVertex            = 36u;
+const uint ABT_DebugDraw              = 37u;
 
 // Light culling
-const uint ABT_VisibleLightCount      = 39u;
-const uint ABT_VisibleLightIDs        = 40u;
+const uint ABT_VisibleLightCount      = 38u;
+const uint ABT_VisibleLightIDs        = 39u;
 
 // Clustered shading
-const uint ABT_ClusterCounts              = 41u;
-const uint ABT_ClusterOffsets             = 42u;
-const uint ABT_ClusterCursors             = 43u;
-const uint ABT_ClusterLightIDs            = 44u;
-const uint ABT_ClusterTileSliceRanges     = 45u;
-const uint ABT_ClusterScanScratch         = 46u;
-const uint ABT_ClusterTileTransparentNear = 47u;
+const uint ABT_ClusterCounts              = 40u;
+const uint ABT_ClusterOffsets             = 41u;
+const uint ABT_ClusterCursors             = 42u;
+const uint ABT_ClusterLightIDs            = 43u;
+const uint ABT_ClusterTileSliceRanges     = 44u;
+const uint ABT_ClusterScanScratch         = 45u;
+const uint ABT_ClusterTileTransparentNear = 46u;
 
-const uint ABT_Count                      = 48u;
+const uint ABT_Count                      = 47u;
 
 
 // =============================

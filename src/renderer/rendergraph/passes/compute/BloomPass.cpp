@@ -39,7 +39,7 @@ void RegisterBloomPass(
 					})
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::Read)
 
 				.ReadResource(
@@ -76,7 +76,7 @@ void RegisterBloomPass(
 						const auto& bloom = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain);
 						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& gbEmissive = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive);
-						const auto& sceneHDR = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& sceneHDR = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 						const auto linearClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto nearestClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 

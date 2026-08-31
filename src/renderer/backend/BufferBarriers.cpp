@@ -183,18 +183,28 @@ void BufferBarriers::CmdFillToComputeAS(
 	VkCommandBuffer cmd,
 	const AllocatedBuffer& buf)
 {
-	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
-	b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	VkBufferMemoryBarrier2 b{
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2
+	};
+
+	b.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
 	b.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-	b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+	b.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+	b.dstAccessMask =
+		VK_ACCESS_2_SHADER_READ_BIT |
+		VK_ACCESS_2_SHADER_WRITE_BIT;
+
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
 	b.buffer = buf.m_buffer;
 	b.offset = 0;
 	b.size = VK_WHOLE_SIZE;
 
-	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	VkDependencyInfo di{
+		VK_STRUCTURE_TYPE_DEPENDENCY_INFO
+	};
+
 	di.bufferMemoryBarrierCount = 1;
 	di.pBufferMemoryBarriers = &b;
 
@@ -239,6 +249,41 @@ void BufferBarriers::CmdFillToMeshRW(
 	b.size = VK_WHOLE_SIZE;
 
 	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	di.bufferMemoryBarrierCount = 1;
+	di.pBufferMemoryBarriers = &b;
+
+	vkCmdPipelineBarrier2(cmd, &di);
+}
+
+void BufferBarriers::TLASInstanceReuseToCmdFill(
+	VkCommandBuffer cmd,
+	const AllocatedBuffer& buf)
+{
+	VkBufferMemoryBarrier2 b{
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2
+	};
+
+	// Previous TLAS build consumed the instance buffer.
+	b.srcStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+
+	b.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
+	// vkCmdFillBuffer overwrites it.
+	b.dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+
+	b.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+
+	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+	b.buffer = buf.m_buffer;
+	b.offset = 0;
+	b.size = VK_WHOLE_SIZE;
+
+	VkDependencyInfo di{
+		VK_STRUCTURE_TYPE_DEPENDENCY_INFO
+	};
+
 	di.bufferMemoryBarrierCount = 1;
 	di.pBufferMemoryBarriers = &b;
 
@@ -388,23 +433,32 @@ void BufferBarriers::ComputeWriteToASBuildRead(
 	VkCommandBuffer cmd,
 	const AllocatedBuffer& buf)
 {
-	VkBufferMemoryBarrier2 b{ VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2 };
+	VkBufferMemoryBarrier2 b{
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2
+	};
+
 	b.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
 	b.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
 	b.dstStageMask = VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT |
-		VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+	b.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
 	b.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
 	b.buffer = buf.m_buffer;
 	b.offset = 0;
 	b.size = VK_WHOLE_SIZE;
 
-	VkDependencyInfo di{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
+	VkDependencyInfo di{
+		VK_STRUCTURE_TYPE_DEPENDENCY_INFO
+	};
+
 	di.bufferMemoryBarrierCount = 1;
 	di.pBufferMemoryBarriers = &b;
+
 	vkCmdPipelineBarrier2(cmd, &di);
 }
+
 void BufferBarriers::ASBuildToASBuild(VkCommandBuffer cmd)
 {
 	ASMemoryBarrier(cmd,
@@ -417,7 +471,8 @@ void BufferBarriers::ASBuildToASBuild(VkCommandBuffer cmd)
 
 void BufferBarriers::ASBuildToRayQueryRead(VkCommandBuffer cmd)
 {
-	ASMemoryBarrier(cmd,
+	ASMemoryBarrier(
+		cmd,
 		VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
 		VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
 		VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,

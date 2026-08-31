@@ -30,15 +30,11 @@ void RegisterLuminanceExposurePass(
 				.ForceExecution()
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::Read)
 
 				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
 					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Read)
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -55,11 +51,10 @@ void RegisterLuminanceExposurePass(
 						uint32_t frameIndex = ctx.scene->GetSceneData().temporal.x;
 						const auto& resolvedTaa = TemporalHistory::GetColorHistorySlots(static_cast<uint64_t>(frameIndex)).write;
 
-						const auto& opaque = !taaEnabled
-							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+						const auto& hdrScene = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene)
 							: ctx.imageTable->GetRenderTarget(resolvedTaa);
 
-						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
 
 						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
@@ -75,13 +70,7 @@ void RegisterLuminanceExposurePass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							opaque,
-							linearSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_2,
-							transparent,
+							hdrScene,
 							linearSampler);
 
 						pso.DispatchComputePass(

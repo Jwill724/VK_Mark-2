@@ -348,9 +348,9 @@ namespace RendererDefinitions
 		OpaqueForward,
 		OpaqueLighting,
 		TransparentForward,
-		TransparentResolve,
 		DebugDrawBuild,
 		DebugLineDraw,
+		HDRSceneComposite,
 		TAA,
 		LuminanceExposure,
 		Bloom,
@@ -374,9 +374,10 @@ namespace RendererDefinitions
 		TransparentCull_t,
 		TransparentDraw_m,
 		Transparent_f,
-		TransparentResolve_c,
 		Skybox_v,
 		Skybox_f,
+
+		HDRSceneComposite_c,
 
 		Wireframe_m,
 		Wireframe_f,
@@ -475,8 +476,9 @@ namespace RendererDefinitions
 	enum class Renderer_Pipeline
 	{
 		TransparentForward,
-		TransparentResolve,
 		Skybox,
+
+		HDRSceneComposite,
 
 		VelocityResolve,
 		WireframeMesh,
@@ -570,11 +572,10 @@ namespace RendererDefinitions
 	enum class Renderer_RenderTarget
 	{
 		Opaque,
-		TransparentResolved,
 		TransparentAccumulation,
 		TransparentRevealage,
 		TransparentVelocityAccum,
-		TransparentVelocityResolved,
+		HDRScene,
 		Tonemap,
 		DepthResolved,
 		PrevDepthResolved,
@@ -626,9 +627,6 @@ namespace RendererDefinitions
 		//ReflectHistoryA,
 		//ReflectHistoryB,
 		//ReflectPrefiltered,
-
-		// Raw composite
-		//PrevOpaqueHDR,
 
 		NRDMotion,
 		NRDNormalRoughness,
@@ -722,7 +720,6 @@ namespace RendererDefinitions
 		MotionMatrices,
 		Lights,
 		RTInstances,
-		RTInstanceCount,
 		RTRayList,
 		InstanceVisibility,
 		MeshletVisibilityA,

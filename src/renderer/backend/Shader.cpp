@@ -15,7 +15,7 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::TransparentCull_t,           "core/transparent_cull.spv"                 },
 	{ RD::Renderer_Shader::TransparentDraw_m,           "core/transparent_draw.spv"                 },
 	{ RD::Renderer_Shader::Transparent_f,               "core/transparent_forward.spv"              },
-	{ RD::Renderer_Shader::TransparentResolve_c,        "core/transparent_resolve.spv"              },
+	{ RD::Renderer_Shader::HDRSceneComposite_c,         "core/hdr_scene_composite.spv"              },
 	{ RD::Renderer_Shader::NRDPrepare_c,                "core/nrd_prepare.spv"                      },
 	{ RD::Renderer_Shader::Wireframe_m,                 "debug/wireframeM.spv"                      },
 	{ RD::Renderer_Shader::GBufferDebug_c,              "debug/gbuffer_view.spv"                    },

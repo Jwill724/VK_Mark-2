@@ -195,6 +195,8 @@ public:
 
 	void DeferredClearGPUBuffer(RD::Renderer_Buffer slot, Allocator& allocator);
 
+	uint32_t GetFrameIndex() const noexcept { return m_frameIndex; }
+
 private:
 	uint32_t m_frameIndex = 0u;
 

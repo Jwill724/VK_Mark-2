@@ -75,11 +75,13 @@ void RenderGraph::Build(
 
 	// --- Transparent ---
 	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
-	RegisterTransparentResolvePass(*this,  pipeManager.GetBundle<TransparentResolvePipelineSlot>());
 
 	// --- Debug Line ---
 	RegisterDebugDrawBuildPass(*this,      pipeManager.GetBundle<DebugBuildPipelineSlot>());
 	RegisterLineDebugPass(*this,           pipeManager.GetBundle<LineDebugPipelineSlot>());
+
+	// --- Oapque + Transparent composite ---
+	RegisterHDRSceneCompositePass(*this,   pipeManager.GetBundle<HDRSceneCompositePipelineSlot>());
 
 	// --- TAA ---
 	RegisterTAAPass(*this,                 pipeManager.GetBundle<TAAPipelineSlot>());

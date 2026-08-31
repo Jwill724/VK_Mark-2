@@ -161,11 +161,6 @@ void FrameContext::Init(
 		GPU_BYTES_RT_INSTANCES,
 		allocator);
 
-	m_gpuAddressTable.AddGPUBufferToAddressTable(
-		RD::Renderer_Buffer::RTInstanceCount,
-		sizeof(uint32_t),
-		allocator);
-
 	CreateTLAS(device, allocator);
 
 	VkQueryPoolCreateInfo queryPoolInfo{};

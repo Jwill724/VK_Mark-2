@@ -150,10 +150,9 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	};
 
 	SetRenderTarget(RD::Renderer_RenderTarget::Opaque,                      allocator.AllocateImage(RTDescs::Opaque(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved,         allocator.AllocateImage(RTDescs::TransparentResolved(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::HDRScene,                    allocator.AllocateImage(RTDescs::HDRScene(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation,     allocator.AllocateImage(RTDescs::TransparentAccumulation(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum,    allocator.AllocateImage(RTDescs::TransparentVelocityAccum(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityResolved, allocator.AllocateImage(RTDescs::TransparentVelocityResolved(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage,        allocator.AllocateImage(RTDescs::TransparentRevealage(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::DepthResolved,               allocator.AllocateImage(RTDescs::DepthResolved(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved,           allocator.AllocateImage(RTDescs::PrevDepth(drawExtent)));

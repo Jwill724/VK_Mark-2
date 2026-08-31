@@ -158,7 +158,7 @@ void RegisterVolumetricLightPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
-void RegisterTransparentResolvePass(
+void RegisterHDRSceneCompositePass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 

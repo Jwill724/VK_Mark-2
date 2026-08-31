@@ -49,21 +49,18 @@ void RegisterTLASBuildPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& rtInstances = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTInstances);
-						const auto& rtInstanceCount = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTInstanceCount);
 						const uint32_t rtCount = ctx.frameState->GetRTInstanceCount();
 						const uint32_t instanceCount = ctx.frameState->GetInstanceCount();
 
 						pass.scope = ComputeScope{ { instanceCount, 1u }, { WORKGROUP_64 } };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
+						B::TLASInstanceReuseToCmdFill(cmd, rtInstances);
 						pso.FillGpuBuffer(cmd, rtInstances);
 						B::CmdFillToComputeAS(cmd, rtInstances);
 
-						pso.FillGpuBuffer(cmd, rtInstanceCount);
-						B::CmdFillToComputeRW(cmd, rtInstanceCount);
-
 						TlasPush push{};
-						push.instanceCount = ctx.frameState->GetInstanceCount();
+						push.instanceCount = instanceCount;
 
 						pso.SetPush(push);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BUILD], pass.pushWriter);

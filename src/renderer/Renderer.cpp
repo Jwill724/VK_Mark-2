@@ -1676,13 +1676,16 @@ bool Renderer::SubmitFrame()
 		{
 			const VkSemaphoreSubmitInfo waits[] = {
 				TimelineWait(
-					graphicsQ.GetTimelineSemaphore(), g0,
-					VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+					graphicsQ.GetTimelineSemaphore(),
+					g0,
+					VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
 			};
+
 			const VkSemaphoreSubmitInfo signals[] = {
 				TimelineSignal(
-					computeQ.GetTimelineSemaphore(), c0,
-					VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)
+					computeQ.GetTimelineSemaphore(),
+					c0,
+					VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT)
 			};
 
 			computeQ.Submit2(

@@ -8,9 +8,8 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inOpaque;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inTransparent;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D inVolumetricLight;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inSceneHDR;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inVolumetricLight;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outFlareBright;
 
@@ -62,10 +61,7 @@ void main()
 	ivec2 fullCoord = ivec2(uv * fullRes);
 	fullCoord = clamp(fullCoord, ivec2(0), ivec2(fullRes) - ivec2(1));
 
-	vec3 hdrOpaque = texelFetch(inOpaque, fullCoord, 0).rgb;
-	vec3 hdrTransparent = texelFetch(inTransparent, fullCoord, 0).rgb;
-
-	vec3 hdrScene = hdrOpaque + hdrTransparent;
+	vec3 hdrScene = texelFetch(inSceneHDR, fullCoord, 0).rgb;
 
 	vec3 volumetricLight = texture(inVolumetricLight, uv).rgb;
 	hdrScene += volumetricLight;

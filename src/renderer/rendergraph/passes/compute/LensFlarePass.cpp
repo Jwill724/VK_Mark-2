@@ -39,15 +39,11 @@ void RegisterLensFlarePass(
 					})
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::Read)
 
 				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
 					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::TransparentResolved,
-					RD::ImageAccess::Read)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::HiZ,
@@ -80,7 +76,6 @@ void RegisterLensFlarePass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& transparent = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentResolved);
 						const auto& volumetricLight = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight);
 						const auto& dummy = ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::Dummy);
 						const auto& hiZ = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HiZ);
@@ -93,8 +88,8 @@ void RegisterLensFlarePass(
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
 						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
 
-						const auto& opaque = !taaEnabled
-							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque)
+						const auto& hdrScene = !taaEnabled
+							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene)
 							: ctx.imageTable->GetRenderTarget(TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex()).write);
 
 						const auto& drawExtent = graph.GetDrawExtent();
@@ -136,22 +131,15 @@ void RegisterLensFlarePass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							opaque,
-							linearSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_2,
-							transparent,
+							hdrScene,
 							linearSampler);
 
 						if (ctx.frameState->InstancesActive() &&
-							ctx.profiler->debugToggles.enableVolumetrics &&
-							ctx.profiler->debugToggles.enableShadows)
+							ctx.frameState->IsVolumetricsOn())
 						{
 							pso.BindReadImage(
 								pass.pushWriter,
-								RD::PUSH_BINDING_READ_3,
+								RD::PUSH_BINDING_READ_2,
 								volumetricLight,
 								linearClampSampler);
 						}
@@ -159,7 +147,7 @@ void RegisterLensFlarePass(
 						{
 							pso.BindReadImage(
 								pass.pushWriter,
-								RD::PUSH_BINDING_READ_3,
+								RD::PUSH_BINDING_READ_2,
 								dummy,
 								linearClampSampler);
 						}

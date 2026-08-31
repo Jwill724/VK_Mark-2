@@ -64,7 +64,7 @@ void PM::RegisterPipelines()
 	regC(RP::MaterialResolve,           RS::MaterialResolve_c);
 	regC(RP::VelocityResolve,           RS::VelocityResolve_c);
 	regC(RP::OpaqueLighting,            RS::OpaqueLighting_c);
-	regC(RP::TransparentResolve,        RS::TransparentResolve_c);
+	regC(RP::HDRSceneComposite,         RS::HDRSceneComposite_c);
 	regC(RP::ExposureReduce,            RS::ExposureReduce_c);
 	regC(RP::ExposureFinalize,          RS::ExposureFinalize_c);
 	regC(RP::FinalComposite,            RS::FinalComposite_c);

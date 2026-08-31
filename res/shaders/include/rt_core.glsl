@@ -37,11 +37,6 @@ RTInstancesBuffer getRTInstancesBuffer() {
 	return RTInstancesBuffer(getABTFrameAddress(ABT_RTInstances));
 }
 
-layout(buffer_reference, scalar) buffer RTInstanceCountBuffer { uint count; };
-RTInstanceCountBuffer getRTInstanceCountBuffer() {
-	return RTInstanceCountBuffer(getABTFrameAddress(ABT_RTInstanceCount));
-}
-
 layout(buffer_reference, scalar) buffer RTRayListBuffer {
 	uint counts[RT_RAY_SLOT_COUNT];
 	uint payload[];
