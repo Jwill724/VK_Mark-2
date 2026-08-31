@@ -1,5 +1,4 @@
 ## Features
-- Vulkan 1.4 GPU-Driven renderer
 - Mesh shaders pipeline with visibility buffer
 - GPUAddress table enables a 100% bindless indirect buffer system
 - GPU culling and draw building
@@ -31,11 +30,11 @@
 - Mesh optimizer
 - Tracy profiler
 
-- Legacy systems
+> Older rendering paths retained for reference and comparison. These are not part of the current render pipeline.
+
 - SMAA
 - CMAA2 (Intel)
 - FXAA
-
 
 ## Future
 -Runtime asset loading and handling
