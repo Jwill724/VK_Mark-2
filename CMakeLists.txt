@@ -306,14 +306,11 @@ file(
 
 add_executable(
     VulkanRenderer
-    WIN32
 
     ${RENDERER_SOURCES}
     ${RENDERER_HEADERS}
-
     ${THIRD_PARTY_SOURCES}
     ${MESHOPTIMIZER_SOURCES}
-
     ${SHADER_FILES}
 )
 
