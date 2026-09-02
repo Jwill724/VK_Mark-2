@@ -361,7 +361,7 @@ struct alignas(16) SSSPush
 	glm::vec2 invDepthSize{0.0f};
 
 	float surfaceThickness = 0.005f;
-	float bilinearThreshold = 0.01f;
+	float bilinearThreshold = 0.1f;
 	float shadowContrast = 4.0f;
 	float pad0;
 };
