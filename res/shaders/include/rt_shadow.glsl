@@ -97,7 +97,7 @@ RTVisibility rtSunVisibility(
 	vec2 pixel, int taps, float tMin, float tMax,
 	float mipBias, bool alphaTested)
 {
-	return rtConeVisibility(origin, L, rtSunTanRadius(softness),
+	return rtConeVisibility(origin, L, TAN_SUN_ANGULAR_RADIUS,
 		pixel, taps, tMin, tMax, mipBias, alphaTested);
 }
 

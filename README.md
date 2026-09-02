@@ -99,12 +99,21 @@
 
 * Windows 10/11
 * NVIDIA RTX 20-series+ or AMD RDNA 2+
-* Vulkan SDK 1.4+
+* Vulkan SDK 1.4 or newer
+* CMake 4.2 or newer
 * Visual Studio 2026
 
-## Build Steps
+## **Build Steps**
 
-Open the project file in Visual Studio 2026 and build the solution.
+1. git clone https://github.com/Jwill724/VK_Mark-3.git
+
+2. cd VK_Mark-3
+
+3. cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+
+4. cmake --build build --config Release
+
+5. Open `build/VulkanRenderer.sln` in Visual Studio 2026.
 
 ### Assets
 

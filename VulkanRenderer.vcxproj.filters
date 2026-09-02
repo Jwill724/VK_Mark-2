@@ -665,6 +665,7 @@
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
+    <None Include="build_nrd.bat" />
     <None Include="res\shaders\compile_shaders.bat">
       <Filter>res\shaders</Filter>
     </None>

@@ -150,7 +150,7 @@ void Renderer::Init(
 
 	const size_t totalFrameStaging =
 		GPU_BYTES_INSTANCE_INPUT +
-		GPU_BYTES_DRAW_BIN_KEYS + 
+		GPU_BYTES_DRAW_BIN_KEYS +
 		GPU_BYTES_DYNAMIC_TRANSFORMS +
 		GPU_BYTES_DYNAMIC_TRANSFORMS + // Motion matrices
 		GPU_BYTES_LIGHTS +
@@ -978,7 +978,7 @@ void Renderer::BatchUploadMeshes(
 
 		m_allocator.GlobalStaging.CopyCommand(cmd, vtxWrite);
 		m_allocator.GlobalStaging.CopyCommand(cmd, idxWrite);
-		
+
 		m_allocator.GlobalStaging.CopyCommand(cmd, mlVertWrite);
 		m_allocator.GlobalStaging.CopyCommand(cmd, mlTrisWrite);
 
@@ -1324,6 +1324,9 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 	// RT Shadow push
 	{
+		glm::vec3 sunDirWS = glm::normalize(sceneData.sunlightDirection);
+		glm::vec3 sunDirVS = glm::mat3(sceneData.view) * sunDirWS;
+		rtShadowPush.shadow.sunDirectionVS = sunDirVS;
 		rtShadowPush.resolution = nrdSPush.resSize;
 		rtShadowPush.invResolution = nrdSPush.resTexel;
 	}

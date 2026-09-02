@@ -53,6 +53,10 @@ CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
+build/
+
+# NRD generated libraries
+vendor/nrd/Lib/
 
 # Vulkan
 vk_layer_settings.txt

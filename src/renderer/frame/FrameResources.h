@@ -43,7 +43,7 @@ struct InstanceInput
 	uint32_t meshID       = UINT32_MAX;
 	uint32_t materialID   = UINT32_MAX;
 	uint32_t transformID  = UINT32_MAX;
-	uint32_t meshletVisibilityOffset = 0u; 
+	uint32_t meshletVisibilityOffset = 0u;
 	uint32_t lod0         = UINT32_MAX;
 	uint32_t lod1         = UINT32_MAX;
 	uint32_t lod2         = UINT32_MAX;
@@ -461,6 +461,9 @@ struct alignas(16) RTArgsPush
 
 struct alignas(16) RTShadowParams
 {
+	glm::vec3 sunDirectionVS{ 0.0f };
+	float pad0;
+
 	float    rayTMin = 0.001f;
 	float    rayTMax = 500.0f;
 	float    rayBias = 1e-4f;

@@ -7,6 +7,8 @@
 
 const float RT_SUN_ANGULAR_RADIUS = 0.00465;
 
+const float TAN_SUN_ANGULAR_RADIUS = 0.004650033;
+
 const ivec2 RT_NOISE_OFFSET_SHADOW     = ivec2(0, 0);
 const ivec2 RT_NOISE_OFFSET_REFLECTION = ivec2(23, 41);
 

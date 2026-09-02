@@ -7,10 +7,14 @@
 
 struct RTShadowParams
 {
+	vec3 sunDirectionVS;
+	float pad0;
+
 	float rayTMin;
 	float rayTMax;
 	float rayBias;
 	float normalBias;
+
 	float sunSoftness;
 	float mipBias;
 	uint  taps;

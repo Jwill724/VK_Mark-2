@@ -375,10 +375,14 @@
     <ClInclude Include="res\assets\AreaTex.h" />
     <ClInclude Include="res\assets\SearchTex.h" />
   </ItemGroup>
+  <!-- ===================== Scripts / Resources ===================== -->
+  <ItemGroup>
+      <None Include="build_nrd.bat" />
+      <None Include="res\shaders\compile_shaders.bat" />
+  </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
     <None Include="res\shaders\clustered\transparent_cluster_bounds.comp" />
-    <None Include="res\shaders\compile_shaders.bat" />
     <None Include="res\shaders\core\transparent_cull.task" />
     <None Include="res\shaders\core\transparent_draw.mesh" />
     <None Include="res\shaders\include\reflect_common.glsl" />

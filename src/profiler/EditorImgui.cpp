@@ -638,7 +638,6 @@ namespace
 			ImGuiSliderFlags_Logarithmic);
 		ImGui::SetItemTooltip("Scaled by distance from camera. Total = normal + slope * dist.");
 
-		//ImGui::SliderFloat(label("Sun Softness"), &p.sunSoftness, 0.0f, 2.0f);
 		//ImGui::SliderFloat(label("Shadow Mip Bias"), &p.mipBias, 0.0f, 6.0f);
 
 		//int taps = static_cast<int>(p.taps);
