@@ -34,9 +34,9 @@ void RegisterSkyboxPass(
 					RD::ImageAccess::DepthRead)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeWrite)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -56,10 +56,10 @@ void RegisterSkyboxPass(
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& skybox = ctx.imageTable->GetEnvironmentSet(ctx.profiler->debugToggles.activeEnvMap).skybox;
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 
 						AttachmentDesc opaqueAttach{};
-						opaqueAttach.imageView = opaque.m_imageView;
+						opaqueAttach.imageView = hdrScene.m_imageView;
 						opaqueAttach.loadOp    = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
@@ -72,8 +72,8 @@ void RegisterSkyboxPass(
 
 						pso.UpdateRenderInfo(
 							{
-								opaque.Width(),
-								opaque.Height()
+								hdrScene.Width(),
+								hdrScene.Height()
 							},
 							{ opaqueAttach, depthAttach });
 

@@ -259,7 +259,7 @@
 //	uint pixelX = packedPixel >> 18;
 //	uint pixelY = packedPixel & 0x3FFFu;
 //
-//	if (pixelX >= uint(scene.viewportSize.x) || pixelY >= uint(scene.viewportSize.y)) return;
+//	if (pixelX >= uint(scene.displayExtentSize.x) || pixelY >= uint(scene.displayExtentSize.y)) return;
 //
 //	ivec2 pixelPos = ivec2(int(pixelX), int(pixelY));
 //
@@ -280,7 +280,7 @@
 //
 //		vec3 outColor = texelFetch(inTonemap, pixelPos, 0).rgb * centerWeight;
 //
-//		ivec2 size = ivec2(scene.viewportSize.xy);
+//		ivec2 size = ivec2(scene.displayExtentSize.xy);
 //		if (blendVal.x > 0.0 && pixelPos.x > 0)
 //			outColor += blendVal.x * texelFetch(inTonemap, pixelPos + ivec2(-1,  0), 0).rgb;
 //		if (blendVal.y > 0.0 && pixelPos.y > 0)
@@ -337,7 +337,7 @@
 //
 //			if ((lineLengthLeft + lineLengthRight) >= 5.0) {
 //				blendZs(
-//					ivec2(scene.viewportSize.xy),
+//					ivec2(scene.displayExtentSize.xy),
 //					pixelPos,
 //					horizontal,
 //					invertedZ,

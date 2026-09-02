@@ -120,7 +120,7 @@ void RegisterSSGIPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{ drawExtent };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 

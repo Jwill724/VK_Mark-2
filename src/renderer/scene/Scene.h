@@ -38,7 +38,8 @@ public:
 	const glm::mat4& GetCurrentProjUnjittered() const { return m_curCamProjUnjittered; }
 
 	bool UpdateCamera(
-		Extents2D drawExtent,
+		Extents2D renderExtent,
+		Extents2D displayExtent,
 		Profiler& profiler,
 		GLFWwindow* window,
 		bool isTemporalAllowed);

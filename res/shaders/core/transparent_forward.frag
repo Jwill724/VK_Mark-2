@@ -131,7 +131,7 @@ void main()
 
 		ClusterGrid fragGrid = computeClusterGrid(
 			gl_FragCoord.xy, viewDepth,
-			uvec2(scene.viewportSize.xy),
+			uvec2(scene.renderExtentSize.xy),
 			clusteredData.tileSizeX, clusteredData.tileSizeY,
 			clusteredData.tileCountX, clusteredData.tileCountY,
 			clusteredData.zSlices,

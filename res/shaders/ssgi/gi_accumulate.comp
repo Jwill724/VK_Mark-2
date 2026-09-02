@@ -47,7 +47,7 @@ void main() {
 	SceneData scene    = getSceneData();
 	DebugToggles debug = getDebugToggles();
 
-	const ivec2 fullExtent = ivec2(scene.viewportSize.xy);
+	const ivec2 fullExtent = ivec2(scene.renderExtentSize.xy);
 	const ivec2 fullMax    = fullExtent - 1;
 	const ivec2 halfExtent = (fullExtent + 1) / 2;
 	const ivec2 halfPix    = ivec2(gl_GlobalInvocationID.xy);
@@ -83,8 +83,8 @@ void main() {
 
 	if (valid)
 	{
-		const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
-		const vec2 halfPixelSize = vec2(scene.pixelSizes.zw);
+		const vec2 fullPixelSize = vec2(scene.renderPixelSizes.xy);
+		const vec2 halfPixelSize = vec2(scene.renderPixelSizes.zw);
 		const vec2 uv            = (vec2(pix) + 0.5) * fullPixelSize;
 		const vec2 halfUV        = (vec2(halfPix) + 0.5) * halfPixelSize;
 

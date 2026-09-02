@@ -38,7 +38,7 @@ public:
 		}
 	}
 
-	const Extents2D& GetDrawExtent() const { return m_extent; }
+	const Extents2D& GetRenderExtent() const { return m_extent; }
 
 	void SetIndirect(VkBuffer buffer, VkDeviceSize offset = 0) noexcept
 	{

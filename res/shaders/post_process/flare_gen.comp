@@ -25,331 +25,494 @@ layout(push_constant) uniform LensFlarePush {
 	float brightThreshold;
 	float brightKnee;
 	float brightIntensity;
-	float pad0;
+	float starburstIntensity;
 
 	float ringInnerRadius;
 	float ringOuterRadius;
 	float chromaStrength;
-	float pad1;
+	float haloAnisotropy;
 
 	float streakStrength;
 	float streakWidth;
 	float streakLength;
-	float pad2;
+	float starburstRotation;
 
 	float occlusionRadiusPixels;
 	float occlusionDepthBias;
 	float occlusionFade;
-	float pad3;
+	float sunJitterScale;
+
+	float starburstBlades;
+	float starburstLength;
+	float starburstWidth;
+	float haloOpacity;
+
+	float haloSqueeze;
+	float haloAngleGain;
+	float ghostStrength;
+	float ghostSpacing;
 } pc;
 
-float ringMask(vec2 uv, vec2 sunUv, float innerRadius, float outerRadius);
-float streakAxisPixels(
-	vec2 uv,
-	vec2 originUv,
-	vec2 dir,
-	float widthUv,
-	float lengthUv,
-	vec2 outputRes);
-struct SunPick
-{
-	vec2 uv;
-	vec3 color;
+const float kStarSecondaryWidth  = 0.55;
+const float kStarSecondaryWeight = 0.40;
+const float kStarCoreRadius      = 0.010;
+
+const float kChromaSaturation = 1.30;
+const float kChromaGain       = 1.15;
+
+const float kSunTintStrength  = 0.85;
+const float kSunAuthoredBlend = 0.45;
+
+const vec3  kWorldUp = vec3(0.0, 1.0, 0.0);
+
+const float kBrightnessGateScale = 0.55;
+const float kCoverageMin    = 0.020;
+const float kCoverageMax    = 0.120;
+const float kOcclusionFloor = 0.03;
+
+
+const float kHaloEccentricityMax = 3.00;
+const float kHaloVignettePower   = 3.00;
+const float kHaloAngularFade     = 0.45;
+const float kHaloAngularOnset    = 0.28;
+const float kHaloCenterShift     = 0.08;
+
+const float kScreenFadeMargin = 0.055;
+
+const int   kGhostCount = 5;
+const float kGhostOffsets[5] = float[5](0.55, 0.95, 1.25, 1.70, 2.20);
+const float kGhostRadii[5]   = float[5](0.075, 0.045, 0.110, 0.060, 0.150);
+const float kGhostWeights[5] = float[5](1.00, 0.70, 0.55, 0.85, 0.40);
+const float kGhostThickness  = 0.16;
+const float kGhostFill       = 0.08;
+const float kGhostChromaStep = 0.85;
+const float kGhostMinAxis    = 0.02;
+const float kGhostFullAxis   = 0.18;
+
+struct SunSample {
+	vec2  uv;
+	vec3  color;
 	float lum;
 	float coverage;
 };
-SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv);
-float computeSunOcclusion(vec2 sunUv, float nearClip, float farClip, vec2 invFullSize);
-float distNormMinDim(vec2 uvA, vec2 uvB, vec2 outputRes);
+
+struct LensAxis {
+	vec2  major;
+	vec2  minorAxis;
+	float eccentricity;
+	float cosAxis;
+	float offAxis;
+};
+
+SunSample sampleSunBright(sampler2D brightTex, vec2 sunUv);
+LensAxis buildLensAxis(vec2 sunUv, vec2 res, float minDim, vec2 tanHalfFov);
+vec2 toEllipseSpace(vec2 delta, LensAxis lens);
+float haloAngularWeight(vec2 delta, LensAxis lens);
+float sunOcclusion(vec2 sunUv, float nearPlane, float farPlane, vec2 invFullSize);
+float haloRadius(vec2 delta, vec2 sunUv, vec2 res, float minDim, float anisotropy, vec2 tanHalfFov);
+float apertureStar(vec2 delta, float radius, float angle, float pixelSize);
+float anamorphicStreak(vec2 delta, vec2 axis, float widthNorm, float lengthNorm, float pixelSize);
+vec3  enrichChroma(vec3 c);
+vec3  normalizeTint(vec3 c);
+float ngonScale(vec2 d, float blades, float angle);
+vec3 ghostRings(
+	vec2 pixelN,
+	vec2 sunN,
+	vec2 centerN,
+	LensAxis lens,
+	float blades,
+	float starAngle,
+	float pixelSize,
+	vec3 tint);
+
+shared vec2  gSunUv;
+shared vec3  gTint;
+shared float gGate;
 
 void main()
 {
 	ivec2 dim = imageSize(outLensFlareColor);
 	ivec2 pixelCoord = ivec2(gl_GlobalInvocationID.xy);
-
-	if (any(greaterThanEqual(pixelCoord, dim))) return;
-
-	if (pc.sunVisible <= 0.0) {
-		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
-		return;
-	}
+	bool inBounds = all(lessThan(pixelCoord, dim));
 
 	SceneData scene = getSceneData();
-	DebugToggles debug = getDebugToggles();
 
-	vec2 invFullSize = vec2(scene.pixelSizes.xy);
+	if (gl_LocalInvocationIndex == 0u)
+	{
+		gGate = 0.0;
+		gSunUv = pc.sunUv;
+		gTint = vec3(1.0);
 
-	vec2 uv = (vec2(pixelCoord) + 0.5) / vec2(dim);
+		if (pc.sunVisible > 0.0)
+		{
+			vec2 sunUv = pc.sunUv + scene.temporalJitter.xy * vec2(0.5, -0.5) * pc.sunJitterScale;
 
-	if (debug.aaMode == AA_TAA) {
-		// Remove TAA jitter to get stable flare positions
-		uv -= scene.temporalJitter.xy * 0.5; // NDC -> UV space
-		uv = clamp(uv, vec2(0.0), vec2(1.0));
+			SunSample sun = sampleSunBright(inFlareBright, sunUv);
+
+			if (sun.lum > 1e-8)
+			{
+				float occ = sunOcclusion(
+					sun.uv,
+					scene.cameraClips.x,
+					scene.cameraClips.y,
+					vec2(scene.displayPixelSizes.xy));
+
+				float exposure = max(getLuminanceBuffer().luminanceSums[0].x, 1e-4);
+				float brightnessGate = 1.0 - exp(-sun.lum * exposure * kBrightnessGateScale);
+
+				float coverageGate = saturate(
+					(sun.coverage - kCoverageMin) / max(kCoverageMax - kCoverageMin, 1e-6));
+				coverageGate = pow(coverageGate, 1.75);
+
+				float occlusionSoft = pow(mix(kOcclusionFloor, 1.0, occ), 1.25);
+
+				gGate = brightnessGate * coverageGate * occlusionSoft * saturate(pc.sunVisible);
+				gSunUv = sun.uv;
+
+				vec3 measured = normalizeTint(sun.color);
+				vec3 authored = normalizeTint(scene.sunlightColor.rgb);
+				vec3 tint = normalizeTint(mix(measured, authored, kSunAuthoredBlend));
+
+				gTint = mix(vec3(1.0), tint, kSunTintStrength);
+			}
+		}
 	}
 
-	SunPick sunPick = findVisibleSunPeak(inFlareBright, pc.sunUv);
+	memoryBarrierShared();
+	barrier();
 
-	if (sunPick.lum < 1e-8) {
+	if (!inBounds) return;
+
+	float gate = gGate;
+	if (gate < 1e-5) {
 		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
 		return;
 	}
 
-	vec2 sunUv = sunPick.uv;
-	vec3 brightColor = sunPick.color;
-	float brightLum = sunPick.lum;
+	vec2 res = vec2(dim);
+	float minDim = min(res.x, res.y);
+	float invMinDim = 1.0 / minDim;
 
-	float occlusion = computeSunOcclusion(sunUv, scene.cameraClips.x, scene.cameraClips.y, invFullSize);
+	vec2 uv = (vec2(pixelCoord) + 0.5) / res;
+	vec2 sunUv = gSunUv;
+	vec3 tint = gTint;
 
-	float brightnessGate = 1.0 - exp(-brightLum * 0.55);
+	vec2 pixelN = uv * res * invMinDim;
+	vec2 sunN = sunUv * res * invMinDim;
+	vec2 centerN = vec2(0.5) * res * invMinDim;
 
-	float coverageMin = 0.06;
-	float coverageMax = 0.18;
+	vec2 delta = pixelN - sunN;
+	float radius = length(delta);
 
-	float coverageGate = saturate((sunPick.coverage - coverageMin) / max(coverageMax - coverageMin, 1e-6));
-	coverageGate = pow(coverageGate, 1.75);
+	LensAxis lens = buildLensAxis(sunUv, res, minDim, scene.tanHalfFov);
 
-	const float occlusionFloor = 0.03;
-	float occlusionSoft = mix(occlusionFloor, 1.0, occlusion);
-	occlusionSoft = pow(occlusionSoft, 1.25);
+	vec2 edge = min(uv, vec2(1.0) - uv);
+	float screenFade = smoothstep(0.0, kScreenFadeMargin, min(edge.x, edge.y));
 
-	float sunGate = brightnessGate * coverageGate * occlusionSoft * saturate(pc.sunVisible);
+	float blades = max(floor(pc.starburstBlades + 0.5), 3.0);
 
-	if (sunGate < 1e-5) {
-		imageStore(outLensFlareColor, pixelCoord, vec4(0.0));
-		return;
-	}
+	vec3 camRight = normalize(scene.invView[0].xyz);
+	vec3 camFwd = normalize(-scene.invView[2].xyz);
+	float starAngle = (dot(camRight, kWorldUp) + dot(camFwd, kWorldUp)) * pc.starburstRotation;
 
-	float distToSun = distNormMinDim(uv, sunUv, pc.outputRes);
+	// ===== halo =====
+	vec2 haloDelta = pixelN - mix(sunN, centerN, kHaloCenterShift);
+	float hr = length(toEllipseSpace(haloDelta, lens));
 
-	vec3 tint = max(brightColor, vec3(0.0));
-	float tintLum = max(luminance(tint), 1e-6);
-	tint *= (1.0 / tintLum);
+	float haloT = saturate(
+		(hr - pc.ringInnerRadius) / max(pc.ringOuterRadius - pc.ringInnerRadius, 1e-6));
 
-	float ring = ringMask(uv, sunUv, pc.ringInnerRadius, pc.ringOuterRadius);
+	float bandSoft = max((pc.ringOuterRadius - pc.ringInnerRadius) * 0.30, 1e-5);
 
-	float ringT = (distToSun - pc.ringInnerRadius) / max(pc.ringOuterRadius - pc.ringInnerRadius, 1e-6);
-	ringT = saturate(ringT);
+	float band = smoothstep(pc.ringInnerRadius, pc.ringInnerRadius + bandSoft, hr)
+	           * (1.0 - smoothstep(pc.ringOuterRadius - bandSoft, pc.ringOuterRadius, hr));
+	band = pow(saturate(band), 2.0);
 
-	vec3 rainbowLut = SampleTexture(pc.rainbowLUTIndex, vec2(ringT, 0.5)).rgb;
+	float bandMid = pow(saturate(1.0 - abs(haloT * 2.0 - 1.0)), 0.75);
+	float angular = haloAngularWeight(haloDelta, lens);
+	float vignette = pow(lens.cosAxis, kHaloVignettePower);
 
-	vec3 ringColor = mix(vec3(1.0), rainbowLut, saturate(pc.chromaStrength));
+	vec3 haloChroma = enrichChroma(SampleTexture(pc.rainbowLUTIndex, vec2(haloT, 0.5)).rgb);
+	vec3 haloColor = mix(tint, haloChroma * mix(vec3(1.0), tint, 0.35), saturate(pc.chromaStrength));
 
-	const float ringOpacity = 0.2;
+	vec3 haloContribution =
+		haloColor * (band * bandMid * angular * vignette * pc.haloOpacity * screenFade);
 
-	float ringMid = 1.0 - abs(ringT * 2.0 - 1.0);
-	ringMid = pow(saturate(ringMid), 0.75);
+	// ===== ghosts =====
+	vec3 ghostContribution = ghostRings(
+		pixelN, sunN, centerN, lens, blades, starAngle, invMinDim, tint);
 
-	vec3 ringContribution = ringColor * ring * ringMid * ringOpacity;
+	ghostContribution *= pc.ghostStrength * vignette * screenFade;
 
-	float widthUv  = pc.streakWidth;
-	float lengthUv = pc.streakLength;
+	// ===== starburst + anamorphic streak =====
+	float star = apertureStar(delta, radius, starAngle, invMinDim);
 
-	float horiz = streakAxisPixels(
-		uv,
-		sunUv,
-		vec2(1.0, 0.0),
-		widthUv * 0.22,
-		lengthUv * 3.25,
-		pc.outputRes
-	);
+	float streak = anamorphicStreak(
+		delta, vec2(1.0, 0.0), pc.streakWidth * 0.22, pc.streakLength * 3.25, invMinDim);
 
-	float vert = streakAxisPixels(
-		uv,
-		sunUv,
-		vec2(0.0, 1.0),
-		widthUv * 0.30,
-		lengthUv * 1.45,
-		pc.outputRes
-	);
+	float rayT = saturate(radius / max(pc.streakLength, 1e-6));
+	vec3 rayChroma = enrichChroma(SampleTexture(pc.rainbowLUTIndex, vec2(rayT, 0.5)).rgb);
+	vec3 rayColor = mix(tint, rayChroma * mix(vec3(1.0), tint, 0.5), saturate(pc.chromaStrength * 0.35));
 
-	const int BLADE_COUNT = 8;
-	float star = 0.0;
+	vec3 rayContribution = rayColor * (star * pc.starburstIntensity + streak * pc.streakStrength);
 
-	for (int i = 0; i < BLADE_COUNT; ++i) {
-		float angle = (6.2831853 / float(BLADE_COUNT)) * float(i);
-		vec2 dir = vec2(cos(angle), sin(angle));
-
-		float blade = streakAxisPixels(
-			uv,
-			sunUv,
-			dir,
-			widthUv * 0.25,
-			lengthUv * 0.75,
-			pc.outputRes
-		);
-
-		blade = pow(max(blade, 0.0), 5.0);
-		star += blade;
-	}
-
-	star = min(star, 6.0);
-
-	float streakValue = (horiz * 1.0) + (vert * 0.25) + (star * 0.85);
-
-	float streakT = saturate(distToSun / max(pc.streakLength, 1e-6));
-	vec3 streakChroma = SampleTexture(pc.rainbowLUTIndex, vec2(streakT, 0.5)).rgb;
-
-	vec3 streakColor = mix(tint, streakChroma, saturate(pc.chromaStrength * 0.45));
-	vec3 streakContribution = streakColor * (streakValue * pc.streakStrength);
-
-	vec3 flareColor = (ringContribution * 1.00) + (streakContribution * 1.10);
-	flareColor *= sunGate;
+	vec3 flareColor = (haloContribution + ghostContribution + rayContribution) * gate;
 
 	imageStore(outLensFlareColor, pixelCoord, vec4(max(flareColor, 0.0), 1.0));
 }
 
-float ringMask(vec2 uv, vec2 sunUv, float innerRadius, float outerRadius)
+vec3 normalizeTint(vec3 c)
 {
-	float distToSun = distNormMinDim(uv, sunUv, pc.outputRes);
-
-	float innerSoft = max(innerRadius * 0.30, 1e-6);
-	float outerSoft = max(outerRadius * 0.30, 1e-6);
-
-	float inner = smoothstep(innerRadius, innerRadius + innerSoft, distToSun);
-	float outer = 1.0 - smoothstep(outerRadius - outerSoft, outerRadius, distToSun);
-
-	float band = saturate(inner * outer);
-	band = pow(band, 2.0);
-
-	return band;
+	vec3 v = max(c, vec3(0.0));
+	return v * (1.0 / max(luminance(v), 1e-6));
 }
 
-float streakAxisPixels(
-	vec2 uv,
-	vec2 originUv,
-	vec2 dir,
-	float widthUv,
-	float lengthUv,
-	vec2 outputRes)
+vec3 enrichChroma(vec3 c)
 {
-	vec2 deltaUv = (uv - originUv);
-
-	vec2 axis = normalize(dir);
-	vec2 perp = vec2(-axis.y, axis.x);
-
-	float alongUv = abs(dot(deltaUv, axis));
-	float acrossUv = abs(dot(deltaUv, perp));
-
-	float minDim = min(outputRes.x, outputRes.y);
-
-	float widthPixels = max(widthUv  * minDim, 0.85);
-	float lengthPixels = max(lengthUv * minDim, 2.0);
-
-	float alongPixels = alongUv * minDim;
-	float acrossPixels = acrossUv * minDim;
-
-	float gauss = exp(-(acrossPixels * acrossPixels) / (2.0 * widthPixels * widthPixels));
-	float falloff = exp(-alongPixels / lengthPixels);
-
-	return gauss * falloff;
+	float l = luminance(c);
+	return max(mix(vec3(l), c, kChromaSaturation) * kChromaGain, vec3(0.0));
 }
 
-SunPick findVisibleSunPeak(sampler2D brightTex, vec2 sunUv)
+float apertureStar(vec2 delta, float radius, float angle, float pixelSize)
 {
-	ivec2 brightDimI = textureSize(brightTex, 0);
-	vec2 brightDim = vec2(brightDimI);
+	if (radius < 1e-6) return 0.0;
+
+	float theta = atan(delta.y, delta.x) + angle;
+	float k = max(floor(pc.starburstBlades + 0.5), 2.0);
+
+	float pixelAngle = pixelSize / max(radius, pixelSize);
+
+	float distPrimary   = acos(clamp( cos(theta * k), -1.0, 1.0)) / k;
+	float distSecondary = acos(clamp(-cos(theta * k), -1.0, 1.0)) / k;
+
+	float wPrimary   = max(pc.starburstWidth, pixelAngle);
+	float wSecondary = max(pc.starburstWidth * kStarSecondaryWidth, pixelAngle);
+
+	float primary   = exp(-(distPrimary * distPrimary) / (2.0 * wPrimary * wPrimary));
+	float secondary = exp(-(distSecondary * distSecondary) / (2.0 * wSecondary * wSecondary));
+
+	float radial = exp(-radius / max(pc.starburstLength, 1e-5));
+	float core = smoothstep(0.0, kStarCoreRadius, radius);
+
+	return (primary + secondary * kStarSecondaryWeight) * radial * core;
+}
+
+float anamorphicStreak(vec2 delta, vec2 axis, float widthNorm, float lengthNorm, float pixelSize)
+{
+	vec2 a = normalize(axis);
+	vec2 p = vec2(-a.y, a.x);
+
+	float along = abs(dot(delta, a));
+	float across = abs(dot(delta, p));
+
+	float w = max(widthNorm, pixelSize * 0.85);
+	float len = max(lengthNorm, pixelSize * 2.0);
+
+	return exp(-(across * across) / (2.0 * w * w)) * exp(-along / len);
+}
+
+float haloRadius(vec2 delta, vec2 sunUv, vec2 res, float minDim, float anisotropy, vec2 tanHalfFov)
+{
+	vec2 ndc = vec2(sunUv.x * 2.0 - 1.0, 1.0 - sunUv.y * 2.0);
+	vec2 viewXY = ndc * tanHalfFov;
+
+	float cosAxis = inversesqrt(dot(viewXY, viewXY) + 1.0);
+	float ecc = clamp(mix(1.0, 1.0 / max(cosAxis, 1e-3), saturate(anisotropy)), 1.0, kHaloEccentricityMax);
+
+	vec2 radial = (sunUv - vec2(0.5)) * res / minDim;
+	float radialLen = length(radial);
+
+	vec2 major = (radialLen > 1e-4) ? (radial / radialLen) : vec2(1.0, 0.0);
+	vec2 minorAxis = vec2(-major.y, major.x);
+
+	vec2 local = vec2(dot(delta, major) / ecc, dot(delta, minorAxis));
+
+	return length(local);
+}
+
+SunSample sampleSunBright(sampler2D brightTex, vec2 sunUv)
+{
+	vec2 brightDim = vec2(textureSize(brightTex, 0));
 	vec2 invBright = 1.0 / max(brightDim, vec2(1.0));
 
-	const int SEARCH_RADIUS = 6;
-
-	float bestLum = 0.0;
-	vec2 bestUv = sunUv;
-	vec3 bestColor = vec3(0.0);
+	const int R = 6;
 
 	float weightSum = 0.0;
 	vec2 weightedUv = vec2(0.0);
 	vec3 weightedColor = vec3(0.0);
 
 	float sumLum = 0.0;
+	float peakLum = 0.0;
 
-	for (int y = -SEARCH_RADIUS; y <= SEARCH_RADIUS; ++y) {
-		for (int x = -SEARCH_RADIUS; x <= SEARCH_RADIUS; ++x) {
-
-			vec2 offsetUv = vec2(float(x), float(y)) * invBright;
-			vec2 tapUv = clamp(sunUv + offsetUv, vec2(0.0), vec2(1.0));
+	for (int y = -R; y <= R; ++y)
+	{
+		for (int x = -R; x <= R; ++x)
+		{
+			vec2 tapUv = clamp(sunUv + vec2(x, y) * invBright, vec2(0.0), vec2(1.0));
 
 			vec3 c = textureLod(brightTex, tapUv, 0.0).rgb;
 			float lum = luminance(c);
 
-			sumLum += lum;
-
-			float w = lum * lum;
+			float radial = length(vec2(x, y)) / float(R);
+			float w = lum * lum * exp(-radial * radial * 1.5);
 
 			weightedUv += tapUv * w;
 			weightedColor += c * w;
 			weightSum += w;
 
-			if (lum > bestLum) {
-				bestLum = lum;
-				bestUv = tapUv;
-				bestColor = c;
-			}
+			sumLum += lum;
+			peakLum = max(peakLum, lum);
 		}
 	}
 
-	if (weightSum > 1e-8) {
-		vec2 centroidUv = weightedUv / weightSum;
-		vec3 centroidColor = weightedColor / weightSum;
+	SunSample s;
+	s.uv = sunUv;
+	s.color = vec3(0.0);
+	s.lum = peakLum;
+	s.coverage = 0.0;
 
-		const float centroidBlend = 0.35;
-		bestUv = mix(bestUv, centroidUv, centroidBlend);
-		bestColor = mix(bestColor, centroidColor, 0.25);
+	if (weightSum > 1e-8)
+	{
+		s.color = weightedColor / weightSum;
+
+		vec2 offset = (weightedUv / weightSum) - sunUv;
+		float maxOffset = 3.0 * min(invBright.x, invBright.y);
+		float offsetLen = length(offset);
+
+		if (offsetLen > maxOffset) offset *= maxOffset / offsetLen;
+
+		s.uv = sunUv + offset;
 	}
 
-	const float sampleCount = float((SEARCH_RADIUS * 2 + 1) * (SEARCH_RADIUS * 2 + 1));
+	const float sampleCount = float((R * 2 + 1) * (R * 2 + 1));
+	if (peakLum > 1e-8) s.coverage = saturate((sumLum / sampleCount) / peakLum);
 
-	float coverage = 0.0;
-	if (bestLum > 1e-8) {
-		coverage = saturate((sumLum / sampleCount) / bestLum);
-	}
-
-	SunPick outPick;
-	outPick.uv = bestUv;
-	outPick.color = bestColor;
-	outPick.lum = bestLum;
-	outPick.coverage = coverage;
-
-	return outPick;
+	return s;
 }
 
-float computeSunOcclusion(vec2 sunUv, float nearPlane, float farPlane, vec2 invFullSize)
+float sunOcclusion(vec2 sunUv, float nearPlane, float farPlane, vec2 invFullSize)
 {
 	float fade = max(pc.occlusionFade, 1e-6);
-
 	float radiusHalfRes = max(pc.occlusionRadiusPixels * 0.5, 0.0);
+	vec2 tapSpacingUv = max(pc.occlusionRadiusPixels * 0.75, 1.0) * invFullSize;
 
-	float tapSpacingPixels = max(pc.occlusionRadiusPixels * 0.75, 1.0);
-	vec2 tapSpacingUv = tapSpacingPixels * invFullSize;
+	float sum = 0.0;
+	float weight = 0.0;
 
-	float bestVis = 0.0;
+	for (int y = -1; y <= 1; ++y)
+	{
+		for (int x = -1; x <= 1; ++x)
+		{
+			vec2 tapUv = clamp(sunUv + vec2(x, y) * tapSpacingUv, vec2(0.0), vec2(1.0));
 
-	for (int y = -1; y <= 1; ++y) {
-		for (int x = -1; x <= 1; ++x) {
-
-			vec2 tapUv = sunUv + vec2(float(x), float(y)) * tapSpacingUv;
-			tapUv = clamp(tapUv, vec2(0.0), vec2(1.0));
-
-			float minLinearDepth = sampleHiZMinDepth(
-				inHiZ,
-				tapUv,
-				radiusHalfRes,
-				nearPlane,
-				farPlane
-			);
+			float minLinearDepth = sampleHiZMinDepth(inHiZ, tapUv, radiusHalfRes, nearPlane, farPlane);
 			minLinearDepth += pc.occlusionDepthBias;
 
-			float vis = smoothstep(farPlane - fade, farPlane, minLinearDepth);
-			bestVis = max(bestVis, vis);
+			float w = exp(-0.5 * float(x * x + y * y));
+
+			sum += smoothstep(farPlane - fade, farPlane, minLinearDepth) * w;
+			weight += w;
 		}
 	}
 
-	return bestVis;
+	return sum / max(weight, 1e-6);
 }
 
-float distNormMinDim(vec2 uvA, vec2 uvB, vec2 outputRes)
+LensAxis buildLensAxis(vec2 sunUv, vec2 res, float minDim, vec2 tanHalfFov)
 {
-	vec2 deltaPixels = (uvA - uvB) * outputRes;
-	float minDim = min(outputRes.x, outputRes.y);
+	vec2 ndc = vec2(sunUv.x * 2.0 - 1.0, 1.0 - sunUv.y * 2.0);
+	vec2 viewXY = ndc * tanHalfFov;
 
-	return length(deltaPixels) / max(minDim, 1.0);
+	vec2 radial = (sunUv - vec2(0.5)) * res / minDim;
+	float offAxis = length(radial);
+
+	LensAxis lens;
+	lens.cosAxis = inversesqrt(dot(viewXY, viewXY) + 1.0);
+	lens.offAxis = offAxis;
+	lens.major = (offAxis > 1e-4) ? (radial / offAxis) : vec2(1.0, 0.0);
+	lens.minorAxis = vec2(-lens.major.y, lens.major.x);
+
+	float radialEcc = pow(1.0 / max(lens.cosAxis, 1e-3), max(pc.haloAngleGain, 0.0));
+	lens.eccentricity = clamp(
+		mix(1.0, radialEcc, saturate(pc.haloAnisotropy)),
+		1.0,
+		kHaloEccentricityMax);
+
+	return lens;
+}
+
+vec2 toEllipseSpace(vec2 delta, LensAxis lens)
+{
+	vec2 p = lens.major * (dot(delta, lens.major) / lens.eccentricity)
+	       + lens.minorAxis * dot(delta, lens.minorAxis);
+
+	p.x /= max(pc.haloSqueeze, 1e-3);
+
+	return p;
+}
+
+float haloAngularWeight(vec2 delta, LensAxis lens)
+{
+	float len = length(delta);
+	if (len < 1e-5) return 1.0;
+
+	float alongMajor = dot(delta / len, lens.major);
+	float lobe = alongMajor * alongMajor;
+
+	float onset = saturate(lens.offAxis / kHaloAngularOnset);
+
+	return mix(1.0, lobe, kHaloAngularFade * onset);
+}
+
+float ngonScale(vec2 d, float blades, float angle)
+{
+	float theta = atan(d.y, d.x) + angle;
+	float halfWedge = PI / blades;
+	float wedge = mod(theta + halfWedge, 2.0 * halfWedge) - halfWedge;
+
+	return cos(halfWedge) / max(cos(wedge), 1e-3);
+}
+
+vec3 ghostRings(
+	vec2 pixelN,
+	vec2 sunN,
+	vec2 centerN,
+	LensAxis lens,
+	float blades,
+	float starAngle,
+	float pixelSize,
+	vec3 tint)
+{
+	vec2 axis = centerN - sunN;
+	float axisLen = length(axis);
+
+	float presence = smoothstep(kGhostMinAxis, kGhostFullAxis, axisLen);
+	if (presence <= 0.0) return vec3(0.0);
+
+	float sizeScale = 0.35 + 0.65 * axisLen;
+
+	vec3 sum = vec3(0.0);
+
+	for (int i = 0; i < kGhostCount; ++i)
+	{
+		vec2 gpos = sunN + axis * (kGhostOffsets[i] * pc.ghostSpacing);
+		vec2 d = toEllipseSpace(pixelN - gpos, lens);
+
+		float radius = max(kGhostRadii[i] * sizeScale, 1e-4);
+		float rn = length(d) / (radius * ngonScale(d, blades, starAngle));
+
+		float thick = max(kGhostThickness, pixelSize / radius);
+
+		float e = (rn - 1.0) / thick;
+		float rim = exp(-e * e);
+		float fill = smoothstep(1.0, 1.0 - thick * 2.0, rn) * kGhostFill;
+
+		float chromaT = fract(float(i) * kGhostChromaStep + 0.15);
+		vec3 chroma = enrichChroma(SampleTexture(pc.rainbowLUTIndex, vec2(chromaT, 0.5)).rgb);
+		vec3 color = mix(tint, chroma * mix(vec3(1.0), tint, 0.4), saturate(pc.chromaStrength * 0.8));
+
+		sum += color * ((rim + fill) * kGhostWeights[i]);
+	}
+
+	return sum * presence;
 }

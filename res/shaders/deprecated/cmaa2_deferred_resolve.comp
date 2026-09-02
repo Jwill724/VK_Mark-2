@@ -61,8 +61,8 @@
 //	uint locationIndex = gl_GlobalInvocationID.x;
 //	if (locationIndex >= locationCount) return;
 //
-//	uint fullWidth = uint(scene.viewportSize.x);
-//	uint fullHeight = uint(scene.viewportSize.y);
+//	uint fullWidth = uint(scene.displayExtentSize.x);
+//	uint fullHeight = uint(scene.displayExtentSize.y);
 //
 //	uint packedQuad = locations.quadIDs[locationIndex];
 //

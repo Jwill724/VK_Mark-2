@@ -82,7 +82,6 @@ void RegisterLensFlarePass(
 						const auto& flareBright = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::FlareBright);
 						const auto& lensflareColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor);
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
-						const auto linearSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::Linear);
 						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
@@ -92,8 +91,8 @@ void RegisterLensFlarePass(
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene)
 							: ctx.imageTable->GetRenderTarget(TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex()).write);
 
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent.Width() / 4, drawExtent.Height() / 4 }};
+						const auto& displayExtent = graph.GetDisplayExtent();
+						pass.scope = ComputeScope{{ displayExtent.Width() / 4, displayExtent.Height() / 4 }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						auto& lensFlarePush = ctx.profiler->lensFlareSettings;
@@ -106,20 +105,22 @@ void RegisterLensFlarePass(
 						glm::vec3 cameraWorldPos = glm::vec3(ctx.scene->GetCamera().GetPosition());
 						glm::vec3 sunDirWorld = glm::normalize(glm::vec3(sceneData.sunlightDirection));
 						glm::vec3 sunWorldPos = cameraWorldPos + sunDirWorld * 10000.0f;
-						glm::vec4 clip = sceneData.proj * sceneData.view * glm::vec4(sunWorldPos, 1.0f);
+
+						glm::vec4 clip = sceneData.projUnjittered * sceneData.view * glm::vec4(sunWorldPos, 1.0f);
 						bool inFront = (clip.w > 0.0f);
 
 						glm::vec3 ndc = glm::vec3(clip) / clip.w;
-						glm::vec2 uv{};
-						uv.x = ndc.x * 0.5f + 0.5f;
-						uv.y = 0.5f - ndc.y * 0.5f;
+						glm::vec2 uv{ ndc.x * 0.5f + 0.5f, 0.5f - ndc.y * 0.5f };
 
-						bool onScreen =
-							(uv.x >= 0.0f && uv.x <= 1.0f) &&
-							(uv.y >= 0.0f && uv.y <= 1.0f);
+						constexpr float kEdgeMargin = 0.06f;
+						glm::vec2 outside = glm::max(glm::vec2(0.0f), glm::max(-uv, uv - glm::vec2(1.0f)));
+
+						float edgeFade = 1.0f - glm::clamp(glm::length(outside) / kEdgeMargin, 0.0f, 1.0f);
+						edgeFade = edgeFade * edgeFade * (3.0f - 2.0f * edgeFade);
 
 						lensFlarePush.sunUv = uv;
-						lensFlarePush.sunVisible = (inFront && onScreen) ? 1.0f : 0.0f;
+						lensFlarePush.sunVisible = inFront ? edgeFade : 0.0f;
+						lensFlarePush.sunJitterScale = 0.0f;
 
 						pso.SetPush(lensFlarePush);
 
@@ -132,7 +133,7 @@ void RegisterLensFlarePass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
 							hdrScene,
-							linearSampler);
+							linearClampSampler);
 
 						if (ctx.frameState->InstancesActive() &&
 							ctx.frameState->IsVolumetricsOn())

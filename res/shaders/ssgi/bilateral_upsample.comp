@@ -39,7 +39,7 @@ void main() {
 	SceneData scene    = getSceneData();
 	DebugToggles debug = getDebugToggles();
 
-	const ivec2 fullExtent = ivec2(scene.viewportSize.xy);
+	const ivec2 fullExtent = ivec2(scene.renderExtentSize.xy);
 	const ivec2 fullPix    = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(fullPix, fullExtent))) return;
 

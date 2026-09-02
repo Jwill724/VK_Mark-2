@@ -187,7 +187,7 @@ vec4 SampleReflectionBilateral(
 	ivec2 off[4] = ivec2[4](ivec2(0,0), ivec2(1,0), ivec2(0,1), ivec2(1,1));
 
 	ivec2 halfMax = textureSize(reflectDenoised, 0) - 1;
-	vec2  vpSize  = scene.viewportSize.xy;
+	vec2  vpSize  = scene.renderExtentSize.xy;
 
 	vec4  sum  = vec4(0.0);
 	float wsum = 0.0;

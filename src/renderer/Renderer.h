@@ -69,11 +69,11 @@ public:
 	const Swapchain& GetSwapchain() { return m_swapchain; }
 
 	// Updates swapchain size and any resources that depend on draw extent size.
-	void UpdateDrawExtentUsage(Extents2D newWindowExtent);
+	void UpdateDisplayExtent(Extents2D newWindowExtent);
 
 	void TickVramUsage();
 
-	Extents2D GetDrawExtent() const { return m_drawExtent; }
+	Extents2D GetRenderExtent() const { return m_renderExtent; }
 
 	uint32_t GetFrameNumber() const { return m_frameNumber; }
 	bool IsFirstFrame() const noexcept { return m_frameNumber == 0; }
@@ -99,8 +99,10 @@ private:
 	uint32_t m_frameNumber = 0;
 	uint32_t m_framesInFlight = 0;
 
-	Extents2D m_drawExtent;
-	void SetDrawExtent(Extents2D extent) { m_drawExtent = extent; }
+	Extents2D m_renderExtent;
+	Extents2D m_displayExtent;
+	void SetRenderExtent(Extents2D extent) { m_renderExtent = extent; }
+	void SetDisplayExtent(Extents2D extent) { m_displayExtent = extent; }
 
 	RenderPassExecutionContext m_renderPassExecutionContext;
 	RD::RenderStateInfo m_renderGraphState;

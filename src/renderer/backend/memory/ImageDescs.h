@@ -11,17 +11,10 @@ namespace RenderTargetDescs
 {
 	// --- Full resolution matches swapchain ---
 
-	inline ImageDesc Opaque(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::BGRpacked, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::DrawColor,
-				 .debugName = "Opaque" };
-	}
-
 	inline ImageDesc HDRScene(Extents3D ext)
 	{
 		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
-				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .usage = Vulkan_ImageUsage::DrawColor,
 				 .debugName = "HDRScene" };
 	}
 
@@ -59,12 +52,6 @@ namespace RenderTargetDescs
 	{
 		return { .format = Vulkan_Format::RG16F, .extent = ext,
 				 .usage  = Vulkan_ImageUsage::DrawColor, .debugName = "Velocity" };
-	}
-
-	inline ImageDesc PrevVelocity(Extents3D ext)
-	{
-		return { .format = Vulkan_Format::RG16F, .extent = ext,
-				 .usage  = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "PrevVelocity" };
 	}
 
 	inline ImageDesc Visibility(Extents3D ext)
@@ -460,6 +447,12 @@ namespace StaticTextureDescs
 	{
 		return { .format = Vulkan_Format::R8U, .extent = { 1, 1, 1 },
 				 .usage  = Vulkan_ImageUsage::TextureSampled, .debugName = "DummyUint8" };
+	}
+
+	inline ImageDesc DummyVelocity()
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = { 1, 1, 1 },
+				 .usage = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "DummyVelocity" };
 	}
 
 	inline ImageDesc ErrorCheckerboard()

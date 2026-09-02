@@ -37,7 +37,7 @@ const float GI_DIAG_WEIGHT = 0.5;
 void main() {
 	SceneData scene = getSceneData();
 
-	const ivec2 halfExtent = (ivec2(scene.viewportSize.xy) + 1) / 2;
+	const ivec2 halfExtent = (ivec2(scene.renderExtentSize.xy) + 1) / 2;
 	const ivec2 halfPix    = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(halfPix, halfExtent))) return;
 

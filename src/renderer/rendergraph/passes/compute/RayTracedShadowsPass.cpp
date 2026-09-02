@@ -47,9 +47,6 @@ void RegisterRTShadowsPass(
 				.WriteResource(RD::Renderer_RenderTarget::NRDShadowViewZ,
 					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
 
-				.WriteResource(RD::Renderer_RenderTarget::PrevVelocity, // Empty transition, or separate shader...choose
-					RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeWrite)
-
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
@@ -64,7 +61,7 @@ void RegisterRTShadowsPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 						const auto& frameCtx = ctx.frameCtx;
 
-						pass.scope = ComputeScope{ graph.GetDrawExtent(), WORKGROUP_8x8 };
+						pass.scope = ComputeScope{ graph.GetRenderExtent(), WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
@@ -88,7 +85,7 @@ void RegisterRTShadowsPass(
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, velocity, nearestClamp);
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1,
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity)); // *empty write
+							ctx.imageTable->GetStaticTexture(RD::Renderer_Texture::DummyVelocity));
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2,
 							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDShadowNormalRoughness));

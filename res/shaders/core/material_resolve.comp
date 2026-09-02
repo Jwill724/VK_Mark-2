@@ -41,7 +41,7 @@ void main()
 	uvec2 gid = gl_GlobalInvocationID.xy;
 	SceneData scene = getSceneData();
 	DebugToggles debug = getDebugToggles();
-	uvec2 vpSize = uvec2(scene.viewportSize.xy);
+	uvec2 vpSize = uvec2(scene.renderExtentSize.xy);
 	if (any(greaterThanEqual(gid, vpSize))) return;
 
 	uvec2 ids = texelFetch(visBuffer, ivec2(gid), 0).xy;
@@ -58,7 +58,7 @@ void main()
 	// fetch + barycentrics
 	VisTriangle tri = fetchVisTriangleMeshlet(ids.x, ids.y);
 
-	vec2 winSize = scene.viewportSize.xy;
+	vec2 winSize = scene.renderExtentSize.xy;
 	BarycentricDeriv bary;
 	if (!CalcFullBarySafe(tri.posCS[0], tri.posCS[1], tri.posCS[2], PixelToNdc(gid, winSize), winSize, bary))
 	{

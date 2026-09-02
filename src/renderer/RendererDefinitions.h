@@ -233,6 +233,7 @@ namespace RendererDefinitions
 	inline constexpr uint32_t LIGHT_FLAG_CASTS_SPOT_SHADOW  = 1u << 3;
 	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT         = 1u << 4;
 	inline constexpr uint32_t LIGHT_FLAG_FLASHLIGHT_OFF     = 1u << 5;
+	inline constexpr uint32_t LIGHT_FLAG_MASK_ONLY          = 1u << 6;
 
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_X         = 64u;
 	inline constexpr uint32_t CLUSTERS_TILE_SLICE_Y         = 64u;
@@ -245,10 +246,8 @@ namespace RendererDefinitions
 	inline constexpr uint32_t FROXEL_GRID_Y = 90u;
 	inline constexpr uint32_t FROXEL_GRID_Z = 64u;
 
-	inline constexpr float ANISOTROPY_LEVEL_16        = 16.0f;
-	inline constexpr float ANISOTROPY_LEVEL_8         = 8.0f;
-	inline constexpr float ANISOTROPY_LEVEL_4         = 4.0f;
-	inline constexpr float ANISOTROPY_LEVEL_2         = 2.0f;
+	// For target hardware 16x is practically free
+	inline constexpr float MAX_ANISOTROPY_LEVEL = 16.0f;
 
 	// FPS targets
 	inline constexpr float TARGET_FPS_60       = 60.0f;
@@ -571,7 +570,6 @@ namespace RendererDefinitions
 
 	enum class Renderer_RenderTarget
 	{
-		Opaque,
 		TransparentAccumulation,
 		TransparentRevealage,
 		TransparentVelocityAccum,
@@ -593,7 +591,6 @@ namespace RendererDefinitions
 		LensFlareColor,
 		BloomMipchain,
 		Velocity,
-		PrevVelocity,
 		ViewNormals,
 		PrevViewNormals,
 		VolumetricLight,
@@ -662,6 +659,7 @@ namespace RendererDefinitions
 		HilbertCurveLut,
 		Dummy,
 		DummyU8,
+		DummyVelocity,
 		Brdf,
 		White,
 		MetalRough,

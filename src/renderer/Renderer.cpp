@@ -55,7 +55,8 @@ void Renderer::Init(
 	const Window& window,
 	JobSystem& jobSystem)
 {
-	SetDrawExtent(window.GetExtent());
+	SetRenderExtent(window.GetExtent());
+	SetDisplayExtent(window.GetExtent());
 
 	InitRenderSettings(
 		LensFlareOn,
@@ -202,7 +203,7 @@ void Renderer::Init(
 	// === Image setup ===
 
 	m_bindlessImageTable.Init(
-		{ m_drawExtent.Width(), m_drawExtent.Height(), 1u },
+		{ m_renderExtent.Width(), m_renderExtent.Height(), 1u },
 		Environment::_HDRPathCount,
 		m_currentShadowQuality,
 		m_device->GetContext().device,
@@ -360,13 +361,13 @@ void Renderer::Init(
 	m_nrdReflectContext.Init(
 		*m_device,
 		m_allocator,
-		{ (m_drawExtent.Width() + 1u) / 2u, (m_drawExtent.Height() + 1u) / 2u },
+		{ (m_renderExtent.Width() + 1u) / 2u, (m_renderExtent.Height() + 1u) / 2u },
 		NRDContext::DenoiserMode::Reflections);
 
 	m_nrdShadowContext.Init(
 		*m_device,
 		m_allocator,
-		m_drawExtent,
+		m_renderExtent,
 		NRDContext::DenoiserMode::Shadows);
 
 	jobSystem.SubmitJob([&](ThreadContext& threadCtx) {
@@ -399,7 +400,12 @@ void Renderer::Init(
 
 	CreateRenderGraph();
 
-	World::Init(m_bindlessImageTable);
+	World::Init(
+		m_bindlessImageTable,
+		m_renderExtent,
+		m_displayExtent,
+		m_profiler,
+		window.GetWindowHandle());
 
 	auto& forwardPush = m_profiler.forwardPush;
 	forwardPush.flashlightCookieTexID = LightingSystem::_mainFlashLight.m_cookieGoboID;
@@ -494,8 +500,8 @@ void Renderer::InitFrameResources(uint32_t threadCount)
 	m_framesInFlight = m_swapchain.GetImageCount();
 	fmt::println("Frames in flight:[{}]", m_framesInFlight);
 
-	m_rtRayListLayout.Update(m_drawExtent.Width(), m_drawExtent.Height());
-	m_clusterBufferSizes.UpdateClusterBufferSizes(m_drawExtent.Width(), m_drawExtent.Height());
+	m_rtRayListLayout.Update(m_renderExtent.Width(), m_renderExtent.Height());
+	m_clusterBufferSizes.UpdateClusterBufferSizes(m_renderExtent.Width(), m_renderExtent.Height());
 
 	for (uint32_t i = 0; i < m_framesInFlight; ++i)
 	{
@@ -506,7 +512,7 @@ void Renderer::InitFrameResources(uint32_t threadCount)
 			*m_descriptorManager,
 			m_allocator);
 
-		m_frameContexts[i].m_cachedDrawExtent = m_drawExtent;
+		m_frameContexts[i].m_cachedDrawExtent = m_renderExtent;
 
 		m_frameContexts[i].CreateClusterBuffers(m_clusterBufferSizes, m_allocator);
 		m_frameContexts[i].CreateRTRayListBuffer(m_rtRayListLayout, m_allocator);
@@ -538,7 +544,7 @@ void Renderer::CreateRenderGraph()
 			"single-batch path.", gfxFamily);
 	}
 
-	m_renderGraph.Build(*m_pipelineManager, m_drawExtent, bDedicatedCompute);
+	m_renderGraph.Build(*m_pipelineManager, m_renderExtent, m_displayExtent, bDedicatedCompute);
 }
 
 void Renderer::DestroyRenderGraph()
@@ -1242,7 +1248,8 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 	World::UpdateWorldState(
 		m_frameNumber,
-		m_drawExtent,
+		m_renderExtent,
+		m_displayExtent,
 		frameCtx,
 		m_allocator,
 		m_profiler,
@@ -1288,13 +1295,14 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	auto& nrdRPush = m_profiler.nrdReflectPush;
 	auto& nrdSPush = m_profiler.nrdShadowPush;
 
-	glm::vec2 fullPixelSize = glm::vec2(sceneData.pixelSizes);
+	glm::vec2 fullPixelSize = glm::vec2(sceneData.renderPixelSizes);
 
 	const float rawDt = std::max(m_profiler.getStats().deltaSecondsRaw, 1e-5f);
 	taaPush.invDeltaTime = 1.0f / rawDt;
 
-	uint32_t tilesX = (m_drawExtent.Width() + 15u) / 16u;
-	uint32_t tilesY = (m_drawExtent.Height() + 15u) / 16u;
+	// Luminace exposure pass
+	uint32_t tilesX = (m_displayExtent.Width() + 15u) / 16u;
+	uint32_t tilesY = (m_displayExtent.Height() + 15u) / 16u;
 	lumaPush.totalLumaTiles = tilesX * tilesY;
 	lumaPush.cameraExposure = m_profiler.toneMappingSettings.cameraExposure;
 
@@ -1310,7 +1318,7 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 	nrdRPush.writeMotion = 1u;
 
 	// Full screen sizes
-	nrdSPush.resSize = glm::vec2(sceneData.viewportSize); // .xy
+	nrdSPush.resSize = glm::vec2(sceneData.renderExtentSize); // .xy
 	nrdSPush.resTexel = fullPixelSize;
 	nrdSPush.writeMotion = 0u;
 
@@ -1569,7 +1577,7 @@ bool Renderer::PrepareFrame()
 		frameCtx.m_bDebugLineRendering = wantsDebug;
 	}
 
-	if (frameCtx.DoesCachedExtentNeedUpdate(m_drawExtent.Width(), m_drawExtent.Height()))
+	if (frameCtx.DoesCachedExtentNeedUpdate(m_renderExtent.Width(), m_renderExtent.Height()))
 	{
 		frameCtx.CreateClusterBuffers(m_clusterBufferSizes, m_allocator);
 		frameCtx.CreateRTRayListBuffer(m_rtRayListLayout, m_allocator);
@@ -1775,13 +1783,13 @@ bool Renderer::ResolveResize(Extents2D liveExtent)
 	//	ResizeCoordinator::ToString(m_resize.GetReason()),
 	//	m_resize.GetCoalesced(),
 	//	liveExtent.Width(), liveExtent.Height(),
-	//	m_drawExtent.Width(), m_drawExtent.Height(),
+	//	m_renderExtent.Width(), m_renderExtent.Height(),
 	//	m_resize.GetGeneration());
 
 	if (!m_resize.IsPending())
 	{
-		if (liveExtent.Width() == m_drawExtent.Width() &&
-			liveExtent.Height() == m_drawExtent.Height())
+		if (liveExtent.Width() == m_renderExtent.Width() &&
+			liveExtent.Height() == m_renderExtent.Height())
 			return true;
 
 		RESIZE_TRACE("[Resize] extent mismatch, self-requesting");
@@ -1803,12 +1811,12 @@ bool Renderer::ResolveResize(Extents2D liveExtent)
 
 	m_resize.EnterApply();
 	RESIZE_TRACE("[Resize] apply begin -> {}x{}", liveExtent.Width(), liveExtent.Height());
-	UpdateDrawExtentUsage(liveExtent);
+	UpdateDisplayExtent(liveExtent);
 	RESIZE_TRACE("[Resize] extent applied, rebuilding contexts");
 	RebuildFrameContexts();
 	RESIZE_TRACE("[Resize] rebuild end");
 
-	m_resize.Complete(m_drawExtent);
+	m_resize.Complete(m_renderExtent);
 	RESIZE_TRACE("[Resize] complete gen={} phase={} coalesced={}",
 		m_resize.GetGeneration(),
 		ResizeCoordinator::ToString(m_resize.GetPhase()),
@@ -1866,8 +1874,8 @@ void Renderer::RebuildFrameContexts()
 
 void Renderer::ValidateExtentCoherence()
 {
-	const uint32_t w = m_drawExtent.Width();
-	const uint32_t h = m_drawExtent.Height();
+	const uint32_t w = m_renderExtent.Width();
+	const uint32_t h = m_renderExtent.Height();
 
 	INVARIANT(w > 0u && h > 0u);
 
@@ -1888,19 +1896,21 @@ void Renderer::ValidateExtentCoherence()
 		"RTRayListLayout %ux%u stale against extent %ux%u.",
 		m_rtRayListLayout.halfWidth, m_rtRayListLayout.halfHeight, w, h);
 
-	const auto& opaque = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
-	ASSERT(opaque.Width() == w && opaque.Height() == h,
+	const auto& hdrScene = m_bindlessImageTable.GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
+	ASSERT(hdrScene.Width() == w && hdrScene.Height() == h,
 		"Opaque target %ux%u stale against extent %ux%u.",
-		opaque.Width(), opaque.Height(), w, h);
+		hdrScene.Width(), hdrScene.Height(), w, h);
 }
 
 
-void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
+void Renderer::UpdateDisplayExtent(Extents2D newWindowExtent)
 {
-	SetDrawExtent(newWindowExtent);
+	SetRenderExtent(newWindowExtent);
 
-	const uint32_t width = m_drawExtent.Width();
-	const uint32_t height = m_drawExtent.Height();
+	SetDisplayExtent(newWindowExtent);
+
+	const uint32_t width = m_renderExtent.Width();
+	const uint32_t height = m_renderExtent.Height();
 
 	RESIZE_TRACE("RESIZE before swapchain");
 
@@ -1920,7 +1930,8 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 
 	m_rtRayListLayout.Update(width, height);
 	m_clusterBufferSizes.UpdateClusterBufferSizes(width, height);
-	m_renderGraph.SetDrawExtent(m_drawExtent);
+	m_renderGraph.SetRenderExtent(m_renderExtent);
+	m_renderGraph.SetDisplayExtent(m_displayExtent);
 
 	m_bindlessImageTable.UpdateRenderTargets({width, height, 1u}, m_allocator);
 
@@ -1942,7 +1953,7 @@ void Renderer::UpdateDrawExtentUsage(Extents2D newWindowExtent)
 
 	m_nrdShadowContext.Resize(
 		m_allocator,
-		m_drawExtent);
+		m_renderExtent);
 
 	{
 		auto cmdCompPool = m_device->GetThreadCommandPool(JobSystem::RENDER_THREAD, QueueType::Compute);

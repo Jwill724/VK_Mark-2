@@ -86,8 +86,10 @@ public:
 		m_trackedLayouts[static_cast<size_t>(target)] = access;
 	}
 
-	void SetDrawExtent(Extents2D extent) { m_drawExtent = extent; }
-	const Extents2D& GetDrawExtent() const noexcept { return m_drawExtent; }
+	void SetRenderExtent(Extents2D extent) { m_renderExtent = extent; }
+	void SetDisplayExtent(Extents2D extent) { m_displayExtent = extent; }
+	const Extents2D& GetRenderExtent() const noexcept { return m_renderExtent; }
+	const Extents2D& GetDisplayExtent() const noexcept { return m_displayExtent; }
 
 private:
 	RenderPassDesc& CreatePass(
@@ -96,7 +98,8 @@ private:
 
 	void Build(
 		PipelineManager& pipeManager,
-		Extents2D drawExtent,
+		Extents2D renderExtent,
+		Extents2D displayExtent,
 		bool bHasDedicatedComputeQueue);
 
 	void Shutdown();
@@ -162,5 +165,6 @@ private:
 
 	bool m_bGraphDirty = true;
 
-	Extents2D m_drawExtent;
+	Extents2D m_renderExtent;
+	Extents2D m_displayExtent;
 };

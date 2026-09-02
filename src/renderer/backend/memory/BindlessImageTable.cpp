@@ -82,22 +82,25 @@ static uint32_t HilbertIndex(uint32_t posX, uint32_t posY)
 // Rainbow
 // ---------
 
-static glm::vec3 HsvToRgb(float hue01, float sat, float val)
+static glm::vec3 CieXyzFit(float w)
 {
-	const float hue = hue01 - std::floor(hue01);
-	const float c   = val * sat;
-	const float h6  = hue * 6.0f;
-	const float x   = c * (1.0f - std::fabsf(std::fmodf(h6, 2.0f) - 1.0f));
-	const float m   = val - c;
+	auto lobe = [](float x, float mu, float s1, float s2)
+		{
+			float t = (x - mu) * ((x < mu) ? s1 : s2);
+			return std::exp(-0.5f * t * t);
+		};
 
-	glm::vec3 rgb(0.0f);
-	if      (h6 < 1.0f) rgb = { c, x, 0 };
-	else if (h6 < 2.0f) rgb = { x, c, 0 };
-	else if (h6 < 3.0f) rgb = { 0, c, x };
-	else if (h6 < 4.0f) rgb = { 0, x, c };
-	else if (h6 < 5.0f) rgb = { x, 0, c };
-	else                rgb = { c, 0, x };
-	return rgb + glm::vec3(m);
+	return {
+		0.362f * lobe(w, 442.0f, 0.0624f, 0.0374f)
+	  + 1.056f * lobe(w, 599.8f, 0.0264f, 0.0323f)
+	  - 0.065f * lobe(w, 501.1f, 0.0490f, 0.0382f),
+
+		0.821f * lobe(w, 568.8f, 0.0213f, 0.0247f)
+	  + 0.286f * lobe(w, 530.9f, 0.0613f, 0.0322f),
+
+		1.217f * lobe(w, 437.0f, 0.0845f, 0.0278f)
+	  + 0.681f * lobe(w, 459.0f, 0.0385f, 0.0725f)
+	};
 }
 
 
@@ -149,7 +152,6 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 		1
 	};
 
-	SetRenderTarget(RD::Renderer_RenderTarget::Opaque,                      allocator.AllocateImage(RTDescs::Opaque(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::HDRScene,                    allocator.AllocateImage(RTDescs::HDRScene(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation,     allocator.AllocateImage(RTDescs::TransparentAccumulation(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum,    allocator.AllocateImage(RTDescs::TransparentVelocityAccum(drawExtent)));
@@ -157,7 +159,6 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::DepthResolved,               allocator.AllocateImage(RTDescs::DepthResolved(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved,           allocator.AllocateImage(RTDescs::PrevDepth(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::Velocity,                    allocator.AllocateImage(RTDescs::Velocity(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity,                allocator.AllocateImage(RTDescs::PrevVelocity(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain,               allocator.AllocateImage(RTDescs::BloomMipchain(half)));
 	SetRenderTarget(RD::Renderer_RenderTarget::ViewNormals,                 allocator.AllocateImage(RTDescs::ViewNormals(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::PrevViewNormals,             allocator.AllocateImage(RTDescs::PrevViewNormals(drawExtent)));
@@ -522,7 +523,7 @@ void BindlessImageTable::CreateSamplers(VkDevice device)
 
 	SetSampler(RD::Renderer_Sampler::Linear,
 		ImageUtils::CreateSampler(device, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT,
-			RD::MAX_MIP_LEVELS, RD::ANISOTROPY_LEVEL_16));
+			RD::MAX_MIP_LEVELS, RD::MAX_ANISOTROPY_LEVEL));
 
 	SetSampler(RD::Renderer_Sampler::Nearest,
 		ImageUtils::CreateSampler(device, VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT,
@@ -588,6 +589,7 @@ void BindlessImageTable::CreateStaticTextures(Allocator& allocator)
 	SetStaticTexture(RD::Renderer_Texture::MetalRough,      allocator.AllocateImage(STDescs::DefaultMetalRough()));
 	SetStaticTexture(RD::Renderer_Texture::Dummy,           allocator.AllocateImage(STDescs::Dummy()));
 	SetStaticTexture(RD::Renderer_Texture::DummyU8,         allocator.AllocateImage(STDescs::DummyUint8()));
+	SetStaticTexture(RD::Renderer_Texture::DummyVelocity,   allocator.AllocateImage(STDescs::DummyVelocity()));
 	SetStaticTexture(RD::Renderer_Texture::Checkerboard,    allocator.AllocateImage(STDescs::ErrorCheckerboard()));
 	SetStaticTexture(RD::Renderer_Texture::RainbowLut,      allocator.AllocateImage(STDescs::RainbowLUT()));
 	SetStaticTexture(RD::Renderer_Texture::HilbertCurveLut, allocator.AllocateImage(STDescs::HilbertCurveLUT()));
@@ -621,8 +623,8 @@ void BindlessImageTable::UploadStaticTextures(StagingBuffer& staging, VkCommandB
 	const uint32_t flatNormal  = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
 	const uint32_t black       = glm::packUnorm4x8(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
 	const uint8_t  metalRough[4] = { 0, static_cast<uint8_t>(0.5f * 255), 0, 255 };
-	const uint32_t dummyBlack  = 0u;
-	const uint8_t  dummyU8     = 0u;
+	const uint32_t dummy   = 0u;
+	const uint8_t  dummyU8 = 0u;
 
 	// --- Checkerboard 16x16 RGBA8 ---
 	const uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 1));
@@ -632,14 +634,29 @@ void BindlessImageTable::UploadStaticTextures(StagingBuffer& staging, VkCommandB
 			checkerboard[static_cast<size_t>(y * 16 + x)] = ((x % 2) ^ (y % 2)) ? magenta : black;
 
 	// --- Rainbow LUT 256x1 RGBA8 ---
+	constexpr float kRainbowSaturation = 1.35f;
+
 	std::vector<uint32_t> rainbowLut(256);
 	for (uint32_t x = 0; x < 256; ++x)
 	{
-		float t   = static_cast<float>(x) / 255.0f;
-		float hue = 0.02f + 0.90f * t - 0.06f;
-		hue -= std::floor(hue);
-		glm::vec3 rgb = HsvToRgb(hue, 0.95f, 1.0f);
-		rgb.g *= 0.9f;
+		float t = static_cast<float>(x) / 255.0f;
+		float wavelength = glm::mix(420.0f, 660.0f, t);
+
+		glm::vec3 xyz = CieXyzFit(wavelength);
+
+		glm::vec3 rgb{
+			 3.2404542f * xyz.x - 1.5371385f * xyz.y - 0.4985314f * xyz.z,
+			-0.9692660f * xyz.x + 1.8760108f * xyz.y + 0.0415560f * xyz.z,
+			 0.0556434f * xyz.x - 0.2040259f * xyz.y + 1.0572252f * xyz.z };
+
+		float lowest = std::min({ rgb.r, rgb.g, rgb.b });
+		if (lowest < 0.0f) rgb -= glm::vec3(lowest);
+
+		rgb /= std::max({ rgb.r, rgb.g, rgb.b, 1e-4f });
+
+		float lum = glm::dot(rgb, glm::vec3(0.2126f, 0.7152f, 0.0722f));
+		rgb = glm::clamp(glm::mix(glm::vec3(lum), rgb, kRainbowSaturation), 0.0f, 1.0f);
+
 		rainbowLut[x] = glm::packUnorm4x8(glm::vec4(rgb, 1.0f));
 	}
 
@@ -662,10 +679,12 @@ void BindlessImageTable::UploadStaticTextures(StagingBuffer& staging, VkCommandB
 		  .pixelBytes = st[Index(RD::Renderer_Texture::Normal)].m_pixelBytes,          .strategy = MipStrategy::GenerateOnGPU },
 		{.image = &st[Index(RD::Renderer_Texture::MetalRough)],      .pixelData = metalRough,
 		  .pixelBytes = st[Index(RD::Renderer_Texture::MetalRough)].m_pixelBytes,      .strategy = MipStrategy::GenerateOnGPU },
-		{.image = &st[Index(RD::Renderer_Texture::Dummy)],           .pixelData = &dummyBlack,
+		{.image = &st[Index(RD::Renderer_Texture::Dummy)],           .pixelData = &dummy,
 		  .pixelBytes = st[Index(RD::Renderer_Texture::Dummy)].m_pixelBytes,           .strategy = MipStrategy::SingleLevel },
 		{.image = &st[Index(RD::Renderer_Texture::DummyU8)],         .pixelData = &dummyU8,
 		  .pixelBytes = st[Index(RD::Renderer_Texture::DummyU8)].m_pixelBytes,         .strategy = MipStrategy::SingleLevel },
+		{.image = &st[Index(RD::Renderer_Texture::DummyVelocity)],   .pixelData = &dummy,
+		  .pixelBytes = st[Index(RD::Renderer_Texture::DummyVelocity)].m_pixelBytes,    .strategy = MipStrategy::SingleLevel },
 		{.image = &st[Index(RD::Renderer_Texture::Checkerboard)],    .pixelData = checkerboard.data(),
 		  .pixelBytes = st[Index(RD::Renderer_Texture::Checkerboard)].m_pixelBytes,    .strategy = MipStrategy::GenerateOnGPU },
 		{.image = &st[Index(RD::Renderer_Texture::RainbowLut)],      .pixelData = rainbowLut.data(),
@@ -1162,8 +1181,8 @@ void BindlessImageTable::BuildInitialCombinedSamplerArray()
 	pushStatic(RD::Renderer_Texture::White,           RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::Normal,          RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::MetalRough,      RD::Renderer_Sampler::LinearClamp);
-	pushStatic(RD::Renderer_Texture::Dummy,           RD::Renderer_Sampler::NearestClamp);
-	pushStatic(RD::Renderer_Texture::DummyU8,         RD::Renderer_Sampler::NearestClamp);
+	//pushStatic(RD::Renderer_Texture::Dummy,           RD::Renderer_Sampler::NearestClamp);
+	//pushStatic(RD::Renderer_Texture::DummyU8,         RD::Renderer_Sampler::NearestClamp);
 	pushStatic(RD::Renderer_Texture::Checkerboard,    RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::RainbowLut,      RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::HilbertCurveLut, RD::Renderer_Sampler::Noise);

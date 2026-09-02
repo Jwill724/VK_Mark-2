@@ -247,7 +247,7 @@ AllocatedImage Allocator::AllocateImage(const ImageDesc& desc) const
 {
 	AllocatedImage newImage;
 	newImage.m_extent = desc.extent;
-	//newImage.m_name   = desc.debugName;
+	newImage.m_name   = desc.debugName;
 
 	VkExtent3D vkExtent = { newImage.m_extent.Width(), newImage.m_extent.Height(), newImage.m_extent.Depth() };
 

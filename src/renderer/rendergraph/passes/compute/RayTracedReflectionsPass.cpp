@@ -74,7 +74,7 @@ void RegisterRTReflectionsPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 						const auto& frameCtx = ctx.frameCtx;
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						const Extents2D halfExtent = {
 							(drawExtent.Width() + 1u) / 2u,
 							(drawExtent.Height() + 1u) / 2u };

@@ -74,9 +74,9 @@ void RegisterOpaqueLightingPass(
 					RD::ImageAccess::ComputeRead)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::ComputeWrite,
-					RD::ImageAccess::ComputeRead)
+					RD::ImageAccess::ComputeWrite)
 
 				.HistoryResource(RADIANCE_RESOLVED_A, RADIANCE_RESOLVED_B,
 					RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeRead, true, true)
@@ -90,7 +90,7 @@ void RegisterOpaqueLightingPass(
 							RD::Renderer_Pass::OpaqueLighting,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
@@ -100,7 +100,7 @@ void RegisterOpaqueLightingPass(
 
 						const auto diffSlots = TemporalHistory::GetDiffuseRadianceSlots(ctx.frameState->GetTemporalIndex());
 						const auto& diffuseRadiance = ctx.imageTable->GetRenderTarget(diffSlots.write);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 						const auto& indirectSSGI = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::IndirectSSGI);
 						const auto& visibility = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Visibility);
 						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);
@@ -127,7 +127,7 @@ void RegisterOpaqueLightingPass(
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_10, rtShadowDenoised, nearestClampSampler);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_11, visibility, nearestClampSampler);
 
-						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, opaque);
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, hdrScene);
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, diffuseRadiance);
 
 						I::TransitionLayout(cmd, diffuseRadiance,

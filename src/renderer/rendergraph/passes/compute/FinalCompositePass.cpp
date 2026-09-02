@@ -60,8 +60,7 @@ void RegisterFinalCompositePass(
 							RD::Renderer_Pass::FinalComposite,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+						pass.scope = ComputeScope{{ graph.GetDisplayExtent() }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);

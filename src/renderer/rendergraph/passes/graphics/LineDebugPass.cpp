@@ -37,9 +37,9 @@ void RegisterLineDebugPass(
 					RD::ImageAccess::DepthRead)
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeWrite)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -58,13 +58,13 @@ void RegisterLineDebugPass(
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 
 						const auto& debugDrawBuffer = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DebugDraw);
 						const auto& debugVertexBuffer = frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DebugVertex);
 
 						AttachmentDesc opaqueAttach{};
-						opaqueAttach.imageView = opaque.m_imageView;
+						opaqueAttach.imageView = hdrScene.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 						opaqueAttach.loadOp  = VK_ATTACHMENT_LOAD_OP_LOAD;
 						opaqueAttach.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -73,12 +73,13 @@ void RegisterLineDebugPass(
 						depthAttach.imageView = depthResolved.m_imageView;
 						depthAttach.imageLayout = VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
 						depthAttach.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+						depthAttach.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
 						depthAttach.SetDepth(0);
 
 						pso.UpdateRenderInfo(
 							{
-								opaque.Width(),
-								opaque.Height()
+								hdrScene.Width(),
+								hdrScene.Height()
 							},
 							{ opaqueAttach, depthAttach });
 

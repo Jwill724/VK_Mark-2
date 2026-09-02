@@ -166,7 +166,7 @@ void main() {
 	SceneData scene    = getSceneData();
 	DebugToggles debug = getDebugToggles();
 
-	const ivec2 fullExtent = ivec2(scene.viewportSize.xy);
+	const ivec2 fullExtent = ivec2(scene.renderExtentSize.xy);
 	const ivec2 fullMax    = fullExtent - 1;
 	const ivec2 halfExtent = (fullExtent + 1) / 2;
 
@@ -179,7 +179,7 @@ void main() {
 	const ivec2 phase = aoQuadPhase(scene.temporal.x, debug.aaMode == AA_TAA);
 	const ivec2 pix   = min(halfPix * 2 + phase, fullMax);
 
-	const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
+	const vec2 fullPixelSize = vec2(scene.renderPixelSizes.xy);
 	const vec2 uv            = (vec2(pix) + 0.5) * fullPixelSize;
 
 	float centerZ      = texelFetch(inHiZ, pix, 0).r;

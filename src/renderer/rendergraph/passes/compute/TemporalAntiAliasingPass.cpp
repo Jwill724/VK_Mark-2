@@ -49,18 +49,6 @@ void RegisterTAAPass(
 					RD::ImageAccess::Read)
 
 				.ReadResource(
-					RD::Renderer_RenderTarget::PrevVelocity,
-					RD::ImageAccess::Read)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::ViewNormals,
-					RD::ImageAccess::Read)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::PrevViewNormals,
-					RD::ImageAccess::Read)
-
-				.ReadResource(
 					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::Read)
 
@@ -94,9 +82,6 @@ void RegisterTAAPass(
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& prevDepthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved);
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
-						const auto& prevVelocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevVelocity);
-						const auto& viewNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
-						const auto& prevViewNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevViewNormals);
 						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 						const auto& transparentRevealage = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
@@ -106,7 +91,7 @@ void RegisterTAAPass(
 
 						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.SetPush(ctx.profiler->taaSettings);
@@ -132,18 +117,13 @@ void RegisterTAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_4,
-							prevVelocity,
-							taaHistorySampler);
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_5,
 							depthResolved,
 							nearestClampSampler,
 							UINT32_MAX,
 							RD::ImageAccess::DepthRead);
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_6,
+							RD::PUSH_BINDING_READ_5,
 							prevDepthResolved,
 							nearestClampSampler,
 							UINT32_MAX,
@@ -151,31 +131,19 @@ void RegisterTAAPass(
 
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_7,
-							viewNormals,
-							nearestClampSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_8,
-							prevViewNormals,
-							nearestClampSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_9,
+							RD::PUSH_BINDING_READ_6,
 							transparentRevealage,
 							nearestClampSampler);
 
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_10,
+							RD::PUSH_BINDING_READ_7,
 							transparentAccum,
 							nearestClampSampler);
 
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_11,
+							RD::PUSH_BINDING_READ_8,
 							transparentVelocityAccum,
 							nearestClampSampler);
 
@@ -187,7 +155,7 @@ void RegisterTAAPass(
 						I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
 						I::TransitionLayout(cmd, current, RD::ImageAccess::Write, RD::ImageAccess::Read);
-						B::ComputeReadToWrite(cmd , luminanceBuf);
+						B::ComputeReadToWrite(cmd, luminanceBuf);
 					});
 				});
 }

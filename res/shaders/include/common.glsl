@@ -23,7 +23,7 @@ const float PI      = 3.1415926535897932384626433832795;
 const float HALF_PI = 1.5707963267948966192313216916398;
 const float TWO_PI  = 6.2831853;
 
-const float EMISSIVE_STRENGTH_BOOST = 5.0f;
+const float EMISSIVE_STRENGTH_BOOST = 3.0f;
 
 const uint MAX_CASCADES = 4u;
 
@@ -63,6 +63,7 @@ const uint LIGHT_FLAG_SPOT              = 1u << 2;
 const uint LIGHT_FLAG_CASTS_SPOT_SHADOW = 1u << 3;
 const uint LIGHT_FLAG_FLASHLIGHT        = 1u << 4;
 const uint LIGHT_FLAG_FLASHLIGHT_OFF    = 1u << 5;
+const uint LIGHT_FLAG_MASK_ONLY         = 1u << 6;
 
 // Determines switch between dispatching over clusters or lights
 const uint LIGHT_THRESHOLD = 500u;
@@ -147,8 +148,11 @@ struct SceneData
 	vec4 sunlightColor; // .w = power
 	vec4 cameraPos;           // xyz pos, .w exposure
 	vec4 cameraClips;         // .x near and .y far, .z invScreenWidth, .w invScreenHeight
-	vec4 viewportSize;        // .x and .y for width and height, .z for pixel count
-	vec4 pixelSizes;          // .x/.y = 1 / full extent .z/.w = = 1 / half extent
+
+	vec4 renderExtentSize; // .x and .y for width and height, .z for pixel count
+	vec4 displayExtentSize;
+	vec4 renderPixelSizes; // .x/.y = (1 / full extent) .z/.w = (1 / half extent)
+	vec4 displayPixelSizes;
 
 	vec2 tanHalfFov;           // 1 / proj[0][0], 1 / proj[1][1]
 	float depthLinearizeMult;  // -proj[3][2]
@@ -495,6 +499,8 @@ struct LocalLight {
 
 	float sourceRadius;
 	float sourceLength;
+
+	float changeRate;
 };
 
 struct ShadowCSM {

@@ -58,12 +58,18 @@ namespace World
 
 	void OnSceneLoaded(std::shared_ptr<ModelAsset> asset);
 
-	void Init(const BindlessImageTable& renderer);
+	void Init(
+		const BindlessImageTable& renderer,
+		Extents2D renderExtent,
+		Extents2D displayExtent,
+		Profiler& profiler,
+		GLFWwindow* window);
 	void Cleanup();
 
 	void UpdateWorldState(
 		uint32_t frameNumber,
-		const Extents2D& drawExtent,
+		const Extents2D& renderExtent,
+		const Extents2D& displayExtent,
 		FrameContext& frameCtx,
 		Allocator& allocator,
 		Profiler& profiler,

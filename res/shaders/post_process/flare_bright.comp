@@ -24,23 +24,39 @@ layout(push_constant) uniform LensFlarePush {
 	float brightThreshold;
 	float brightKnee;
 	float brightIntensity;
-	float pad0;
+	float starburstIntensity;
 
 	float ringInnerRadius;
 	float ringOuterRadius;
 	float chromaStrength;
-	float pad1;
+	float haloAnisotropy;
 
 	float streakStrength;
 	float streakWidth;
 	float streakLength;
-	float pad2;
+	float starburstRotation;
 
 	float occlusionRadiusPixels;
 	float occlusionDepthBias;
 	float occlusionFade;
-	float pad3;
+	float sunJitterScale;
+
+	float starburstBlades;
+	float starburstLength;
+	float starburstWidth;
+	float haloOpacity;
+
+	float haloSqueeze;
+	float haloAngleGain;
+	float ghostStrength;
+	float ghostSpacing;
 } pc;
+
+const float kBrightClampDisplay = 12.0;
+
+const vec2 kBoxTaps[4] = vec2[4](
+	vec2(-1.0, -1.0), vec2(1.0, -1.0),
+	vec2(-1.0,  1.0), vec2(1.0,  1.0));
 
 void main()
 {
@@ -48,7 +64,7 @@ void main()
 	ivec2 outCoord = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(outCoord, outDim))) return;
 
-	if (pc.sunVisible < 0.5) {
+	if (pc.sunVisible <= 0.0) {
 		imageStore(outFlareBright, outCoord, vec4(0.0));
 		return;
 	}
@@ -56,32 +72,28 @@ void main()
 	vec2 uv = (vec2(outCoord) + 0.5) / vec2(outDim);
 
 	SceneData scene = getSceneData();
-	vec2 fullRes = vec2(scene.viewportSize.xy);
+	vec2 invFull = vec2(scene.displayPixelSizes.xy);
 
-	ivec2 fullCoord = ivec2(uv * fullRes);
-	fullCoord = clamp(fullCoord, ivec2(0), ivec2(fullRes) - ivec2(1));
+	// 4 bilinear taps at +-1 full-res texel = an exact 4x4 box over the quarter-res footprint
+	vec3 hdrScene = vec3(0.0);
+	for (int i = 0; i < 4; ++i)
+		hdrScene += textureLod(inSceneHDR, uv + kBoxTaps[i] * invFull, 0.0).rgb;
+	hdrScene *= 0.25;
 
-	vec3 hdrScene = texelFetch(inSceneHDR, fullCoord, 0).rgb;
+	hdrScene += textureLod(inVolumetricLight, uv, 0.0).rgb;
 
-	vec3 volumetricLight = texture(inVolumetricLight, uv).rgb;
-	hdrScene += volumetricLight;
-
-	float exposure = getLuminanceBuffer().luminanceSums[0].x;
-	exposure = max(exposure, 1e-4);
+	float exposure = max(getLuminanceBuffer().luminanceSums[0].x, 1e-4);
 
 	float thresholdHdr = pc.brightThreshold / exposure;
 	float kneeHdr = pc.brightKnee / exposure;
 
-	// Brightness measure + soft threshold
 	float sceneLum = luminance(hdrScene);
 	float amount = softThreshold(sceneLum, thresholdHdr, kneeHdr);
+	amount = min(amount, kBrightClampDisplay / exposure);
 
-	// Using scene color preserves tinting, normalize avoids blowing out on huge HDR.
 	vec3 brightColor = vec3(0.0);
-	if (amount > 0.0) {
-		float invLum = 1.0 / max(sceneLum, 1e-6);
-		brightColor = hdrScene * (amount * invLum);
-	}
+	if (amount > 0.0)
+		brightColor = hdrScene * (amount / max(sceneLum, 1e-6));
 
 	brightColor *= pc.brightIntensity;
 

@@ -34,7 +34,7 @@ struct SamplerDesc
 {
 	bool   isLinear     = true;
 	bool   isMipMapped  = true;
-	float  anisotropy   = 16.0f;
+	float  anisotropy   = RD::MAX_ANISOTROPY_LEVEL;
 
 	// Filled by Renderer after creation
 	uint32_t rendererSlot = UINT32_MAX; // index into scene's sampler list

@@ -128,7 +128,6 @@ void PM::RegisterPipelines()
 
 	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].polygonMode      = VK_POLYGON_MODE_LINE;
 	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].topology         = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].enableDepthWrite = true;
 	m_pipelinePresets[static_cast<size_t>(RP::LineDebug)].depthCompareOp   = VK_COMPARE_OP_GREATER;
 
 	auto& prepass                    = m_pipelinePresets[static_cast<size_t>(RP::PrepassMesh)];
@@ -232,7 +231,7 @@ void PM::InitPipelines(VkDevice device)
 	TheBuilder.InitCreateInfoStructs();
 
 	// Default m_image formats
-	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::BGRpacked), static_cast<VkFormat>(Vulkan_Format::D32));
+	TheBuilder.SetFormats(static_cast<VkFormat>(Vulkan_Format::RGBA16F), static_cast<VkFormat>(Vulkan_Format::D32));
 
 	RegisterPipelines();
 

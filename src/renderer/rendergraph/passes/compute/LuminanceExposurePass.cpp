@@ -59,8 +59,7 @@ void RegisterLuminanceExposurePass(
 
 						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
 
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+						pass.scope = ComputeScope{{ graph.GetDisplayExtent() }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						// ==========================

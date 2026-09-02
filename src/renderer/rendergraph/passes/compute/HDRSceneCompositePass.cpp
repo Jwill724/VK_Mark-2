@@ -30,24 +30,16 @@ void RegisterHDRSceneCompositePass(
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentRevealage,
-					RD::ImageAccess::Read)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::TransparentVelocityAccum,
-					RD::ImageAccess::Read)
-
-				.ReadResource(
-					RD::Renderer_RenderTarget::Opaque,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::HDRScene,
-					RD::ImageAccess::Write,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -58,38 +50,24 @@ void RegisterHDRSceneCompositePass(
 							RD::Renderer_Pass::HDRSceneComposite,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
-						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
 						const auto& transparentReveal = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
 						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_1,
-							opaque,
-							nearestClampSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_2,
 							transparentAccum,
 							nearestClampSampler);
 						pso.BindReadImage(
 							pass.pushWriter,
-							RD::PUSH_BINDING_READ_3,
+							RD::PUSH_BINDING_READ_2,
 							transparentReveal,
-							nearestClampSampler);
-
-						pso.BindReadImage(
-							pass.pushWriter,
-							RD::PUSH_BINDING_READ_4,
-							transparentVelocityAccum,
 							nearestClampSampler);
 
 						pso.BindWriteImage(

@@ -76,6 +76,21 @@ struct SceneLightDesc;
 
 namespace LightingSystem
 {
+	struct PrevLightState
+	{
+		glm::vec3 position{ 0.0f };
+		glm::vec3 direction{ 0.0f, 0.0f, -1.0f };
+		float     intensity = 0.0f;
+		uint32_t  flags = 0u;
+		bool      valid = false;
+	};
+
+	inline std::vector<PrevLightState> _prevLightState;
+	inline bool  _changeRatesActive = false;
+	inline float _reactiveGain = 25.0f;
+
+	bool UpdateLightChangeRates();
+
 	inline struct alignas(16) FlashLightSettings
 	{
 		float offsetRight = 0.07f;

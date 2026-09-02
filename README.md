@@ -71,8 +71,7 @@
 * Parallax-corrected cubemaps
 * Water rendering
 * Froxel Volumetrics
-* Further TAA quality improvements
-* Lens flare quality improvements
+* DLSS
 * Ray-traced global illumination (RTGI)
 * Restir lighting
 * Ray-traced transmission

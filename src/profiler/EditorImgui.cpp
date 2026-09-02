@@ -514,14 +514,11 @@ namespace
 
 		auto& taaSettings = profiler.taaSettings;
 
-		ImGui::SliderFloat("Min Blend", &taaSettings.minBlend, 0.01f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Max Blend", &taaSettings.maxBlend, 0.85f, 1.0f, "%.2f");
-		ImGui::SliderFloat("Depth Disocclusion Scale", &taaSettings.depthDisocclusionScale, 1.0f, 30.0f);
-		ImGui::SliderFloat("Normal Disocclusion Scale", &taaSettings.normalDisocclusionScale, 5.0f, 25.0f);
-		ImGui::SliderFloat("Dark Clamp Boost", &taaSettings.darkClampBoost, 1.25f, 2.5f, "%.2f");
-		ImGui::SliderFloat("Sigma Floor Scale", &taaSettings.sigmaFloorScale, 0.01f, 0.05f, "%.2f");
-		ImGui::SliderFloat("Shading Change Scale", &taaSettings.shadingChangeScale, 0.1f, 5.0f);
-		ImGui::SliderFloat("Sharpen", &taaSettings.sharpen, 0.0f, 1.0f);
+		ImGui::SliderFloat("Clamp Gamma", &taaSettings.clampGamma, 0.0f, 5.0f);
+		ImGui::SliderFloat("Depth Reject Scale", &taaSettings.depthRejectScale, 0.0f, 5.0f);
+		ImGui::SliderFloat("Motion Speed Scale", &taaSettings.motionSpeedScale, 0.001f, 0.02f, "%.3f");
+		ImGui::SliderFloat("Sigma Floor", &taaSettings.sigmaFloor, 0.001f, 0.02f, "%.3f");
+		ImGui::SliderFloat("Shading Response", &taaSettings.shadingResponse, 1.0f, 4.0f, "%.2f");
 	}
 
 	static void groupTransparency(UIContext& ui)
@@ -787,7 +784,7 @@ namespace
 				"Bilinear Threshold##rt",
 				&contactShadowSettings.bilinearThreshold,
 				0.001f,
-				0.5f,
+				0.2f,
 				"%.3f");
 
 			int shadowContrastInt =
@@ -953,20 +950,63 @@ namespace
 		RD::RenderToggles& dbg = *ui.dbg;
 		Profiler& profiler = *ui.profiler;
 
-		auto& flareSettings = profiler.lensFlareSettings;
+		auto& lf = profiler.lensFlareSettings;
+
+		constexpr ImGuiSliderFlags kClamp = ImGuiSliderFlags_AlwaysClamp;
+		constexpr ImGuiSliderFlags kLog = ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_Logarithmic;
 
 		UIWidgets::toggleU32("Enable Lens Flare##post", &dbg.enableLensFlare);
 
-		UI::separatorText("Ring");
+		UI::separatorText("Source");
 
-		ImGui::SliderFloat("Inner Radius##lf", &flareSettings.ringInnerRadius, 0.0001f, 0.3f, "%.5f");
-		ImGui::SliderFloat("Outer Radius##lf", &flareSettings.ringOuterRadius, 0.001f, 0.3f, "%.5f");
+		ImGui::SliderFloat("Threshold##lf", &lf.brightThreshold, 0.25f, 40.0f, "%.2f", kLog);
+		ImGui::SliderFloat("Knee##lf", &lf.brightKnee, 0.0f, 20.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Intensity##lf", &lf.brightIntensity, 0.0f, 4.0f, "%.2f", kClamp);
 
-		UI::separatorText("Streaks");
+		ImGui::SameLine();
+		if (ImGui::SmallButton("Knee 0.5x##lf")) lf.brightKnee = lf.brightThreshold * 0.5f;
 
-		ImGui::SliderFloat("Streak Strength##lf", &flareSettings.streakStrength, 0.0f, 0.5f, "%.2f");
-		ImGui::SliderFloat("Streak Width##lf", &flareSettings.streakWidth, 0.01f, 0.05f, "%.2f");
-		ImGui::SliderFloat("Streak Length##lf", &flareSettings.streakLength, 0.0f, 0.5f, "%.2f");
+		UI::separatorText("Halo");
+
+		ImGui::SliderFloat("Inner Radius##lf", &lf.ringInnerRadius, 0.0f, 0.45f, "%.4f", kClamp);
+		ImGui::SliderFloat("Outer Radius##lf", &lf.ringOuterRadius, 0.005f, 0.60f, "%.4f", kClamp);
+		lf.ringOuterRadius = std::max(lf.ringOuterRadius, lf.ringInnerRadius + 0.005f);
+
+		ImGui::SliderFloat("Halo Opacity##lf", &lf.haloOpacity, 0.0f, 1.0f, "%.3f", kClamp);
+		ImGui::SliderFloat("Anisotropy##lf", &lf.haloAnisotropy, 0.0f, 1.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Chroma##lf", &lf.chromaStrength, 0.0f, 1.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Squeeze##lf", &lf.haloSqueeze, 1.0f, 3.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Angle Gain##lf", &lf.haloAngleGain, 0.0f, 6.0f, "%.2f", kClamp);
+
+		UI::separatorText("Ghosts");
+
+		ImGui::SliderFloat("Ghost Strength##lf", &lf.ghostStrength, 0.0f, 0.35f, "%.3f", kLog);
+		ImGui::SliderFloat("Ghost Spacing##lf", &lf.ghostSpacing, 0.4f, 1.8f, "%.2f", kClamp);
+
+
+		UI::separatorText("Starburst");
+
+		int blades = static_cast<int>(lf.starburstBlades + 0.5f);
+		if (ImGui::SliderInt("Blades##lf", &blades, 3, 16))
+			lf.starburstBlades = static_cast<float>(blades);
+
+		ImGui::SliderFloat("Burst Intensity##lf", &lf.starburstIntensity, 0.0f, 2.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Burst Length##lf", &lf.starburstLength, 0.01f, 0.50f, "%.3f", kLog);
+		ImGui::SliderFloat("Burst Width##lf", &lf.starburstWidth, 0.005f, 0.25f, "%.3f", kLog);
+		ImGui::SliderFloat("Burst Rotation##lf", &lf.starburstRotation, -4.0f, 4.0f, "%.2f", kClamp);
+
+		UI::separatorText("Anamorphic Streak");
+
+		ImGui::SliderFloat("Streak Strength##lf", &lf.streakStrength, 0.0f, 1.0f, "%.2f", kClamp);
+		ImGui::SliderFloat("Streak Width##lf", &lf.streakWidth, 0.002f, 0.08f, "%.4f", kLog);
+		ImGui::SliderFloat("Streak Length##lf", &lf.streakLength, 0.02f, 0.60f, "%.3f", kLog);
+
+		UI::separatorText("Occlusion");
+
+		ImGui::SliderFloat("Radius (px)##lf", &lf.occlusionRadiusPixels, 1.0f, 64.0f, "%.1f", kClamp);
+		ImGui::SliderFloat("Depth Bias##lf", &lf.occlusionDepthBias, 0.0f, 5.0f, "%.3f", kClamp);
+		ImGui::SliderFloat("Fade (world)##lf", &lf.occlusionFade, 0.5f, 2000.0f, "%.1f", kLog);
+		ImGui::SliderFloat("TAA Jitter Scale##lf", &lf.sunJitterScale, 0.0f, 1.0f, "%.2f", kClamp);
 	}
 
 	static void groupCullingDebug(UIContext& ui)

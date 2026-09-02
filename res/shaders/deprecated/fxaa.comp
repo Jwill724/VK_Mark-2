@@ -30,10 +30,10 @@
 //	ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
 //
 //	SceneData scene = getSceneData();
-//	ivec2 viewportSize = ivec2(scene.viewportSize.xy);
+//	ivec2 viewportSize = ivec2(scene.displayExtentSize.xy);
 //	if (pix.x >= viewportSize.x || pix.y >= viewportSize.y) return;
 //
-//	vec2 invRes = scene.pixelSizes.xy;
+//	vec2 invRes = scene.displayPixelSizes.xy;
 //	vec2 uv = (vec2(pix) + 0.5) * invRes;
 //
 //	vec4 centerSample = texture(inTonemap, uv);

@@ -54,8 +54,7 @@ void RegisterGBufferDebugPass(
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
+						pass.scope = ComputeScope{{ graph.GetDisplayExtent() }, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);

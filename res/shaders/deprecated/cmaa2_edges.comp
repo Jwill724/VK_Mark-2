@@ -70,8 +70,8 @@
 //	ivec2 pixelPos = ivec2(groupID) * ivec2(14) + ivec2(localID) - ivec2(1);
 //	pixelPos *= 2;
 //
-//	uint fullWidth = uint(scene.viewportSize.x);
-//	uint fullHeight = uint(scene.viewportSize.y);
+//	uint fullWidth = uint(scene.displayExtentSize.x);
+//	uint fullHeight = uint(scene.displayExtentSize.y);
 //
 //	if (pixelPos.x < 0 || pixelPos.y < 0) return;
 //	if ((uint(pixelPos.x) + 2u) >= fullWidth || (uint(pixelPos.y) + 2u) >= fullHeight) return;

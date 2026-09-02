@@ -193,6 +193,7 @@ void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUp
 
 		auto upload = StageTexture(desc.pixelData, bytes, *desc.image, desc.mips);
 		upload.strategy = desc.strategy;
+		upload.image->m_name = desc.image->m_name;
 
 		uploads.emplace_back(std::move(upload));
 	}
@@ -233,8 +234,16 @@ void StagingBuffer::ExecuteTextureBatch(VkCommandBuffer cmd, std::span<TextureUp
 		if (upload.strategy == MipStrategy::GenerateOnGPU)
 			ImageUtils::GenerateMipLevels(cmd, *upload.image);
 		else
-			ImageUtils::TransitionLayout(cmd, *upload.image,
-				RD::ImageAccess::TransferDst, RD::ImageAccess::Read);
+			if (upload.image->m_name != "DummyVelocity")
+			{
+				ImageUtils::TransitionLayout(cmd, *upload.image,
+					RD::ImageAccess::TransferDst, RD::ImageAccess::Read);
+			}
+			else
+			{
+				ImageUtils::TransitionLayout(cmd, *upload.image,
+					RD::ImageAccess::TransferDst, RD::ImageAccess::ComputeWrite);
+			}
 	}
 }
 

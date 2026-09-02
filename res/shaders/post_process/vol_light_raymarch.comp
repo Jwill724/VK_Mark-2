@@ -14,13 +14,7 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-const int MAX_STEPS = 20;
-
-// Rotates which full-res texel each half-res thread owns, 4-frame cycle.
-// Must match the table in the resolve and blur passes exactly.
-const ivec2 kSubsampleOffsets[4] = ivec2[4](
-	ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1)
-);
+const int MAX_STEPS = 14;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inDepth;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outVolumetricLight;
@@ -74,16 +68,15 @@ void main()
 	VolumetricShadowInfo volShadow = getVolumetricShadowInfo();
 
 	uint  frameIndex    = scene.temporal.x;
-	ivec2 fullResSize   = textureSize(inDepth, 0);
-	ivec2 fullCoord     = min(pixelCoord * 2 + kSubsampleOffsets[frameIndex & 3u], fullResSize - 1);
-	vec2  fullPixelSize = vec2(scene.pixelSizes.xy);
-	vec2  uv            = (vec2(fullCoord) + 0.5) * fullPixelSize;
+	vec2  halfPixelSize = scene.renderPixelSizes.zw;
+	vec2  uv            = (vec2(pixelCoord) + 0.5) * halfPixelSize;
+
+	vec4  depthQuad = textureGather(inDepth, uv, 0);
+	float depthValue = max(max(depthQuad.x, depthQuad.y), max(depthQuad.z, depthQuad.w));
+	bool  hasHitGeometry = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 
 	// Shadow map rotation hash
 	mat2 poissonRotation = createHashTemporal(vec2(pixelCoord), scene.temporal.x);
-
-	float depthValue     = texelFetch(inDepth, fullCoord, 0).r;
-	bool  hasHitGeometry = depthValue >= DEPTH_EPSILON_REVERSED_Z;
 
 	vec3 viewRayVS = cheapReconstructViewPos(uv, 1.0, scene.ndcToViewMult, scene.ndcToViewAdd);
 	vec3 viewDir   = normalize(mat3(scene.invView) * viewRayVS);
@@ -117,12 +110,14 @@ void main()
 	float phase = phaseHenyeyGreenstein(cosTheta, pc.asymmetryFactor);
 
 	// Jitter the starting position along the ray to reduce banding
+	float jitter     = mix(0.5, sampleJitter(pixelCoord), clamp(pc.jitterStrength, 0.0, 1.0));
 	float stepLength = maxRayDistance / float(MAX_STEPS);
-	float rayT       = clamp(sampleJitter(pixelCoord) * pc.jitterStrength, 0.0, 0.999) * stepLength;
+	float rayT       = jitter * stepLength;
 
 	// Extinction
 	float extinctionCoeff = pc.density * pc.extinction;
 	float segmentTrans    = exp(-extinctionCoeff * stepLength);
+	float transmittance   = exp(-extinctionCoeff * rayT);
 
 	// Scattering
 	vec3 sunColor    = scene.sunlightColor.rgb * scene.sunlightColor.a;
@@ -143,7 +138,6 @@ void main()
 	float heightStep   = exp(-pc.heightFalloff * viewDir.y * stepLength);
 
 	vec3  accumulatedLight = vec3(0.0);
-	float transmittance    = 1.0;
 
 	// Transmittance-weighted mean scattering distance, written to alpha for the
 	// resolve pass to reproject against. Geometry motion vectors are useless for
@@ -165,14 +159,16 @@ void main()
 				poissonRotation);
 
 		vec3  contribution = baseScatter * heightFactor * shadowTerm * transmittance * stepLength;
-		float contribLuma  = luminance(contribution);
 
 		accumulatedLight += contribution;
-		anchorWeighted   += contribLuma * rayT;
-		anchorWeightSum  += contribLuma;
 
 		transmittance *= segmentTrans;
 		heightFactor  *= heightStep;
+
+		float anchorWeight = transmittance * heightFactor;
+
+		anchorWeighted    += anchorWeight * rayT;
+		anchorWeightSum   += anchorWeight;
 
 		if (transmittance < pc.minTransmittance) break;
 

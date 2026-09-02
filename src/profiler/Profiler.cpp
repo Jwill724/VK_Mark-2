@@ -80,8 +80,7 @@ void Profiler::BeginFrame()
 	const double deltaSeconds       = m_frameStartTime - m_lastFrameTime;
 	m_lastFrameTime                 = m_frameStartTime;
 
-	const double clampedDelta       = std::min(deltaSeconds, 0.1);
-	m_stats.deltaSecondsRaw         = static_cast<float>(std::max(clampedDelta, 0.0));
+	m_stats.deltaSecondsRaw = static_cast<float>(std::clamp(deltaSeconds, 0.001, 0.1));
 
 	m_stats.deltaTime.Add(m_stats.deltaSecondsRaw);
 

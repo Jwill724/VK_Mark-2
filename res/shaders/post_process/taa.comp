@@ -1,49 +1,42 @@
 #version 450
-
 #extension GL_GOOGLE_include_directive : require
 #extension GL_ARB_separate_shader_objects : require
 
 #include "../include/common.glsl"
 #include "../include/depth.glsl"
 
-const float TAA_HISTORY_TAU              = 0.5;
-const float TAA_MAX_HISTORY              = 32.0;
-const float TAA_MAX_HISTORY_TRANSPARENT  = 8.0;
-const float TAA_TRANSPARENT_CLAMP_SCALE  = 0.8;
-const float TAA_OIT_MIN_WEIGHT           = 1e-4;
+const float TAA_HISTORY_SECONDS     = 0.35;
+const float TAA_HISTORY_SECONDS_OIT = 0.09;
+const float TAA_MIN_FRAMES          = 8.0;    // jitter sequence coverage floor
+const float TAA_MAX_HISTORY         = 128.0;  // alpha encoding range only
+const float TAA_CLAMP_FRESH         = 1.0;
+const float TAA_OIT_MIN_WEIGHT      = 1e-4;
+const float TAA_REACTIVE_FRAMES     = 2.0;
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inColorCurrent;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inColorHistory;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D inVelocity;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D inVelocityHistory;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D inDepth;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6) uniform sampler2D inPrevDepth;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7) uniform sampler2D inViewNormals;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8) uniform sampler2D inPrevViewNormals;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_9) uniform sampler2D inTransparentReveal;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_10) uniform sampler2D inTransparentAccum;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_11) uniform sampler2D inTransparentVelocity;
-
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D inDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D inPrevDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6) uniform sampler2D inTransparentReveal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7) uniform sampler2D inTransparentAccum;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8) uniform sampler2D inTransparentVelocity;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outColorResolved;
 
 layout(push_constant) uniform TAAPush {
-	float minBlend;
-	float maxBlend;
-	float depthDisocclusionScale;
 	float invDeltaTime;
+	float clampGamma;
+	float depthRejectScale;
 	float motionSpeedScale;
-	float sharpen;
-	float darkClampBoost;
-	float sigmaFloorScale;
-	float normalDisocclusionScale;
-	float shadingChangeScale;
+	float sigmaFloor;
+	float shadingResponse;
 } pc;
 
-float taaLuma(vec3 c)
+vec3 sanitize(vec3 c)
 {
-	return dot(c, vec3(0.2126, 0.7152, 0.0722));
+	return (any(isnan(c)) || any(isinf(c))) ? vec3(0.0) : max(c, vec3(0.0));
 }
 
 vec3 RGBToYCoCg(vec3 rgb)
@@ -51,8 +44,7 @@ vec3 RGBToYCoCg(vec3 rgb)
 	float co = rgb.r - rgb.b;
 	float t  = rgb.b + co * 0.5;
 	float cg = rgb.g - t;
-	float y  = t + cg * 0.5;
-	return vec3(y, co, cg);
+	return vec3(t + cg * 0.5, co, cg);
 }
 
 vec3 YCoCgToRGB(vec3 ycocg)
@@ -60,23 +52,31 @@ vec3 YCoCgToRGB(vec3 ycocg)
 	float t = ycocg.x - ycocg.z * 0.5;
 	float g = ycocg.z + t;
 	float b = t - ycocg.y * 0.5;
-	float r = b + ycocg.y;
-	return vec3(r, g, b);
+	return vec3(b + ycocg.y, g, b);
 }
 
-vec3 tonemap(vec3 c)
+vec3 toWorkingSpace(vec3 linearRGB)
 {
-	float luma = max(c.r, max(c.g, c.b));
-	return c / (1.0 + luma);
+	float luma = max(linearRGB.r, max(linearRGB.g, linearRGB.b));
+	return RGBToYCoCg(linearRGB / (1.0 + luma));
 }
 
-vec3 tonemapInverse(vec3 c)
+vec3 fromWorkingSpace(vec3 ycocg)
 {
-	float luma = max(c.r, max(c.g, c.b));
-	return c / max(1.0 - luma, 1e-3);
+	vec3  rgb  = YCoCgToRGB(ycocg);
+	float luma = max(rgb.r, max(rgb.g, rgb.b));
+	return max(rgb / max(1.0 - luma, 1e-3), vec3(0.0));
 }
 
-vec3 sampleHistoryCatmullRom(vec2 uv, vec2 resolution)
+vec3 clipToBox(vec3 center, vec3 extent, vec3 history, out float overshoot)
+{
+	vec3 offset = history - center;
+	vec3 units  = abs(offset) / max(extent, vec3(1e-7));
+	overshoot   = max(units.x, max(units.y, units.z));
+	return (overshoot > 1.0) ? center + offset / overshoot : history;
+}
+
+vec3 sampleHistory(vec2 uv, vec2 resolution)
 {
 	vec2 samplePos = uv * resolution;
 	vec2 texPos1   = floor(samplePos - 0.5) + 0.5;
@@ -88,87 +88,55 @@ vec3 sampleHistoryCatmullRom(vec2 uv, vec2 resolution)
 	vec2 w3 = f * f * (-0.5 + 0.5 * f);
 
 	vec2 w12      = w1 + w2;
-	vec2 offset12 = w2 / w12;
-
 	vec2 invRes   = 1.0 / resolution;
-	vec2 texPos0  = (texPos1 - 1.0) * invRes;
-	vec2 texPos3  = (texPos1 + 2.0) * invRes;
-	vec2 texPos12 = (texPos1 + offset12) * invRes;
-
-	vec3 h0 = texture(inColorHistory, vec2(texPos12.x, texPos0.y )).rgb;
-	vec3 h1 = texture(inColorHistory, vec2(texPos0.x,  texPos12.y)).rgb;
-	vec3 h2 = texture(inColorHistory, vec2(texPos12.x, texPos12.y)).rgb;
-	vec3 h3 = texture(inColorHistory, vec2(texPos3.x,  texPos12.y)).rgb;
-	vec3 h4 = texture(inColorHistory, vec2(texPos12.x, texPos3.y )).rgb;
+	vec2 texPos0  = (texPos1 - 1.0)          * invRes;
+	vec2 texPos3  = (texPos1 + 2.0)          * invRes;
+	vec2 texPos12 = (texPos1 + w2 / w12)     * invRes;
 
 	vec3 result = vec3(0.0);
-	result += h0 * w12.x * w0.y;
-	result += h1 * w0.x  * w12.y;
-	result += h2 * w12.x * w12.y;
-	result += h3 * w3.x  * w12.y;
-	result += h4 * w12.x * w3.y;
+	result += texture(inColorHistory, vec2(texPos12.x, texPos0.y )).rgb * w12.x * w0.y;
+	result += texture(inColorHistory, vec2(texPos0.x,  texPos12.y)).rgb * w0.x  * w12.y;
+	result += texture(inColorHistory, vec2(texPos12.x, texPos12.y)).rgb * w12.x * w12.y;
+	result += texture(inColorHistory, vec2(texPos3.x,  texPos12.y)).rgb * w3.x  * w12.y;
+	result += texture(inColorHistory, vec2(texPos12.x, texPos3.y )).rgb * w12.x * w3.y;
 
-	float weightSum  = w12.x + w12.y - w12.x * w12.y;
-	vec3  historyMin = min(min(min(h0, h1), min(h2, h3)), h4);
-	vec3  historyMax = max(max(max(h0, h1), max(h2, h3)), h4);
-	return clamp(result / weightSum, historyMin, historyMax);
+	return max(result / (w12.x + w12.y - w12.x * w12.y), vec3(0.0));
 }
 
-vec3 clipAABB(vec3 aabbMin, vec3 aabbMax, vec3 p, vec3 q)
+vec2 dilatedVelocity(ivec2 pixel, ivec2 res, out vec2 rawRange)
 {
-	vec3 r    = q - p;
-	vec3 rmax = aabbMax - p;
-	vec3 rmin = aabbMin - p;
-
-	const float eps = 1e-7;
-	if (r.x > rmax.x + eps) r *= (rmax.x / r.x);
-	if (r.y > rmax.y + eps) r *= (rmax.y / r.y);
-	if (r.z > rmax.z + eps) r *= (rmax.z / r.z);
-	if (r.x < rmin.x - eps) r *= (rmin.x / r.x);
-	if (r.y < rmin.y - eps) r *= (rmin.y / r.y);
-	if (r.z < rmin.z - eps) r *= (rmin.z / r.z);
-
-	return p + r;
-}
-
-struct DilatedTap
-{
-	vec2  velocity;
-	float rawDepth;
-};
-
-DilatedTap getDilatedTap(ivec2 pixel, ivec2 res)
-{
-	DilatedTap tap;
-	tap.velocity = vec2(0.0);
-	tap.rawDepth = -1.0;
+	ivec2 nearest    = pixel;
+	float nearestRaw = -1.0;
+	float rawMin     =  1e9;
+	float rawMax     = -1e9;
 
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
 			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
 			float z = texelFetch(inDepth, t, 0).r;
-			if (z > tap.rawDepth) {
-				tap.rawDepth = z;
-				tap.velocity = texelFetch(inVelocity, t, 0).rg;
-			}
+			rawMin = min(rawMin, z);
+			rawMax = max(rawMax, z);
+			if (z > nearestRaw) { nearestRaw = z; nearest = t; }
 		}
 	}
 
-	return tap;
+	rawRange = vec2(rawMin, rawMax);
+	return texelFetch(inVelocity, nearest, 0).rg;
 }
 
 struct TransparentTap
 {
 	vec2  velocity;
-	float fraction;
+	float coverage;
 };
 
-TransparentTap getTransparentTap(ivec2 pixel, float coverage, vec3 currentRGB)
+TransparentTap sampleTransparent(ivec2 pixel)
 {
 	TransparentTap t;
 	t.velocity = vec2(0.0);
-	t.fraction = 0.0;
+	t.coverage = 0.0;
 
+	float coverage = 1.0 - saturate(texelFetch(inTransparentReveal, pixel, 0).r);
 	if (coverage <= 1e-4) return t;
 
 	vec4 accum = texelFetch(inTransparentAccum, pixel, 0);
@@ -179,192 +147,127 @@ TransparentTap getTransparentTap(ivec2 pixel, float coverage, vec3 currentRGB)
 		accum.a <= TAA_OIT_MIN_WEIGHT) return t;
 
 	t.velocity = vel / accum.a;
-
-	vec3 resolved = max(accum.rgb / accum.a, vec3(0.0));
-	t.fraction    = clamp(taaLuma(resolved) * coverage / max(taaLuma(currentRGB), 1e-5), 0.0, 1.0);
-
+	t.coverage = coverage;
 	return t;
 }
 
-float computeVelocityDisocclusion(vec2 uv, vec2 velocityUV, vec2 jitterUV)
-{
-	vec2 historyUV = uv - velocityUV + jitterUV;
-	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
-
-	vec2  prevVelocity  = texture(inVelocityHistory, historyUV).rg;
-	float velocityDelta = length(prevVelocity - velocityUV) * pc.invDeltaTime;
-	return clamp((velocityDelta - 0.012) * 0.85, 0.0, 1.0);
-}
-
-float computeDepthDisocclusion(vec2 historyUV, float currentRawDepth, float near, float far)
+float depthRejection(vec2 historyUV, vec2 currRawRange, float linMult, float linAdd)
 {
 	ivec2 prevRes   = textureSize(inPrevDepth, 0);
 	ivec2 prevPixel = clamp(ivec2(historyUV * vec2(prevRes)), ivec2(0), prevRes - 1);
 
-	float prevMin =  1e9;
-	float prevMax = -1e9;
+	float prevRawMin =  1e9;
+	float prevRawMax = -1e9;
 
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
 			ivec2 t = clamp(prevPixel + ivec2(x, y), ivec2(0), prevRes - 1);
-			float d = linearizeDepth(texelFetch(inPrevDepth, t, 0).r, near, far);
-			prevMin = min(prevMin, d);
-			prevMax = max(prevMax, d);
+			float z = texelFetch(inPrevDepth, t, 0).r;
+			prevRawMin = min(prevRawMin, z);
+			prevRawMax = max(prevRawMax, z);
 		}
 	}
 
-	float current   = linearizeDepth(currentRawDepth, near, far);
-	float outside   = max(prevMin - current, current - prevMax);
-	float tolerance = max(prevMax - prevMin, current * 0.02);
+	// reversed-Z: larger raw is nearer, so the raw min/max swap on linearize
+	float currNear = screenToViewDepth(currRawRange.y, linMult, linAdd);
+	float currFar  = screenToViewDepth(currRawRange.x, linMult, linAdd);
+	float prevNear = screenToViewDepth(prevRawMax,     linMult, linAdd);
+	float prevFar  = screenToViewDepth(prevRawMin,     linMult, linAdd);
 
-	return clamp((outside / tolerance) * pc.depthDisocclusionScale, 0.0, 1.0);
-}
+	float gap       = max(prevNear - currFar, currNear - prevFar);
+	float tolerance = max(max(currFar - currNear, prevFar - prevNear), currNear * 0.02);
 
-float computeNormalDisocclusion(vec2 uv, vec2 velocityUV, vec2 jitterUV, ivec2 pixel, mat3 invView, mat3 prevInvView)
-{
-	vec2 historyUV = uv - velocityUV + jitterUV;
-	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) return 1.0;
-
-	ivec2 prevRes   = textureSize(inPrevViewNormals, 0);
-	ivec2 prevPixel = clamp(ivec2(historyUV * vec2(prevRes)), ivec2(0), prevRes - 1);
-
-	vec3 currVS = octDecode(texelFetch(inViewNormals,     pixel,     0).rg * 2.0 - 1.0);
-	vec3 prevVS = octDecode(texelFetch(inPrevViewNormals, prevPixel, 0).rg * 2.0 - 1.0);
-
-	vec3 currWS = normalize(invView     * currVS);
-	vec3 prevWS = normalize(prevInvView * prevVS);
-
-	float cosAngle = clamp(dot(currWS, prevWS), -1.0, 1.0);
-	return clamp((1.0 - cosAngle) * pc.normalDisocclusionScale, 0.0, 1.0);
+	return saturate((gap / tolerance - 1.0) * pc.depthRejectScale);
 }
 
 void main()
 {
 	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	SceneData   scene = getSceneData();
 
-	SceneData scene = getSceneData();
-	const ivec2 res = ivec2(scene.viewportSize.xy);
+	const ivec2 res = ivec2(scene.renderExtentSize.xy);
 	if (pixel.x >= res.x || pixel.y >= res.y) return;
 
-	const vec2 invRes = vec2(scene.pixelSizes.xy);
-	const vec2 uv     = (vec2(pixel) + 0.5) * invRes;
-	const vec2 outRes = vec2(res);
+	const vec2  invRes   = scene.renderPixelSizes.xy;
+	const vec2  outRes   = vec2(res);
+	const vec2  uv       = (vec2(pixel) + 0.5) * invRes;
+	const float exposure = max(getLuminanceBuffer().luminanceSums[0].x, 1e-4);
 
-	vec3 centerRGB = texelFetch(inColorCurrent, pixel, 0).rgb;
-	centerRGB      = any(isnan(centerRGB)) || any(isinf(centerRGB)) ? vec3(0.0) : max(centerRGB, vec3(0.0));
+	// 1. reproject
+	vec2 rawRange;
+	vec2 velocity = dilatedVelocity(pixel, res, rawRange);
 
-	vec3 m1   = vec3(0.0);
-	vec3 m2   = vec3(0.0);
-	vec3 cMin = vec3( 1e9);
-	vec3 cMax = vec3(-1e9);
+	TransparentTap trans = sampleTransparent(pixel);
+	velocity = mix(velocity, trans.velocity, trans.coverage);
 
-	vec2  jitterPx     = scene.temporalJitter.xy * 0.5 * outRes;
-	jitterPx.y         = -jitterPx.y;
+	vec2  historyUV = uv - velocity;
+	float motion    = saturate(length(velocity * outRes) * pc.invDeltaTime * pc.motionSpeedScale);
+
+	// 2. neighbourhood
+	vec2 jitterPx = scene.temporalJitter.xy * 0.5 * outRes;
+	jitterPx.y    = -jitterPx.y;
+
+	vec3  m1 = vec3(0.0);
+	vec3  m2 = vec3(0.0);
 	vec3  filtered     = vec3(0.0);
 	float filterWeight = 0.0;
+
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
-			ivec2 tap = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
-			vec3  s   = texelFetch(inColorCurrent, tap, 0).rgb;
-			s         = any(isnan(s)) ? vec3(0.0) : max(s, vec3(0.0));
-			vec3  c   = RGBToYCoCg(tonemap(s));
+			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
+			vec3  c = toWorkingSpace(sanitize(texelFetch(inColorCurrent, t, 0).rgb) * exposure);
 
-			m1  += c;
-			m2  += c * c;
-			cMin = min(cMin, c);
-			cMax = max(cMax, c);
+			m1 += c;
+			m2 += c * c;
 
 			vec2  d = vec2(x, y) + jitterPx;
 			float w = exp(-2.29 * dot(d, d));
-
 			filtered     += c * w;
 			filterWeight += w;
 		}
 	}
 
-	vec3 currentYCoCgTm = filtered / max(filterWeight, 1e-5);
+	vec3 current = filtered / max(filterWeight, 1e-5);
+	vec3 mean    = m1 / 9.0;
+	vec3 sigma   = max(sqrt(max(m2 / 9.0 - mean * mean, vec3(0.0))), vec3(pc.sigmaFloor));
 
-	const float sampleCount = 9.0;
-	vec3 mean  = m1 / sampleCount;
-	vec3 sigma = sqrt(max(m2 / sampleCount - mean * mean, vec3(0.0)));
-
-	float avgLuma   = max(getLuminanceBuffer().luminanceSums[0].y, 1e-4);
-	float refLumaTm = avgLuma / (1.0 + avgLuma);
-	sigma = max(sigma, vec3(min(mean.x, refLumaTm) * pc.sigmaFloorScale));
-
-	float revealage     = clamp(texelFetch(inTransparentReveal, pixel, 0).r, 0.0, 1.0);
-	float coverage      = 1.0 - revealage;
-	float geometryTrust = revealage;
-
-	TransparentTap trans = getTransparentTap(pixel, coverage, centerRGB);
-
-	DilatedTap tap = getDilatedTap(pixel, res);
-
-	vec2 velocityUV = mix(tap.velocity, trans.velocity, trans.fraction);
-
-	const vec2 jitterUV = jitterPx * invRes;
-	vec2 historyUV = uv - velocityUV + jitterUV;
-
-	bool validHistory = all(greaterThanEqual(historyUV, vec2(0.0))) &&
-						all(lessThanEqual(historyUV, vec2(1.0)));
-
-	if (!validHistory) {
-		vec3 rgb = max(tonemapInverse(YCoCgToRGB(mean)), vec3(0.0));
-		imageStore(outColorResolved, pixel, vec4(min(rgb, vec3(COLOR_HISTORY_MAX)), 1.0 / TAA_MAX_HISTORY));
+	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) {
+		vec3 rgb = fromWorkingSpace(mean) / exposure;
+		imageStore(outColorResolved, pixel,
+			vec4(min(rgb, vec3(COLOR_HISTORY_MAX)), 1.0 / TAA_MAX_HISTORY));
 		return;
 	}
 
-	float motion = clamp(length(velocityUV * outRes) * pc.motionSpeedScale, 0.0, 1.0);
+	// 3. history
+	vec3 historyRaw = toWorkingSpace(sanitize(sampleHistory(historyUV, outRes)) * exposure);
 
-	float normalTerm = computeNormalDisocclusion(uv, velocityUV, jitterUV, pixel,
-						   mat3(scene.invView), mat3(scene.prevInvView));
+	vec4  gathered = textureGather(inColorHistory, historyUV, 3);
+	float frames   = min(min(gathered.x, gathered.y), min(gathered.z, gathered.w)) * TAA_MAX_HISTORY;
 
-	float disocclusion = geometryTrust * max(
-			max(computeVelocityDisocclusion(uv, velocityUV, jitterUV),
-				computeDepthDisocclusion(historyUV, tap.rawDepth,
-					scene.cameraClips.x, scene.cameraClips.y)),
-			normalTerm * step(0.05, motion));
+	// 4. reject stale history
+	float rejected = max(motion, depthRejection(historyUV, rawRange,
+						   scene.depthLinearizeMult, scene.depthLinearizeAdd));
 
-	vec3  historyRGB    = sampleHistoryCatmullRom(historyUV, outRes);
-	float historyFrames = texture(inColorHistory, historyUV).a * TAA_MAX_HISTORY;
+	float targetFrames = clamp(
+		mix(TAA_HISTORY_SECONDS, TAA_HISTORY_SECONDS_OIT, trans.coverage) * pc.invDeltaTime,
+		TAA_MIN_FRAMES, TAA_MAX_HISTORY);
 
-	bool badHistory = any(isnan(historyRGB)) || any(isinf(historyRGB));
-	historyRGB      = badHistory ? vec3(0.0) : max(historyRGB, vec3(0.0));
+	float reactive = texelFetch(inColorCurrent, pixel, 0).a;
+	float reactiveFrames = mix(targetFrames, TAA_REACTIVE_FRAMES, reactive);
+	frames = min(frames, reactiveFrames) * (1.0 - rejected);
 
-	vec3 historyYCoCgTm = RGBToYCoCg(tonemap(historyRGB));
+	// 5. constrain — the box widens with accumulated evidence
+	float trust  = frames / targetFrames;
+	vec3  extent = sigma * mix(TAA_CLAMP_FRESH, pc.clampGamma, trust);
 
-	float relLuma   = clamp(max(mean.x, historyYCoCgTm.x) / max(refLumaTm, 1e-4), 0.0, 1.0);
-	float lumaScale = mix(pc.darkClampBoost, 1.0, relLuma);
+	float overshoot;
+	vec3  history = clipToBox(mean, extent, historyRaw, overshoot);
 
-	float gamma = mix(2.0, 1.0, motion) * lumaScale;
-	gamma       = mix(gamma, 0.75, disocclusion);
-	gamma      *= mix(1.0, TAA_TRANSPARENT_CLAMP_SCALE, trans.fraction);
+	// 6. blend
+	float blend = max(1.0 / (frames + 1.0), saturate((overshoot - 1.0) * pc.shadingResponse));
 
-	vec3 aabbMin = mean - sigma * gamma;
-	vec3 aabbMax = mean + sigma * gamma;
-	vec3 clipped = clipAABB(aabbMin, aabbMax, mean, historyYCoCgTm);
-
-	float clipDist      = abs(historyYCoCgTm.x - clipped.x) / max(sigma.x * gamma, 1e-4);
-	float shadingChange = clamp(clipDist * pc.shadingChangeScale, 0.0, 1.0);
-	historyYCoCgTm      = clipped;
-
-	float maxFrames = mix(TAA_MAX_HISTORY, TAA_MAX_HISTORY_TRANSPARENT, trans.fraction);
-
-	float instability = max(max(motion, disocclusion), shadingChange);
-	historyFrames     = badHistory ? 0.0 : min(historyFrames, maxFrames) * (1.0 - instability);
-
-	float dt          = 1.0 / max(pc.invDeltaTime, 1e-4);
-	float steadyBlend = clamp(1.0 - exp(-dt / TAA_HISTORY_TAU), pc.minBlend, pc.maxBlend);
-	float blend       = clamp(max(steadyBlend, 1.0 / (historyFrames + 1.0)), pc.minBlend, pc.maxBlend);
-
-	vec3 resolvedYCoCgTm = mix(historyYCoCgTm, currentYCoCgTm, blend);
-
-	resolvedYCoCgTm.x += (resolvedYCoCgTm.x - mean.x) * pc.sharpen * (1.0 - instability) * (1.0 - trans.fraction);
-
-	vec3 resolvedRGB = max(tonemapInverse(YCoCgToRGB(resolvedYCoCgTm)), vec3(0.0));
-
-	float newFrames = min(historyFrames + 1.0, maxFrames);
+	vec3 resolved = fromWorkingSpace(mix(history, current, blend)) / exposure;
 
 	imageStore(outColorResolved, pixel,
-		vec4(min(resolvedRGB, vec3(COLOR_HISTORY_MAX)), newFrames / TAA_MAX_HISTORY));
+		vec4(min(resolved, vec3(COLOR_HISTORY_MAX)), min(frames + 1.0, targetFrames) / TAA_MAX_HISTORY));
 }

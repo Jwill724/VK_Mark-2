@@ -57,7 +57,8 @@ void Scene::InitScene(glm::vec3 spawn)
 }
 
 bool Scene::UpdateCamera(
-	Extents2D drawExtent,
+	Extents2D renderExtent,
+	Extents2D displayExtent,
 	Profiler& profiler,
 	GLFWwindow* window,
 	bool isTemporalAllowed)
@@ -74,22 +75,21 @@ bool Scene::UpdateCamera(
 		isTemporalInvalid = true;
 	}
 
-	ASSERT(drawExtent.Width() > 0u && drawExtent.Height() > 0u,
-		"UpdateCamera got a degenerate extent %ux%u.",
-		drawExtent.Width(), drawExtent.Height());
-
 	const glm::mat4 lastView               = m_sceneInfo.view;
 	const glm::mat4 lastInvView            = m_sceneInfo.invView;
 	const glm::mat4 lastViewProjUnjittered = m_sceneInfo.viewProjUnjittered;
 
-	float width  = static_cast<float>(drawExtent.Width());
-	float height = static_cast<float>(drawExtent.Height());
-	const float aspect = width / height;
+	const float dWidth = static_cast<float>(displayExtent.Width());
+	const float dHeight = static_cast<float>(displayExtent.Height());
+
+	const float rWidth  = static_cast<float>(renderExtent.Width());
+	const float rHeight = static_cast<float>(renderExtent.Height());
+	const float aspect = rWidth / rHeight;
 
 	m_camera.ProcessInput(
 		window,
 		profiler,
-		drawExtent,
+		renderExtent,
 		isTemporalInvalid);
 
 	// Determines if the camera moves too fast for occlusion culling
@@ -119,7 +119,7 @@ bool Scene::UpdateCamera(
 	if (jitterOn)
 	{
 		glm::vec2 jitterPixels = BuildTemporalJitterPixels(m_sceneInfo.temporal.x);
-		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, width, height);
+		jitterNDC = ConvertJitterPixelsToNDC(jitterPixels, rWidth, rHeight);
 	}
 
 	m_sceneInfo.prevView               = lastView;
@@ -182,32 +182,55 @@ bool Scene::UpdateCamera(
 
 	m_sceneInfo.cameraPos = glm::vec4(m_camera.GetPosition(), 0.0f);
 
-	if (m_sceneInfo.viewportSize.x != width || m_sceneInfo.viewportSize.y != height)
+	if (m_sceneInfo.renderExtentSize.x != rWidth ||
+		m_sceneInfo.renderExtentSize.y != rHeight ||
+		m_sceneInfo.displayExtentSize.x != dWidth ||
+		m_sceneInfo.displayExtentSize.y != dHeight)
 	{
-		float pixelCount = width * height;
-		m_sceneInfo.viewportSize = glm::vec4(width, height, pixelCount, 0.0);
-
-		glm::vec2 fullPixelSize = 1.0f / glm::vec2(width, height);
-
-		m_sceneInfo.cameraClips.z = fullPixelSize.x;
-		m_sceneInfo.cameraClips.w = fullPixelSize.y;
-
-		VkExtent3D halfExtent = {
-			(drawExtent.Width() + 1u) >> 1,
-			(drawExtent.Height() + 1u) >> 1,
+		// ===================
+		// Render extent info
+		// ===================
+		float renderPixelCount = rWidth * rHeight;
+		glm::vec2 fullRenderPixelSize = 1.0f / glm::vec2(rWidth, rHeight);
+		VkExtent3D halfRenderExtent = {
+			(renderExtent.Width() + 1u) >> 1,
+			(renderExtent.Height() + 1u) >> 1,
 			1u
 		};
-
-		glm::vec2 halfPixelSize = 1.0f /
+		glm::vec2 halfRenderPixelSize = 1.0f /
 			glm::vec2(
-				static_cast<float>(halfExtent.width),
-				static_cast<float>(halfExtent.height));
+				static_cast<float>(halfRenderExtent.width),
+				static_cast<float>(halfRenderExtent.height));
 
-		m_sceneInfo.pixelSizes = glm::vec4(
-			fullPixelSize.x,
-			fullPixelSize.y,
-			halfPixelSize.x,
-			halfPixelSize.y);
+		m_sceneInfo.renderPixelSizes = glm::vec4(
+			fullRenderPixelSize.x,
+			fullRenderPixelSize.y,
+			halfRenderPixelSize.x,
+			halfRenderPixelSize.y);
+		m_sceneInfo.renderExtentSize = glm::vec4(rWidth, rHeight, renderPixelCount, 0.0);
+
+
+		// ====================
+		// Display extent info
+		// ====================
+		float displayPixelCount = dWidth * dHeight;
+		glm::vec2 fullDisplayPixelSize = 1.0f / glm::vec2(dWidth, dHeight);
+		VkExtent3D halfDisplayExtent = {
+			(displayExtent.Width() + 1u) >> 1,
+			(displayExtent.Height() + 1u) >> 1,
+			1u
+		};
+		glm::vec2 halfDisplayPixelSize = 1.0f /
+			glm::vec2(
+				static_cast<float>(halfDisplayExtent.width),
+				static_cast<float>(halfDisplayExtent.height));
+		m_sceneInfo.displayPixelSizes = glm::vec4(
+			fullDisplayPixelSize.x,
+			fullDisplayPixelSize.y,
+			halfDisplayPixelSize.x,
+			halfDisplayPixelSize.y);
+		m_sceneInfo.displayExtentSize = glm::vec4(dWidth, dHeight, displayPixelCount, 0.0);
+
 
 		isTemporalInvalid = true;
 	}
@@ -259,14 +282,16 @@ static float HaltonSequence(uint32_t index, uint32_t base)
 
 static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex)
 {
+	static const glm::vec2 kMean = []
+		{
+			glm::vec2 sum(0.0f);
+			for (uint32_t i = 1; i <= RD::TAA_SAMPLE_COUNT; ++i)
+				sum += glm::vec2(HaltonSequence(i, 2u), HaltonSequence(i, 3u));
+			return sum / static_cast<float>(RD::TAA_SAMPLE_COUNT);
+		}();
 
-	uint32_t index = (frameIndex % RD::TAA_SAMPLE_COUNT) + 1u;
-
-	glm::vec2 jitter;
-	jitter.x = HaltonSequence(index, 2u);
-	jitter.y = HaltonSequence(index, 3u);
-	jitter -= glm::vec2(0.5f);
-	return jitter;
+	const uint32_t index = (frameIndex % RD::TAA_SAMPLE_COUNT) + 1u;
+	return glm::vec2(HaltonSequence(index, 2u), HaltonSequence(index, 3u)) - kMean;
 }
 
 static glm::vec2 ConvertJitterPixelsToNDC(
@@ -672,7 +697,7 @@ static int bend_max(const int a, const int b) { return a > b ? a : b; }
 void Scene::BuildDispatchList(const int waveSize)
 {
 	const auto lightDir = GetLightDir();
-	const glm::vec2 viewportSize = { m_sceneInfo.viewportSize.x, m_sceneInfo.viewportSize.y };
+	const glm::vec2 renderExtentSize = { m_sceneInfo.renderExtentSize.x, m_sceneInfo.renderExtentSize.y };
 
 	glm::vec4 lightProj = m_sceneInfo.viewProj * glm::vec4(lightDir, 0.0f);
 
@@ -687,10 +712,10 @@ void Scene::BuildDispatchList(const int waveSize)
 	else if (xy_light_w < 0 && xy_light_w > -FP_limit) xy_light_w = -FP_limit;
 
 	// Need precise XY pixel coordinates of the light
-	result.lightCoords[0] = ((lightProj[0] / xy_light_w) * +0.5f + 0.5f) * viewportSize.x;
+	result.lightCoords[0] = ((lightProj[0] / xy_light_w) * +0.5f + 0.5f) * renderExtentSize.x;
 
 	// NOTE: Y flip required for my light projection to work
-	result.lightCoords[1] = (1.0f - ((lightProj[1] / xy_light_w) * -0.5f + 0.5f)) * viewportSize.y;
+	result.lightCoords[1] = (1.0f - ((lightProj[1] / xy_light_w) * -0.5f + 0.5f)) * renderExtentSize.y;
 	result.lightCoords[2] = lightProj[3] == 0 ? 0 : (lightProj[2] / lightProj[3]);
 	result.lightCoords[3] = lightProj[3] > 0 ? 1.0f : -1.0f;
 
@@ -704,8 +729,8 @@ void Scene::BuildDispatchList(const int waveSize)
 	const int32_t biased_bounds[4] =
 	{
 		0 - light_xy[0],
-		-(static_cast<int32_t>(viewportSize.y) - light_xy[1]),
-		static_cast<int32_t>(viewportSize.x) - light_xy[0],
+		-(static_cast<int32_t>(renderExtentSize.y) - light_xy[1]),
+		static_cast<int32_t>(renderExtentSize.x) - light_xy[0],
 		-(0 - light_xy[1]),
 	};
 

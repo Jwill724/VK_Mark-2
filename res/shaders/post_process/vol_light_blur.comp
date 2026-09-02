@@ -8,10 +8,6 @@
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-const ivec2 kSubsampleOffsets[4] = ivec2[4](
-	ivec2(0, 0), ivec2(1, 1), ivec2(1, 0), ivec2(0, 1)
-);
-
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inDepth;
 layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inVolumetricLight;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outBlurVolumetric;
@@ -45,6 +41,13 @@ float linearizeVolumetricDepth(float deviceDepth, float mult, float add)
 	return min(screenToViewDepth(max(deviceDepth, DEPTH_EPSILON_REVERSED_Z), mult, add), 1e6);
 }
 
+float gatherHalfDepth(vec2 halfCoord, vec2 halfPixelSize, float mult, float add)
+{
+	vec4  q = textureGather(inDepth, halfCoord * halfPixelSize, 0);
+	float d = max(max(q.x, q.y), max(q.z, q.w));
+	return linearizeVolumetricDepth(d, mult, add);
+}
+
 void main()
 {
 	ivec2 pixelCoord  = ivec2(gl_GlobalInvocationID.xy);
@@ -62,15 +65,11 @@ void main()
 
 	SceneData scene = getSceneData();
 
-	ivec2 fullResSize   = textureSize(inDepth, 0);
-	ivec2 subOffset     = kSubsampleOffsets[scene.temporal.x & 3u];
-	ivec2 stepDirection = ivec2(round(pc.blurDirection));
+	vec2  halfPixelSize = scene.renderPixelSizes.zw;
+	float centerDepth = gatherHalfDepth(vec2(pixelCoord) + 0.5, halfPixelSize,
+		scene.depthLinearizeMult, scene.depthLinearizeAdd);
 
-	ivec2 centerFull = min(pixelCoord * 2 + subOffset, fullResSize - 1);
-	float centerDepth = linearizeVolumetricDepth(
-		texelFetch(inDepth, centerFull, 0).r,
-		scene.depthLinearizeMult,
-		scene.depthLinearizeAdd);
+	ivec2 stepDirection = ivec2(round(pc.blurDirection));
 
 	float sigma = (pc.blurWeightSigma > 0.0)
 		? pc.blurWeightSigma
@@ -91,12 +90,9 @@ void main()
 		for (int s = 0; s < 2; ++s) {
 			ivec2 offset  = stepDirection * (s == 0 ? i : -i);
 			ivec2 tapHalf = clamp(pixelCoord + offset, ivec2(0), halfResSize - 1);
-			ivec2 tapFull = min(tapHalf * 2 + subOffset, fullResSize - 1);
 
-			float tapDepth = linearizeVolumetricDepth(
-				texelFetch(inDepth, tapFull, 0).r,
-				scene.depthLinearizeMult,
-				scene.depthLinearizeAdd);
+			float tapDepth = gatherHalfDepth(vec2(tapHalf) + 0.5, halfPixelSize,
+				scene.depthLinearizeMult, scene.depthLinearizeAdd);
 
 			float depthDiff = (tapDepth - centerDepth) * invCenterDepth;
 			float weight    = spatialWeight * exp(-(depthDiff * depthDiff) / twoDepthSigma2);

@@ -27,7 +27,7 @@ void main()
 	DebugToggles debug = getDebugToggles();
 
 	uvec2 gid    = gl_GlobalInvocationID.xy;
-	uvec2 vpSize = uvec2(scene.viewportSize.xy);
+	uvec2 vpSize = uvec2(scene.renderExtentSize.xy);
 	if (any(greaterThanEqual(gid, vpSize))) return;
 
 	if (debug.debugView == DBG_OFF) return;

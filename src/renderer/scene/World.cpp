@@ -93,7 +93,12 @@ void World::Cleanup()
 	_scene.Shutdown();
 }
 
-void World::Init(const BindlessImageTable& imgTable)
+void World::Init(
+	const BindlessImageTable& imgTable,
+	Extents2D renderExtent,
+	Extents2D displayExtent,
+	Profiler& profiler,
+	GLFWwindow* window)
 {
 	uint32_t cookieGoboID = imgTable.GetStaticTexture(RD::Renderer_Texture::CookieGobo).m_bindlessID;
 	uint32_t flashlightShadowMapID = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap).m_bindlessID;
@@ -101,6 +106,8 @@ void World::Init(const BindlessImageTable& imgTable)
 	LightingSystem::Init();
 
 	_scene.InitScene(DEFAULT_SPAWN);
+
+	_scene.UpdateCamera(renderExtent, displayExtent, profiler, window, false);
 
 	const auto& csm = imgTable.GetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
 	_scene.InitCSMInfo(csm.Width(), csm.Height(), csm.m_bindlessID);
@@ -143,8 +150,8 @@ void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
 	asset->lightIDs.reserve(asset->lights.size());
 	for (const auto& light : asset->lights)
 	{
-		const uint32_t id = LightingSystem::AddSceneLight(light);
-		if (id != UINT32_MAX) asset->lightIDs.push_back(id);
+		const uint32_t lightId = LightingSystem::AddSceneLight(light);
+		if (lightId != UINT32_MAX) asset->lightIDs.push_back(lightId);
 	}
 
 	_bAreAssetsLoaded = true;
@@ -154,7 +161,8 @@ void World::OnSceneLoaded(std::shared_ptr<ModelAsset> asset)
 
 void World::UpdateWorldState(
 	uint32_t frameNumber,
-	const Extents2D& drawExtent,
+	const Extents2D& renderExtent,
+	const Extents2D& displayExtent,
 	FrameContext& frameCtx,
 	Allocator& allocator,
 	Profiler& profiler,
@@ -172,7 +180,7 @@ void World::UpdateWorldState(
 
 	sceneData.temporal.x = frameNumber;
 
-	bIsTemporalInvalid = _scene.UpdateCamera(drawExtent, profiler, window, isTemporalAllowed);
+	bIsTemporalInvalid = _scene.UpdateCamera(renderExtent, displayExtent, profiler, window, isTemporalAllowed);
 
 	const auto deltaTime = profiler.getStats().deltaSecondsRaw;
 
@@ -238,6 +246,8 @@ void World::UpdateWorldState(
 	frameCtx.EvaluateLightListSizeChanges(LightingSystem::_globalLightList.size());
 
 	bool bIsLightUploadedNeeded = (bMainList || bDynamicList || bFlashlightChanged);
+
+	bIsLightUploadedNeeded = LightingSystem::UpdateLightChangeRates() || bIsLightUploadedNeeded;
 
 	frameCtx.IsFirstLightsUpload(bIsLightUploadedNeeded);
 

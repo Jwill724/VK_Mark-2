@@ -38,9 +38,9 @@ void RegisterNRDDenoisePass(RenderGraph& graph)
 				.ReadResource(RD::Renderer_RenderTarget::Velocity,                 NRD_INPUT_ACCESS)
 
 				.WriteResource(RD::Renderer_RenderTarget::RTReflectDenoised,
-					NRD_OUTPUT_ACCESS, RD::ImageAccess::ComputeRead)
+					NRD_OUTPUT_ACCESS, RD::ImageAccess::Read)
 				.WriteResource(RD::Renderer_RenderTarget::RTShadowDenoised,
-					NRD_OUTPUT_ACCESS, RD::ImageAccess::ComputeRead)
+					NRD_OUTPUT_ACCESS, RD::ImageAccess::Read)
 
 				.SetRecord([](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{

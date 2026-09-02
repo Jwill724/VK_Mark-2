@@ -7,6 +7,8 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
+#include "../../../renderer/RendererDefinitions.h"
+
 namespace
 {
 	constexpr auto kExtensions =
@@ -73,7 +75,7 @@ namespace
 			break;
 		}
 
-		desc.anisotropy = desc.isMipMapped ? RD::ANISOTROPY_LEVEL_16 : 1.0f;
+		desc.anisotropy = desc.isMipMapped ? RD::MAX_ANISOTROPY_LEVEL : 1.0f;
 		return desc;
 	}
 

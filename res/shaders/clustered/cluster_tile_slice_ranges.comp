@@ -25,7 +25,7 @@ void main() {
 
 	ClusterTileSliceRanges tsrBuf = getClusterTileSliceRangesBuffer();
 
-	uvec2 viewportSize = uvec2(scene.viewportSize.xy);
+	uvec2 viewportSize = uvec2(scene.renderExtentSize.xy);
 
 	const uint maxSlice = clusteredData.zSlices - 1u;
 	const uint tileIndex = tileCoord.y * clusteredData.tileCountX + tileCoord.x;

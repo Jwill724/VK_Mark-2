@@ -52,7 +52,7 @@ void RegisterContactShadowsPass(
 							ctx.threadSlot,
 							ctx.scheduleInfo->queue);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
@@ -62,8 +62,8 @@ void RegisterContactShadowsPass(
 
 						const auto& dispatchList = ctx.scene->GetDispatchList();
 
-						const auto& pixelSizes = ctx.scene->GetSceneData().pixelSizes;
-						glm::vec2 invSize = glm::vec2(pixelSizes.x, pixelSizes.y);
+						const auto& renderPixelSizes = ctx.scene->GetSceneData().renderPixelSizes;
+						glm::vec2 invSize = glm::vec2(renderPixelSizes.x, renderPixelSizes.y);
 
 						auto& sssPush = ctx.profiler->contactShadowsSettings;
 						sssPush.lightCoords = dispatchList.lightCoords;

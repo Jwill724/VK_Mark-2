@@ -140,6 +140,8 @@ struct LocalLight
 
 	float sourceRadius = 0.0f;
 	float sourceLength = 0.0f;
+
+	float changeRate = 0.0f;
 };
 
 struct Cmaa2BufferSizes
@@ -273,18 +275,13 @@ struct alignas(16) SSGIPush
 
 struct alignas(16) TAAPush
 {
-	float minBlend                = 0.02f;
-	float maxBlend                = 0.9f;
-	float depthDisocclusionScale  = 2.0f;
-	float invDeltaTime            = 0.0f;
-	float motionSpeedScale        = 0.03f;
-	float sharpen                 = 0.0f;
-	float darkClampBoost          = 1.75f;
-	float sigmaFloorScale         = 0.02f;
-	float normalDisocclusionScale = 10.0f;
-	float shadingChangeScale      = 1.0f;
-	float pad0;
-	float pad1;
+	float invDeltaTime = 0.0f;
+	float clampGamma = 3.0f;
+	float depthRejectScale = 1.0f;
+	float motionSpeedScale = 0.005f;
+	float sigmaFloor = 0.006f;
+	float shadingResponse = 2.0;
+	float pad0[2];
 };
 
 struct alignas(16) VolumetricPush
@@ -319,29 +316,40 @@ struct alignas(16) LensFlarePush
 	float sunVisible = 1.0f;
 	uint32_t rainbowLUTIndex = UINT32_MAX;
 
-	// Bright-pass params (FlareBright)
-	float brightThreshold = 15.0f;
-	float brightKnee = 7.5f; // 0.5 * threshold
+	// Bright pass
+	float brightThreshold = 6.0f;      // display-space luminance, exposure divided in shader
+	float brightKnee = 3.0f;
 	float brightIntensity = 1.0f;
-	float pad0{ 0.0f };
+	float starburstIntensity = 1.2f;
 
-	// Ring params (FlareGen)
-	float ringInnerRadius = 0.1f;
-	float ringOuterRadius = 0.20f;
-	float chromaStrength = 1.0f;
-	float pad1{ 0.0f };
+	// Halo
+	float ringInnerRadius = 0.2f;    // fraction of the SHORT screen axis
+	float ringOuterRadius = 0.25f;
+	float chromaStrength = 0.8f;
+	float haloAnisotropy = 0.4f;
 
-	// Streak params (FlareGen)
-	float streakStrength = 0.2f;
-	float streakWidth = 0.01f;   // UV units
-	float streakLength = 0.2f;   // UV units
-	float pad2{ 0.0f };
+	// Anamorphic streak
+	float streakStrength = 0.12f;
+	float streakWidth = 0.012f;
+	float streakLength = 0.22f;
+	float starburstRotation = -2.0f;
 
-	// Hi-Z occlusion params (FlareGen)
-	float occlusionRadiusPixels = 0.01f;  // full-res pixels
-	float occlusionDepthBias = 0.01f;     // linear depth bias
-	float occlusionFade = 8.0f;           // higher = harder fade
-	float pad3{ 0.0f };
+	// Hi-Z occlusion
+	float occlusionRadiusPixels = 5.0f;
+	float occlusionDepthBias = 0.0f;
+	float occlusionFade = 200.0f;      // world units, set from farClip * 0.02
+	float sunJitterScale = 0.0f;
+
+	// Starburst shape
+	float starburstBlades = 6.0f;
+	float starburstLength = 0.1f;
+	float starburstWidth = 0.08f;     // ray angular half-width, radians
+	float haloOpacity = 0.03f;
+
+	float haloSqueeze = 1.55f;
+	float haloAngleGain = 2.50f;
+	float ghostStrength = 0.060f;
+	float ghostSpacing = 1.00f;
 };
 
 // Screen space contact shadows usage
@@ -353,7 +361,7 @@ struct alignas(16) SSSPush
 	glm::vec2 invDepthSize{0.0f};
 
 	float surfaceThickness = 0.005f;
-	float bilinearThreshold = 0.2f;
+	float bilinearThreshold = 0.01f;
 	float shadowContrast = 4.0f;
 	float pad0;
 };
@@ -456,7 +464,7 @@ struct alignas(16) RTShadowParams
 	float    rayTMin = 0.001f;
 	float    rayTMax = 500.0f;
 	float    rayBias = 1e-4f;
-	float    normalBias = 0.02f;
+	float    normalBias = 0.03f;
 	float    sunSoftness = 1.0f;
 	float    mipBias = 1.0f;
 	uint32_t taps = 1u;

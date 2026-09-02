@@ -51,7 +51,7 @@ void main() {
 	uvec2 base = gl_GlobalInvocationID.xy;
 
 	SceneData scene = getSceneData();
-	const vec2 fullPixelSize = vec2(scene.pixelSizes.xy);
+	const vec2 fullPixelSize = vec2(scene.renderPixelSizes.xy);
 
 	// MIP0
 	uvec2 pixCoord = base * 2u;

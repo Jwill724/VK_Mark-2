@@ -65,8 +65,8 @@ void main()
 	vec2 uvMin = vec2(ndcMin.x * 0.5 + 0.5, 0.5 - ndcMax.y * 0.5);
 	vec2 uvMax = vec2(ndcMax.x * 0.5 + 0.5, 0.5 - ndcMin.y * 0.5);
 
-	vec2 pMin = clamp(uvMin, 0.0, 1.0) * scene.viewportSize.xy;
-	vec2 pMax = clamp(uvMax, 0.0, 1.0) * scene.viewportSize.xy;
+	vec2 pMin = clamp(uvMin, 0.0, 1.0) * scene.renderExtentSize.xy;
+	vec2 pMax = clamp(uvMax, 0.0, 1.0) * scene.renderExtentSize.xy;
 
 	uvec2 tMin = uvec2(uvec2(pMin) / uvec2(clustered.tileSizeX, clustered.tileSizeY));
 	uvec2 tMax = uvec2(uvec2(pMax) / uvec2(clustered.tileSizeX, clustered.tileSizeY));

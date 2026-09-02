@@ -30,9 +30,9 @@ void RegisterWireframePass(
 					})
 
 				.WriteResource(
-					RD::Renderer_RenderTarget::Opaque,
+					RD::Renderer_RenderTarget::HDRScene,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeWrite)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::HiZ,
@@ -56,10 +56,10 @@ void RegisterWireframePass(
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer;
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
-						const auto& opaque = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Opaque);
+						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
 
 						AttachmentDesc opaqueAttach{};
-						opaqueAttach.imageView = opaque.m_imageView;
+						opaqueAttach.imageView = hdrScene.m_imageView;
 						opaqueAttach.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 						opaqueAttach.SetColor({ 0.0f, 0.0f, 0.0f, 1.0f });
 
@@ -83,7 +83,7 @@ void RegisterWireframePass(
 						pso.SetPush(push);
 
 						pso.UpdateRenderInfo(
-							{ opaque.Width(), opaque.Height() },
+							{ hdrScene.Width(), hdrScene.Height() },
 							{ opaqueAttach, depthAttach });
 
 						pso.BeginRendering(cmd);

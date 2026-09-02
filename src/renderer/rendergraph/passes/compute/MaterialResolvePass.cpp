@@ -58,7 +58,7 @@ void RegisterMaterialResolvePass(
 							RD::Renderer_Pass::MaterialResolve,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 

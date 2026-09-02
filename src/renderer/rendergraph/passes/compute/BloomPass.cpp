@@ -66,8 +66,7 @@ void RegisterBloomPass(
 							RD::Renderer_Pass::Bloom,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{ drawExtent, WORKGROUP_8x8 };
+						pass.scope = ComputeScope{ graph.GetDisplayExtent(), WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 						pso.SetPush(ctx.profiler->bloomPush);
 

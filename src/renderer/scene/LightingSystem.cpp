@@ -171,8 +171,30 @@ namespace LightingSystem
 		_lightIDTable.alive[lightID] = 0u;
 		_lightIDTable.freeIDs.push_back(lightID);
 	}
-}
 
+	static float lightChangeRate(const LocalLight& curr, const LightingSystem::PrevLightState& prev)
+	{
+		if (!prev.valid) return 1.0f;
+		if ((curr.flags & RD::LIGHT_FLAG_MASK_ONLY) != 0u) return 1.0f;
+
+		const bool wasOff = (prev.flags & RD::LIGHT_FLAG_FLASHLIGHT_OFF) != 0u;
+		const bool isOff = (curr.flags & RD::LIGHT_FLAG_FLASHLIGHT_OFF) != 0u;
+		if (wasOff != isOff) return 1.0f;
+
+		float dirDelta = 0.0f;
+		if ((curr.flags & RD::LIGHT_FLAG_SPOT) != 0u)
+		{
+			const float cosDelta = glm::clamp(glm::dot(curr.direction, prev.direction), -1.0f, 1.0f);
+			const float coneHalf = std::max(std::acos(glm::clamp(curr.outerCos, -1.0f, 1.0f)), 0.05f);
+			dirDelta = std::acos(cosDelta) / coneHalf;
+		}
+
+		const float posDelta = glm::length(curr.position - prev.position) / std::max(curr.radius, 1e-3f);
+		const float intDelta = std::abs(curr.intensity - prev.intensity) / std::max(curr.intensity, 1e-3f);
+
+		return glm::clamp((dirDelta + posDelta + intDelta) * LightingSystem::_reactiveGain, 0.0f, 1.0f);
+	}
+}
 
 void LightingSystem::Init()
 {
@@ -425,6 +447,38 @@ bool LightingSystem::UpdateLightList()
 	return listChanged;
 }
 
+bool LightingSystem::UpdateLightChangeRates()
+{
+	if (_prevLightState.size() < _lightIDTable.idToIndex.size())
+		_prevLightState.resize(_lightIDTable.idToIndex.size());
+
+	bool anyActive = false;
+
+	for (uint32_t lightID = 0; lightID < _lightIDTable.idToIndex.size(); ++lightID)
+	{
+		if (!isLightIDAlive(lightID)) continue;
+
+		const uint32_t denseIndex = _lightIDTable.idToIndex[lightID];
+		if (denseIndex == UINT32_MAX || denseIndex >= _globalLightList.size()) continue;
+
+		LocalLight& light = _globalLightList[denseIndex];
+		PrevLightState& prev = _prevLightState[lightID];
+
+		light.changeRate = lightChangeRate(light, prev);
+		anyActive = anyActive || (light.changeRate > 0.0f);
+
+		prev.position = light.position;
+		prev.direction = light.direction;
+		prev.intensity = light.intensity;
+		prev.flags = light.flags;
+		prev.valid = true;
+	}
+
+	const bool needsUpload = anyActive || _changeRatesActive;
+	_changeRatesActive = anyActive;
+	return needsUpload;
+}
+
 static void rotateLightAroundOriginXZ(
 	glm::vec3& position,
 	float angularSpeedRad,
@@ -477,6 +531,8 @@ void LightingSystem::Cleanup() {
 	_activeLightCount = 0u;
 	_lightBufferCount = 0u;
 	_globalLightList.clear();
+
+	_prevLightState.clear();
 }
 
 void Flashlight::Init(uint32_t shadowMapID, uint32_t cookieGoboID)

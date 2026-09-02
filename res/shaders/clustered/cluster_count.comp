@@ -53,7 +53,7 @@ void main()
 		}
 
 		ClusterAABB box = computeClusterAABB(
-			tileX, tileY, sliceZ, scene.proj, uvec2(scene.viewportSize.xy),
+			tileX, tileY, sliceZ, scene.proj, uvec2(scene.renderExtentSize.xy),
 			clusteredData.tileSizeX, clusteredData.tileSizeY, clusteredData.zSlices,
 			camNear, camFar);
 
@@ -98,7 +98,7 @@ void main()
 			scene.proj,
 			light.position,
 			light.radius,
-			uvec2(scene.viewportSize.xy),
+			uvec2(scene.renderExtentSize.xy),
 			clusteredData.tileSizeX,
 			clusteredData.tileSizeY,
 			clusteredData.tileCountX,

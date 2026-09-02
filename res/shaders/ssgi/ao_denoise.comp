@@ -50,7 +50,7 @@ void main() {
 	const ivec2 pixCoordBase = ivec2(gl_GlobalInvocationID.xy) * ivec2(2, 1);
 
 	SceneData scene = getSceneData();
-	const ivec2 halfExtent = (ivec2(scene.viewportSize.xy) + 1) / 2;
+	const ivec2 halfExtent = (ivec2(scene.renderExtentSize.xy) + 1) / 2;
 	if (any(greaterThanEqual(pixCoordBase, halfExtent))) return;
 
 	float blurAmount = (pc.isFinalPass != 0u)
@@ -58,7 +58,7 @@ void main() {
 		: pc.denoiseBlurBeta / 5.0;
 
 	const float diagWeight = 0.85 * 0.5;
-	const vec2 halfPixelSize = vec2(scene.pixelSizes.zw);
+	const vec2 halfPixelSize = vec2(scene.renderPixelSizes.zw);
 	vec2 gatherUV = vec2(pixCoordBase) * halfPixelSize;
 
 	// Edge gathers

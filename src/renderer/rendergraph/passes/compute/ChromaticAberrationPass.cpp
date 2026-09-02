@@ -49,8 +49,7 @@ void RegisterChromaticAberrationPass(
 							RD::Renderer_Pass::ChromaticAberration,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+						pass.scope = ComputeScope{{ graph.GetDisplayExtent() }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);

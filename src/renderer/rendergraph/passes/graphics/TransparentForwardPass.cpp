@@ -39,17 +39,17 @@ void RegisterTransparentForwardPass(
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentRevealage,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.WriteResource(
 					RD::Renderer_RenderTarget::TransparentVelocityAccum,
 					RD::ImageAccess::GraphicsColorWrite,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.SetRecord(
 					[](RenderPassExecutionContext& ctx, RenderPassDesc& pass)

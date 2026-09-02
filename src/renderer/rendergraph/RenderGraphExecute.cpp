@@ -30,12 +30,14 @@ RenderPassDesc& RenderGraph::CreatePass(
 
 void RenderGraph::Build(
 	PipelineManager& pipeManager,
-	Extents2D drawExtent,
+	Extents2D renderExtent,
+	Extents2D displayExtent,
 	bool bHasDedicatedComputeQueue)
 {
 	m_passes.clear();
 
-	SetDrawExtent(drawExtent);
+	SetRenderExtent(renderExtent);
+	SetDisplayExtent(displayExtent);
 
 	m_bHasDedicatedComputeQueue = bHasDedicatedComputeQueue;
 

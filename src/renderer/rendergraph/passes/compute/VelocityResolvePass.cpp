@@ -53,7 +53,7 @@ void RegisterVelocityResolvePass(
 							RD::Renderer_Pass::VelocityResolve,
 							pass.passName);
 
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						pass.scope = ComputeScope{{ drawExtent }, WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 

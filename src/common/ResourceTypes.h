@@ -126,8 +126,11 @@ struct alignas(16) SceneInfo
 	glm::vec4 sunlightColor{0.0f};
 	glm::vec4 cameraPos{0.0f};         // xyz pos
 	glm::vec4 cameraClips{0.0f};       // .x near and .y far
-	glm::vec4 viewportSize{0.0f};      // .x and .y for width and height, .z for pixel count
-	glm::vec4 pixelSizes{0.0f};        // .x/.y = 1 / full m_extent .z/.w = = 1 / half m_extent
+
+	glm::vec4 renderExtentSize{0.0f}; // .x and .y for width and height, .z for pixel count
+	glm::vec4 displayExtentSize{0.0f};
+	glm::vec4 renderPixelSizes{0.0f}; // .x/.y = (1 / full extent) .z/.w = (1 / half extent)
+	glm::vec4 displayPixelSizes{0.0f};
 
 	glm::vec2 tanHalfFov;              // 1 / proj[0][0], 1 / proj[1][1]
 	float depthLinearizeMult;          // -proj[3][2]

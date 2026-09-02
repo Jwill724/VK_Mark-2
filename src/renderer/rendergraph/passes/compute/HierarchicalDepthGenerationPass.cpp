@@ -48,7 +48,7 @@ void RegisterHiZGenerationPass(
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
@@ -164,7 +164,7 @@ void RegisterHiZGenerationLatePass(
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
 					{
-						const auto& drawExtent = graph.GetDrawExtent();
+						const auto& drawExtent = graph.GetRenderExtent();
 						auto passScope = ctx.profiler->ProfilePass(
 							*ctx.frameCtx,
 							ctx.commandBuffer,
