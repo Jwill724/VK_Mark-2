@@ -3,7 +3,6 @@
 #include "../../RenderPasses.h"
 #include "../../scopes/GraphicsScope.h"
 #include "../../RenderGraph.h"
-#include "../../../backend/pipelines/PipelineBundles.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
@@ -11,16 +10,16 @@
 
 struct PrepassVariant
 {
-	uint32_t                    slot;
-	BasePrepassPipelineSlot     pipe;
+	uint32_t slot;
+	RP       pipe;
 };
 
 static constexpr PrepassVariant kPrepassVariants[] =
 {
 	{ RD::VIS_SLOT_OPAQUE,
-	  BasePrepassPipelineSlot::PrepassMesh },
+	  RP::PrepassMesh },
 	{ RD::VIS_SLOT_OPAQUE_MASKED,
-	  BasePrepassPipelineSlot::PrepassMaskedMesh },
+	  RP::PrepassMaskedMesh },
 };
 
 // Shared attachment setup — phase 2 flips the load ops
@@ -92,18 +91,16 @@ static void RecordPrepassDraw(
 		pso.DrawMeshTasksIndirectCount(
 			cmd, variant.slot,
 			taskBuffer, countBuffer,
-			pass.pipelines[static_cast<size_t>(variant.pipe)],
+			ctx.Pipe(variant.pipe),
 			pass.pushWriter);
 	}
 }
 
-void RegisterThePrepass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterThePrepass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Prepass",
-		pipelines,
+		{ RP::PrepassMesh, RP::PrepassMaskedMesh },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -151,13 +148,11 @@ void RegisterThePrepass(
 		});
 }
 
-void RegisterThePrepassLate(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterThePrepassLate(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Prepass_Late",
-		pipelines,
+		{ RP::PrepassMesh, RP::PrepassMaskedMesh },
 		[&](RenderPassBuilder& builder)
 		{
 			builder

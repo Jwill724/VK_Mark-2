@@ -43,7 +43,6 @@ void BakeEnvironmentMaps(
 
 	const auto setCount = imageTable.EnvironmentSetCount();
 
-
 	BrdfPush brdfPush;
 	brdfPush.sampleCountU = RD::PREFILTER_SAMPLE_COUNT;
 

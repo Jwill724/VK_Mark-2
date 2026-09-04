@@ -11,18 +11,11 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_DRAW_ARGS    = 0;
-static constexpr size_t PIPE_ID_DRAW_SCATTER = 1;
-static constexpr size_t PIPE_ID_DRAW_EMIT    = 2;
-static constexpr size_t PIPE_ID_DRAW_PLACE   = 3;
-
-void RegisterDrawBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterDrawBuildPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Draw_Build",
-		pipelines,
+		{ RP::DrawArgs, RP::DrawScatter, RP::DrawEmit, RP::DrawPlace },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -57,7 +50,7 @@ void RegisterDrawBuildPass(
 						// === DRAW ARGS ===
 						// =================
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DRAW_ARGS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::DrawArgs), pass.pushWriter);
 
 						B::ComputeWriteToIndirectRead(cmd, dispatchIndirectArgsBuffer);
 						B::ComputeWriteToRW(cmd, instanceCursorsBuffer);
@@ -67,7 +60,7 @@ void RegisterDrawBuildPass(
 						// ====================
 
 						pso.SetIndirect(dispatchIndirectArgsBuffer.m_buffer, RD::DISPATCH_SCATTER_OFFSET_BYTES);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DRAW_SCATTER], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::DrawScatter), pass.pushWriter);
 						pso.ClearIndirect();
 
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);
@@ -79,7 +72,7 @@ void RegisterDrawBuildPass(
 						// =================
 
 						pso.UpdateWorkgroups({ 1u, RD::VIS_SLOT_COUNT, 1u }, true);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DRAW_EMIT], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::DrawEmit), pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, drawBinsBuffer);
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);
@@ -96,7 +89,7 @@ void RegisterDrawBuildPass(
 							pso.SetPush(p);
 							pso.SetIndirect(dispatchIndirectArgsBuffer.m_buffer,
 								static_cast<size_t>(s) * RD::DISPATCH_SLOT_STRIDE_BYTES);
-							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_DRAW_PLACE], pass.pushWriter);
+							pso.DispatchComputePass(cmd, ctx.Pipe(RP::DrawPlace), pass.pushWriter);
 						}
 
 						B::ComputeWriteToRW(cmd, drawBinCountersBuffer);

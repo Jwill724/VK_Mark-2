@@ -8,15 +8,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_MAT_RESOLVE = 0;
-
-void RegisterMaterialResolvePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterMaterialResolvePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Material_Resolve",
-		pipelines,
+		{ RP::MaterialResolve },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -91,7 +87,7 @@ void RegisterMaterialResolvePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_MAT_RESOLVE],
+							ctx.Pipe(RP::MaterialResolve),
 							pass.pushWriter);
 					});
 		});

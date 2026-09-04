@@ -544,7 +544,7 @@ void Renderer::CreateRenderGraph()
 			"single-batch path.", gfxFamily);
 	}
 
-	m_renderGraph.Build(*m_pipelineManager, m_renderExtent, m_displayExtent, bDedicatedCompute);
+	m_renderGraph.Build(m_renderExtent, m_displayExtent, bDedicatedCompute);
 }
 
 void Renderer::DestroyRenderGraph()
@@ -1446,8 +1446,8 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 		.swapchain = &m_swapchain,
 		.NRDReflect = &m_nrdReflectContext,
 		.NRDShadow = &m_nrdShadowContext,
-		.descriptorManager = m_descriptorManager.get(),
-		.pipelineManager = m_pipelineManager.get()
+		.descriptors = m_descriptorManager.get(),
+		.pipelines = m_pipelineManager.get()
 	};
 
 	m_renderGraph.SetAsyncComputeEnabled(m_profiler.enableAsyncCompute);

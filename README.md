@@ -38,6 +38,7 @@
 ### Temporal & Post Processing
 
 * Temporal anti-aliasing (TAA)
+* Contrast Adaptive Sharpening (CAS)
 * ACES Film tonemapping
 * Bloom
 * Lens flare

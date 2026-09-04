@@ -1,11 +1,9 @@
 #pragma once
 
-#include "Shader.h"
-#include "../../RendererDefinitions.h"
-#include "PipelineBundles.h"
+#include "PipelineTable.h"
 #include <vector>
-
-namespace RD = RendererDefinitions;
+#include <string_view>
+#include <unordered_map>
 
 class PipelineBuilder;
 
@@ -18,17 +16,6 @@ public:
 		const std::vector<VkDescriptorSetLayout>& descriptorLayouts);
 	void InitPipelines(VkDevice device);
 
-	template<typename SlotEnum>
-	std::vector<PipelineHandle> GetBundle() // Called for render pass registerations
-	{
-		constexpr auto& mappings = PipelineBundleTraits<SlotEnum>::mappings;
-		std::vector<PipelineHandle> handles;
-		handles.reserve(mappings.size());
-		for (auto pipelineID : mappings)
-			handles.push_back(GetHandle(pipelineID));
-		return handles;
-	}
-
 	// Called once per frame before submitting work
 	// completedFrame = last frame the GPU has fully finished
 	void TickFrame(VkDevice device, uint32_t completedFrame, uint32_t framesInFlight = RD::MAX_FRAMES_IN_FLIGHT);
@@ -40,40 +27,40 @@ public:
 	// Full shutdown — GPU must be idle before calling this
 	void Shutdown(VkDevice device);
 
-	const PipelineLayoutConst& GetGlobalLayout() { return m_globalLayout; }
-	const PipelineHandle& GetHandle(RD::Renderer_Pipeline id) { return m_pipelines[static_cast<size_t>(id)].Handle(); }
+	const PipelineLayoutConst& GetGlobalLayout() const noexcept { return m_globalLayout; }
+	const PipelineHandle& GetHandle(RD::Renderer_Pipeline id) const noexcept { return m_pipelines[static_cast<size_t>(id)].Handle(); }
 
 private:
+	// Keyed on the table's string literals — lifetime is static, hashing is cheap
+	using ModuleCache = std::unordered_map<std::string_view, VkShaderModule>;
+
+	static VkShaderModule AcquireModule(const char* path, VkDevice device, ModuleCache& cache);
+	static void           ReleaseModules(VkDevice device, ModuleCache& cache);
+
 	class Pipeline
 	{
 	public:
 		Pipeline() = default;
-		explicit Pipeline(RD::Renderer_Pipeline id) : m_id(id) {}
 
-		Pipeline& AddShader(RD::Renderer_Shader shader, Vulkan_ShaderStage stage);
-		bool Build(PipelineBuilder& builder, PipelinePreset& preset, VkDevice device);
+		void Init(RD::Renderer_Pipeline id) { m_id = id; }
+		bool Build(PipelineBuilder& builder, const PipelineDef& def, VkDevice device, ModuleCache& cache);
 
 		PipelineHandle& Handle() { return m_handle; }
-		RD::Renderer_Pipeline ID() const { return m_id; }
+		const PipelineHandle& Handle() const { return m_handle; }
+		RD::Renderer_Pipeline ID()     const { return m_id; }
 
 	private:
 		RD::Renderer_Pipeline m_id = RD::Renderer_Pipeline::Count;
-		std::vector<Shader>   m_shaders;  // {shader stages, shader path}
 		PipelineHandle        m_handle{}; // pipeline meta data
 	};
 
 	// Core pipeline meta data and building
 	std::array<Pipeline, RD::PIPELINE_COUNT> m_pipelines;
 
-	// Pipeline settings and configurations
-	std::array<PipelinePreset, RD::PIPELINE_COUNT> m_pipelinePresets;
-
 	// All pipelines shared the same layouts and push constant settings
 	PipelineLayoutConst m_globalLayout;
 
-	void SetupPipelineConfig(const PipelinePreset& preset);
-
-	void RegisterPipelines();
+	void SetupPipelineConfig(const PipelineDef& def);
 
 	// Retirement tracking — pipelines waiting for GPU to finish with them
 	uint32_t m_currentFrame = 0;

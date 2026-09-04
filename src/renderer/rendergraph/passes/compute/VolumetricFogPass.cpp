@@ -14,17 +14,11 @@
 //
 //namespace B = BufferBarriers;
 //
-//static constexpr size_t PIPE_ID_INJECT    = 0;
-//static constexpr size_t PIPE_ID_REPROJECT = 1;
-//static constexpr size_t PIPE_ID_INTEGRATE = 2;
-//
-//void RegisterVolumetricFogPass(
-//	RenderGraph& graph,
-//	const std::vector<PipelineHandle> pipelines)
+//void RegisterVolumetricFogPass(RenderGraph& graph)
 //{
 //	graph.AddPass(
 //		"Volumetric_Fog",
-//		pipelines,
+//		{ RP::FroxelInject, RP::FroxelReproject, RP::FroxelIntegrate },
 //		[&](RenderPassBuilder& builder)
 //		{
 //			builder

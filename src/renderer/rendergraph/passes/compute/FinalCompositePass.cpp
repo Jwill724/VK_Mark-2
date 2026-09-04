@@ -9,15 +9,11 @@
 #include "../../../../profiler/Profiler.h"
 #include "../../../scene/Scene.h"
 
-static constexpr size_t PIPE_ID_COMPOSITE = 0;
-
-void RegisterFinalCompositePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterFinalCompositePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Final_Composite",
-		pipelines,
+		{ RP::FinalComposite },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -148,7 +144,7 @@ void RegisterFinalCompositePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_COMPOSITE],
+							ctx.Pipe(RP::FinalComposite),
 							pass.pushWriter);
 					});
 		});

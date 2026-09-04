@@ -194,35 +194,7 @@ struct PipelineHandle
 	VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_MAX_ENUM;
 	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
 	PipelineLayoutConst layout;
-	//std::string_view debugName = nullptr;  // Conjure enum library use
-};
-
-struct PipelinePreset
-{
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-
-	// Default pipeline settings
-	VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
-	VkCullModeFlagBits cullMode = VK_CULL_MODE_NONE;
-	VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-	bool enableBlending = false;
-	bool enableDepthTest = true;
-	bool enableDepthWrite = false;
-	VkCompareOp depthCompareOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
-
-	bool enableDepthBias = false;
-	float depthBiasConstant = 0.0f;
-	float depthBiasSlope = 0.0f;
-
-	std::vector<Vulkan_Format> colorFormats;
-
-	Vulkan_Format depthFormat = Vulkan_Format::Undefined;
-
-	std::vector<VkPipelineColorBlendAttachmentState> blendAttachments;
-
-	bool IsDepthDefined() const noexcept { return depthFormat != Vulkan_Format::Undefined; }
-	bool IsColorDefined() const noexcept { return !colorFormats.empty(); }
+	std::string_view debugName = {};
 };
 
 template<typename SlotEnum>

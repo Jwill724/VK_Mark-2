@@ -11,13 +11,11 @@
 
 namespace I = ImageUtils;
 
-void RegisterCASPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterCASPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"CAS",
-		pipelines,
+		{ RP::CAS },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -77,7 +75,7 @@ void RegisterCASPass(
 							RD::PUSH_BINDING_WRITE_1,
 							sharpenedColor);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[0], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::CAS), pass.pushWriter);
 					});
 		});
 }

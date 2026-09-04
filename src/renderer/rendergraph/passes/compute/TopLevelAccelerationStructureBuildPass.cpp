@@ -12,15 +12,11 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_BUILD = 0;
-
-void RegisterTLASBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterTLASBuildPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"TLAS_Build",
-		pipelines,
+		{ RP::TlasInstances },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -64,7 +60,7 @@ void RegisterTLASBuildPass(
 						push.instanceCount = rtCount;
 
 						pso.SetPush(push);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BUILD], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::TlasInstances), pass.pushWriter);
 
 						B::ComputeWriteToASBuildRead(cmd, rtInstances);
 

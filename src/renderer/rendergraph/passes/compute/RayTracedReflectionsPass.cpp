@@ -15,18 +15,11 @@
 namespace B = BufferBarriers;
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_NRD_PREP    = 0;
-static constexpr size_t PIPE_ID_CLASSIFY    = 1;
-static constexpr size_t PIPE_ID_ARGS        = 2;
-static constexpr size_t PIPE_ID_INTERSECT   = 3;
-
-void RegisterRTReflectionsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterRTReflectionsPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"RT_Reflections",
-		pipelines,
+		{ RP::NRDPrepare, RP::ReflectClassify, RP::RTRayArgs, RP::RTReflectTrace },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -116,7 +109,7 @@ void RegisterRTReflectionsPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_3,
 							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDViewZ));
 
-						pso.DispatchComputePass(ctx.commandBuffer, pass.pipelines[PIPE_ID_NRD_PREP], pass.pushWriter);
+						pso.DispatchComputePass(ctx.commandBuffer, ctx.Pipe(RP::NRDPrepare), pass.pushWriter);
 
 						// =========
 						// Classify
@@ -131,7 +124,7 @@ void RegisterRTReflectionsPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, roughness);
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, radiance);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLASSIFY], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ReflectClassify), pass.pushWriter);
 
 						B::ComputeWriteToRW(cmd, rtRayList);
 						I::TransitionLayoutCompute(cmd, roughness,
@@ -147,7 +140,7 @@ void RegisterRTReflectionsPass(
 							ctx.profiler->reflectPush.rayCapacity});
 
 						pso.UpdateWorkgroups(WORKGROUP_1, true);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_ARGS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTRayArgs), pass.pushWriter);
 
 						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 						B::ComputeWriteToRead(cmd, rtRayList);
@@ -167,7 +160,7 @@ void RegisterRTReflectionsPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, radiance);
 
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_REFLECT_RAYS_OFFSET_BYTES);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INTERSECT], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTReflectTrace), pass.pushWriter);
 					});
 		});
 }

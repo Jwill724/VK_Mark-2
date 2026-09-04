@@ -2,7 +2,6 @@
 
 #include "RenderGraph.h"
 #include "RenderPasses.h"
-#include "../backend/pipelines/PipelineBundles.h"
 #include "../backend/pipelines/PipelineManager.h"
 #include "RenderGraphSchedule.h"
 #include "RenderGraphResources.h"
@@ -12,14 +11,20 @@
 #include "../../core/JobSystem.h"
 #include "../../common/EngineTypes.h"
 
+const PipelineHandle& RenderPassExecutionContext::Pipe(RD::Renderer_Pipeline id) const
+{
+	const PipelineHandle& handle = pipelines->GetHandle(id);
+	return handle;
+}
+
 RenderPassDesc& RenderGraph::CreatePass(
 	std::string name,
-	std::vector<PipelineHandle> pipelines)
+	std::vector<RD::Renderer_Pipeline> pipelineIDs)
 {
 	RenderPassDesc desc{};
 
-	desc.passName  = std::move(name);
-	desc.pipelines = std::move(pipelines);
+	desc.passName          = std::move(name);
+	desc.declaredPipelines = std::move(pipelineIDs);
 
 	m_passes.push_back(std::move(desc));
 
@@ -29,7 +34,6 @@ RenderPassDesc& RenderGraph::CreatePass(
 }
 
 void RenderGraph::Build(
-	PipelineManager& pipeManager,
 	Extents2D renderExtent,
 	Extents2D displayExtent,
 	bool bHasDedicatedComputeQueue)
@@ -42,68 +46,68 @@ void RenderGraph::Build(
 	m_bHasDedicatedComputeQueue = bHasDedicatedComputeQueue;
 
 	// --- Visibility ---
-	RegisterTemporalCopyPass(*this,        {});
-	RegisterShadowBoundsPass(*this,        pipeManager.GetBundle<ShadowBoundsPipelineSlot>());
-	RegisterInstanceCullPass(*this,        pipeManager.GetBundle<InstanceCullPipelineSlot>());
-	RegisterDrawBuildPass(*this,           pipeManager.GetBundle<DrawBuildPipelineSlot>());
+	RegisterTemporalCopyPass(*this);
+	RegisterShadowBoundsPass(*this);
+	RegisterInstanceCullPass(*this);
+	RegisterDrawBuildPass(*this);
 
 	// --- Prepass & HiZ & Material resolve and other stuff ------
-	RegisterThePrepass(*this,              pipeManager.GetBundle<BasePrepassPipelineSlot>());
-	RegisterHiZGenerationPass(*this,       pipeManager.GetBundle<HiZGenerationPipelineSlot>());
-	RegisterThePrepassLate(*this,          pipeManager.GetBundle<BasePrepassPipelineSlot>());
-	RegisterHiZGenerationLatePass(*this,   pipeManager.GetBundle<HiZGenerationPipelineSlot>());
-	RegisterVelocityResolvePass(*this,     pipeManager.GetBundle<VelocityResolvePipelineSlot>());
-	RegisterMaterialResolvePass(*this,     pipeManager.GetBundle<MaterialResolvePipelineSlot>());
+	RegisterThePrepass(*this);
+	RegisterHiZGenerationPass(*this);
+	RegisterThePrepassLate(*this);
+	RegisterHiZGenerationLatePass(*this);
+	RegisterVelocityResolvePass(*this);
+	RegisterMaterialResolvePass(*this);
 
-	RegisterWireframePass(*this,           pipeManager.GetBundle<OpaqueWireframePipelineSlot>());
+	RegisterWireframePass(*this);
 
-	RegisterDirectionalCSMPass(*this,      pipeManager.GetBundle<DirectionalCSMPipelineSlot>());
-	RegisterFlashlightShadowMapPass(*this, pipeManager.GetBundle<FlashlightShadowPipelineSlot>());
-	RegisterVolumetricShadowMapPass(*this, pipeManager.GetBundle<VolumetricShadowPipelineSlot>());
-	RegisterVolumetricLightPass(*this,     pipeManager.GetBundle<VolumetricLightingPipelineSlot>());
-	RegisterClusteredLightsPass(*this,     pipeManager.GetBundle<ClusteredLightsPipelineSlot>());
+	RegisterDirectionalCSMPass(*this);
+	RegisterFlashlightShadowMapPass(*this);
+	RegisterVolumetricShadowMapPass(*this);
+	RegisterVolumetricLightPass(*this);
+	RegisterClusteredLightsPass(*this);
 
 	// --- Lighting ---
-	RegisterTLASBuildPass(*this,           pipeManager.GetBundle<TlasInstancesPipelineSlot>());
-	RegisterRTShadowsPass(*this,           pipeManager.GetBundle<RTSunShadowPipelineSlot>());
-	RegisterRTReflectionsPass(*this,       pipeManager.GetBundle<RTReflectionsPipelineSlot>());
+	RegisterTLASBuildPass(*this);
+	RegisterRTShadowsPass(*this);
+	RegisterRTReflectionsPass(*this);
 	RegisterNRDDenoisePass(*this);
-	RegisterSSGIPass(*this,                pipeManager.GetBundle<SSGIPipelineSlot>());
-	RegisterContactShadowsPass(*this,      pipeManager.GetBundle<SSContactShadowPipelineSlot>());
+	RegisterSSGIPass(*this);
+	RegisterContactShadowsPass(*this);
 
 	// --- Opaque + Skybox ---
-	RegisterSkyboxPass(*this,              pipeManager.GetBundle<SkyboxPipelineSlot>());
-	RegisterOpaqueLightingPass(*this,      pipeManager.GetBundle<OpaqueLightingPipelineSlot>());
+	RegisterSkyboxPass(*this);
+	RegisterOpaqueLightingPass(*this);
 
 	// --- Transparent ---
-	RegisterTransparentForwardPass(*this,  pipeManager.GetBundle<TransparentForwardPipelineSlot>());
+	RegisterTransparentForwardPass(*this);
 
 	// --- Debug Line ---
-	RegisterDebugDrawBuildPass(*this,      pipeManager.GetBundle<DebugBuildPipelineSlot>());
-	RegisterLineDebugPass(*this,           pipeManager.GetBundle<LineDebugPipelineSlot>());
+	RegisterDebugDrawBuildPass(*this);
+	RegisterLineDebugPass(*this);
 
 	// --- Oapque + Transparent composite ---
-	RegisterHDRSceneCompositePass(*this,   pipeManager.GetBundle<HDRSceneCompositePipelineSlot>());
+	RegisterHDRSceneCompositePass(*this);
 
 	// --- TAA ---
-	RegisterTAAPass(*this,                 pipeManager.GetBundle<TAAPipelineSlot>());
+	RegisterTAAPass(*this);
 
 	// --- Post process ---
-	RegisterLuminanceExposurePass(*this,   pipeManager.GetBundle<ExposurePipelineSlot>());
-	RegisterBloomPass(*this,               pipeManager.GetBundle<BloomPipelineSlot>());
-	RegisterLensFlarePass(*this,           pipeManager.GetBundle<LensFlarePipelineSlot>());
-	RegisterFinalCompositePass(*this,      pipeManager.GetBundle<FinalCompositePipelineSlot>());
+	RegisterLuminanceExposurePass(*this);
+	RegisterBloomPass(*this);
+	RegisterLensFlarePass(*this);
+	RegisterFinalCompositePass(*this);
 
 	// --- Debug gbuffer ---
-	RegisterGBufferDebugPass(*this,        pipeManager.GetBundle<GBufferDebugPipelineSlot>());
+	RegisterGBufferDebugPass(*this);
 
-	RegisterChromaticAberrationPass(*this, pipeManager.GetBundle<ChromaticAberrationPipelineSlot>());
+	RegisterChromaticAberrationPass(*this);
 
-	RegisterCASPass(*this,                 pipeManager.GetBundle<CASPipelineSlot>());
+	RegisterCASPass(*this);
 
 	// --- Final ---
-	RegisterSwapchainPresentPass(*this,    {});
-	RegisterImguiDrawPass(*this,           {});
+	RegisterSwapchainPresentPass(*this);
+	RegisterImguiDrawPass(*this);
 
 	m_bGraphDirty = false;
 }

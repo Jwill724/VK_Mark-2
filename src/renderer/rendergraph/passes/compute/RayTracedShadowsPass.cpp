@@ -15,20 +15,12 @@
 namespace B = BufferBarriers;
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_NRD_PREP     = 0;
-static constexpr size_t PIPE_ID_VOLUME_BUILD = 1;
-static constexpr size_t PIPE_ID_INVALID_MASK = 2;
-static constexpr size_t PIPE_ID_CLASSIFY     = 3;
-static constexpr size_t PIPE_ID_ARGS         = 4;
-static constexpr size_t PIPE_ID_INTERSECT    = 5;
-
-void RegisterRTShadowsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterRTShadowsPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"RT_Shadows",
-		pipelines,
+		{ RP::NRDPrepare, RP::RTShadowVolumeBuild, RP::RTShadowInvalidMask,
+		RP::RTShadowClassify, RP::RTRayArgs, RP::RTShadowTrace },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -120,7 +112,7 @@ void RegisterRTShadowsPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_3,
 							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDShadowViewZ));
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_NRD_PREP], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::NRDPrepare), pass.pushWriter);
 
 						// =======================
 						// Dynamic caster volumes
@@ -134,7 +126,7 @@ void RegisterRTShadowsPass(
 						pso.UpdateExtent({ ctx.frameState->GetInstanceCount(), 1u });
 						pso.UpdateWorkgroups(WORKGROUP_256);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_VOLUME_BUILD], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTShadowVolumeBuild), pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, shadowVolumes);
 
@@ -152,7 +144,7 @@ void RegisterRTShadowsPass(
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, invalidMask);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INVALID_MASK], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTShadowInvalidMask), pass.pushWriter);
 						I::TransitionLayoutCompute(cmd, invalidMask, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 
 						// =============
@@ -172,7 +164,7 @@ void RegisterRTShadowsPass(
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, penumbra);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLASSIFY], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTShadowClassify), pass.pushWriter);
 
 						B::ComputeWriteToRW(cmd, rtRayList);
 
@@ -186,7 +178,7 @@ void RegisterRTShadowsPass(
 							ctx.profiler->rtShadowPush.rayCapacity });
 
 						pso.UpdateWorkgroups(WORKGROUP_1, true);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_ARGS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTRayArgs), pass.pushWriter);
 
 						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 						B::ComputeWriteToRead(cmd, rtRayList);
@@ -205,7 +197,7 @@ void RegisterRTShadowsPass(
 
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_SHADOW_RAYS_OFFSET_BYTES);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INTERSECT], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::RTShadowTrace), pass.pushWriter);
 					});
 		});
 }

@@ -6,13 +6,11 @@
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 
-void RegisterTemporalCopyPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterTemporalCopyPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Temporal_Copy",
-		pipelines,
+		{},
 		[&](RenderPassBuilder& builder)
 		{
 			builder

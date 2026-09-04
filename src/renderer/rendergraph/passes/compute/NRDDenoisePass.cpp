@@ -57,10 +57,10 @@ void RegisterNRDDenoisePass(RenderGraph& graph)
 						if (ctx.frameState->RTReflectionsEnabled())
 							ctx.NRDReflect->RecordDispatches(ctx.commandBuffer, pso, pass.pushWriter);
 
-						ctx.descriptorManager->BindDescriptorSetsCompute(
+						ctx.descriptors->BindDescriptorSetsCompute(
 							ctx.commandBuffer,
 							ctx.frameCtx->GetFrameSet(),
-							ctx.pipelineManager->GetGlobalLayout());
+							ctx.pipelines->GetGlobalLayout());
 					});
 		});
 }

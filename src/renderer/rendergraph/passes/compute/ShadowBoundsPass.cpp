@@ -12,15 +12,11 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_SHADOW_BOUNDS = 0;
-
-void RegisterShadowBoundsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterShadowBoundsPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Shadow_Bounds",
-		pipelines,
+		{ RP::ShadowBounds },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -68,7 +64,7 @@ void RegisterShadowBoundsPass(
 
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_SHADOW_BOUNDS],
+							ctx.Pipe(RP::ShadowBounds),
 							pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, shadowBoundsBuffer);

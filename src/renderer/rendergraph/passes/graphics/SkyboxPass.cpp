@@ -9,15 +9,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterSkyboxPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterSkyboxPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Skybox",
-		pipelines,
+		{ RP::Skybox },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -51,8 +47,6 @@ void RegisterSkyboxPass(
 						auto& pso = std::get<GraphicsScope>(pass.scope);
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
-
-						const auto& pipeline = pass.pipelines[PIPE_ID_MAIN];
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& skybox = ctx.imageTable->GetEnvironmentSet(ctx.profiler->debugToggles.activeEnvMap).skybox;
@@ -104,7 +98,7 @@ void RegisterSkyboxPass(
 
 						pso.BeginRendering(cmd);
 
-						pso.DrawTriangle(cmd, pipeline);
+						pso.DrawTriangle(cmd, ctx.Pipe(RP::Skybox));
 
 						pso.EndRendering(cmd);
 					});

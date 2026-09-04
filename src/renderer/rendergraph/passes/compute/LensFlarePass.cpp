@@ -14,16 +14,11 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_BRIGHT = 0;
-static constexpr size_t PIPE_ID_GEN    = 1;
-
-void RegisterLensFlarePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines) // Quarter res of full draw extents
+void RegisterLensFlarePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Lens_Flare",
-		pipelines,
+		{ RP::FlareBright, RP::FlareGen },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -157,7 +152,7 @@ void RegisterLensFlarePass(
 						// =============
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_BRIGHT],
+							ctx.Pipe(RP::FlareBright),
 							pass.pushWriter);
 						I::TransitionLayout(cmd, flareBright, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
@@ -183,7 +178,7 @@ void RegisterLensFlarePass(
 
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_GEN],
+							ctx.Pipe(RP::FlareGen),
 							pass.pushWriter);
 					});
 		});

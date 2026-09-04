@@ -12,8 +12,6 @@
 
 namespace I = ImageUtils;
 
-constexpr size_t PIPE_ID_HI_Z = 0;
-
 struct alignas(16) DepthPyramidPush
 {
 	glm::vec2 invSize;
@@ -21,13 +19,11 @@ struct alignas(16) DepthPyramidPush
 	float pad0;
 };
 
-void RegisterHiZGenerationPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterHiZGenerationPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Hi_Z_Generation",
-		pipelines,
+		{ RP::HiZGen },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -119,7 +115,7 @@ void RegisterHiZGenerationPass(
 
 							pso.DispatchComputePass(
 								cmd,
-								pass.pipelines[PIPE_ID_HI_Z],
+								ctx.Pipe(RP::HiZGen),
 								pass.pushWriter);
 
 							I::TransitionLayout(
@@ -138,13 +134,11 @@ void RegisterHiZGenerationPass(
 		});
 }
 
-void RegisterHiZGenerationLatePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterHiZGenerationLatePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Hi_Z_Generation_Late",
-		pipelines,
+		{ RP::HiZGen },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -235,7 +229,7 @@ void RegisterHiZGenerationLatePass(
 
 							pso.DispatchComputePass(
 								cmd,
-								pass.pipelines[PIPE_ID_HI_Z],
+								ctx.Pipe(RP::HiZGen),
 								pass.pushWriter);
 
 							I::TransitionLayout(

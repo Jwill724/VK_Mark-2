@@ -14,16 +14,11 @@
 namespace I = ImageUtils;
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_SHADING_REDUCE = 0;
-static constexpr size_t PIPE_ID_TAA            = 1;
-
-void RegisterTAAPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterTAAPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"TAA",
-		pipelines,
+		{ RP::ShadingSignalReduce, RP::TAA },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -130,7 +125,7 @@ void RegisterTAAPass(
 							shadingLowCurrent);
 
 						I::TransitionLayout(cmd, shadingLowCurrent, RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_SHADING_REDUCE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ShadingSignalReduce), pass.pushWriter);
 						I::TransitionLayout(cmd, shadingLowCurrent, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 
 						// =========
@@ -211,7 +206,7 @@ void RegisterTAAPass(
 							colorCurrent);
 
 						I::TransitionLayout(cmd, colorCurrent, RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_TAA], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::TAA), pass.pushWriter);
 						I::TransitionLayout(cmd, colorCurrent, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 						B::ComputeReadToWrite(cmd, luminanceBuf);
 					});

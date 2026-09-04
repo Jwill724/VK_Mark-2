@@ -11,20 +11,11 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_HI_Z_PREFILTER     = 0;
-static constexpr size_t PIPE_ID_VBGI               = 1;
-static constexpr size_t PIPE_ID_GI_ACCUMULATE      = 2;
-static constexpr size_t PIPE_ID_BILATERAL_UPSAMPLE = 3;
-static constexpr size_t PIPE_ID_AO_DENOISE         = 4;
-static constexpr size_t PIPE_ID_GI_DENOISE         = 5;
-
-void RegisterSSGIPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterSSGIPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"SSGI",
-		pipelines,
+		{ RP::HiZPrefilter, RP::VBGI, RP::GIAccumulate, RP::AODenoise, RP::GIDenoise, RP::BilateralUpsample },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -183,7 +174,7 @@ void RegisterSSGIPass(
 							pushWriteBinding++;
 						}
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_HI_Z_PREFILTER], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::HiZPrefilter), pass.pushWriter);
 
 						I::TransitionLayoutCompute(cmd, linearizedHiZ,
 							RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead,
@@ -205,7 +196,7 @@ void RegisterSSGIPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_4, giDenoisePing);
 
 						pso.UpdateWorkgroups({ WORKGROUP_32x32 });
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_VBGI], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::VBGI), pass.pushWriter);
 
 						I::TransitionLayoutCompute(cmd, rawAO,         RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 						I::TransitionLayoutCompute(cmd, edgeInfo,      RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
@@ -232,7 +223,7 @@ void RegisterSSGIPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, aoTemp);
 
 						pso.UpdateWorkgroups({ WORKGROUP_32x32 });
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_GI_ACCUMULATE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::GIAccumulate), pass.pushWriter);
 
 						I::TransitionLayoutCompute(cmd, giHistoryWrite,
 							RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
@@ -250,7 +241,7 @@ void RegisterSSGIPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, bentNormalAoHalf);
 
 						pso.UpdateWorkgroups({ 64u, 32u, 1u });
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_AO_DENOISE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::AODenoise), pass.pushWriter);
 
 						I::TransitionLayoutCompute(cmd, rawAO, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 						I::TransitionLayoutCompute(cmd, aoTemp,  RD::ImageAccess::ComputeRead,  RD::ImageAccess::ComputeWrite);
@@ -268,7 +259,7 @@ void RegisterSSGIPass(
 							push.isFinalPass = 1u;
 						});
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_AO_DENOISE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::AODenoise), pass.pushWriter);
 
 						I::TransitionLayoutCompute(cmd, aoTemp,           RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 						I::TransitionLayoutCompute(cmd, bentNormalAoHalf, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
@@ -287,7 +278,7 @@ void RegisterSSGIPass(
 							pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, giDenoisePing);
 
 							pso.UpdateWorkgroups({ WORKGROUP_32x32 });
-							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_GI_DENOISE], pass.pushWriter);
+							pso.DispatchComputePass(cmd, ctx.Pipe(RP::GIDenoise), pass.pushWriter);
 
 							I::TransitionLayoutCompute(cmd, giDenoisePing,
 								RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
@@ -305,7 +296,7 @@ void RegisterSSGIPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, indirectSSGI);
 
 						pso.UpdateWorkgroups({ WORKGROUP_16x16 });
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BILATERAL_UPSAMPLE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::BilateralUpsample), pass.pushWriter);
 					});
 		});
 }

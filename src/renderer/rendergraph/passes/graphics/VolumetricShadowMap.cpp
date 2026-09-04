@@ -9,15 +9,11 @@
 #include "../../../frame/FrameContext.h"
 #include "../../../scene/Scene.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterVolumetricShadowMapPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterVolumetricShadowMapPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Volumetric_Shadow",
-		pipelines,
+		{ RP::ShadowMeshMaskedD16 },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -83,7 +79,7 @@ void RegisterVolumetricShadowMapPass(
 							RD::VIS_SLOT_VOLUMETRIC,
 							taskDispatchBuffer,
 							indirectCountBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::ShadowMeshMaskedD16),
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

@@ -1,15 +1,20 @@
 #include "pch.h"
 
 #include "BindlessImageTable.h"
-#include "ImageDescs.h"
+#include "ImageSpecs.h"
 #include "ResourceAllocator.h"
 #include "../ImageUtils.h"
 #include "Staging.h"
 #include "TextureStaging.h"
 
-namespace RTDescs  = RenderTargetDescs;
-namespace EnvDescs = EnvironmentMapDescs;
-namespace STDescs  = StaticTextureDescs;
+namespace IS = ImageSpecs;
+
+static ImageDesc CSMAtlasDesc(uint32_t res)
+{
+	return IS::MakeImageDesc(
+		IS::RenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas),
+		IS::ImageExtentContext{ {}, res });
+}
 
 static size_t Index(RD::Renderer_RenderTarget slot) noexcept
 {
@@ -139,92 +144,92 @@ void BindlessImageTable::Shutdown(VkDevice device, Allocator& allocator)
 // RENDER TARGETS
 // ===============
 
-void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& allocator)
+void BindlessImageTable::CreateRenderTargetGroup(IS::ImageGroup group, Allocator& allocator)
 {
-	const Extents3D half = {
-		(drawExtent.Width() + 1) / 2,
-		(drawExtent.Height() + 1) / 2,
-		1
-	};
-	const Extents3D quarter = {
-		(drawExtent.Width() + 3) / 4,
-		(drawExtent.Height() + 3) / 4,
-		1
-	};
+	const IS::ImageExtentContext ctx{ m_drawExtent, m_csmAtlasRes };
 
-	const Extents3D eighth = {
-		(drawExtent.Width() + 7) / 8,
-		(drawExtent.Height() + 7) / 8,
-		1
-	};
+	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
+	{
+		const IS::ImageSpec& spec = IS::kRenderTargets[i];
+		if (spec.group != group) continue;
 
-	SetRenderTarget(RD::Renderer_RenderTarget::HDRScene,                    allocator.AllocateImage(RTDescs::HDRScene(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation,     allocator.AllocateImage(RTDescs::TransparentAccumulation(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum,    allocator.AllocateImage(RTDescs::TransparentVelocityAccum(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage,        allocator.AllocateImage(RTDescs::TransparentRevealage(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::DepthResolved,               allocator.AllocateImage(RTDescs::DepthResolved(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved,           allocator.AllocateImage(RTDescs::PrevDepth(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::Velocity,                    allocator.AllocateImage(RTDescs::Velocity(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::BloomMipchain,               allocator.AllocateImage(RTDescs::BloomMipchain(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ViewNormals,                 allocator.AllocateImage(RTDescs::ViewNormals(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::PrevViewNormals,             allocator.AllocateImage(RTDescs::PrevViewNormals(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::Visibility,                  allocator.AllocateImage(RTDescs::Visibility(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::Tonemap,                     allocator.AllocateImage(RTDescs::ToneMap(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::AoEdgeInfo,                  allocator.AllocateImage(RTDescs::AOEdgeInfo(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::AORaw,                       allocator.AllocateImage(RTDescs::AORaw(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::AOTemp,                      allocator.AllocateImage(RTDescs::AOTemp(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::BentNormalAO,                allocator.AllocateImage(RTDescs::BentNormalAO(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::BentNormalAOHalf,            allocator.AllocateImage(RTDescs::BentNormalAOHalf(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryA,               allocator.AllocateImage(RTDescs::ColorHistory(drawExtent, 0)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ColorHistoryB,               allocator.AllocateImage(RTDescs::ColorHistory(drawExtent, 1)));
-	SetRenderTarget(RD::Renderer_RenderTarget::PostNonAAComposite,          allocator.AllocateImage(RTDescs::PostNonAAComposite(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows,            allocator.AllocateImage(RTDescs::ScreenSpaceShadowMask(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::VolumetricLight,             allocator.AllocateImage(RTDescs::VolumetricLight(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::VolumetricLightBlur,         allocator.AllocateImage(RTDescs::VolumetricBlur(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::VolLightHistoryA,            allocator.AllocateImage(RTDescs::VolLightHistory(half, 0)));
-	SetRenderTarget(RD::Renderer_RenderTarget::VolLightHistoryB,            allocator.AllocateImage(RTDescs::VolLightHistory(half, 1)));
-	SetRenderTarget(RD::Renderer_RenderTarget::FlareBright,                 allocator.AllocateImage(RTDescs::FlareBright(quarter)));
-	SetRenderTarget(RD::Renderer_RenderTarget::LensFlareColor,              allocator.AllocateImage(RTDescs::LensFlareColor(quarter)));
-	SetRenderTarget(RD::Renderer_RenderTarget::HiZ,                         allocator.AllocateImage(RTDescs::HiZ(drawExtent, ClampMipCount(drawExtent, RD::HI_Z_MIP_COUNT))));
-	SetRenderTarget(RD::Renderer_RenderTarget::LinearizedHiZ,               allocator.AllocateImage(RTDescs::LinearizedHiZ(drawExtent, ClampMipCount(drawExtent, RD::HI_Z_MIP_COUNT))));
-	SetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough,          allocator.AllocateImage(RTDescs::GBufferAlbedoRough(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial,       allocator.AllocateImage(RTDescs::GBufferNormalMaterial(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::GBufferEmissive,             allocator.AllocateImage(RTDescs::GBufferEmissive(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::DiffuseRadianceA,            allocator.AllocateImage(RTDescs::DiffuseRadiance(half, 0, ClampMipCount(half, RD::RADIANCE_MIP_COUNT))));
-	SetRenderTarget(RD::Renderer_RenderTarget::DiffuseRadianceB,            allocator.AllocateImage(RTDescs::DiffuseRadiance(half, 1, ClampMipCount(half, RD::RADIANCE_MIP_COUNT))));
-	SetRenderTarget(RD::Renderer_RenderTarget::GIHistoryA,                  allocator.AllocateImage(RTDescs::GIHistory(half, 0)));
-	SetRenderTarget(RD::Renderer_RenderTarget::GIHistoryB,                  allocator.AllocateImage(RTDescs::GIHistory(half, 1)));
-	SetRenderTarget(RD::Renderer_RenderTarget::IndirectSSGI,                allocator.AllocateImage(RTDescs::IndirectSSGI(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::GIDenoisePing,               allocator.AllocateImage(RTDescs::GIDenoisePing(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ReflectRadiance,             allocator.AllocateImage(RTDescs::ReflectRadiance(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ReflectRoughness,            allocator.AllocateImage(RTDescs::ReflectRoughness(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::NRDMotion,                   allocator.AllocateImage(RTDescs::NRDMotion(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::NRDNormalRoughness,          allocator.AllocateImage(RTDescs::NRDNormalRoughness(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::NRDViewZ,                    allocator.AllocateImage(RTDescs::NRDViewZ(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::RTReflectDenoised,           allocator.AllocateImage(RTDescs::RTReflectDenoised(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::NRDShadowNormalRoughness,    allocator.AllocateImage(RTDescs::NRDShadowNormalRoughness(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::NRDShadowViewZ,              allocator.AllocateImage(RTDescs::NRDShadowViewZ(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::RTShadowDenoised,            allocator.AllocateImage(RTDescs::RTShadowDenoised(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::RTShadowPenumbra,            allocator.AllocateImage(RTDescs::RTShadowPenumbra(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::SharpenedColor,              allocator.AllocateImage(RTDescs::SharpenedColor(drawExtent)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ShadingSignalHalf,           allocator.AllocateImage(RTDescs::ShadingSignalReduced(half)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ShadingLowA,                 allocator.AllocateImage(RTDescs::ShadingLowHistory(eighth, 0)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ShadingLowB,                 allocator.AllocateImage(RTDescs::ShadingLowHistory(eighth, 1)));
-	SetRenderTarget(RD::Renderer_RenderTarget::ShadowInvalidMask,           allocator.AllocateImage(RTDescs::ShadowInvalidMask(eighth)));
+		m_renderTargets[i] = allocator.AllocateImage(IS::MakeImageDesc(spec, ctx));
+	}
+
+	MarkDirty();
 }
 
-// First time setup only
+void BindlessImageTable::FreeRenderTargetGroup(IS::ImageGroup group, Allocator& allocator)
+{
+	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
+	{
+		if (IS::kRenderTargets[i].group != group) continue;
+
+		AllocatedImage& img = m_renderTargets[i];
+		if (!img.IsValid()) continue;
+
+		allocator.FreeImage(img);
+		img.Reset();
+	}
+
+	MarkDirty();
+}
+
+void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& allocator)
+{
+	m_drawExtent = drawExtent;
+	CreateRenderTargetGroup(IS::ImageGroup::Resolution, allocator);
+}
+
+void BindlessImageTable::FreeRenderTargets(Allocator& allocator)
+{
+	FreeRenderTargetGroup(IS::ImageGroup::Resolution, allocator);
+}
+
 void BindlessImageTable::CreateShadowMaps(RD::ShadowQuality quality, Allocator& allocator)
 {
-	if (!m_bAreShadowsCreated)
+	if (m_bAreShadowsCreated) return;
+
+	m_csmAtlasRes = RD::EvaluateShadowQuality(quality);
+	CreateRenderTargetGroup(IS::ImageGroup::ShadowMap, allocator);
+	m_bAreShadowsCreated = true;
+}
+
+void BindlessImageTable::FreeShadowMaps(Allocator& allocator)
+{
+	FreeRenderTargetGroup(IS::ImageGroup::ShadowMap, allocator);
+	m_cachedCsmAtlasInfo = {};
+	m_csmAtlasRes = 0u;
+	m_bAreShadowsCreated = false;
+}
+
+void BindlessImageTable::CreateFroxelFogTargets(Allocator& allocator)
+{
+	if (m_bAreFroxelFogCreated) return;
+
+	CreateRenderTargetGroup(IS::ImageGroup::FroxelFog, allocator);
+	m_bAreFroxelFogCreated = true;
+}
+
+void BindlessImageTable::FreeFroxelFogTargets(Allocator& allocator)
+{
+	if (!m_bAreFroxelFogCreated) return;
+
+	FreeRenderTargetGroup(IS::ImageGroup::FroxelFog, allocator);
+	m_bAreFroxelFogCreated = false;
+}
+
+void BindlessImageTable::CreateStaticTextures(Allocator& allocator)
+{
+	for (size_t i = 0; i < RD::STATIC_TEXTURE_COUNT; ++i)
 	{
-		const uint32_t res = RD::EvaluateShadowQuality(quality);
-		const Extents3D extent = { res, res, 1 };
-		SetRenderTarget(RD::Renderer_RenderTarget::DirectionalCSMAtlas, allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(extent)));
-		SetRenderTarget(RD::Renderer_RenderTarget::FlashlightShadowMap, allocator.AllocateImage(RTDescs::FlashlightShadowMap()));
-		SetRenderTarget(RD::Renderer_RenderTarget::VolumetricShadowMap, allocator.AllocateImage(RTDescs::VolumetricShadowMap()));
-		m_bAreShadowsCreated = true;
+		const IS::ImageSpec& spec = IS::kStaticTextures[i];
+		if (spec.group == IS::ImageGroup::Unused) continue;
+
+		m_staticTextures[i] = allocator.AllocateImage(IS::MakeImageDesc(spec));
 	}
+
+	MarkDirty();
 }
 
 void BindlessImageTable::FreeCSMAtlas(Allocator& allocator)
@@ -239,41 +244,24 @@ void BindlessImageTable::FreeCSMAtlas(Allocator& allocator)
 	ASSERT(atlas.m_bindlessID != UINT32_MAX);
 	ASSERT(atlas.m_bindlessID < static_cast<uint32_t>(m_combinedViews.size()));
 
-	// Cache everything required to recreate the real atlas.
-	m_cachedCsmAtlasInfo.width = atlas.Width();
 	m_cachedCsmAtlasInfo.csmAtlasBindlessID = atlas.m_bindlessID;
 
 	const uint32_t bindlessID = m_cachedCsmAtlasInfo.csmAtlasBindlessID;
 
-	// Keep the render-target slot and bindless descriptor alive with a
-	// negligible 1x1 image while RT shadows own directional shadowing.
-	const Extents3D placeholderExtent = { 1u, 1u, 1u };
-
-	AllocatedImage placeholder =
-		allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(placeholderExtent));
-
+	AllocatedImage placeholder = allocator.AllocateImage(CSMAtlasDesc(1u));
 	ASSERT(placeholder.IsValid());
 
 	placeholder.m_bindlessID = bindlessID;
 
-	// Replace the CPU-side bindless entry BEFORE destroying the old view.
-	// UpdateCombinedLocked also removes the old image-view hash entry.
 	{
 		std::scoped_lock lock(m_combinedMutex);
-
-		UpdateCombinedLocked(
-			bindlessID,
-			placeholder.m_imageView,
-			GetSampler(RD::Renderer_Sampler::ShadowMap));
+		UpdateCombinedLocked(bindlessID, placeholder.m_imageView, GetSampler(RD::Renderer_Sampler::ShadowMap));
 	}
 
-	// The large allocation can now disappear.
 	allocator.FreeImage(atlas);
-
 	atlas = std::move(placeholder);
 
 	m_cachedCsmAtlasInfo.isActive = true;
-
 	MarkDirty();
 }
 
@@ -284,41 +272,26 @@ void BindlessImageTable::RecreateCSMAtlas(Allocator& allocator)
 	if (!m_cachedCsmAtlasInfo.isActive) return;
 
 	AllocatedImage& atlas = m_renderTargets[Index(RD::Renderer_RenderTarget::DirectionalCSMAtlas)];
-
 	ASSERT(atlas.IsValid());
 
 	const uint32_t bindlessID = m_cachedCsmAtlasInfo.csmAtlasBindlessID;
-
 	ASSERT(bindlessID != UINT32_MAX);
 	ASSERT(bindlessID < static_cast<uint32_t>(m_combinedViews.size()));
 
-	const uint32_t res = m_cachedCsmAtlasInfo.width;
-
-	const Extents3D extent = { res, res, 1u };
-
-	AllocatedImage restoredAtlas = allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(extent));
-
+	AllocatedImage restoredAtlas = allocator.AllocateImage(CSMAtlasDesc(m_csmAtlasRes));
 	ASSERT(restoredAtlas.IsValid());
 
 	restoredAtlas.m_bindlessID = bindlessID;
 
-	// Switch the descriptor back to the real atlas.
 	{
 		std::scoped_lock lock(m_combinedMutex);
-
-		UpdateCombinedLocked(
-			bindlessID,
-			restoredAtlas.m_imageView,
-			GetSampler(RD::Renderer_Sampler::ShadowMap));
+		UpdateCombinedLocked(bindlessID, restoredAtlas.m_imageView, GetSampler(RD::Renderer_Sampler::ShadowMap));
 	}
 
-	// atlas currently contains the 1x1 placeholder.
 	allocator.FreeImage(atlas);
-
 	atlas = std::move(restoredAtlas);
 
 	m_cachedCsmAtlasInfo.isActive = false;
-
 	MarkDirty();
 }
 
@@ -326,28 +299,21 @@ void BindlessImageTable::UpdateCSMAtlasExtent(RD::ShadowQuality quality, Allocat
 {
 	ASSERT(m_bAreShadowsCreated && "UpdateCSMAtlasExtent: shadow maps not created");
 
-	const uint32_t res = RD::EvaluateShadowQuality(quality);
-	if (m_cachedCsmAtlasInfo.isActive)
-	{
-		m_cachedCsmAtlasInfo.width = res;
-		return;
-	}
+	m_csmAtlasRes = RD::EvaluateShadowQuality(quality);
+
+	if (m_cachedCsmAtlasInfo.isActive) return;
 
 	AllocatedImage& atlas = m_renderTargets[Index(RD::Renderer_RenderTarget::DirectionalCSMAtlas)];
 	ASSERT(atlas.IsValid() && "UpdateCSMAtlasExtent: CSM atlas image is invalid");
 
-	// Preserve the bindless slot — the descriptor index must not move
 	const uint32_t bindlessID = atlas.m_bindlessID;
 
-	// Destroy old (deferred free) and rebuild at the new resolution
 	allocator.FreeImage(atlas);
 	atlas.Reset();
 
-	const Extents3D extent = { res, res, 1 };
-	atlas = allocator.AllocateImage(RTDescs::DirectionalCSMAtlas(extent));
+	atlas = allocator.AllocateImage(CSMAtlasDesc(m_csmAtlasRes));
 	atlas.m_bindlessID = bindlessID;
 
-	// Re-point the existing combined-sampler slot at the new view (same index)
 	{
 		std::scoped_lock lock(m_combinedMutex);
 		UpdateCombinedLocked(bindlessID, atlas.m_imageView, GetSampler(RD::Renderer_Sampler::ShadowMap));
@@ -356,81 +322,10 @@ void BindlessImageTable::UpdateCSMAtlasExtent(RD::ShadowQuality quality, Allocat
 	MarkDirty();
 }
 
-void BindlessImageTable::CreateFroxelFogTargets(Allocator& allocator)
-{
-	if (!m_bAreFroxelFogCreated)
-	{
-		SetRenderTarget(RD::Renderer_RenderTarget::FroxelScatterExtA, allocator.AllocateImage(RTDescs::FroxelScatterExt(0)));
-		SetRenderTarget(RD::Renderer_RenderTarget::FroxelScatterExtB, allocator.AllocateImage(RTDescs::FroxelScatterExt(1)));
-		SetRenderTarget(RD::Renderer_RenderTarget::FroxelIntegrated, allocator.AllocateImage(RTDescs::FroxelIntegrated()));
-
-		m_bAreFroxelFogCreated = true;
-		MarkDirty();
-	}
-}
-
-void BindlessImageTable::FreeRenderTargets(Allocator& allocator)
-{
-	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
-	{
-		auto slot = static_cast<RD::Renderer_RenderTarget>(i);
-		if (slot == RD::Renderer_RenderTarget::DirectionalCSMAtlas ||
-			slot == RD::Renderer_RenderTarget::FlashlightShadowMap ||
-			slot == RD::Renderer_RenderTarget::VolumetricShadowMap ||
-			slot == RD::Renderer_RenderTarget::FroxelScatterExtA   ||
-			slot == RD::Renderer_RenderTarget::FroxelScatterExtB   ||
-			slot == RD::Renderer_RenderTarget::FroxelIntegrated)
-			continue;
-
-		AllocatedImage& img = m_renderTargets[Index(slot)];
-		if (img.IsValid())
-		{
-			allocator.FreeImage(img);
-			img.Reset();
-		}
-	}
-}
-
 void BindlessImageTable::UpdateRenderTargets(Extents3D drawExtent, Allocator& allocator)
 {
 	FreeRenderTargets(allocator);
 	CreateRenderTargets(drawExtent, allocator);
-}
-
-void BindlessImageTable::FreeFroxelFogTargets(Allocator& allocator)
-{
-	if (m_bAreFroxelFogCreated)
-	{
-		allocator.FreeImage(m_renderTargets[Index(RD::Renderer_RenderTarget::FroxelScatterExtA)]);
-		allocator.FreeImage(m_renderTargets[Index(RD::Renderer_RenderTarget::FroxelScatterExtB)]);
-		allocator.FreeImage(m_renderTargets[Index(RD::Renderer_RenderTarget::FroxelIntegrated)]);
-		m_bAreFroxelFogCreated = false;
-		MarkDirty();
-	}
-}
-
-void BindlessImageTable::FreeShadowMaps(Allocator& allocator)
-{
-	auto freeShadowMap = [&](RD::Renderer_RenderTarget slot)
-		{
-			AllocatedImage& img = m_renderTargets[Index(slot)];
-
-			if (!img.IsValid())
-				return;
-
-			allocator.FreeImage(img);
-			img.Reset();
-		};
-
-	freeShadowMap(RD::Renderer_RenderTarget::DirectionalCSMAtlas);
-	freeShadowMap(RD::Renderer_RenderTarget::FlashlightShadowMap);
-	freeShadowMap(RD::Renderer_RenderTarget::VolumetricShadowMap);
-
-	m_cachedCsmAtlasInfo = {};
-
-	m_bAreShadowsCreated = false;
-
-	MarkDirty();
 }
 
 void BindlessImageTable::SetRenderTarget(RD::Renderer_RenderTarget slot, AllocatedImage image)
@@ -451,13 +346,7 @@ void BindlessImageTable::TransitionRenderTargetsFromUndefined(VkCommandBuffer cm
 
 	for (size_t i = 0; i < RD::RENDER_TARGET_COUNT; ++i)
 	{
-		// Transitioned in render graph
-		if (i == static_cast<uint32_t>(RD::Renderer_RenderTarget::FlashlightShadowMap) ||
-			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::DirectionalCSMAtlas) ||
-			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::VolumetricShadowMap) ||
-			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::FroxelIntegrated) ||
-			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::FroxelScatterExtA) ||
-			i == static_cast<uint32_t>(RD::Renderer_RenderTarget::FroxelScatterExtB)) continue;
+		if (IS::kRenderTargets[i].group != IS::ImageGroup::Resolution) continue;
 
 		const AllocatedImage& img = m_renderTargets[i];
 		if (!img.IsValid()) continue;
@@ -466,31 +355,31 @@ void BindlessImageTable::TransitionRenderTargetsFromUndefined(VkCommandBuffer cm
 		VkImageAspectFlags aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
 		barriers.emplace_back(VkImageMemoryBarrier2{
-			.sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask     = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			.srcAccessMask    = VK_ACCESS_2_NONE,
-			.dstStageMask     = isDepth
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			.srcAccessMask = VK_ACCESS_2_NONE,
+			.dstStageMask = isDepth
 								? VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT
 								: VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-			.dstAccessMask    = isDepth
+			.dstAccessMask = isDepth
 								? VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT
 								: VK_ACCESS_2_SHADER_READ_BIT,
-			.oldLayout        = VK_IMAGE_LAYOUT_UNDEFINED,
-			.newLayout        = isDepth
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = isDepth
 								? VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL
 								: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			.image            = img.m_image,
+			.image = img.m_image,
 			.subresourceRange = {
 				aspectMask,
 				0, VK_REMAINING_MIP_LEVELS,
 				0, VK_REMAINING_ARRAY_LAYERS
 			}
-		});
+			});
 	}
 
 	VkDependencyInfo dep{ VK_STRUCTURE_TYPE_DEPENDENCY_INFO };
 	dep.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
-	dep.pImageMemoryBarriers    = barriers.data();
+	dep.pImageMemoryBarriers = barriers.data();
 	vkCmdPipelineBarrier2(cmd, &dep);
 }
 
@@ -592,23 +481,6 @@ VkSampler BindlessImageTable::GetSampler(RD::Renderer_Sampler slot) const
 // ================
 // STATIC TEXTURES
 // ================
-
-void BindlessImageTable::CreateStaticTextures(Allocator& allocator)
-{
-	SetStaticTexture(RD::Renderer_Texture::White,           allocator.AllocateImage(STDescs::White()));
-	SetStaticTexture(RD::Renderer_Texture::Normal,          allocator.AllocateImage(STDescs::FlatNormal()));
-	SetStaticTexture(RD::Renderer_Texture::MetalRough,      allocator.AllocateImage(STDescs::DefaultMetalRough()));
-	SetStaticTexture(RD::Renderer_Texture::Dummy,           allocator.AllocateImage(STDescs::Dummy()));
-	SetStaticTexture(RD::Renderer_Texture::DummyU8,         allocator.AllocateImage(STDescs::DummyUint8()));
-	SetStaticTexture(RD::Renderer_Texture::DummyVelocity,   allocator.AllocateImage(STDescs::DummyVelocity()));
-	SetStaticTexture(RD::Renderer_Texture::Checkerboard,    allocator.AllocateImage(STDescs::ErrorCheckerboard()));
-	SetStaticTexture(RD::Renderer_Texture::RainbowLut,      allocator.AllocateImage(STDescs::RainbowLUT()));
-	SetStaticTexture(RD::Renderer_Texture::HilbertCurveLut, allocator.AllocateImage(STDescs::HilbertCurveLUT()));
-	SetStaticTexture(RD::Renderer_Texture::CookieGobo,      allocator.AllocateImage(STDescs::CookieGobo()));
-	SetStaticTexture(RD::Renderer_Texture::Brdf,            allocator.AllocateImage(EnvDescs::BRDFLut()));
-	//SetStaticTexture(RD::Renderer_Texture::SMAAArea,        allocator.AllocateImage(STDescs::SMAAArea()));
-	//SetStaticTexture(RD::Renderer_Texture::SMAASearch,      allocator.AllocateImage(STDescs::SMAASearch()));
-}
 
 size_t BindlessImageTable::CalcStaticTexturesStagingSize() const
 {
@@ -743,18 +615,18 @@ void BindlessImageTable::CreateEnvironmentSets(uint32_t setCount, Allocator& all
 	for (uint32_t i = 0; i < setCount; ++i)
 	{
 		EnvironmentSet envSet;
-		envSet.setIndex   = i;
-		envSet.skybox     = allocator.AllocateImage(EnvDescs::Skybox());
-		envSet.specular   = allocator.AllocateImage(EnvDescs::Specular(RD::SPECULAR_PREFILTERED_MIP_LEVELS));
+		envSet.setIndex = i;
+		envSet.skybox = allocator.AllocateImage(IS::MakeImageDesc(IS::kSkybox));
+		envSet.specular = allocator.AllocateImage(IS::MakeImageDesc(IS::kSpecular));
 
 		const uint32_t specMips = envSet.specular.m_mipLevels;
 		envSet.specularPCs.resize(specMips);
 		for (uint32_t mip = 0; mip < specMips; ++mip)
 		{
-			envSet.specularPCs[mip].roughness    = static_cast<float>(mip) / static_cast<float>(specMips - 1);
-			envSet.specularPCs[mip].sampleCount  = RD::PREFILTER_SAMPLE_COUNT;
-			envSet.specularPCs[mip].width        = std::max(1u, envSet.specular.Width()  >> mip);
-			envSet.specularPCs[mip].height       = std::max(1u, envSet.specular.Height() >> mip);
+			envSet.specularPCs[mip].roughness = static_cast<float>(mip) / static_cast<float>(specMips - 1);
+			envSet.specularPCs[mip].sampleCount = RD::PREFILTER_SAMPLE_COUNT;
+			envSet.specularPCs[mip].width = std::max(1u, envSet.specular.Width() >> mip);
+			envSet.specularPCs[mip].height = std::max(1u, envSet.specular.Height() >> mip);
 		}
 
 		AddEnvironmentSet(std::move(envSet));
@@ -1197,8 +1069,6 @@ void BindlessImageTable::BuildInitialCombinedSamplerArray()
 	pushStatic(RD::Renderer_Texture::HilbertCurveLut, RD::Renderer_Sampler::Noise);
 	pushStatic(RD::Renderer_Texture::CookieGobo,      RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::Brdf,            RD::Renderer_Sampler::Brdf);
-	//pushStatic(RD::Renderer_Texture::SMAAArea,        RD::Renderer_Sampler::LinearLodClamp);
-	//pushStatic(RD::Renderer_Texture::SMAASearch,      RD::Renderer_Sampler::LinearLodClamp);
 
 	m_staticTextureCombinedEnd = static_cast<uint32_t>(m_combinedViews.size());
 

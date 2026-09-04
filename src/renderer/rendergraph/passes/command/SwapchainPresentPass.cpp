@@ -9,13 +9,11 @@
 
 namespace I = ImageUtils;
 
-void RegisterSwapchainPresentPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterSwapchainPresentPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Swapchain_Present",
-		pipelines,
+		{},
 		[&](RenderPassBuilder& builder)
 		{
 			builder

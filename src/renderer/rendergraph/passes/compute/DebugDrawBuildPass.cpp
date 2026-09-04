@@ -11,10 +11,6 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_DEBUG_COUNT = 0;
-static constexpr size_t PIPE_ID_DEBUG_ARGS = 1;
-static constexpr size_t PIPE_ID_DEBUG_BUILD = 2;
-
 static struct alignas(16) DebugCountPush
 {
 	uint32_t debugMask = UINT32_MAX;
@@ -23,13 +19,11 @@ static struct alignas(16) DebugCountPush
 	uint32_t pad1;
 };
 
-void RegisterDebugDrawBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterDebugDrawBuildPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Debug_Draw_Build",
-		pipelines,
+		{ RP::DebugCount, RP::DebugArgs, RP::DebugBuild },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -87,7 +81,7 @@ void RegisterDebugDrawBuildPass(
 						pso.SetPush(push);
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_DEBUG_COUNT],
+							ctx.Pipe(RP::DebugCount),
 							pass.pushWriter);
 						pso.ClearIndirect();
 						pso.ClearPush();
@@ -102,7 +96,7 @@ void RegisterDebugDrawBuildPass(
 						pso.UpdateWorkgroups(WORKGROUP_1, true);
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_DEBUG_ARGS],
+							ctx.Pipe(RP::DebugArgs),
 							pass.pushWriter);
 
 						B::ComputeWriteToIndirectRead(cmd, dispatchArgsBuffer);
@@ -114,7 +108,7 @@ void RegisterDebugDrawBuildPass(
 						pso.SetIndirect(dispatchArgsBuffer.m_buffer, RD::DISPATCH_DEBUG_BUILD_OFFSET_BYTES);
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_DEBUG_BUILD],
+							ctx.Pipe(RP::DebugBuild),
 							pass.pushWriter);
 						B::ComputeWriteToVertexRead(cmd, debugVertexBuffer);
 					});

@@ -11,19 +11,14 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_BLOOM_DOWNSAMPLE = 0;
-static constexpr size_t PIPE_ID_BLOOM_UPSAMPLE   = 1;
-
 static constexpr uint32_t BLOOM_FIRST_DOWNSAMPLE_BIT = 1u;
 static constexpr uint32_t BLOOM_EMISSIVE_BIT         = 2u;
 
-void RegisterBloomPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterBloomPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Bloom",
-		pipelines,
+		{ RP::BloomDownsample, RP::BloomUpsample },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -123,7 +118,7 @@ void RegisterBloomPass(
 							});
 
 							pso.UpdateExtent(dstExtent);
-							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLOOM_DOWNSAMPLE], pass.pushWriter);
+							pso.DispatchComputePass(cmd, ctx.Pipe(RP::BloomDownsample), pass.pushWriter);
 
 							I::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, mip, 1);
 
@@ -153,7 +148,7 @@ void RegisterBloomPass(
 							});
 
 							pso.UpdateExtent(dstExtent);
-							pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLOOM_UPSAMPLE], pass.pushWriter);
+							pso.DispatchComputePass(cmd, ctx.Pipe(RP::BloomUpsample), pass.pushWriter);
 
 							I::TransitionLayout(cmd, bloom, RD::ImageAccess::Write, RD::ImageAccess::Read, i, 1);
 						}

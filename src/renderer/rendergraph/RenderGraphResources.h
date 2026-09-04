@@ -6,6 +6,8 @@
 
 namespace RD = RendererDefinitions;
 
+using RP = RD::Renderer_Pipeline;
+
 struct RenderResourceUsage
 {
 	RD::Renderer_RenderTarget target;
@@ -33,6 +35,7 @@ class RenderGraph;
 class PipelineManager;
 class DescriptorManager;
 class NRDContext;
+struct RenderPassDesc;
 
 struct RenderPassExecutionContext
 {
@@ -51,8 +54,12 @@ struct RenderPassExecutionContext
 
 	const NRDContext*  NRDReflect        = nullptr;
 	const NRDContext*  NRDShadow         = nullptr;
-	DescriptorManager* descriptorManager = nullptr;
-	PipelineManager*   pipelineManager   = nullptr;
+	DescriptorManager* descriptors       = nullptr;
+	const PipelineManager* pipelines     = nullptr;
+
+	std::vector<RD::Renderer_Pipeline> declaredPipelines;
+
+	const PipelineHandle& Pipe(RD::Renderer_Pipeline id) const;
 
 	PassScheduleInfo* scheduleInfo = nullptr;
 

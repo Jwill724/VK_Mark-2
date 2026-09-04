@@ -212,9 +212,6 @@
     <ClCompile Include="src\renderer\backend\Sync.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\pipelines\Shader.cpp">
-      <Filter>src\renderer\backend\pipelines</Filter>
-    </ClCompile>
     <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
@@ -418,6 +415,9 @@
     <ClCompile Include="src\renderer\rendergraph\passes\compute\ContrastAdaptiveSharpeningPass.cpp">
       <Filter>src\renderer\rendergraph\passes\compute</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\backend\pipelines\PipelineTable.cpp">
+      <Filter>src\renderer\backend\pipelines</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -545,9 +545,6 @@
     <ClInclude Include="src\renderer\backend\Queue.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\pipelines\Shader.h">
-      <Filter>src\renderer\backend\pipelines</Filter>
-    </ClInclude>
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
@@ -561,9 +558,6 @@
       <Filter>src\renderer\backend\descriptors</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\pipelines\PipelineManager.h">
-      <Filter>src\renderer\backend\pipelines</Filter>
-    </ClInclude>
-    <ClInclude Include="src\renderer\backend\pipelines\PipelineBundles.h">
       <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h">
@@ -615,7 +609,7 @@
     <ClInclude Include="src\renderer\backend\memory\VmaForward.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\memory\ImageDescs.h">
+    <ClInclude Include="src\renderer\backend\memory\ImageSpecs.h">
       <Filter>src\renderer\backend\memory</Filter>
     </ClInclude>
     <!-- assets -->
@@ -667,6 +661,12 @@
     </ClInclude>
     <ClInclude Include="src\renderer\frame\ResizeCoordinator.h">
       <Filter>src\renderer\frame</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineDefs.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineTable.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->

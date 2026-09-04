@@ -8,15 +8,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterHDRSceneCompositePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterHDRSceneCompositePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"HDR_Scene_Composite",
-		pipelines,
+		{ RP::HDRSceneComposite },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -77,7 +73,7 @@ void RegisterHDRSceneCompositePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::HDRSceneComposite),
 							pass.pushWriter);
 					});
 		});

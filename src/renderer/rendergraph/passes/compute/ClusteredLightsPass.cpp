@@ -14,21 +14,12 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_LIGHT_CULL                  = 0;
-static constexpr size_t PIPE_ID_TRANSPARENT_CLUSTER_BOUNDS  = 1;
-static constexpr size_t PIPE_ID_TILE_RANGES                 = 2;
-static constexpr size_t PIPE_ID_INDIRECT_ARGS               = 3;
-static constexpr size_t PIPE_ID_CLUSTER_COUNTS              = 4;
-static constexpr size_t PIPE_ID_CLUSTER_OFFSETS             = 5;
-static constexpr size_t PIPE_ID_CLUSTER_IDS                 = 6;
-
-void RegisterClusteredLightsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterClusteredLightsPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Clustered_Lights",
-		pipelines,
+		{ RP::LightCull, RP::TransparentClusterBounds, RP::ClusterTileSliceRanges,
+		RP::IndirectArgsLight, RP::ClusterCount, RP::ClusterScanOffsets, RP::ClusterScatterIDs},
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -93,7 +84,7 @@ void RegisterClusteredLightsPass(
 
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_LIGHT_CULL],
+							ctx.Pipe(RP::LightCull),
 							pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, lightCountBuf);
@@ -109,7 +100,7 @@ void RegisterClusteredLightsPass(
 
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_TRANSPARENT_CLUSTER_BOUNDS],
+							ctx.Pipe(RP::TransparentClusterBounds),
 							pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, transparentClusterBounds);
@@ -129,7 +120,7 @@ void RegisterClusteredLightsPass(
 							hiZ,
 							hiZSampler);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_TILE_RANGES], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ClusterTileSliceRanges), pass.pushWriter);
 						B::ComputeWriteToRead(cmd, tileSliceRanges);
 
 						// =====================
@@ -142,28 +133,28 @@ void RegisterClusteredLightsPass(
 
 						pso.UpdateWorkgroups(WORKGROUP_1, true);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INDIRECT_ARGS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::IndirectArgsLight), pass.pushWriter);
 						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
 
 						// ===============
 						// Cluster counts
 						// ===============
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLUSTER_COUNTS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ClusterCount), pass.pushWriter);
 						B::ComputeWriteToRead(cmd, clusterCounts);
 
 						// ================
 						// Cluster offsets
 						// ================
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_CLUSTERS_OFFSET_BYTES);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLUSTER_OFFSETS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ClusterScanOffsets), pass.pushWriter);
 						B::ComputeWriteToRead(cmd, clusterOffsets);
 
 						// ====================
 						// Cluster scatter ids
 						// ====================
 						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_LIGHTS_OFFSET_BYTES);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLUSTER_IDS], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::ClusterScatterIDs), pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, clusterScanScratch);
 					});

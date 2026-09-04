@@ -11,15 +11,11 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_INSTANCE_CULL = 0;
-
-void RegisterInstanceCullPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterInstanceCullPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Instance_Cull",
-		pipelines,
+		{ RP::InstanceCull },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -82,7 +78,7 @@ void RegisterInstanceCullPass(
 
 						pso.DispatchComputePass(
 							cmd,
-							pass.pipelines[PIPE_ID_INSTANCE_CULL],
+							ctx.Pipe(RP::InstanceCull),
 							pass.pushWriter);
 
 						B::ComputeWriteToRead(cmd, instanceVisibilityBuffer);

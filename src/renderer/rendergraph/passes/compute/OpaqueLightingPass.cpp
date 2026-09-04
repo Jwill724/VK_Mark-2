@@ -11,15 +11,11 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterOpaqueLightingPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterOpaqueLightingPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Opaque_Lighting",
-		pipelines,
+		{ RP::OpaqueLighting },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -140,7 +136,7 @@ void RegisterOpaqueLightingPass(
 						I::TransitionLayout(cmd, diffuseRadiance,
 							RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::OpaqueLighting), pass.pushWriter);
 
 						I::TransitionLayout(cmd, diffuseRadiance,
 							RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);

@@ -7,15 +7,11 @@
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 
-static constexpr size_t PIPE_ID_DEBUG = 0;
-
-void RegisterGBufferDebugPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterGBufferDebugPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"GBuffer_Debug",
-		pipelines,
+		{ RP::GBufferDebug },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -80,7 +76,7 @@ void RegisterGBufferDebugPass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_DEBUG],
+							ctx.Pipe(RP::GBufferDebug),
 							pass.pushWriter);
 					});
 		});

@@ -4,7 +4,13 @@
 #include "AllocatedImage.h"
 #include <renderer/RendererDefinitions.h>
 #include "../../../core/asset/AssetUploadTypes.h"
+#include "ImageSpecs.h"
 #include <span>
+
+namespace ImageSpecs
+{
+	enum class ImageGroup : uint8_t;
+}
 
 #define COLOR_RESOLVED_A RD::Renderer_RenderTarget::ColorHistoryA
 #define COLOR_RESOLVED_B RD::Renderer_RenderTarget::ColorHistoryB
@@ -136,8 +142,12 @@ public:
 	void ClearDirty() noexcept { m_bIsTableDirty = false; }
 
 	bool IsShadowAtlasCached() const noexcept { return m_cachedCsmAtlasInfo.isActive; }
-	uint32_t GetCachedCSMRes() const noexcept { return m_cachedCsmAtlasInfo.width; }
+	uint32_t GetCachedCSMRes() const noexcept { return m_csmAtlasRes; }
+
 private:
+	void CreateRenderTargetGroup(ImageSpecs::ImageGroup group, Allocator& allocator);
+	void FreeRenderTargetGroup(ImageSpecs::ImageGroup group, Allocator& allocator);
+
 	void CreateRenderTargets(Extents3D drawExtent, Allocator& allocator);
 	void CreateStaticTextures(Allocator& allocator);
 	void CreateEnvironmentSets(uint32_t setCount, Allocator& allocator);
@@ -180,9 +190,11 @@ private:
 	struct CachedCSMAtlasInfo
 	{
 		uint32_t csmAtlasBindlessID = UINT32_MAX;
-		uint32_t width = 0;
 		bool isActive = false;
 	} m_cachedCsmAtlasInfo{};
+
+	Extents3D m_drawExtent{};
+	uint32_t  m_csmAtlasRes = 0u;
 
 	using ImageViewSamplerKey = std::pair<VkImageView, VkSampler>;
 

@@ -8,15 +8,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterChromaticAberrationPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterChromaticAberrationPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Chromatic_Aberration",
-		pipelines,
+		{ RP::ChromaticAberration },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -69,7 +65,7 @@ void RegisterChromaticAberrationPass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::ChromaticAberration),
 							pass.pushWriter);
 					});
 		});

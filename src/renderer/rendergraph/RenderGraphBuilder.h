@@ -19,7 +19,8 @@ struct RenderPassDesc
 {
 	std::string passName{};
 
-	std::vector<PipelineHandle> pipelines;
+	// Hard locked order of execution
+	std::vector<RD::Renderer_Pipeline> declaredPipelines;
 
 	ScopeVariant scope;
 

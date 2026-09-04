@@ -8,15 +8,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterVelocityResolvePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterVelocityResolvePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Velocity_Resolve",
-		pipelines,
+		{ RP::VelocityResolve },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -83,7 +79,7 @@ void RegisterVelocityResolvePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::VelocityResolve),
 							pass.pushWriter);
 					});
 		});

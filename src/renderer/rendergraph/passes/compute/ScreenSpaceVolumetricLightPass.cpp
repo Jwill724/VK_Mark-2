@@ -13,17 +13,11 @@
 
 namespace I = ImageUtils;
 
-static constexpr size_t PIPE_ID_MAIN    = 0;
-static constexpr size_t PIPE_ID_RESOLVE = 1;
-static constexpr size_t PIPE_ID_BLUR    = 2;
-
-void RegisterVolumetricLightPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterVolumetricLightPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"God_Rays",
-		pipelines,
+		{ RP::VolumetricLight, RP::VolumetricLightResolve, RP::VolumetricLightBlur },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -34,7 +28,6 @@ void RegisterVolumetricLightPass(
 					{
 						return
 							ctx.frameState->IsVolumetricsOn() &&
-							//ctx.scene->GetVolumetricShadowInfo().params.y != 0.0f &&
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->DebugRendering();
 					})
@@ -110,7 +103,7 @@ void RegisterVolumetricLightPass(
 							RD::PUSH_BINDING_WRITE_1,
 							volumetricLight);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::VolumetricLight), pass.pushWriter);
 						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ======================
@@ -152,7 +145,7 @@ void RegisterVolumetricLightPass(
 							RD::PUSH_BINDING_WRITE_1,
 							volHistoryWrite);
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_RESOLVE], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::VolumetricLightResolve), pass.pushWriter);
 						I::TransitionLayout(cmd, volHistoryWrite, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ======================
@@ -177,7 +170,7 @@ void RegisterVolumetricLightPass(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
 							volumetricBlur);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLUR], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::VolumetricLightBlur), pass.pushWriter);
 						I::TransitionLayout(cmd, volumetricBlur, RD::ImageAccess::Write, RD::ImageAccess::Read);
 
 						// ======================
@@ -210,7 +203,7 @@ void RegisterVolumetricLightPass(
 							push.blurDirection = { 0.0f, 1.0f }; // Vertical
 						});
 
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BLUR], pass.pushWriter);
+						pso.DispatchComputePass(cmd, ctx.Pipe(RP::VolumetricLightBlur), pass.pushWriter);
 						I::TransitionLayout(cmd, volumetricLight, RD::ImageAccess::Write, RD::ImageAccess::Read);
 					});
 		});

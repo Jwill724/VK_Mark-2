@@ -24,12 +24,12 @@ public:
 	template<typename BuildFn>
 	RenderPassDesc& AddPass(
 		std::string name,
-		std::vector<PipelineHandle> pipelines,
+		std::vector<RD::Renderer_Pipeline> pipelineIDs,
 		BuildFn&& buildFn)
 	{
 		RenderPassDesc& pass = CreatePass(
 			std::move(name),
-			std::move(pipelines));
+			std::move(pipelineIDs));
 
 		RenderPassBuilder builder(pass);
 
@@ -94,10 +94,9 @@ public:
 private:
 	RenderPassDesc& CreatePass(
 		std::string name,
-		std::vector<PipelineHandle> pipelines);
+		std::vector<RD::Renderer_Pipeline> pipelineIDs);
 
 	void Build(
-		PipelineManager& pipeManager,
 		Extents2D renderExtent,
 		Extents2D displayExtent,
 		bool bHasDedicatedComputeQueue);

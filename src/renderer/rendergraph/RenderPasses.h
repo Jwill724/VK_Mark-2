@@ -12,175 +12,83 @@ struct PipelineHandle;
 class BindlessImageTable;
 class PushDescriptorWriter;
 
-void RegisterDirectionalCSMPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterDirectionalCSMPass(RenderGraph& graph);
 
-void RegisterShadowBoundsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterShadowBoundsPass(RenderGraph& graph);
 
-void RegisterMaterialResolvePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterMaterialResolvePass(RenderGraph& graph);
 
-void RegisterOpaqueLightingPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterOpaqueLightingPass(RenderGraph& graph);
 
-void RegisterRTShadowsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterRTShadowsPass(RenderGraph& graph);
 
 void RegisterNRDDenoisePass(RenderGraph& graph);
 
-void RegisterInstanceCullPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterInstanceCullPass(RenderGraph& graph);
 
-void RegisterDrawBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterDrawBuildPass(RenderGraph& graph);
 
-void RegisterTLASBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterTLASBuildPass(RenderGraph& graph);
 
-void RegisterRTReflectionsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterRTReflectionsPass(RenderGraph& graph);
 
-void RegisterWireframePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterWireframePass(RenderGraph& graph);
 
-void RegisterChromaticAberrationPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterChromaticAberrationPass(RenderGraph& graph);
 
-void RegisterFlashlightShadowMapPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterFlashlightShadowMapPass(RenderGraph& graph);
 
-void RegisterVelocityResolvePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterVelocityResolvePass(RenderGraph& graph);
 
-void RegisterTemporalCopyPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterTemporalCopyPass(RenderGraph& graph);
 
-void RegisterThePrepass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterThePrepass(RenderGraph& graph);
 
-void RegisterHiZGenerationPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterHiZGenerationPass(RenderGraph& graph);
 
-// ==========================
-// mesh shading additions
+void RegisterThePrepassLate(RenderGraph& graph);
 
-void RegisterThePrepassLate(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterHiZGenerationLatePass(RenderGraph& graph);
 
-void RegisterHiZGenerationLatePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-// ==========================
+void RegisterClusteredLightsPass(RenderGraph& graph);
 
-void RegisterClusteredLightsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+//void RegisterVolumetricFogPass(RenderGraph& graph);
 
-//void RegisterVolumetricFogPass(
-//	RenderGraph& graph,
-//	const std::vector<PipelineHandle> pipelines);
+void RegisterVolumetricShadowMapPass(RenderGraph& graph);
 
-void RegisterVolumetricShadowMapPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterTAAPass(RenderGraph& graph);
 
-void RegisterCMAA2Pass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterCASPass(RenderGraph& graph);
 
-void RegisterFXAAPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterDebugDrawBuildPass(RenderGraph& graph);
 
-void RegisterSMAAPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterLineDebugPass(RenderGraph& graph);
 
-void RegisterTAAPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterLensFlarePass(RenderGraph& graph);
 
-void RegisterCASPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterBloomPass(RenderGraph& graph);
 
-void RegisterDebugDrawBuildPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterFinalCompositePass(RenderGraph& graph);
 
-void RegisterLineDebugPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterGBufferDebugPass(RenderGraph& graph);
 
-void RegisterLensFlarePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterLuminanceExposurePass(RenderGraph& graph);
 
-void RegisterBloomPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterSSGIPass(RenderGraph& graph);
 
-void RegisterFinalCompositePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterContactShadowsPass(RenderGraph& graph);
 
-void RegisterGBufferDebugPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterVolumetricLightPass(RenderGraph& graph);
 
-void RegisterLuminanceExposurePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterHDRSceneCompositePass(RenderGraph& graph);
 
-void RegisterSSGIPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterImguiDrawPass(RenderGraph& graph);
 
-void RegisterContactShadowsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterTransparentForwardPass(RenderGraph& graph);
 
-void RegisterVolumetricLightPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterSkyboxPass(RenderGraph& graph);
 
-void RegisterHDRSceneCompositePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-
-void RegisterImguiDrawPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-
-void RegisterTransparentForwardPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-
-void RegisterSkyboxPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
-
-void RegisterSwapchainPresentPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines);
+void RegisterSwapchainPresentPass(RenderGraph& graph);
 
 void BakeEnvironmentMaps(
 	VkCommandBuffer cmd,

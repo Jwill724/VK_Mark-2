@@ -11,15 +11,11 @@
 #include "../../../scene/Scene.h"
 #include "../../../scene/LightingSystem.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterFlashlightShadowMapPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterFlashlightShadowMapPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Flashlight_Shadow",
-		pipelines,
+		{ RP::ShadowMeshMaskedD32 },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -90,7 +86,7 @@ void RegisterFlashlightShadowMapPass(
 							RD::VIS_SLOT_FLASHLIGHT,
 							taskDispatchBuffer,
 							indirectCountBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::ShadowMeshMaskedD32),
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

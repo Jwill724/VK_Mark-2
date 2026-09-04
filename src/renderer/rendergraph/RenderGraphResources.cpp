@@ -4,6 +4,7 @@
 #include "../backend/VulkanTypes.h"
 #include "../backend/descriptors/DescriptorWriter.h"
 #include "../backend/memory/AllocatedImage.h"
+#include "../backend/pipelines/PipelineManager.h"
 
 void RenderScope::BindPushConstant(VkCommandBuffer cmd, const PipelineHandle& pipeHandle)
 {

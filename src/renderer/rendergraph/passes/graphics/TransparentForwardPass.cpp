@@ -8,15 +8,11 @@
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterTransparentForwardPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterTransparentForwardPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Transparent_Forward",
-		pipelines,
+		{ RP::TransparentForward },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -119,7 +115,7 @@ void RegisterTransparentForwardPass(
 							RD::VIS_SLOT_TRANSPARENT,
 							taskDispatchBuffer,
 							indirectCountBuffer,
-							pass.pipelines[PIPE_ID_MAIN],
+							ctx.Pipe(RP::TransparentForward),
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

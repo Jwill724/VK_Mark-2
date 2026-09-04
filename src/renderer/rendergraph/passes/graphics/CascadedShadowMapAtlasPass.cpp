@@ -9,15 +9,11 @@
 #include "../../../frame/FrameContext.h"
 #include "../../../scene/Scene.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterDirectionalCSMPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterDirectionalCSMPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Sun_CSM",
-		pipelines,
+		{ RP::ShadowMesh },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -112,7 +108,7 @@ void RegisterDirectionalCSMPass(
 								cascadeSlot,
 								taskDispatchBuffer,
 								indirectCountBuffer,
-								pass.pipelines[PIPE_ID_MAIN],
+								ctx.Pipe(RP::ShadowMesh),
 								pass.pushWriter);
 						}
 

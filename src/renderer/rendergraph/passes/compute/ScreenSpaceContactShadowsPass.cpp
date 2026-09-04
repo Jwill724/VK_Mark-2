@@ -10,15 +10,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"
 
-static constexpr size_t PIPE_ID_SSS = 0;
-
-void RegisterContactShadowsPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterContactShadowsPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Contact_Shadows",
-		pipelines,
+		{ RP::ScreenSpaceContactShadows },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -100,7 +96,7 @@ void RegisterContactShadowsPass(
 
 							pso.DispatchComputePass(
 								ctx.commandBuffer,
-								pass.pipelines[PIPE_ID_SSS],
+								ctx.Pipe(RP::ScreenSpaceContactShadows),
 								pass.pushWriter);
 						}
 					});

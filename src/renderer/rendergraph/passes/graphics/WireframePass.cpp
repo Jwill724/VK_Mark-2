@@ -7,15 +7,11 @@
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../frame/FrameContext.h"
 
-static constexpr size_t PIPE_ID_WIREFRAME      = 0;
-
-void RegisterWireframePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterWireframePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Wireframe",
-		pipelines,
+		{ RP::WireframeMesh },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -93,7 +89,7 @@ void RegisterWireframePass(
 							RD::VIS_SLOT_OPAQUE,
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::TaskDispatch).m_buffer,
 							frameCtx->GetGPUBuffer(RD::Renderer_Buffer::IndirectDrawCounts).m_buffer,
-							pass.pipelines[PIPE_ID_WIREFRAME],
+							ctx.Pipe(RP::WireframeMesh),
 							pass.pushWriter);
 
 						pso.EndRendering(cmd);

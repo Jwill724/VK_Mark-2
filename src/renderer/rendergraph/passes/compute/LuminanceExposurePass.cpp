@@ -13,16 +13,11 @@
 
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_LUMA_REDUCE   = 0;
-static constexpr size_t PIPE_ID_LUMA_FINALIZE = 1;
-
-void RegisterLuminanceExposurePass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterLuminanceExposurePass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Luminance_Exposure",
-		pipelines,
+		{ RP::ExposureReduce, RP::ExposureFinalize },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -73,7 +68,7 @@ void RegisterLuminanceExposurePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_LUMA_REDUCE],
+							ctx.Pipe(RP::ExposureReduce),
 							pass.pushWriter);
 						B::ComputeWriteToRead(ctx.commandBuffer, luminanceBuf);
 
@@ -86,7 +81,7 @@ void RegisterLuminanceExposurePass(
 
 						pso.DispatchComputePass(
 							ctx.commandBuffer,
-							pass.pipelines[PIPE_ID_LUMA_FINALIZE],
+							ctx.Pipe(RP::ExposureFinalize),
 							pass.pushWriter);
 						B::ComputeWriteToRead(ctx.commandBuffer, luminanceBuf);
 					});

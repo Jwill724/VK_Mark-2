@@ -112,6 +112,7 @@
     <ClCompile Include="src\input\Camera.cpp" />
     <ClCompile Include="src\input\UserInput.cpp" />
     <!-- renderer -->
+    <ClCompile Include="src\renderer\backend\pipelines\PipelineTable.cpp" />
     <ClCompile Include="src\renderer\Renderer.cpp" />
     <!-- renderer / rendergraph -->
     <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedShadowsPass.cpp" />
@@ -178,7 +179,6 @@
     <ClCompile Include="src\renderer\backend\Device.cpp" />
     <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp" />
     <ClCompile Include="src\renderer\backend\Queue.cpp" />
-    <ClCompile Include="src\renderer\backend\pipelines\Shader.cpp" />
     <ClCompile Include="src\renderer\backend\Swapchain.cpp" />
     <ClCompile Include="src\renderer\backend\Sync.cpp" />
     <ClCompile Include="src\renderer\backend\descriptors\DescriptorManager.cpp" />
@@ -324,6 +324,8 @@
     <ClInclude Include="src\profiler\ProfilerTypes.h" />
     <ClInclude Include="src\profiler\Profiler.h" />
     <ClInclude Include="src\profiler\EditorImgui.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineDefs.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineTable.h" />
     <ClInclude Include="src\renderer\frame\ResizeCoordinator.h" />
     <ClInclude Include="src\renderer\RendererDefinitions.h" />
     <ClInclude Include="src\renderer\Renderer.h" />
@@ -344,7 +346,6 @@
     <ClInclude Include="src\renderer\backend\Device.h" />
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h" />
     <ClInclude Include="src\renderer\backend\Queue.h" />
-    <ClInclude Include="src\renderer\backend\pipelines\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
     <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h" />
@@ -353,7 +354,6 @@
     <ClInclude Include="src\renderer\backend\descriptors\DescriptorWriter.h" />
     <ClInclude Include="src\renderer\backend\pipelines\PipelineManager.h" />
     <ClInclude Include="src\renderer\backend\pipelines\PipelineBuilder.h" />
-    <ClInclude Include="src\renderer\backend\pipelines\PipelineBundles.h" />
     <ClInclude Include="src\renderer\backend\ImageUtils.h" />
     <ClInclude Include="src\renderer\backend\BufferBarriers.h" />
     <ClInclude Include="src\renderer\backend\nrd\NRDContext.h" />
@@ -364,7 +364,7 @@
     <ClInclude Include="src\renderer\backend\memory\TextureStaging.h" />
     <ClInclude Include="src\renderer\backend\memory\ResourceAllocator.h" />
     <ClInclude Include="src\renderer\backend\memory\VmaForward.h" />
-    <ClInclude Include="src\renderer\backend\memory\ImageDescs.h" />
+    <ClInclude Include="src\renderer\backend\memory\ImageSpecs.h" />
     <ClInclude Include="src\renderer\backend\memory\AllocatedBuffer.h" />
     <ClInclude Include="src\renderer\backend\memory\AllocatedImage.h" />
     <ClInclude Include="src\renderer\backend\memory\BindlessBDATable.h" />

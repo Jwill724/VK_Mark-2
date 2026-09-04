@@ -13,13 +13,11 @@
 namespace I = ImageUtils;
 namespace B = BufferBarriers;
 
-void RegisterImguiDrawPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterImguiDrawPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Imgui_Draw",
-		pipelines,
+		{},
 		[&](RenderPassBuilder& builder)
 		{
 			builder

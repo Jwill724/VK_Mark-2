@@ -9,15 +9,11 @@
 #include "../../../../profiler/Profiler.h"
 #include "../../../frame/FrameContext.h"
 
-static constexpr size_t PIPE_ID_MAIN = 0;
-
-void RegisterLineDebugPass(
-	RenderGraph& graph,
-	const std::vector<PipelineHandle> pipelines)
+void RegisterLineDebugPass(RenderGraph& graph)
 {
 	graph.AddPass(
 		"Debug_Line",
-		pipelines,
+		{ RP::LineDebug },
 		[&](RenderPassBuilder& builder)
 		{
 			builder
@@ -91,7 +87,7 @@ void RegisterLineDebugPass(
 							debugVertexBuffer.m_buffer,
 							0u, // Offsets
 							0u,
-							pass.pipelines[PIPE_ID_MAIN]);
+							ctx.Pipe(RP::LineDebug));
 
 						pso.EndRendering(cmd);
 					});
