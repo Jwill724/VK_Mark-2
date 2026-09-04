@@ -176,7 +176,7 @@ void main() {
 	vec2 ndcToViewAdd = scene.ndcToViewAdd;
 	vec2 ndcToViewMult = scene.ndcToViewMult;
 
-	const ivec2 phase = aoQuadPhase(scene.temporal.x, debug.aaMode == AA_TAA);
+	const ivec2 phase = aoQuadPhase(scene.temporal.x, IsTAAEnabled());
 	const ivec2 pix   = min(halfPix * 2 + phase, fullMax);
 
 	const vec2 fullPixelSize = vec2(scene.renderPixelSizes.xy);

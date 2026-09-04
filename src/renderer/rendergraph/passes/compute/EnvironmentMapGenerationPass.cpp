@@ -4,7 +4,7 @@
 #include "../../scopes/ComputeScope.h"
 #include "../../../backend/ImageUtils.h"
 #include "../../../backend/memory/BindlessImageTable.h"
-#include "../../../backend/DescriptorWriter.h"
+#include "../../../backend/descriptors/DescriptorWriter.h"
 
 namespace I = ImageUtils;
 

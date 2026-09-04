@@ -75,8 +75,11 @@ const uint ABT_ClusterTileSliceRanges     = 44u;
 const uint ABT_ClusterScanScratch         = 45u;
 const uint ABT_ClusterTileTransparentNear = 46u;
 
-const uint ABT_Count                      = 47u;
+const uint ABT_ShadowInvalidVolumes       = 47u;
 
+const uint ABT_Count                      = 48u;
+
+const uint MAX_SHADOW_INVALID_VOLUMES = 64u;
 
 // =============================
 // === SET_BINDINGS_BINDINGS ===
@@ -134,8 +137,9 @@ const uint INDIRECT_DISPATCH_SLOT_DEBUG_BUILD          = 10u;
 const uint INDIRECT_DISPATCH_SLOT_LIGHTS               = 11u;
 const uint INDIRECT_DISPATCH_SLOT_CLUSTERS             = 12u;
 const uint INDIRECT_DISPATCH_SLOT_REFLECT_RAYS         = 13u;
-const uint INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    = 14u;
-const uint INDIRECT_DISPATCH_SLOT_COUNT                = 15u;
+const uint INDIRECT_DISPATCH_SLOT_SHADOW_RAYS          = 14u;
+const uint INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    = 15u;
+const uint INDIRECT_DISPATCH_SLOT_COUNT                = 16u;
 
 // Visibility/Draw slots
 const uint VIS_SLOT_OPAQUE        = 0u;
@@ -152,7 +156,8 @@ const uint VIS_SLOT_COUNT         = 9u;
 
 // Ray tracing ray slots
 const uint RT_RAY_SLOT_REFLECT      = 0u;
-const uint RT_RAY_SLOT_TRANSPARENCY = 1u;
-const uint RT_RAY_SLOT_COUNT        = 2u;
+const uint RT_RAY_SLOT_SHADOW       = 1u;
+const uint RT_RAY_SLOT_TRANSPARENCY = 2u;
+const uint RT_RAY_SLOT_COUNT        = 3u;
 
 #endif

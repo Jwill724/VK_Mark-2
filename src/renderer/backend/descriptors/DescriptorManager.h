@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../RendererDefinitions.h"
-#include "VulkanTypes.h"
+#include "../../RendererDefinitions.h"
+#include "../VulkanTypes.h"
 #include <span>
 
 // https://vkguide.dev/docs/new_chapter_4/descriptor_abstractions/

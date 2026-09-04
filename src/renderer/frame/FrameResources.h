@@ -51,6 +51,7 @@ struct InstanceInput
 	uint32_t shadowLod0   = UINT32_MAX;
 	uint32_t shadowLod1   = UINT32_MAX;
 	uint32_t shadowLod2   = UINT32_MAX;
+	uint32_t rtMeshID     = UINT32_MAX;
 	uint32_t flags        = UINT32_MAX;
 };
 
@@ -196,6 +197,7 @@ struct RTRayListLayout
 	static constexpr uint32_t HEADER_BYTES = RD::RT_RAY_SLOT_COUNT * sizeof(uint32_t);
 
 	uint32_t capacities[RD::RT_RAY_SLOT_COUNT]{};
+	uint32_t bases[RD::RT_RAY_SLOT_COUNT]{};
 
 	uint32_t totalBytes = 0;
 	uint32_t halfWidth = 0;
@@ -203,6 +205,28 @@ struct RTRayListLayout
 
 	void Update(uint32_t screenWidth, uint32_t screenHeight);
 };
+
+struct SunBasis
+{
+	glm::vec3 direction{ 0.0f };
+	glm::vec3 tangent{ 0.0f };
+	glm::vec3 bitangent{ 0.0f };
+};
+
+inline SunBasis BuildSunBasis(const glm::vec3& sunDir)
+{
+	const glm::vec3 n = glm::normalize(sunDir);
+
+	const float s = n.z >= 0.0f ? 1.0f : -1.0f;
+	const float a = -1.0f / (s + n.z);
+	const float b = n.x * n.y * a;
+
+	SunBasis basis{};
+	basis.direction = n;
+	basis.tangent = glm::vec3(1.0f + s * n.x * n.x * a, s * b, -s * n.x);
+	basis.bitangent = glm::vec3(b, s + n.y * n.y * a, -n.y);
+	return basis;
+}
 
 struct alignas(16) LightClustersData
 {
@@ -276,12 +300,22 @@ struct alignas(16) SSGIPush
 struct alignas(16) TAAPush
 {
 	float invDeltaTime = 0.0f;
-	float clampGamma = 3.0f;
-	float depthRejectScale = 1.0f;
-	float motionSpeedScale = 0.005f;
-	float sigmaFloor = 0.006f;
+	float clampGamma = 6.0f;
+	float depthRejectScale = 5.0f;
+	float motionSpeedScale = 0.0003f;
+
+	float sigmaFloor = 0.02f;
 	float shadingResponse = 2.0;
-	float pad0[2];
+	float shadingRejectScale = 1.5f;
+	float pad0;
+};
+
+struct alignas(16) CASPush
+{
+	float sharpness = 0.5f;
+	float denoise = 1.0f;
+	float hdrCompress = 0.0f;
+	float pad0 = 0.0f;
 };
 
 struct alignas(16) VolumetricPush
@@ -291,12 +325,12 @@ struct alignas(16) VolumetricPush
 	float extinction = 0.08f;
 	float heightFalloff = 0.06f;
 
-	float maxDistance = 75.0f;
+	float maxDistance = 100.0f;
 	float jitterStrength = 0.9f;
 	float asymmetryFactor = 0.5f;
 	float minTransmittance = 0.9f;
 
-	int beamPower = 8;
+	int beamPower = 4;
 	float blurRadius = 4.0f;
 	float blurDepthSigma = 0.5f;
 	float blurWeightSigma = 1.6f;
@@ -461,17 +495,31 @@ struct alignas(16) RTArgsPush
 
 struct alignas(16) RTShadowParams
 {
-	glm::vec3 sunDirectionVS{ 0.0f };
-	float pad0;
+	glm::vec4 sunDirectionWS{0.0f};    // xyz = direction, w = rayTMin
+	glm::vec4 sunTangentWS{ 0.0f };    // xyz = tangent,   w = rayTMax
+	glm::vec4 sunBitangentWS{ 0.0f };  // xyz = bitangent, w = mipBias
+	glm::vec4 sunDirectionVS{ 0.0f };  // xyz = view-space direction
 
-	float    rayTMin = 0.001f;
-	float    rayTMax = 500.0f;
-	float    rayBias = 1e-4f;
-	float    normalBias = 0.03f;
-	float    sunSoftness = 1.0f;
-	float    mipBias = 1.0f;
-	uint32_t taps = 1u;
-	uint32_t alphaTested = 1u;
+	float rayTMin = 0.001f;
+	float rayTMax = 500.0f;
+	float rayBias = 1e-4f;
+	float normalBias = 0.03f;
+};
+
+struct alignas(16) RTShadowPush
+{
+	glm::vec2 resolution{ 0.0f };
+	glm::vec2 invResolution{ 0.0f };
+
+	RTShadowParams shadow{};
+
+	uint32_t rayBase = 0u;
+	uint32_t rayCapacity = 0u;
+	uint32_t hilbertLutID = UINT32_MAX;
+
+	float    saturationEps = 0.02f;
+	float    disocclusionScale = 0.05f;
+	uint32_t pad0[3]{};
 };
 
 struct alignas(16) ReflectPush
@@ -494,17 +542,10 @@ struct alignas(16) ReflectPush
 	uint32_t specularID = UINT32_MAX;
 	uint32_t maxBounces = 3u;
 	uint32_t maxReflectLights = 250u;
-	uint32_t rayCapacity = 0;
-};
+	uint32_t rayCapacity = 0u;
 
-struct alignas(16) RTShadowPush
-{
-	glm::vec2 resolution{ 0.0f };
-	glm::vec2 invResolution{ 0.0f };
+	uint32_t rayBase = 0u;
 
-	RTShadowParams shadow{};
-
-	uint32_t hilbertLutID = UINT32_MAX;
-
-	uint32_t pad0[3]{};
+	float shadowSkipThreshold = 0.01f;
+	uint32_t pad0[2]{};
 };

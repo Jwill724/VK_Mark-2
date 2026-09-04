@@ -13,99 +13,62 @@ struct RTVisibility
 	float hits;
 };
 
-float rtTraceShadow(vec3 origin, vec3 dir, float tMin, float tMax)
+float rtSunVisibleOpaque(vec3 origin, vec3 dir, float tMin, float tMax)
 {
-	rayQueryEXT sq;
-	rayQueryInitializeEXT(sq, sceneTLAS,
-		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsOpaqueEXT
+	rayQueryEXT q;
+	rayQueryInitializeEXT(q, sceneTLAS,
+		gl_RayFlagsOpaqueEXT | gl_RayFlagsTerminateOnFirstHitEXT
 		| gl_RayFlagsCullBackFacingTrianglesEXT,
-		RT_MASK_SHADOW_CASTERS,
+		RT_MASK_OPAQUE,
 		origin, tMin, dir, tMax);
-	rayQueryProceedEXT(sq);
 
-	return rayQueryGetIntersectionTypeEXT(sq, true) == gl_RayQueryCommittedIntersectionNoneEXT
-		 ? -1.0
-		 : rayQueryGetIntersectionTEXT(sq, true);
+	rayQueryProceedEXT(q);
+
+	return rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT
+		? 1.0 : 0.0;
 }
 
-float rtTraceShadowAlphaTested(vec3 origin, vec3 dir, float tMin, float tMax, float mipBias)
+vec3 rtSampleSunCone(vec3 dir, float tanAngle, vec2 rnd)
 {
-	rayQueryEXT sq;
-	rayQueryInitializeEXT(sq, sceneTLAS,
+	float phi = TWO_PI * rnd.x;
+	float r   = tanAngle * sqrt(rnd.y);
+
+	vec3 up = abs(dir.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+	vec3 t  = normalize(cross(up, dir));
+	vec3 b  = cross(dir, t);
+
+	return normalize(dir + t * (r * cos(phi)) + b * (r * sin(phi)));
+}
+
+float rtShadowFirstHit(vec3 origin, vec3 dir, float tMin, float tMax, float mipBias)
+{
+	rayQueryEXT q;
+	rayQueryInitializeEXT(
+		q, sceneTLAS,
 		gl_RayFlagsTerminateOnFirstHitEXT | gl_RayFlagsCullBackFacingTrianglesEXT,
 		RT_MASK_SHADOW_CASTERS,
 		origin, tMin, dir, tMax);
 
-	while (rayQueryProceedEXT(sq))
+	while (rayQueryProceedEXT(q))
 	{
-		if (rayQueryGetIntersectionTypeEXT(sq, false) == gl_RayQueryCandidateIntersectionTriangleEXT)
-		{
-			uint instanceID = rayQueryGetIntersectionInstanceCustomIndexEXT(sq, false);
-			uint primID     = rayQueryGetIntersectionPrimitiveIndexEXT(sq, false);
-			vec2 bary       = rayQueryGetIntersectionBarycentricsEXT(sq, false);
+		uint instanceID = rayQueryGetIntersectionInstanceCustomIndexEXT(q, false);
+		uint primID     = rayQueryGetIntersectionPrimitiveIndexEXT(q, false);
+		vec2 bary       = rayQueryGetIntersectionBarycentricsEXT(q, false);
 
-			if (rtAlphaTestPasses(instanceID, primID, bary, mipBias))
-				rayQueryConfirmIntersectionEXT(sq);
-		}
+		if (rtAlphaTestPasses(instanceID, primID, bary, mipBias))
+			rayQueryConfirmIntersectionEXT(q);
 	}
 
-	return rayQueryGetIntersectionTypeEXT(sq, true) == gl_RayQueryCommittedIntersectionNoneEXT
-		 ? -1.0
-		 : rayQueryGetIntersectionTEXT(sq, true);
-}
-
-RTVisibility rtConeVisibility(
-	vec3 origin, vec3 L, float tanRadius,
-	vec2 pixel, int taps, float tMin, float tMax,
-	float mipBias, bool alphaTested)
-{
-	RTVisibility r;
-	r.visibility   = 1.0;
-	r.occluderDist = 0.0;
-
-	if (taps <= 0) return r;
-
-	uint  frameIndex = getSceneData().temporal.x;
-
-	float phi    = createPhase(pixel) + fract(float(frameIndex) * 0.7548776662);
-	float jitter = fract(temporalInterleavedGradientNoise(pixel + 37.0, 0, 1.0)
-					   + float(frameIndex) * 0.5698402909);
-
-	mat3 basis = buildTBN(L);
-
-	float vis     = 0.0;
-	float distSum = 0.0;
-	float hits    = 0.0;
-
-	for (int i = 0; i < taps; ++i)
-	{
-		vec3  dir = rtConeDirection(basis, rtVogelDisk(i, taps, phi, jitter), tanRadius);
-		float t   = alphaTested ? rtTraceShadowAlphaTested(origin, dir, tMin, tMax, mipBias)
-								: rtTraceShadow(origin, dir, tMin, tMax);
-
-		if (t < 0.0) vis += 1.0;
-		else       { distSum += t; hits += 1.0; }
-	}
-
-	r.visibility   = vis / float(taps);
-	r.occluderDist = hits > 0.0 ? distSum / hits : 0.0;
-	return r;
-}
-
-RTVisibility rtSunVisibility(
-	vec3 origin, vec3 L, float softness,
-	vec2 pixel, int taps, float tMin, float tMax,
-	float mipBias, bool alphaTested)
-{
-	return rtConeVisibility(origin, L, TAN_SUN_ANGULAR_RADIUS,
-		pixel, taps, tMin, tMax, mipBias, alphaTested);
+	return rayQueryGetIntersectionTypeEXT(q, true) == gl_RayQueryCommittedIntersectionNoneEXT
+		? NRD_FP16_MAX
+		: rayQueryGetIntersectionTEXT(q, true);
 }
 
 
-RTVisibility rtConeVisibilityRnd(
-	vec3 origin, vec3 L, float tanRadius,
-	vec2 rnd, int taps, float tMin, float tMax,
-	float mipBias, bool alphaTested)
+RTVisibility rtConeVisibilityBasis(
+	vec3 origin, mat3 basis, float tanRadius,
+	float phi, float jitter, int taps,
+	float tMin, float tMax, float mipBias)
 {
 	RTVisibility r;
 	r.visibility   = 1.0;
@@ -114,10 +77,6 @@ RTVisibility rtConeVisibilityRnd(
 
 	if (taps <= 0) return r;
 
-	mat3  basis  = buildTBN(L);
-	float phi    = rnd.x * TWO_PI;
-	float jitter = rnd.y;
-
 	float vis     = 0.0;
 	float distSum = 0.0;
 	float hits    = 0.0;
@@ -125,11 +84,10 @@ RTVisibility rtConeVisibilityRnd(
 	for (int i = 0; i < taps; ++i)
 	{
 		vec3  dir = rtConeDirection(basis, rtVogelDisk(i, taps, phi, jitter), tanRadius);
-		float t   = alphaTested ? rtTraceShadowAlphaTested(origin, dir, tMin, tMax, mipBias)
-								: rtTraceShadow(origin, dir, tMin, tMax);
+		float t   = rtShadowFirstHit(origin, dir, tMin, tMax, mipBias);
 
-		if (t < 0.0) vis += 1.0;
-		else       { distSum += t; hits += 1.0; }
+		if (t >= NRD_FP16_MAX) vis += 1.0;
+		else                 { distSum += t; hits += 1.0; }
 	}
 
 	r.visibility   = vis / float(taps);
@@ -137,5 +95,28 @@ RTVisibility rtConeVisibilityRnd(
 	r.hits         = hits;
 	return r;
 }
+
+RTVisibility rtConeVisibility(
+	vec3 origin, vec3 L, float tanRadius,
+	vec2 pixel, int taps, float tMin, float tMax, float mipBias)
+{
+	uint  frameIndex = getSceneData().temporal.x;
+
+	float phi    = createPhase(pixel) + fract(float(frameIndex) * 0.7548776662);
+	float jitter = fract(temporalInterleavedGradientNoise(pixel + 37.0, 0, 1.0)
+					   + float(frameIndex) * 0.5698402909);
+
+	return rtConeVisibilityBasis(origin, buildTBN(L), tanRadius,
+		phi, jitter, taps, tMin, tMax, mipBias);
+}
+
+RTVisibility rtConeVisibilityRnd(
+	vec3 origin, vec3 L, float tanRadius,
+	vec2 rnd, int taps, float tMin, float tMax, float mipBias)
+{
+	return rtConeVisibilityBasis(origin, buildTBN(L), tanRadius,
+		rnd.x * TWO_PI, rnd.y, taps, tMin, tMax, mipBias);
+}
+
 
 #endif

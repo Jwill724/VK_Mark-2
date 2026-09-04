@@ -3,8 +3,8 @@
 #include "Renderer.h"
 #include "backend/memory/Budgets.h"
 #include "backend/Device.h"
-#include "backend/PipelineManager.h"
-#include "backend/DescriptorManager.h"
+#include "backend/pipelines/PipelineManager.h"
+#include "backend/descriptors/DescriptorManager.h"
 #include "backend/PhysicalDeviceSelector.h"
 #include "backend/BufferBarriers.h"
 #include "rendergraph/RenderPasses.h"
@@ -66,7 +66,7 @@ void Renderer::Init(
 		ScreenSpaceShadowsOn,
 		VolumetricsOn,
 		rtReflectionsOn,
-		RD::AntiAliasingMethod::AA_TAA,
+		RD::AntiAliasingMethod::AA_TAA_CAS,
 		RD::GIMethod::VBGI,
 		RD::ShadowQuality::High,
 		RD::SunShadowFilter::RT_SOFT,
@@ -1105,7 +1105,7 @@ void Renderer::BatchUploadMaterials(
 std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuffer& outScratch)
 {
 	const auto& meshes = m_registeredMeshes.GetMeshes();
-	const auto& lods   = m_registeredMeshes.GetLods();
+	const auto& lods = m_registeredMeshes.GetLods();
 
 	const VkDeviceAddress vtxAddr = m_globalAddressTable
 		.GetGPUBuffer(RD::Renderer_Buffer::Vertex).m_address;
@@ -1114,8 +1114,15 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 
 	std::vector<bool> needsBLAS(meshes.size(), false);
 	for (size_t i = 0; i < meshes.size(); ++i)
-		if ((lods[i].flags & MESH_FLAG_IS_LOD_VARIANT) == 0u)
-			needsBLAS[i] = true;
+	{
+		if (lods[i].flags & MESH_FLAG_IS_LOD_VARIANT) continue;
+
+		const uint32_t rtMesh = RTMeshID(
+			static_cast<uint32_t>(i), lods[i].lod1, lods[i].flags);
+
+		ASSERT(rtMesh < meshes.size());
+		needsBLAS[rtMesh] = true;
+	}
 
 	std::vector<uint32_t> buildList;
 	for (size_t i = 0; i < meshes.size(); ++i)
@@ -1130,7 +1137,7 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 	std::vector<VkDeviceSize> sizes(buildList.size());
 
 	VkDeviceSize totalASBytes = 0;
-	VkDeviceSize maxScratch   = 0;
+	VkDeviceSize maxScratch = 0;
 
 	for (size_t i = 0; i < buildList.size(); ++i)
 	{
@@ -1139,26 +1146,26 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 		auto& g = geoms[i];
 		g = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
 		g.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
-		g.flags        = 0;
+		g.flags = 0;
 
 		auto& tri = g.geometry.triangles;
-		tri.sType        = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
-		tri.pNext        = nullptr;
+		tri.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+		tri.pNext = nullptr;
 		tri.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT;
 		tri.vertexData.deviceAddress = vtxAddr + static_cast<VkDeviceSize>(m.vertexOffset) * sizeof(Vertex);
 		tri.vertexStride = sizeof(Vertex);
-		tri.maxVertex    = m.vertexCount - 1;
-		tri.indexType    = VK_INDEX_TYPE_UINT32;
+		tri.maxVertex = m.vertexCount - 1;
+		tri.indexType = VK_INDEX_TYPE_UINT32;
 		tri.indexData.deviceAddress = idxAddr + static_cast<VkDeviceSize>(m.firstIndex) * sizeof(uint32_t);
 		tri.transformData.deviceAddress = 0;
 
 		auto& b = builds[i];
 		b = { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR };
-		b.type          = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-		b.flags         = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-		b.mode          = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+		b.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		b.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+		b.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
 		b.geometryCount = 1;
-		b.pGeometries   = &geoms[i];
+		b.pGeometries = &geoms[i];
 
 		const uint32_t primCount = m.indexCount / 3u;
 		ranges[i] = { primCount, 0, 0, 0 };
@@ -1170,9 +1177,9 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 			VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
 			&b, &primCount, &sizeInfo);
 
-		sizes[i]      = AllocatedBuffer::AlignUp(sizeInfo.accelerationStructureSize, MIN_SSBO_ALIGNMENT_BYTES);
+		sizes[i] = AllocatedBuffer::AlignUp(sizeInfo.accelerationStructureSize, MIN_SSBO_ALIGNMENT_BYTES);
 		totalASBytes += sizes[i];
-		maxScratch    = std::max(maxScratch, sizeInfo.buildScratchSize);
+		maxScratch = std::max(maxScratch, sizeInfo.buildScratchSize);
 	}
 
 	const VkDeviceSize scratchAlign = m_device->GetMinASScratchAlignment();
@@ -1197,15 +1204,15 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 			VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR };
 		ci.buffer = m_blasStorage.m_buffer;
 		ci.offset = offset;
-		ci.size   = sizes[i];
-		ci.type   = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+		ci.size = sizes[i];
+		ci.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
 		VK_CHECK(vkCreateAccelerationStructureKHR(
 			m_device->GetContext().device, &ci, nullptr, &m_blasHandles[i]));
 
 		offset += sizes[i];
 
-		builds[i].dstAccelerationStructure  = m_blasHandles[i];
+		builds[i].dstAccelerationStructure = m_blasHandles[i];
 		builds[i].scratchData.deviceAddress = scratchAddr;
 
 		ASSERT((scratchAddr % scratchAlign) == 0);
@@ -1223,10 +1230,11 @@ std::vector<uint64_t> Renderer::BuildMeshBLAS(VkCommandBuffer cmd, AllocatedBuff
 			m_device->GetContext().device, &addrInfo);
 	}
 
+	//fmt::println("[RT] BLAS built for {} of {} meshes", buildList.size(), meshes.size());
+
 	outScratch = scratch;
 	return blasAddresses;
 }
-
 
 
 // ===============================================
@@ -1324,19 +1332,28 @@ void Renderer::UpdateRendererContext(GLFWwindow* window)
 
 	// RT Shadow push
 	{
-		glm::vec3 sunDirWS = glm::normalize(sceneData.sunlightDirection);
-		glm::vec3 sunDirVS = glm::mat3(sceneData.view) * sunDirWS;
-		rtShadowPush.shadow.sunDirectionVS = sunDirVS;
+		const SunBasis sun = BuildSunBasis(sceneData.sunlightDirection);
+
+		rtShadowPush.shadow.sunDirectionWS = glm::vec4(sun.direction, rtShadowPush.shadow.rayTMin);
+		rtShadowPush.shadow.sunTangentWS = glm::vec4(sun.tangent, rtShadowPush.shadow.rayTMax);
+		rtShadowPush.shadow.sunBitangentWS = glm::vec4(sun.bitangent, 1.0);
+		rtShadowPush.shadow.sunDirectionVS = glm::vec4(glm::mat3(sceneData.view) * sun.direction, 0.0f);
+
 		rtShadowPush.resolution = nrdSPush.resSize;
 		rtShadowPush.invResolution = nrdSPush.resTexel;
+
+		rtShadowPush.rayCapacity  = m_rtRayListLayout.capacities[RD::RT_RAY_SLOT_SHADOW];
+		rtShadowPush.rayBase      = m_rtRayListLayout.bases[RD::RT_RAY_SLOT_SHADOW];
 	}
 
-	// reflection push
+	// RT reflection push
 	{
-		reflectPush.halfResSize = halfResSize;
+		reflectPush.halfResSize  = halfResSize;
 		reflectPush.halfResTexel = halfResTexel;
-		reflectPush.noiseIndex = noiseIndex;
-		reflectPush.rayCapacity = m_rtRayListLayout.capacities[RD::RT_RAY_SLOT_REFLECT];
+		reflectPush.noiseIndex   = noiseIndex;
+		reflectPush.shadow.sunDirectionWS = rtShadowPush.shadow.sunDirectionWS;
+		reflectPush.rayCapacity  = m_rtRayListLayout.capacities[RD::RT_RAY_SLOT_REFLECT];
+		reflectPush.rayBase      = m_rtRayListLayout.bases[RD::RT_RAY_SLOT_REFLECT];
 	}
 
 	if (m_activeEnvSet != debug.activeEnvMap)

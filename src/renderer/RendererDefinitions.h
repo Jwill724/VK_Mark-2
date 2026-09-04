@@ -70,9 +70,10 @@ namespace RendererDefinitions
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_CLUSTERS             = 12u;
 
 	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_REFLECT_RAYS         = 13u;
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    = 14u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_SHADOW_RAYS          = 14u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    = 15u;
 
-	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_COUNT                = 15u;
+	inline constexpr uint32_t INDIRECT_DISPATCH_SLOT_COUNT                = 16u;
 
 	// Byte offsets — multiply slot by stride
 	inline constexpr uint64_t DISPATCH_STREAM_OPAQUE_BYTES            = INDIRECT_DISPATCH_SLOT_STREAM_OPAQUE        * DISPATCH_SLOT_STRIDE_BYTES;
@@ -89,14 +90,16 @@ namespace RendererDefinitions
 	inline constexpr uint64_t DISPATCH_LIGHTS_OFFSET_BYTES            = INDIRECT_DISPATCH_SLOT_LIGHTS               * DISPATCH_SLOT_STRIDE_BYTES;
 	inline constexpr uint64_t DISPATCH_CLUSTERS_OFFSET_BYTES          = INDIRECT_DISPATCH_SLOT_CLUSTERS             * DISPATCH_SLOT_STRIDE_BYTES;
 	inline constexpr uint64_t DISPATCH_REFLECT_RAYS_OFFSET_BYTES      = INDIRECT_DISPATCH_SLOT_REFLECT_RAYS         * DISPATCH_SLOT_STRIDE_BYTES;
+	inline constexpr uint64_t DISPATCH_SHADOW_RAYS_OFFSET_BYTES       = INDIRECT_DISPATCH_SLOT_SHADOW_RAYS          * DISPATCH_SLOT_STRIDE_BYTES;
 	inline constexpr uint64_t DISPATCH_TRANSPARENCY_RAYS_OFFSET_BYTES = INDIRECT_DISPATCH_SLOT_TRANSPARENCY_RAYS    * DISPATCH_SLOT_STRIDE_BYTES;
 
 	// --------------
 	// RT Ray slots
 	// --------------
 	inline constexpr uint32_t RT_RAY_SLOT_REFLECT      = 0u;
-	inline constexpr uint32_t RT_RAY_SLOT_TRANSPARENCY = 1u;
-	inline constexpr uint32_t RT_RAY_SLOT_COUNT        = 2u;
+	inline constexpr uint32_t RT_RAY_SLOT_SHADOW       = 1u;
+	inline constexpr uint32_t RT_RAY_SLOT_TRANSPARENCY = 2u;
+	inline constexpr uint32_t RT_RAY_SLOT_COUNT        = 3u;
 
 	// -------------------------
 	// Visibility Stream Slots
@@ -199,15 +202,15 @@ namespace RendererDefinitions
 	//inline constexpr uint32_t MAX_LIGHTS                    = 16384u;
 	inline constexpr uint32_t MAX_LIGHTS                    = 2048u;
 	//inline constexpr uint32_t MAX_VISIBLE_LIGHTS            = 2048u;
-	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 128u;
+	inline constexpr uint32_t MAX_PUSH_CONSTANT_SIZE        = 256u;
 	inline constexpr uint32_t MAX_INSTANCES_PER_STREAM      = 262144u;
 	inline constexpr uint32_t MAX_DRAW_BINS                 = 65536u;
 	inline constexpr uint32_t BIN_TABLE_SIZE                = MAX_DRAW_BINS * 2;
 	inline constexpr uint32_t INVALID_U32                   = 0xFFFFFFFFu;
 	inline constexpr uint32_t MAX_GRAPHICS_PRIMARIES        = 3u;
 	inline constexpr uint32_t MAX_MESHLET_VISIBILITY_BITS   = 33554432u;
-	inline constexpr uint32_t TAA_SAMPLE_COUNT              = 16u;
-	
+	inline constexpr uint32_t TAA_SAMPLE_COUNT              = 11u;
+
 	inline constexpr uint32_t TRANSFORM_DYNAMIC_BIT = 1u << 31;
 	inline constexpr uint32_t TRANSFORM_INDEX_MASK  = ~TRANSFORM_DYNAMIC_BIT;
 	inline constexpr uint32_t MAX_STATIC_TRANSFORMS = MAX_FRAME_INSTANCES_TOTAL;
@@ -280,6 +283,11 @@ namespace RendererDefinitions
 	inline constexpr uint32_t SPECULAR_EXTENT                 = 256;
 	inline constexpr uint32_t BRDF_EXTENT                     = 128;
 
+	inline constexpr uint32_t MAX_SHADOW_INVALID_VOLUMES = 64u;
+	inline constexpr size_t SHADOW_INVALID_VOLUME_HEADER_BYTES = 16u;
+	inline constexpr size_t SHADOW_INVALID_VOLUME_BYTES =
+		SHADOW_INVALID_VOLUME_HEADER_BYTES + MAX_SHADOW_INVALID_VOLUMES * 24u;
+
 	// Image array sizes
 	inline constexpr uint32_t MAX_SAMPLER_CUBE_IMAGES      = 100u;
 	inline constexpr uint32_t MAX_COMBINED_SAMPLERS_IMAGES = 10000u;
@@ -296,13 +304,12 @@ namespace RendererDefinitions
 	inline constexpr uint32_t VOL_SHADOW_MAP_X = 2048u;
 	inline constexpr uint32_t VOL_SHADOW_MAP_Y = 2048u;
 
-	enum class SunShadowFilter
+	enum class SunShadowFilter : uint32_t
 	{
 		PCF,
 		PCSS,
 		RT_SOFT,
 	};
-
 	enum class ShadowQuality
 	{
 		Low,
@@ -356,6 +363,7 @@ namespace RendererDefinitions
 		LensFlare,
 		FinalComposite,
 		ChromaticAberration,
+		CAS,
 
 		Count
 	};
@@ -420,6 +428,10 @@ namespace RendererDefinitions
 		Shadow_m,
 		ShadowMasked_m,
 		ShadowMasked_f,
+
+		RTShadowVolumeBuild_c,
+		RTShadowInvalidMask_c,
+		RTShadowClassify_c,
 		RTShadowTrace_c,
 		HiZGen_c,
 
@@ -452,7 +464,10 @@ namespace RendererDefinitions
 		ClusterScanOffsets_c,
 		ClusterScatterIDs_c,
 
+		ShadingSignalReduce_c,
 		TAA_c,
+
+		CAS_c,
 
 		ScreenSpaceContactShadows_c,
 
@@ -489,6 +504,10 @@ namespace RendererDefinitions
 		ShadowMeshMaskedD16,
 
 		ShadowBounds,
+
+		RTShadowVolumeBuild,
+		RTShadowInvalidMask,
+		RTShadowClassify,
 		RTShadowTrace,
 		InstanceCull,
 		DrawArgs,
@@ -548,7 +567,10 @@ namespace RendererDefinitions
 		ClusterScanOffsets,
 		ClusterScatterIDs,
 
+		ShadingSignalReduce,
 		TAA,
+
+		CAS,
 
 		ScreenSpaceContactShadows,
 
@@ -602,6 +624,7 @@ namespace RendererDefinitions
 		FroxelScatterExtB,
 		FroxelIntegrated,
 
+		ShadowInvalidMask,
 		RTShadowPenumbra,
 		RTShadowDenoised,
 		NRDShadowNormalRoughness,
@@ -638,10 +661,18 @@ namespace RendererDefinitions
 		// Used as chromatic aberration output
 		PostNonAAComposite,
 
+		// CAS
+		SharpenedColor,
+
 		//AAColor,
 		//CMAA2WorkingEdges,
 		//SMAAEdges,
 		//SMAAWeights,
+
+		ShadingSignalHalf,
+
+		ShadingLowA, // 1/8 render extent
+		ShadingLowB,
 
 		SSContactShadows,
 		DirectionalCSMAtlas,
@@ -693,7 +724,7 @@ namespace RendererDefinitions
 	};
 
 	inline constexpr size_t SAMPLER_COUNT = static_cast<size_t>(Renderer_Sampler::Count);
-	
+
 	// ssbo buffers inside the bindless address table
 	enum class Renderer_Buffer
 	{
@@ -753,6 +784,8 @@ namespace RendererDefinitions
 		//Cmaa2DeferredItems,
 		//Cmaa2DeferredHeads,
 
+		ShadowInvalidVolumes,
+
 		Count
 	};
 
@@ -784,7 +817,8 @@ namespace RendererDefinitions
 		//AA_CMAA2,   // Conservative Morphological Anti-Aliasing 2
 		//AA_SMAA,    // Sub-Pixel Morphological Anti-Aliasing
 		//AA_FXAA,    // Fast Approximate Anti-Aliasing
-		AA_TAA      // Temporal Anti-Aliasing
+		AA_TAA,       // Temporal Anti-Aliasing
+		AA_TAA_CAS,   // Contrast Adaptive Sharpening
 	};
 
 	//enum class ToneMapper
@@ -1020,9 +1054,14 @@ namespace RendererDefinitions
 		}
 
 		bool IsShadowsOn() const noexcept { return m_renderToggles.enableShadows; }
+
 		bool IsFlashlightOn() const noexcept { return m_renderToggles.enableFlashlight; }
-		bool RTShadowsEnabled() const noexcept { return
-			m_renderToggles.sunShadowFilter == static_cast<uint32_t>(SunShadowFilter::RT_SOFT) && IsShadowsOn(); }
+
+		bool RTShadowsEnabled() const noexcept
+		{
+			return m_renderToggles.sunShadowFilter == static_cast<uint32_t>(SunShadowFilter::RT_SOFT) && IsShadowsOn();
+		}
+
 		bool IsScreenSpaceShadowsOn() const noexcept { return m_renderToggles.enableSSS; }
 		bool IsVolumetricsOn() const noexcept { return m_renderToggles.enableVolumetrics; }
 
@@ -1031,7 +1070,18 @@ namespace RendererDefinitions
 
 		bool IsTaaOn() const noexcept
 		{
-			return m_renderToggles.aaMode == static_cast<uint32_t>(AntiAliasingMethod::AA_TAA);
+			return m_renderToggles.aaMode == static_cast<uint32_t>(AntiAliasingMethod::AA_TAA)
+				|| m_renderToggles.aaMode == static_cast<uint32_t>(AntiAliasingMethod::AA_TAA_CAS);
+		}
+
+		bool IsSharpeningOn() const noexcept
+		{
+			return m_renderToggles.aaMode == static_cast<uint32_t>(AntiAliasingMethod::AA_TAA_CAS);
+		}
+
+		bool IsChromaticAberrationOn() const noexcept
+		{
+			return m_renderToggles.enableChromaticAberration;
 		}
 
 		void ResetRenderToggles() { m_renderToggles = {}; }
@@ -1046,6 +1096,7 @@ namespace RendererDefinitions
 
 		void SetTemporalIndex(uint64_t index) { m_temporalIndex = index; }
 		uint64_t GetTemporalIndex() const noexcept { return m_temporalIndex; }
+
 
 	private:
 		bool m_bTemporalValid        = false;

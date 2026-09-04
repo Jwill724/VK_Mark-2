@@ -5,7 +5,7 @@
 #include "../../scopes/ComputeScope.h"
 #include "../../../backend/BufferBarriers.h"
 #include "../../../backend/ImageUtils.h"
-#include "../../../backend/NRDContext.h"
+#include "../../../backend/nrd/NRDContext.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"

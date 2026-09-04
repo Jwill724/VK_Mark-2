@@ -1,8 +1,8 @@
 #pragma once
 
-#include "VulkanTypes.h"
-#include "memory/AllocatedImage.h"
-#include "memory/AllocatedBuffer.h"
+#include "../VulkanTypes.h"
+#include "../memory/AllocatedImage.h"
+#include "../memory/AllocatedBuffer.h"
 
 #include <vector>
 

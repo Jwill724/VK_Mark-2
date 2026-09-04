@@ -34,7 +34,7 @@ void RegisterVolumetricLightPass(
 					{
 						return
 							ctx.frameState->IsVolumetricsOn() &&
-							ctx.scene->GetVolumetricShadowInfo().params.y != 0.0f &&
+							//ctx.scene->GetVolumetricShadowInfo().params.y != 0.0f &&
 							ctx.frameState->InstancesActive() &&
 							!ctx.frameState->DebugRendering();
 					})

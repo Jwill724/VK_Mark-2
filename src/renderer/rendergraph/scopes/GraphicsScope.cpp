@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "GraphicsScope.h"
-#include "../../backend/DescriptorWriter.h"
+#include "../../backend/descriptors/DescriptorWriter.h"
 #include "EngineTypes.h"
 
 static void DefineViewportAndScissor(VkCommandBuffer cmd, VkExtent2D drawExtent) noexcept

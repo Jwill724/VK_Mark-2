@@ -513,12 +513,36 @@ namespace
 		Profiler& profiler = *ui.profiler;
 
 		auto& taaSettings = profiler.taaSettings;
+		auto& casSettings = profiler.casSettings;
 
-		ImGui::SliderFloat("Clamp Gamma", &taaSettings.clampGamma, 0.0f, 5.0f);
-		ImGui::SliderFloat("Depth Reject Scale", &taaSettings.depthRejectScale, 0.0f, 5.0f);
-		ImGui::SliderFloat("Motion Speed Scale", &taaSettings.motionSpeedScale, 0.001f, 0.02f, "%.3f");
-		ImGui::SliderFloat("Sigma Floor", &taaSettings.sigmaFloor, 0.001f, 0.02f, "%.3f");
+		static constexpr const char* kAAModeLabels[] = { "Off", "TAA", "TAA + CAS" };
+
+		int aaMode = static_cast<int>(dbg.aaMode);
+		if (ImGui::Combo("Mode", &aaMode, kAAModeLabels, IM_ARRAYSIZE(kAAModeLabels)))
+			dbg.aaMode = static_cast<uint32_t>(aaMode);
+
+		const bool temporalOn = dbg.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF);
+		const bool sharpenOn = dbg.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA_CAS);
+
+		ImGui::BeginDisabled(!temporalOn);
+		ImGui::SeparatorText("Temporal");
+
+		ImGui::SliderFloat("Clamp Gamma", &taaSettings.clampGamma, 0.0f, 10.0f);
+		ImGui::SliderFloat("Depth Reject Scale", &taaSettings.depthRejectScale, 0.0f, 10.0f);
+		ImGui::SliderFloat("Motion Speed Scale", &taaSettings.motionSpeedScale, 0.0001f, 0.02f, "%.4f");
+		ImGui::SliderFloat("Sigma Floor", &taaSettings.sigmaFloor, 0.001f, 0.03f, "%.3f");
 		ImGui::SliderFloat("Shading Response", &taaSettings.shadingResponse, 1.0f, 4.0f, "%.2f");
+		ImGui::SliderFloat("Shading Reject Scale", &taaSettings.shadingRejectScale, 1.0f, 25.0f);
+
+		ImGui::EndDisabled();
+
+		ImGui::BeginDisabled(!sharpenOn);
+		ImGui::SeparatorText("Sharpening");
+
+		ImGui::SliderFloat("Sharpness", &casSettings.sharpness, 0.0f, 1.0f, "%.2f");
+		ImGui::SliderFloat("Denoise", &casSettings.denoise, 0.0f, 1.0f, "%.2f");
+
+		ImGui::EndDisabled();
 	}
 
 	static void groupTransparency(UIContext& ui)
@@ -637,15 +661,6 @@ namespace
 		ImGui::SliderFloat(label("Slope Bias"), &p.rayBias, 0.0f, 1e-3f, "%.5f",
 			ImGuiSliderFlags_Logarithmic);
 		ImGui::SetItemTooltip("Scaled by distance from camera. Total = normal + slope * dist.");
-
-		//ImGui::SliderFloat(label("Shadow Mip Bias"), &p.mipBias, 0.0f, 6.0f);
-
-		//int taps = static_cast<int>(p.taps);
-		//if (ImGui::SliderInt(label("Shadow Taps"), &taps, 1, 4)) {
-		//	p.taps = static_cast<uint32_t>(taps);
-		//}
-
-		//UIWidgets::toggleU32(label("Alpha Tested Casters"), &p.alphaTested);
 	}
 
 	static void groupShadows(UIContext& ui)
@@ -665,9 +680,9 @@ namespace
 		auto& shadowControl = World::GetScene().GetShadowControls();
 
 		ImGui::Spacing();
-		UI::separatorText("Sun Shadow Filter");
+		UI::separatorText("Sun Shadow Mode");
 
-		const char* sunFilterModes[] = { "PCF", "PCSS", "RT_Soft" };
+		const char* sunFilterModes[] = { "PCF", "PCSS", "Ray-Traced" };
 		int sunFilter = static_cast<int>(dbg.sunShadowFilter);
 
 		if (ImGui::Combo("Filter Mode##rt", &sunFilter, sunFilterModes, IM_ARRAYSIZE(sunFilterModes))) {
@@ -675,7 +690,7 @@ namespace
 		}
 
 		const bool bRTSoft =
-			dbg.sunShadowFilter == static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT);
+			dbg.sunShadowFilter >= static_cast<uint32_t>(RD::SunShadowFilter::RT_SOFT);
 
 		if (!bRTSoft)
 		{
@@ -865,6 +880,8 @@ namespace
 			rs.maxReflectLights = static_cast<uint32_t>(maxReflectLightsInt);
 		}
 
+		ImGui::SliderFloat("Shadow Skip Threshold##rtr", &rs.shadowSkipThreshold, 0.001f, 0.01f, "%.3f");
+
 		//ImGui::SeparatorText("Shadow Rays");
 		//rtShadowParamsUI(rs.shadow, "rtr", 500.0f);
 
@@ -890,9 +907,11 @@ namespace
 		ImGui::SliderFloat("Asymmetry Factor##vol", &volSettings.asymmetryFactor, 0.0f, 0.95f, "%.2f");
 		ImGui::SliderFloat("Height Falloff##vol", &volSettings.heightFalloff, 0.0f, 0.1f, "%.2f");
 
+		ImGui::SliderInt("Beam Power##vol", &volSettings.beamPower, 2, 8);
+
 		UI::separatorText("Ray March");
 
-		ImGui::SliderFloat("Max Distance##vol", &volSettings.maxDistance, 10.0f, 300.0f);
+		ImGui::SliderFloat("Max Distance##vol", &volSettings.maxDistance, 5.0f, 100.0f);
 		ImGui::SliderFloat("Jitter Strength##vol", &volSettings.jitterStrength, 0.0f, 1.0f);
 
 		UI::separatorText("Temporal");

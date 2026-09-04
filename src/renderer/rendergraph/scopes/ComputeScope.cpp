@@ -1,7 +1,7 @@
 #include "pch.h"
 
 #include "ComputeScope.h"
-#include "../../backend/DescriptorWriter.h"
+#include "../../backend/descriptors/DescriptorWriter.h"
 #include "../../backend/memory/AllocatedBuffer.h"
 
 void ComputeScope::DispatchComputePass(

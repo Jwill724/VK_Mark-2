@@ -139,9 +139,8 @@ namespace nrd
         // Denoised signal (R8+)
         OUT_SIGNAL,
 
-        // (Optional) REBLUR / RELAX debug layer (RGBA8+), .w = transparency
-        // - required and accessed only if "CommonSettings::enableValidation = true"
-        // - "mini" visualizations accumulate in place, therefore contents must be preserved between frames to be useful
+        // (Optional) Debug output (RGBA8+), .w = transparency
+        // Used if "CommonSettings::enableValidation = true"
         OUT_VALIDATION,
 
         //=============================================================================================================================

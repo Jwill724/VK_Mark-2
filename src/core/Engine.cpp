@@ -9,8 +9,8 @@
 #include "renderer/Renderer.h"
 #include "asset/importers/BCNCompression.h"
 #include "renderer/backend/Device.h"
-#include "renderer/backend/PipelineManager.h"
-#include "renderer/backend/DescriptorManager.h"
+#include "renderer/backend/pipelines/PipelineManager.h"
+#include "renderer/backend/descriptors/DescriptorManager.h"
 
 namespace Engine
 {

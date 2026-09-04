@@ -39,7 +39,7 @@ struct Meshlet
 	int8_t    coneCutoff = UINT8_MAX;
 
 	uint32_t  vertexOffset = UINT32_MAX;
-	uint32_t  triangleOffset = UINT32_MAX; 
+	uint32_t  triangleOffset = UINT32_MAX;
 
 	uint8_t   vertexCount = UINT8_MAX;
 	uint8_t   triangleCount = UINT8_MAX;
@@ -60,6 +60,13 @@ struct MeshLODs
 
 	uint32_t flags = 0;
 };
+
+inline uint32_t RTMeshID(uint32_t baseMeshID, uint32_t lod1, uint32_t flags)
+{
+	if ((flags & MESH_FLAG_IS_LOD) == 0u) return baseMeshID;
+	if (flags & MESH_LOD_FLAG_FORCE_SHADOW_LOD0) return baseMeshID;
+	return (lod1 == UINT32_MAX) ? baseMeshID : lod1;
+}
 
 class MeshRegistry
 {

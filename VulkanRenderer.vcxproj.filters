@@ -17,6 +17,9 @@
     <Filter Include="src\renderer" />
     <Filter Include="src\renderer\backend" />
     <Filter Include="src\renderer\backend\memory" />
+    <Filter Include="src\renderer\backend\nrd" />
+    <Filter Include="src\renderer\backend\descriptors" />
+    <Filter Include="src\renderer\backend\pipelines" />
     <Filter Include="src\renderer\frame" />
     <Filter Include="src\renderer\scene" />
     <Filter Include="src\renderer\rendergraph" />
@@ -209,20 +212,20 @@
     <ClCompile Include="src\renderer\backend\Sync.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\Shader.cpp">
-      <Filter>src\renderer\backend</Filter>
+    <ClCompile Include="src\renderer\backend\pipelines\Shader.cpp">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp">
-      <Filter>src\renderer\backend</Filter>
+    <ClCompile Include="src\renderer\backend\descriptors\DescriptorManager.cpp">
+      <Filter>src\renderer\backend\descriptors</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp">
-      <Filter>src\renderer\backend</Filter>
+    <ClCompile Include="src\renderer\backend\descriptors\DescriptorWriter.cpp">
+      <Filter>src\renderer\backend\descriptors</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\PipelineManager.cpp">
-      <Filter>src\renderer\backend</Filter>
+    <ClCompile Include="src\renderer\backend\pipelines\PipelineManager.cpp">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClCompile>
     <ClCompile Include="src\renderer\backend\ImageUtils.cpp">
       <Filter>src\renderer\backend</Filter>
@@ -230,8 +233,8 @@
     <ClCompile Include="src\renderer\backend\BufferBarriers.cpp">
       <Filter>src\renderer\backend</Filter>
     </ClCompile>
-    <ClCompile Include="src\renderer\backend\NRDContext.cpp">
-      <Filter>src\renderer\backend</Filter>
+    <ClCompile Include="src\renderer\backend\nrd\NRDContext.cpp">
+      <Filter>src\renderer\backend\nrd</Filter>
     </ClCompile>
     <!-- renderer / backend / memory -->
     <ClCompile Include="src\renderer\backend\memory\Staging.cpp">
@@ -412,6 +415,9 @@
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\VolumetricShadowMap.cpp">
       <Filter>src\renderer\rendergraph\passes\graphics</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ContrastAdaptiveSharpeningPass.cpp">
+      <Filter>src\renderer\rendergraph\passes\compute</Filter>
+    </ClCompile>
   </ItemGroup>
   <!-- ===================== Headers ===================== -->
   <ItemGroup>
@@ -539,8 +545,8 @@
     <ClInclude Include="src\renderer\backend\Queue.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\Shader.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\pipelines\Shader.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h">
       <Filter>src\renderer\backend</Filter>
@@ -548,23 +554,23 @@
     <ClInclude Include="src\renderer\backend\Debugging.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\DescriptorManager.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\descriptors\DescriptorManager.h">
+      <Filter>src\renderer\backend\descriptors</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\DescriptorWriter.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\descriptors\DescriptorWriter.h">
+      <Filter>src\renderer\backend\descriptors</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\PipelineManager.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineManager.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\PipelineBundles.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineBundles.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\PipelineBuilder.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineBuilder.h">
+      <Filter>src\renderer\backend\pipelines</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\backend\VulkanForward.h">
       <Filter>src\renderer\backend</Filter>
@@ -578,8 +584,8 @@
     <ClInclude Include="src\renderer\backend\BufferBarriers.h">
       <Filter>src\renderer\backend</Filter>
     </ClInclude>
-    <ClInclude Include="src\renderer\backend\NRDContext.h">
-      <Filter>src\renderer\backend</Filter>
+    <ClInclude Include="src\renderer\backend\nrd\NRDContext.h">
+      <Filter>src\renderer\backend\nrd</Filter>
     </ClInclude>
     <!-- renderer / backend / memory -->
     <ClInclude Include="src\renderer\backend\memory\ResourceAllocator.h">
@@ -975,11 +981,26 @@
     <None Include="res\shaders\shadows\rtshadow_trace.comp">
       <Filter>res\shaders\shadows</Filter>
     </None>
+    <None Include="res\shaders\shadows\rtshadow_classify.comp">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
     <None Include="res\shaders\core\transparent_cull.task">
       <Filter>res\shaders\core</Filter>
     </None>
     <None Include="res\shaders\core\transparent_draw.mesh">
       <Filter>res\shaders\core</Filter>
+    </None>
+    <None Include="res\shaders\post_process\shading_signal_reduce.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\post_process\cas.comp">
+      <Filter>res\shaders\post_process</Filter>
+    </None>
+    <None Include="res\shaders\shadows\rtshadow_volume_build.comp">
+      <Filter>res\shaders\shadows</Filter>
+    </None>
+    <None Include="res\shaders\shadows\rtshadow_invalid_mask.comp">
+      <Filter>res\shaders\shadows</Filter>
     </None>
   </ItemGroup>
 </Project>

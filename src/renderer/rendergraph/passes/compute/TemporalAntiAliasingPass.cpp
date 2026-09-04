@@ -14,7 +14,8 @@
 namespace I = ImageUtils;
 namespace B = BufferBarriers;
 
-static constexpr size_t PIPE_ID_MAIN  = 0;
+static constexpr size_t PIPE_ID_SHADING_REDUCE = 0;
+static constexpr size_t PIPE_ID_TAA            = 1;
 
 void RegisterTAAPass(
 	RenderGraph& graph,
@@ -46,26 +47,33 @@ void RegisterTAAPass(
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::Velocity,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::HDRScene,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::ShadingSignalHalf,
+					RD::ImageAccess::ComputeRead)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentAccumulation,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentRevealage,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.ReadResource(
 					RD::Renderer_RenderTarget::TransparentVelocityAccum,
-					RD::ImageAccess::Read)
+					RD::ImageAccess::ComputeRead)
 
 				.HistoryResource(COLOR_RESOLVED_A, COLOR_RESOLVED_B,
-					RD::ImageAccess::Read, RD::ImageAccess::Read, true, true)
+					RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeRead, true, true)
+
+				.HistoryResource(SHADING_LOW_RESOLVED_A, SHADING_LOW_RESOLVED_B,
+					RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeRead, true, true)
 
 				.SetRecord(
 					[&graph](RenderPassExecutionContext& ctx, RenderPassDesc& pass)
@@ -75,14 +83,19 @@ void RegisterTAAPass(
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
 
-						const auto slots = TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex());
-						const auto& history = ctx.imageTable->GetRenderTarget(slots.read);
-						const auto& current = ctx.imageTable->GetRenderTarget(slots.write);
+						const auto colorSlots = TemporalHistory::GetColorHistorySlots(ctx.frameState->GetTemporalIndex());
+						const auto& colorHistory = ctx.imageTable->GetRenderTarget(colorSlots.read);
+						const auto& colorCurrent = ctx.imageTable->GetRenderTarget(colorSlots.write);
+
+						const auto shadingLowSlots = TemporalHistory::GetShadingLowSlots(ctx.frameState->GetTemporalIndex());
+						const auto& shadingLowHistory = ctx.imageTable->GetRenderTarget(shadingLowSlots.read);
+						const auto& shadingLowCurrent = ctx.imageTable->GetRenderTarget(shadingLowSlots.write);
 
 						const auto& depthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
 						const auto& prevDepthResolved = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved);
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
 						const auto& hdrScene = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene);
+						const auto& shadingSignalHalf = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ShadingSignalHalf);
 						const auto& transparentRevealage = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentRevealage);
 						const auto& transparentAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation);
 						const auto& transparentVelocityAccum = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum);
@@ -92,9 +105,42 @@ void RegisterTAAPass(
 						const auto& luminanceBuf = ctx.bufferTable->GetGPUBuffer(RD::Renderer_Buffer::Luminance);
 
 						const auto& drawExtent = graph.GetRenderExtent();
-						pass.scope = ComputeScope{{ drawExtent }};
+
+						// ======================
+						// Shading signal reduce
+						// ======================
+
+						const Extents2D eighthExtent = {
+							(drawExtent.Width() + 7u) / 8u,
+							(drawExtent.Height() + 7u) / 8u };
+
+						pass.scope = ComputeScope{ { eighthExtent }, WORKGROUP_8x8 };
+
 						auto& pso = std::get<ComputeScope>(pass.scope);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_1,
+							shadingSignalHalf,
+							nearestClampSampler);
+
+						pso.BindWriteImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_WRITE_1,
+							shadingLowCurrent);
+
+						I::TransitionLayout(cmd, shadingLowCurrent, RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_SHADING_REDUCE], pass.pushWriter);
+						I::TransitionLayout(cmd, shadingLowCurrent, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+
+						// =========
+						// TAA main
+						// =========
+
 						pso.SetPush(ctx.profiler->taaSettings);
+
+						pso.UpdateExtent(drawExtent);
+						pso.UpdateWorkgroups(WORKGROUP_16x16);
 
 						pso.BindReadImage(
 							pass.pushWriter,
@@ -105,7 +151,7 @@ void RegisterTAAPass(
 						pso.BindReadImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_READ_2,
-							history,
+							colorHistory,
 							taaHistorySampler);
 
 						pso.BindReadImage(
@@ -147,14 +193,26 @@ void RegisterTAAPass(
 							transparentVelocityAccum,
 							nearestClampSampler);
 
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_9,
+							shadingLowCurrent,
+							taaHistorySampler);
+
+						pso.BindReadImage(
+							pass.pushWriter,
+							RD::PUSH_BINDING_READ_10,
+							shadingLowHistory,
+							taaHistorySampler);
+
 						pso.BindWriteImage(
 							pass.pushWriter,
 							RD::PUSH_BINDING_WRITE_1,
-							current);
+							colorCurrent);
 
-						I::TransitionLayout(cmd, current, RD::ImageAccess::Read, RD::ImageAccess::Write);
-						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_MAIN], pass.pushWriter);
-						I::TransitionLayout(cmd, current, RD::ImageAccess::Write, RD::ImageAccess::Read);
+						I::TransitionLayout(cmd, colorCurrent, RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_TAA], pass.pushWriter);
+						I::TransitionLayout(cmd, colorCurrent, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
 						B::ComputeReadToWrite(cmd, luminanceBuf);
 					});
 				});

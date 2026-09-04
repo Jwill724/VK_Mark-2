@@ -82,7 +82,7 @@ void RegisterSkyboxPass(
 
 						glm::mat4 proj{};
 						if (ctx.frameState->InstancesActive() &&
-							ctx.profiler->debugToggles.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA))
+							ctx.frameState->IsTaaOn())
 						{
 							proj = sceneData.proj;
 						}

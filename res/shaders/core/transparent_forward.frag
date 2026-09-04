@@ -97,10 +97,8 @@ void main()
 	{
 		if (debug.sunShadowFilter == SUN_SHADOW_FILTER_RT_SOFT)
 		{
-			ivec2 shadowPixel = ivec2(gl_FragCoord.xy);
-
 			sunShadow = SIGMA_BackEnd_UnpackShadow(
-				texelFetch(rtShadowDenoised, shadowPixel, 0).r);
+				texelFetch(rtShadowDenoised, ivec2(fragCoord), 0).r);
 		}
 		else if (!DBG(csmAtlasCached))
 		{

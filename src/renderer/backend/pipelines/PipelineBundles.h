@@ -1,7 +1,7 @@
 #pragma once
 
 #include <array>
-#include "../RendererDefinitions.h"
+#include "../../RendererDefinitions.h"
 
 namespace RD = RendererDefinitions;
 
@@ -15,7 +15,11 @@ enum class DirectionalCSMPipelineSlot : uint8_t
 enum class RTSunShadowPipelineSlot : uint8_t
 {
 	NRDShadowPrepare,
-	RTSunShadow,
+	VolumeBuild,
+	InvalidMask,
+	Classify,
+	ShadowIndirectArgs,
+	ShadowMain,
 
 	Count
 };
@@ -135,6 +139,13 @@ enum class ChromaticAberrationPipelineSlot : uint8_t
 	Count
 };
 
+enum class CASPipelineSlot : uint8_t
+{
+	Main,
+
+	Count
+};
+
 enum class LensFlarePipelineSlot : uint8_t
 {
 	FlareBright,
@@ -166,7 +177,8 @@ enum class ClusteredLightsPipelineSlot : uint8_t
 
 enum class TAAPipelineSlot : uint8_t
 {
-	Main,
+	ShadingSignalReduce,
+	TAA,
 
 	Count
 };
@@ -489,10 +501,19 @@ struct PipelineBundleTraits<TAAPipelineSlot>
 {
 	static constexpr std::array mappings =
 	{
-		RD::Renderer_Pipeline::TAA
+		RD::Renderer_Pipeline::ShadingSignalReduce,
+		RD::Renderer_Pipeline::TAA,
 	};
 };
 
+template<>
+struct PipelineBundleTraits<CASPipelineSlot>
+{
+	static constexpr std::array mappings =
+	{
+		RD::Renderer_Pipeline::CAS,
+	};
+};
 
 template<>
 struct PipelineBundleTraits<SkyboxPipelineSlot>
@@ -608,6 +629,10 @@ struct PipelineBundleTraits<RTSunShadowPipelineSlot>
 	static constexpr std::array mappings =
 	{
 		RD::Renderer_Pipeline::NRDPrepare,
+		RD::Renderer_Pipeline::RTShadowVolumeBuild,
+		RD::Renderer_Pipeline::RTShadowInvalidMask,
+		RD::Renderer_Pipeline::RTShadowClassify,
+		RD::Renderer_Pipeline::RTRayArgs,
 		RD::Renderer_Pipeline::RTShadowTrace,
 	};
 };

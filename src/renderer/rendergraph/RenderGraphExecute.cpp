@@ -2,8 +2,8 @@
 
 #include "RenderGraph.h"
 #include "RenderPasses.h"
-#include "../backend/PipelineBundles.h"
-#include "../backend/PipelineManager.h"
+#include "../backend/pipelines/PipelineBundles.h"
+#include "../backend/pipelines/PipelineManager.h"
 #include "RenderGraphSchedule.h"
 #include "RenderGraphResources.h"
 #include "../frame/FrameContext.h"
@@ -98,6 +98,8 @@ void RenderGraph::Build(
 	RegisterGBufferDebugPass(*this,        pipeManager.GetBundle<GBufferDebugPipelineSlot>());
 
 	RegisterChromaticAberrationPass(*this, pipeManager.GetBundle<ChromaticAberrationPipelineSlot>());
+
+	RegisterCASPass(*this,                 pipeManager.GetBundle<CASPipelineSlot>());
 
 	// --- Final ---
 	RegisterSwapchainPresentPass(*this,    {});

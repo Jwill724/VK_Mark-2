@@ -78,6 +78,11 @@ void RegisterOpaqueLightingPass(
 					RD::ImageAccess::ComputeWrite,
 					RD::ImageAccess::ComputeWrite)
 
+				.WriteResource(
+					RD::Renderer_RenderTarget::ShadingSignalHalf,
+					RD::ImageAccess::ComputeWrite,
+					RD::ImageAccess::ComputeRead)
+
 				.HistoryResource(RADIANCE_RESOLVED_A, RADIANCE_RESOLVED_B,
 					RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeRead, true, true)
 
@@ -112,6 +117,7 @@ void RegisterOpaqueLightingPass(
 						const auto& contactShadows = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SSContactShadows);
 						const auto& rtReflectDenoised = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTReflectDenoised);
 						const auto& rtShadowDenoised = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTShadowDenoised);
+						const auto& shadingSignalHalf = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ShadingSignalHalf);
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto nearestClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
 
@@ -129,6 +135,7 @@ void RegisterOpaqueLightingPass(
 
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, hdrScene);
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_2, diffuseRadiance);
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_3, shadingSignalHalf);
 
 						I::TransitionLayout(cmd, diffuseRadiance,
 							RD::ImageAccess::ComputeRead, RD::ImageAccess::ComputeWrite);

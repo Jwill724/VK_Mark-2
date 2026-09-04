@@ -84,8 +84,7 @@ void RegisterLensFlarePass(
 						const auto linearClampSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
 						const auto hiZSampler = ctx.imageTable->GetSampler(RD::Renderer_Sampler::HiZ);
 
-						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
+						bool taaEnabled = (ctx.frameState->IsTaaOn() && ctx.frameState->IsTemporalValid());
 
 						const auto& hdrScene = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene)

@@ -21,6 +21,9 @@
 #define FROXEL_SCATTER_RESOLVED_A RD::Renderer_RenderTarget::FroxelScatterExtA
 #define FROXEL_SCATTER_RESOLVED_B RD::Renderer_RenderTarget::FroxelScatterExtB
 
+#define SHADING_LOW_RESOLVED_A RD::Renderer_RenderTarget::ShadingLowA
+#define SHADING_LOW_RESOLVED_B RD::Renderer_RenderTarget::ShadingLowB
+
 class Allocator;
 class StagingBuffer;
 struct Extents3D;
@@ -266,5 +269,15 @@ namespace TemporalHistory
 					 RD::Renderer_RenderTarget::FroxelScatterExtA }
 			: Slots{ RD::Renderer_RenderTarget::FroxelScatterExtA,
 					 RD::Renderer_RenderTarget::FroxelScatterExtB };
+	}
+
+	inline Slots GetShadingLowSlots(uint64_t frameIndex)
+	{
+		const bool odd = (frameIndex & 1ull) != 0ull;
+		return odd
+			? Slots{ RD::Renderer_RenderTarget::ShadingLowB,
+					 RD::Renderer_RenderTarget::ShadingLowA }
+			: Slots{ RD::Renderer_RenderTarget::ShadingLowA,
+					 RD::Renderer_RenderTarget::ShadingLowB };
 	}
 }

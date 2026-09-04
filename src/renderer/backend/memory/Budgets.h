@@ -4,7 +4,7 @@
 
 namespace RD = RendererDefinitions;
 
-inline constexpr size_t SIZEOF_INSTANCE_INPUT    = 48u;   // 12 x uint
+inline constexpr size_t SIZEOF_INSTANCE_INPUT    = 52u;   // 13 x uint
 inline constexpr size_t SIZEOF_VISIBLE_INSTANCE  = 16u;   // 4 x uint
 inline constexpr size_t SIZEOF_STREAM_ENTRY      = 8u;    // 2 x uint (visibleID, binID)
 inline constexpr size_t SIZEOF_DRAW_BIN          = 16u;   // 4 x uint

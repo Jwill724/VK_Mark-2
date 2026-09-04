@@ -259,7 +259,7 @@ void World::UpdateWorldState(
 
 	const bool dynamicChanged = SyncGlobalInstancesAndTransforms(_sceneProfiles, _scene, deltaTime);
 
-	const bool bMotionNeeded = debug.aaMode == static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
+	const bool bMotionNeeded = debug.aaMode != static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF);
 
 	_scene.BuildMotionMatrices(bMotionNeeded, _scene.GetTemporalResult());
 

@@ -3,7 +3,7 @@
 #include "../../RenderPasses.h"
 #include "../../scopes/GraphicsScope.h"
 #include "../../RenderGraph.h"
-#include "../../../backend/PipelineBundles.h"
+#include "../../../backend/pipelines/PipelineBundles.h"
 #include "../../RenderGraphResources.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../../../profiler/Profiler.h"

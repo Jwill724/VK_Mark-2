@@ -2,7 +2,7 @@
 
 #include "RenderGraphResources.h"
 #include "../backend/VulkanTypes.h"
-#include "../backend/DescriptorWriter.h"
+#include "../backend/descriptors/DescriptorWriter.h"
 #include "../backend/memory/AllocatedImage.h"
 
 void RenderScope::BindPushConstant(VkCommandBuffer cmd, const PipelineHandle& pipeHandle)

@@ -1,0 +1,47 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "../include/common.glsl"
+
+const float SHADOW_VOLUME_EPSILON = 1e-4;
+
+layout(local_size_x = 256) in;
+
+layout(push_constant) uniform ShadowVolumePush
+{
+	uint instanceCount;
+} vp;
+
+void main()
+{
+	uint i = gl_GlobalInvocationID.x;
+	if (i >= vp.instanceCount) return;
+
+	InstanceInput inst = getInstanceInputBuffer().instanceInputs[i];
+
+	if ((inst.flags & INSTANCE_ACTIVE) == 0u) return;
+	if ((inst.flags & RT_VISIBLE) == 0u) return;
+	if (!isDynamicTransform(inst.transformID)) return;
+
+	uint tIdx = transformIndex(inst.transformID);
+
+	mat4 curr = getDynamicTransformsBuffer().transforms[tIdx];
+	mat4 prev = getMotionMatricesBuffer().matrices[tIdx] * curr;
+
+	AABB local = getMeshBuffer().meshes[inst.meshID].localAABB;
+
+	AABB wCurr = TransformAABB(local, curr);
+	AABB wPrev = TransformAABB(local, prev);
+
+	vec3 delta = max(abs(wPrev.vmin - wCurr.vmin), abs(wPrev.vmax - wCurr.vmax));
+	if (all(lessThan(delta, vec3(SHADOW_VOLUME_EPSILON)))) return;
+
+	ShadowInvalidVolumesBuffer vols = getShadowInvalidVolumesBuffer();
+
+	uint slot = atomicAdd(vols.count, 1u);
+	if (slot >= MAX_SHADOW_INVALID_VOLUMES) return;
+
+	vols.volumes[slot].boundsMin = min(wPrev.vmin, wCurr.vmin);
+	vols.volumes[slot].boundsMax = max(wPrev.vmax, wCurr.vmax);
+}

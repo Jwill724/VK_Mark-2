@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Shader.h"
-#include "../RendererDefinitions.h"
+#include "../../RendererDefinitions.h"
 #include "PipelineBundles.h"
 #include <vector>
 

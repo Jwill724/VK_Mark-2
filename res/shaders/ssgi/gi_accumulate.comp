@@ -53,8 +53,7 @@ void main() {
 	const ivec2 halfPix    = ivec2(gl_GlobalInvocationID.xy);
 	if (any(greaterThanEqual(halfPix, halfExtent))) return;
 
-	const ivec2 phase = aoQuadPhase(scene.temporal.x, debug.aaMode == AA_TAA);
-	//const ivec2 phase = ivec2(0);
+	const ivec2 phase = aoQuadPhase(scene.temporal.x, IsTAAEnabled());
 	const ivec2 pix   = min(halfPix * 2 + phase, fullMax);
 
 	vec3  current   = texelFetch(inGIRaw, halfPix, 0).rgb;

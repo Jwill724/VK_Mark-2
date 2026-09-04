@@ -45,8 +45,7 @@ void RegisterLuminanceExposurePass(
 							RD::Renderer_Pass::LuminanceExposure,
 							pass.passName);
 
-						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid());
+						bool taaEnabled = (ctx.frameState->IsTaaOn() && ctx.frameState->IsTemporalValid());
 
 						uint32_t frameIndex = ctx.scene->GetSceneData().temporal.x;
 						const auto& resolvedTaa = TemporalHistory::GetColorHistorySlots(static_cast<uint64_t>(frameIndex)).write;

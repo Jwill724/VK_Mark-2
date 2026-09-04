@@ -1,6 +1,6 @@
 #include "pch.h"
 
-#include "DescriptorManager.h"
+#include "../descriptors/DescriptorManager.h"
 
 // Align up to 4 bytes
 static constexpr uint32_t Align4(uint32_t x) noexcept { return (x + 3u) & ~3u; }

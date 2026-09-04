@@ -53,26 +53,23 @@ uint rtRayCount(RTRayListBuffer b, uint slot, uint capacity)
 	return min(b.counts[slot], capacity);
 }
 
-uint rtRayOffset(uint slot, uint capacity) { return slot * capacity; }
-
-uint rtCompactAppend(RTRayListBuffer b, uint slot, uint capacity, bool activeSlot)
-{
+uint rtCompactAppend(RTRayListBuffer b, uint slot, uint base, uint capacity, bool activeSlot) {
 	uvec4 ballot = subgroupBallot(activeSlot);
 	uint  local  = subgroupBallotExclusiveBitCount(ballot);
 	uint  total  = subgroupBallotBitCount(ballot);
 
-	uint base = 0u;
+	uint offset = 0u;
 	if (subgroupElect() && total > 0u)
-		base = atomicAdd(b.counts[slot], total);
-	base = subgroupBroadcastFirst(base);
+		offset = atomicAdd(b.counts[slot], total);
+	offset = subgroupBroadcastFirst(offset);
 
-	uint idx = base + local;
-	return (activeSlot && idx < capacity) ? rtRayOffset(slot, capacity) + idx : RT_INVALID_SLOT;
+	uint idx = offset + local;
+	return (activeSlot && idx < capacity) ? base + idx : RT_INVALID_SLOT;
 }
 
 uint rtBlasMeshID(InstanceInput inst)
 {
-	return meshFromLODIndex(inst, LOD_IDX_BASE);
+	return inst.rtMeshID;
 }
 
 #endif

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VulkanTypes.h"
+#include "../VulkanTypes.h"
 #include <span>
 
 struct AllocatedImage;

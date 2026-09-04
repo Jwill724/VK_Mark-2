@@ -87,6 +87,39 @@ if errorlevel 1 (
 )
 
 REM ==========================================================
+REM Sync headers
+REM
+REM vendor\nrd\Include is what the Visual Studio project
+REM compiles against. Copy it from the fetched source tree so
+REM it can never drift from the libraries built above.
+REM ==========================================================
+
+echo.
+echo ========================================
+echo Syncing NRD headers
+echo ========================================
+echo.
+
+if not exist "%~dp0build\nrd\_deps\nrdsdk-src\Include" (
+    echo ERROR: NRD source headers not found at:
+    echo   %~dp0build\nrd\_deps\nrdsdk-src\Include
+    echo.
+    echo Check the FetchContent name in cmake\nrd\CMakeLists.txt
+    echo and list %~dp0build\nrd\_deps to find the real path.
+    exit /b 1
+)
+
+xcopy /Y /E /I ^
+    "%~dp0build\nrd\_deps\nrdsdk-src\Include" ^
+    "%~dp0vendor\nrd\Include"
+
+if errorlevel 1 (
+    echo.
+    echo ERROR: NRD header copy failed.
+    exit /b 1
+)
+
+REM ==========================================================
 REM Complete
 REM ==========================================================
 
@@ -102,6 +135,10 @@ echo   vendor\nrd\Lib\Debug\ShaderMakeBlob.lib
 echo.
 echo   vendor\nrd\Lib\Release\NRD.lib
 echo   vendor\nrd\Lib\Release\ShaderMakeBlob.lib
+echo.
+echo Headers:
+echo.
+echo   vendor\nrd\Include
 echo.
 
 endlocal

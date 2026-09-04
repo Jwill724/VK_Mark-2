@@ -57,7 +57,6 @@ static uint32_t AssignMeshletVisibilityOffsets(
 	return cursor;
 }
 
-// Creates the initial rows (mesh X copies)
 static void BakeInstanceData(
 	InstanceState& vs,
 	const VirtualInstance& gi,
@@ -65,7 +64,7 @@ static void BakeInstanceData(
 	const std::vector<Mesh>& meshData,
 	const std::vector<MeshLODs>& meshLods,
 	const std::vector<glm::mat4>& transforms,
-	const std::vector<uint32_t>&  materialFlags,
+	const std::vector<uint32_t>& materialFlags,
 	uint32_t& outFirst,
 	uint32_t& outCount)
 {
@@ -81,9 +80,9 @@ static void BakeInstanceData(
 
 	const uint32_t slabTransformCount = gi.transformCount * gi.capacityCopies;
 	const uint32_t slabBegin = gi.firstTransform;
-	const uint32_t slabEnd   = slabBegin + slabTransformCount;
+	const uint32_t slabEnd = slabBegin + slabTransformCount;
 	ASSERT(slabBegin < transforms.size());
-	ASSERT(slabEnd  <= transforms.size());
+	ASSERT(slabEnd <= transforms.size());
 
 	outFirst = static_cast<uint32_t>(vs.gpuInputs.size());
 	outCount = copies * stride;
@@ -100,7 +99,6 @@ static void BakeInstanceData(
 		{
 			const InstanceDesc& instDesc = asset.instances[localIndex];
 
-			// localToNodeSlot maps primitive -> node slot in transform slab
 			const uint32_t nodeSlot = asset.localToNodeSlot[localIndex];
 			ASSERT(nodeSlot < gi.transformCount);
 
@@ -111,13 +109,12 @@ static void BakeInstanceData(
 				? (rawIdx | RD::TRANSFORM_DYNAMIC_BIT)
 				: rawIdx;
 
-			// meshID is already the global MeshRegistry ID
 			const uint32_t meshID = instDesc.localMeshIdx;
 			ASSERT(meshID < meshData.size());
 
 			MeshLODs lods = meshLods[meshID];
 
-			const uint32_t matID    = instDesc.localMaterialIdx;
+			const uint32_t matID = instDesc.localMaterialIdx;
 			const uint32_t matFlags = (matID < materialFlags.size()) ? materialFlags[matID] : 0u;
 
 			uint32_t flags = 0;
@@ -197,25 +194,26 @@ static void BakeInstanceData(
 			flags = (flags & gi.flagsMask) | gi.flagsForce;
 
 			InstanceInput row{};
-			row.meshID      = meshID;
-			row.materialID  = instDesc.localMaterialIdx;
+			row.meshID = meshID;
+			row.materialID = instDesc.localMaterialIdx;
 			row.transformID = transformID;
-			row.lod0        = lods.lod0;
-			row.lod1        = lods.lod1;
-			row.lod2        = lods.lod2;
-			row.lod3        = lods.lod3;
-			row.shadowLod0  = lods.shadowLod0;
-			row.shadowLod1  = lods.shadowLod1;
-			row.shadowLod2  = lods.shadowLod2;
-			row.flags       = flags;
+			row.lod0 = lods.lod0;
+			row.lod1 = lods.lod1;
+			row.lod2 = lods.lod2;
+			row.lod3 = lods.lod3;
+			row.shadowLod0 = lods.shadowLod0;
+			row.shadowLod1 = lods.shadowLod1;
+			row.shadowLod2 = lods.shadowLod2;
+			row.flags = flags;
+			row.rtMeshID = RTMeshID(meshID, lods.lod1, lods.flags);
 
 			vs.gpuInputs[writeIndex] = row;
 		}
 	}
 
 	vs.slabs[static_cast<ModelID>(gi.sceneID)] = {
-		.first      = outFirst,
-		.stride     = stride,
+		.first = outFirst,
+		.stride = stride,
 		.usedCopies = copies
 	};
 }
@@ -292,6 +290,7 @@ static uint32_t RebuildActive(InstanceState& vs, const std::vector<uint64_t>& bl
 	vs.rtRows.clear();
 
 	uint32_t rtCandidates = 0;
+	uint32_t rtMissingBlas = 0;
 
 	for (auto& [sid, slab] : vs.slabs)
 	{
@@ -307,18 +306,29 @@ static uint32_t RebuildActive(InstanceState& vs, const std::vector<uint64_t>& bl
 
 				constexpr uint32_t need = InstanceFlags::RT_VISIBLE | InstanceFlags::INSTANCE_ACTIVE;
 				if ((row.flags & need) != need) continue;
-				if (row.meshID >= blasAddresses.size() || blasAddresses[row.meshID] == 0ull) continue;
 
 				++rtCandidates;
+
+				if (row.rtMeshID >= blasAddresses.size() ||
+					blasAddresses[row.rtMeshID] == 0ull)
+				{
+					++rtMissingBlas;
+					continue;
+				}
+
 				if (vs.rtRows.size() < RD::MAX_RT_INSTANCES)
 					vs.rtRows.push_back(idx);
 			}
 		}
 	}
 
-	if (rtCandidates > RD::MAX_RT_INSTANCES)
+	if (rtMissingBlas > 0)
+		fmt::println("[RT] {} of {} eligible instances have no BLAS for their RT mesh",
+			rtMissingBlas, rtCandidates);
+
+	if (rtCandidates - rtMissingBlas > RD::MAX_RT_INSTANCES)
 		fmt::println("[RT] {} eligible instances exceeds MAX_RT_INSTANCES ({}); clamping.",
-			rtCandidates, RD::MAX_RT_INSTANCES);
+			rtCandidates - rtMissingBlas, RD::MAX_RT_INSTANCES);
 
 	return static_cast<uint32_t>(vs.rtRows.size());
 }

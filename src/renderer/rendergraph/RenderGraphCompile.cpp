@@ -31,6 +31,8 @@ void RenderGraph::Sync(
 		(m_recentFrameState.RTReflectionsEnabled() != frameState.RTReflectionsEnabled()) ||
 		(m_recentFrameState.RTShadowsEnabled() != frameState.RTShadowsEnabled()) ||
 		(m_recentFrameState.IsScreenSpaceShadowsOn() != frameState.IsScreenSpaceShadowsOn()) ||
+		(m_recentFrameState.IsChromaticAberrationOn() != frameState.IsChromaticAberrationOn()) ||
+		(m_recentFrameState.IsSharpeningOn() != frameState.IsSharpeningOn()) ||
 		(m_recentFrameState.InstancesActive() != frameState.InstancesActive()) ||
 		(m_recentFrameState.LightsActive() != frameState.LightsActive());
 

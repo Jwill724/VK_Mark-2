@@ -141,27 +141,29 @@ public:
 	std::mutex camMutex;
 	bool enableWireframeView = false;
 	bool enableAsyncCompute = true;
+	bool enableSharpening = true;
 	AsyncComputeStats asyncStats;
 
 	RD::ShadowQuality shadowQuality;
 	TotalAssetDataCounts assetCounts;
 	RD::RenderToggles   debugToggles;
 
-	SSGIPush            ssgiSettings;
-	TAAPush             taaSettings;
-	VolumetricPush      volLightSettings;
-	LensFlarePush       lensFlareSettings;
-	SSSPush             contactShadowsSettings;
-	ToneMappingSettings toneMappingSettings;
-	LumaExposurePush    lumaExposureSettings;
-	BloomPush           bloomPush;
-	ForwardPush         forwardPush;
-	SkyboxPush          skyboxPush;
-	BindlessAccessPush  smaaTexturesIds;
-	ReflectPush         reflectPush;
-	NRDPush             nrdReflectPush;
-	NRDPush             nrdShadowPush;
-	RTShadowPush        rtShadowPush;
+	SSGIPush            ssgiSettings{};
+	TAAPush             taaSettings{};
+	VolumetricPush      volLightSettings{};
+	LensFlarePush       lensFlareSettings{};
+	SSSPush             contactShadowsSettings{};
+	ToneMappingSettings toneMappingSettings{};
+	LumaExposurePush    lumaExposureSettings{};
+	BloomPush           bloomPush{};
+	ForwardPush         forwardPush{};
+	SkyboxPush          skyboxPush{};
+	BindlessAccessPush  smaaTexturesIds{};
+	ReflectPush         reflectPush{};
+	NRDPush             nrdReflectPush{};
+	NRDPush             nrdShadowPush{};
+	RTShadowPush        rtShadowPush{};
+	CASPush             casSettings{};
 
 	GPUStats            gpuStats;
 

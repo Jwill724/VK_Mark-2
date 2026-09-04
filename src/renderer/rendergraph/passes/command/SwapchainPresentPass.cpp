@@ -25,9 +25,13 @@ void RegisterSwapchainPresentPass(
 				.ReadResource(
 					RD::Renderer_RenderTarget::PostNonAAComposite,
 					RD::ImageAccess::TransferSrc)
- 
+
 				.ReadResource(
 					RD::Renderer_RenderTarget::Tonemap,
+					RD::ImageAccess::TransferSrc)
+
+				.ReadResource(
+					RD::Renderer_RenderTarget::SharpenedColor,
 					RD::ImageAccess::TransferSrc)
 
 				.SetRecord(
@@ -37,14 +41,21 @@ void RegisterSwapchainPresentPass(
 
 						const auto& postNonAAComposite = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PostNonAAComposite);
 						const auto& tonemap = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Tonemap);
+						const auto& sharpenedColor = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::SharpenedColor);
 						const auto& swapchain = ctx.swapchain;
 
-						AllocatedImage srcImage;
-						if (ctx.profiler->debugToggles.enableChromaticAberration &&
+						bool isNormalFrame =
 							ctx.frameState->InstancesActive() &&
-							!ctx.frameState->DebugRendering())
+							!ctx.frameState->DebugRendering();
+
+						AllocatedImage srcImage;
+						if (ctx.frameState->IsChromaticAberrationOn() && !ctx.frameState->IsSharpeningOn() && isNormalFrame)
 						{
 							srcImage = postNonAAComposite;
+						}
+						else if (ctx.frameState->IsSharpeningOn() && isNormalFrame)
+						{
+							srcImage = sharpenedColor;
 						}
 						else
 						{

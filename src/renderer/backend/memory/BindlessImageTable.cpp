@@ -152,6 +152,12 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 		1
 	};
 
+	const Extents3D eighth = {
+		(drawExtent.Width() + 7) / 8,
+		(drawExtent.Height() + 7) / 8,
+		1
+	};
+
 	SetRenderTarget(RD::Renderer_RenderTarget::HDRScene,                    allocator.AllocateImage(RTDescs::HDRScene(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentAccumulation,     allocator.AllocateImage(RTDescs::TransparentAccumulation(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::TransparentVelocityAccum,    allocator.AllocateImage(RTDescs::TransparentVelocityAccum(drawExtent)));
@@ -200,6 +206,11 @@ void BindlessImageTable::CreateRenderTargets(Extents3D drawExtent, Allocator& al
 	SetRenderTarget(RD::Renderer_RenderTarget::NRDShadowViewZ,              allocator.AllocateImage(RTDescs::NRDShadowViewZ(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::RTShadowDenoised,            allocator.AllocateImage(RTDescs::RTShadowDenoised(drawExtent)));
 	SetRenderTarget(RD::Renderer_RenderTarget::RTShadowPenumbra,            allocator.AllocateImage(RTDescs::RTShadowPenumbra(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::SharpenedColor,              allocator.AllocateImage(RTDescs::SharpenedColor(drawExtent)));
+	SetRenderTarget(RD::Renderer_RenderTarget::ShadingSignalHalf,           allocator.AllocateImage(RTDescs::ShadingSignalReduced(half)));
+	SetRenderTarget(RD::Renderer_RenderTarget::ShadingLowA,                 allocator.AllocateImage(RTDescs::ShadingLowHistory(eighth, 0)));
+	SetRenderTarget(RD::Renderer_RenderTarget::ShadingLowB,                 allocator.AllocateImage(RTDescs::ShadingLowHistory(eighth, 1)));
+	SetRenderTarget(RD::Renderer_RenderTarget::ShadowInvalidMask,           allocator.AllocateImage(RTDescs::ShadowInvalidMask(eighth)));
 }
 
 // First time setup only
@@ -769,7 +780,7 @@ void BindlessImageTable::PreallocateEquirects(
 			.usage  = Vulkan_ImageUsage::ComputeRWTransfer
 		});
 
-		ASSERT(m_environmentSets[i].equirect.IsValid() && 
+		ASSERT(m_environmentSets[i].equirect.IsValid() &&
 			"PreallocateEquirects: image allocation failed");
 	}
 }
@@ -1181,8 +1192,6 @@ void BindlessImageTable::BuildInitialCombinedSamplerArray()
 	pushStatic(RD::Renderer_Texture::White,           RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::Normal,          RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::MetalRough,      RD::Renderer_Sampler::LinearClamp);
-	//pushStatic(RD::Renderer_Texture::Dummy,           RD::Renderer_Sampler::NearestClamp);
-	//pushStatic(RD::Renderer_Texture::DummyU8,         RD::Renderer_Sampler::NearestClamp);
 	pushStatic(RD::Renderer_Texture::Checkerboard,    RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::RainbowLut,      RD::Renderer_Sampler::LinearClamp);
 	pushStatic(RD::Renderer_Texture::HilbertCurveLut, RD::Renderer_Sampler::Noise);

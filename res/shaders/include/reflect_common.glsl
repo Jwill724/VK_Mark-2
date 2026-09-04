@@ -22,10 +22,15 @@ layout(push_constant) uniform ReflectPush
 	uint  hilbertLutID;
 	uint  skyboxID;
 	uint  brdfID;
+
 	uint  specularID;
 	uint  maxBounces;
 	uint  maxReflectLights;
 	uint  rayCapacity;
+
+	uint rayBase;
+	float shadowSkipThreshold;
+	uint pad0[2];
 } rp;
 
 RTShadeParams rtReflectParamsFromPush()
@@ -37,6 +42,7 @@ RTShadeParams rtReflectParamsFromPush()
 	p.brdfID       = rp.brdfID;
 	p.specularID   = rp.specularID;
 	p.maxLights    = rp.maxReflectLights;
+	p.shadowSkipThreshold = rp.shadowSkipThreshold;
 	return p;
 }
 

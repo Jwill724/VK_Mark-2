@@ -4,8 +4,8 @@
 #include "../backend/memory/ResourceAllocator.h"
 #include "../backend/memory/Budgets.h"
 #include "../backend/Device.h"
-#include "../backend/DescriptorManager.h"
-#include "../backend/DescriptorWriter.h"
+#include "../backend/descriptors/DescriptorManager.h"
+#include "../backend/descriptors/DescriptorWriter.h"
 #include "FrameResources.h"
 
 void FrameContext::Init(
@@ -108,6 +108,11 @@ void FrameContext::Init(
 	m_gpuAddressTable.AddGPUBufferToAddressTable(
 		RD::Renderer_Buffer::ShadowCullData,
 		GPU_BYTES_SHADOW_CULL_DATA,
+		allocator);
+
+	m_gpuAddressTable.AddGPUBufferToAddressTable(
+		RD::Renderer_Buffer::ShadowInvalidVolumes,
+		RD::SHADOW_INVALID_VOLUME_BYTES,
 		allocator);
 
 	m_gpuAddressTable.AddGPUBufferToAddressTable(

@@ -50,6 +50,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(
 
 	return VK_FALSE;
 }
+
 void Device::Cleanup()
 {
 	m_graphicsQueue.CleanupFencePools();

@@ -88,6 +88,10 @@ std::optional<PhysicalDeviceCandidate> EvaluateDevice(
 	candidate.props.Query(pDevice);
 	candidate.name             = std::string(candidate.props.core.properties.deviceName);
 
+	REQUIRE_HARDWARE(
+		candidate.props.limits.maxPushConstantsSize >= RD::MAX_PUSH_CONSTANT_SIZE,
+		"Device should support push constant sizing up to 256 bytes!");
+
 	return candidate;
 }
 

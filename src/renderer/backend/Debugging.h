@@ -9,7 +9,7 @@ public:
 	static bool IsGpuTrackingEnabled()           { return m_gpuTimingEnabled; }
 
 private:
-	
+
 #ifdef NDEBUG
 	inline static bool m_validationLayerEnabled               = false;
 	inline static bool m_gpuAssistedValidationEnabled         = false;

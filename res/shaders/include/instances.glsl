@@ -57,7 +57,7 @@ struct InstanceInput
 	uint meshID;
 	uint materialID;
 	uint transformID;
-	uint meshletVisibilityOffset; 
+	uint meshletVisibilityOffset;
 
 	uint lod0;
 	uint lod1;
@@ -67,6 +67,8 @@ struct InstanceInput
 	uint shadowLod0;
 	uint shadowLod1;
 	uint shadowLod2;
+
+	uint rtMeshID;
 
 	uint flags;
 };
@@ -278,4 +280,5 @@ uint resolveMeshForStream(
 
 	return meshFromLODIndex(instance, lodIdx);
 }
+
 #endif

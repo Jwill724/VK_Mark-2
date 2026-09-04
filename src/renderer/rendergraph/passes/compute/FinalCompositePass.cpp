@@ -63,8 +63,7 @@ void RegisterFinalCompositePass(
 						pass.scope = ComputeScope{{ graph.GetDisplayExtent() }};
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
-						const auto aaMode = static_cast<RD::AntiAliasingMethod>(ctx.profiler->debugToggles.aaMode);
-						bool taaEnabled = (aaMode == RD::AntiAliasingMethod::AA_TAA && ctx.frameState->IsTemporalValid() && !ctx.frameState->DebugRendering());
+						bool taaEnabled = (ctx.frameState->IsTaaOn() && ctx.frameState->IsTemporalValid() && !ctx.frameState->DebugRendering());
 
 						const auto& hdrScene = !taaEnabled
 							? ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::HDRScene)

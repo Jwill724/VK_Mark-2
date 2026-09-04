@@ -5,20 +5,18 @@
 
 #include "rt_shadow.glsl"
 
+// Push constant
 struct RTShadowParams
 {
-	vec3 sunDirectionVS;
-	float pad0;
+	vec4 sunDirectionWS;
+	vec4 sunTangentWS;
+	vec4 sunBitangentWS;
+	vec4 sunDirectionVS;
 
 	float rayTMin;
 	float rayTMax;
 	float rayBias;
 	float normalBias;
-
-	float sunSoftness;
-	float mipBias;
-	uint  taps;
-	uint  alphaTested;
 };
 
 struct RTShadeParams
@@ -29,6 +27,7 @@ struct RTShadeParams
 	uint  brdfID;
 	uint  specularID;
 	uint  maxLights;
+	float shadowSkipThreshold;
 };
 
 float rtSurfaceBias(RTShadowParams p, float dist)

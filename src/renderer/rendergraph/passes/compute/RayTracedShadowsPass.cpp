@@ -3,14 +3,24 @@
 #include "../../RenderPasses.h"
 #include "../../../rendergraph/RenderGraphBuilder.h"
 #include "../../scopes/ComputeScope.h"
-#include "../../../backend/NRDContext.h"
+#include "../../../backend/nrd/NRDContext.h"
 #include "../../../backend/memory/BindlessImageTable.h"
 #include "../../RenderGraph.h"
 #include "../../RenderGraphResources.h"
 #include "../../../../profiler/Profiler.h"
+#include "../../../backend/ImageUtils.h"
+#include "../../../frame/FrameContext.h"
+#include "../../../backend/BufferBarriers.h"
 
-static constexpr size_t PIPE_ID_NRD_PREP = 0;
-static constexpr size_t PIPE_ID_INTERSECT = 1;
+namespace B = BufferBarriers;
+namespace I = ImageUtils;
+
+static constexpr size_t PIPE_ID_NRD_PREP     = 0;
+static constexpr size_t PIPE_ID_VOLUME_BUILD = 1;
+static constexpr size_t PIPE_ID_INVALID_MASK = 2;
+static constexpr size_t PIPE_ID_CLASSIFY     = 3;
+static constexpr size_t PIPE_ID_ARGS         = 4;
+static constexpr size_t PIPE_ID_INTERSECT    = 5;
 
 void RegisterRTShadowsPass(
 	RenderGraph& graph,
@@ -34,10 +44,14 @@ void RegisterRTShadowsPass(
 					})
 
 				.ReadResource(RD::Renderer_RenderTarget::DepthResolved, RD::ImageAccess::DepthRead)
+				.ReadResource(RD::Renderer_RenderTarget::PrevDepthResolved, RD::ImageAccess::DepthRead)
 				.ReadResource(RD::Renderer_RenderTarget::GBufferAlbedoRough, RD::ImageAccess::ComputeRead)
 				.ReadResource(RD::Renderer_RenderTarget::GBufferNormalMaterial, RD::ImageAccess::ComputeRead)
 				.ReadResource(RD::Renderer_RenderTarget::ViewNormals, RD::ImageAccess::ComputeRead)
 				.ReadResource(RD::Renderer_RenderTarget::Velocity, RD::ImageAccess::ComputeRead)
+				.ReadResource(RD::Renderer_RenderTarget::RTShadowDenoised, RD::ImageAccess::ComputeRead)
+
+				.InternalResource(RD::Renderer_RenderTarget::ShadowInvalidMask, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead)
 
 				.WriteResource(RD::Renderer_RenderTarget::RTShadowPenumbra,
 					RD::ImageAccess::ComputeWrite, NRD_INPUT_ACCESS)
@@ -59,18 +73,32 @@ void RegisterRTShadowsPass(
 							ctx.scheduleInfo->queue);
 
 						VkCommandBuffer cmd = ctx.commandBuffer;
-						const auto& frameCtx = ctx.frameCtx;
 
 						pass.scope = ComputeScope{ graph.GetRenderExtent(), WORKGROUP_8x8 };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
+						const auto& indirectArgs = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::DispatchIndirectArgs);
+						const auto& rtRayList = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTRayList);
+						const auto& shadowVolumes = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::ShadowInvalidVolumes);
+
 						const auto& depth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::DepthResolved);
+						const auto& prevDepth = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::PrevDepthResolved);
 						const auto& viewNormals = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ViewNormals);
 						const auto& albedoRough = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferAlbedoRough);
 						const auto& normalMaterial = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::GBufferNormalMaterial);
 						const auto& velocity = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::Velocity);
+						const auto& penumbra = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTShadowPenumbra);
+						const auto& shadowPrev = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTShadowDenoised);
+						const auto& invalidMask = ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::ShadowInvalidMask);
 
 						const auto nearestClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::NearestClamp);
+						const auto linearClamp = ctx.imageTable->GetSampler(RD::Renderer_Sampler::LinearClamp);
+
+						const auto& drawExtent = graph.GetRenderExtent();
+
+						const Extents2D eighthExtent = {
+							(drawExtent.Width() + 7u) / 8u,
+							(drawExtent.Height() + 7u) / 8u };
 
 						// =========
 						// NRD Prep
@@ -92,7 +120,76 @@ void RegisterRTShadowsPass(
 						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_3,
 							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::NRDShadowViewZ));
 
-						pso.DispatchComputePass(ctx.commandBuffer, pass.pipelines[PIPE_ID_NRD_PREP], pass.pushWriter);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_NRD_PREP], pass.pushWriter);
+
+						// =======================
+						// Dynamic caster volumes
+						// =======================
+
+						pso.FillGpuBuffer(cmd, shadowVolumes, 0u, 0, RD::SHADOW_INVALID_VOLUME_HEADER_BYTES);
+						B::CmdFillToComputeRW(cmd, shadowVolumes);
+
+						pso.SetPush(ctx.frameState->GetInstanceCount());
+
+						pso.UpdateExtent({ ctx.frameState->GetInstanceCount(), 1u });
+						pso.UpdateWorkgroups(WORKGROUP_256);
+
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_VOLUME_BUILD], pass.pushWriter);
+
+						B::ComputeWriteToRead(cmd, shadowVolumes);
+
+						// ====================
+						// Invalidation mask
+						// ====================
+
+						pso.SetPush(ctx.profiler->rtShadowPush);
+
+						pso.UpdateExtent(eighthExtent);
+						pso.UpdateWorkgroups(WORKGROUP_8x8);
+
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, depth, nearestClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, invalidMask);
+
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INVALID_MASK], pass.pushWriter);
+						I::TransitionLayoutCompute(cmd, invalidMask, RD::ImageAccess::ComputeWrite, RD::ImageAccess::ComputeRead);
+
+						// =============
+						// Ray classify
+						// =============
+
+						pso.UpdateExtent(drawExtent);
+
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_1, depth, nearestClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, viewNormals, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_3, velocity, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_4, prevDepth, linearClamp,
+							UINT32_MAX, RD::ImageAccess::DepthRead);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_5, shadowPrev, nearestClamp);
+						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_6, invalidMask, nearestClamp);
+
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, penumbra);
+
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_CLASSIFY], pass.pushWriter);
+
+						B::ComputeWriteToRW(cmd, rtRayList);
+
+						// ==============
+						// Indirect args
+						// ==============
+						pso.SetPush(RTArgsPush{
+							RD::RT_RAY_SLOT_SHADOW,
+							RD::INDIRECT_DISPATCH_SLOT_SHADOW_RAYS,
+							64u,
+							ctx.profiler->rtShadowPush.rayCapacity });
+
+						pso.UpdateWorkgroups(WORKGROUP_1, true);
+						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_ARGS], pass.pushWriter);
+
+						B::ComputeWriteToIndirectRead(cmd, indirectArgs);
+						B::ComputeWriteToRead(cmd, rtRayList);
 
 						// ==============
 						// Ray intersect
@@ -104,8 +201,9 @@ void RegisterRTShadowsPass(
 							UINT32_MAX, RD::ImageAccess::DepthRead);
 						pso.BindReadImage(pass.pushWriter, RD::PUSH_BINDING_READ_2, viewNormals, nearestClamp);
 
-						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1,
-							ctx.imageTable->GetRenderTarget(RD::Renderer_RenderTarget::RTShadowPenumbra));
+						pso.BindWriteImage(pass.pushWriter, RD::PUSH_BINDING_WRITE_1, penumbra);
+
+						pso.SetIndirect(indirectArgs.m_buffer, RD::DISPATCH_SHADOW_RAYS_OFFSET_BYTES);
 
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_INTERSECT], pass.pushWriter);
 					});

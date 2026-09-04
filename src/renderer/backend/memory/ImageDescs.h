@@ -280,6 +280,21 @@ namespace RenderTargetDescs
 				 .debugName = "GIDenoisePing" };
 	}
 
+	// render extent / 8
+	inline ImageDesc ShadingLowHistory(Extents3D eighthExt, uint32_t index)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = eighthExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = (index == 0) ? "ShadingLowA" : "ShadingLowB" };
+	}
+
+	inline ImageDesc ShadingSignalReduced(Extents3D halfExt)
+	{
+		return { .format = Vulkan_Format::RG16F, .extent = halfExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly,
+				 .debugName = "ShadingSignalReduced" };
+	}
+
 	// CMAA2 uses { halfWidth, fullHeight }
 	inline ImageDesc CMAA2WorkingEdges(Extents3D ext)
 	{
@@ -345,6 +360,12 @@ namespace RenderTargetDescs
 				 .usage = Vulkan_ImageUsage::ShadowMap, .debugName = "VolumetricShadowMap" };
 	}
 
+	inline ImageDesc ShadowInvalidMask(Extents3D eighthExt)
+	{
+		return { .format = Vulkan_Format::R8U, .extent = eighthExt,
+				 .usage = Vulkan_ImageUsage::ComputeOnly, .debugName = "ShadowInvalidMask" };
+	}
+
 	// --- RT shadows (full resolution) ---
 
 	inline ImageDesc RTShadowPenumbra(Extents3D ext)
@@ -385,6 +406,12 @@ namespace RenderTargetDescs
 		return { .format = Vulkan_Format::RGBA16F, .extent = { RD::FROXEL_GRID_X, RD::FROXEL_GRID_Y, RD::FROXEL_GRID_Z },
 				 .usage = Vulkan_ImageUsage::ComputeOnly,
 				 .imageType = VK_IMAGE_TYPE_3D, .debugName = "FroxelIntegrated" };
+	}
+
+	inline ImageDesc SharpenedColor(Extents3D ext)
+	{
+		return { .format = Vulkan_Format::RGBA16F, .extent = ext,
+				 .usage = Vulkan_ImageUsage::ComputeRWTransfer, .debugName = "SharpenedColor" };
 	}
 }
 

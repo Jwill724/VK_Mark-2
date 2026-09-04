@@ -19,14 +19,7 @@ vec3 rtSampleSky(vec3 dir, float pathRough, uint skyboxID)
 	return SampleCubeLod(skyboxID, vec3(dir.x, -dir.y, dir.z), pathRough * SKY_MAX_LOD).rgb;
 }
 
-int rtReflectionShadowTaps(float pathRough)
-{
-	return pathRough < 0.10 ? 4
-		 : pathRough < 0.35 ? 2
-							: 1;
-}
-
-vec3 rtShadeAnalytic(HitSurface s, vec3 rayDir, vec2 pixel, int shadowTaps, RTShadeParams p)
+vec3 rtShadeAnalytic(HitSurface s, vec3 rayDir, RTShadeParams p)
 {
 	SceneData    sd    = getSceneData();
 	DebugToggles debug = getDebugToggles();
@@ -37,26 +30,26 @@ vec3 rtShadeAnalytic(HitSurface s, vec3 rayDir, vec2 pixel, int shadowTaps, RTSh
 		s.position, s.normal, s.position + V,
 		s.albedo, s.metallic, s.roughness, s.mat, p.brdfID);
 
-	vec3 L        = normalize(sd.sunlightDirection.xyz);
+	vec3 L        = p.shadow.sunDirectionWS.xyz;
 	vec3 sunColor = sd.sunlightColor.rgb * sd.sunlightColor.a;
 
 	LightSample sun = evaluateDirectional(hs, L, sunColor);
 
-	float shadow = 1.0;
+	vec3 direct = vec3(0.0);
+
 	if (sun.NdotL > 0.0)
 	{
-		float bias = rtSurfaceBias(p.shadow, distance(sd.cameraPos.xyz, s.position));
+		direct = sun.diffuse + sun.specular;
 
-		RTVisibility v = rtSunVisibility(
-			s.position + s.normal * bias, L, p.shadow.sunSoftness,
-			pixel, clamp(shadowTaps, 1, 16),
-			p.shadow.rayTMin, p.shadow.rayTMax,
-			p.shadow.mipBias, p.shadow.alphaTested != 0u);
+		if (rtMaxComp(direct) > rtMaxComp(sunColor) * p.shadowSkipThreshold)
+		{
+			float bias = rtSurfaceBias(p.shadow, distance(sd.cameraPos.xyz, s.position));
 
-		shadow = v.visibility;
+			direct *= rtSunVisibleOpaque(
+				s.position + s.normal * bias, L,
+				p.shadow.rayTMin, p.shadow.rayTMax);
+		}
 	}
-
-	vec3 direct = (sun.diffuse + sun.specular) * shadow;
 
 	vec3 local = vec3(0.0);
 
@@ -70,6 +63,10 @@ vec3 rtShadeAnalytic(HitSurface s, vec3 rayDir, vec2 pixel, int shadowTaps, RTSh
 			LocalLight light = lightBuf.lights[i];
 
 			if ((light.flags & LIGHT_FLAG_FLASHLIGHT_OFF) != 0u) continue;
+
+			vec3  d  = light.position - s.position;
+			float d2 = dot(d, d);
+			if (d2 > light.radius * light.radius) continue;
 
 			LightSample ls = evaluateLocalLight(light, hs, sd.cameraPos.xyz);
 			if (ls.NdotL <= 0.0) continue;

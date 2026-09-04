@@ -45,7 +45,7 @@ void main() {
 
 	const ivec2 fullMax = fullExtent - 1;
 	const ivec2 halfMax = (fullExtent + 1) / 2 - 1;
-	const ivec2 phase   = aoQuadPhase(scene.temporal.x, debug.aaMode == AA_TAA);
+	const ivec2 phase   = aoQuadPhase(scene.temporal.x, IsTAAEnabled());
 
 	const float centerZ = texelFetch(inHiZ, fullPix, 0).r;
 	const vec3  centerN = octDecode(texelFetch(inViewNormals, fullPix, 0).rg * 2.0 - 1.0);

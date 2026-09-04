@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../backend/VulkanTypes.h"
-#include "../RendererDefinitions.h"
+#include "../../backend/VulkanTypes.h"
+#include "../../RendererDefinitions.h"
 #include <string>
 
 inline static const std::string BaseShaderPath = "res/shaders/";

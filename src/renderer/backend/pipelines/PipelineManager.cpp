@@ -87,6 +87,8 @@ void PM::RegisterPipelines()
 	regC(RP::BloomDownsample,           RS::BloomDownsample_c);
 	regC(RP::BloomUpsample,             RS::BloomUpsample_c);
 	regC(RP::TAA,                       RS::TAA_c);
+	regC(RP::ShadingSignalReduce,       RS::ShadingSignalReduce_c);
+	regC(RP::CAS,                       RS::CAS_c);
 	regC(RP::TransparentClusterBounds,  RS::TransparentClusterBounds_c);
 	regC(RP::ClusterTileSliceRanges,    RS::ClusterTileSliceRanges_c);
 	regC(RP::ClusterCount,              RS::ClusterCount_c);
@@ -110,7 +112,10 @@ void PM::RegisterPipelines()
 
 	regC(RP::TlasInstances,             RS::TlasInstances_c);
 	regC(RP::RTRayArgs,                 RS::RTRayArgs_c);
+	regC(RP::RTShadowVolumeBuild,       RS::RTShadowVolumeBuild_c);
+	regC(RP::RTShadowInvalidMask,       RS::RTShadowInvalidMask_c);
 	regC(RP::RTShadowTrace,             RS::RTShadowTrace_c);
+	regC(RP::RTShadowClassify,          RS::RTShadowClassify_c);
 	regC(RP::ReflectClassify,           RS::ReflectClassify_c);
 	regC(RP::RTReflectTrace,            RS::RTReflectTrace_c);
 

@@ -118,6 +118,10 @@ void RegisterTAAPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);
 
+void RegisterCASPass(
+	RenderGraph& graph,
+	const std::vector<PipelineHandle> pipelines);
+
 void RegisterDebugDrawBuildPass(
 	RenderGraph& graph,
 	const std::vector<PipelineHandle> pipelines);

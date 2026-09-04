@@ -6,16 +6,19 @@
 #include "rt_params.glsl"
 #include "depth.glsl"
 
-layout(push_constant) uniform RTShadowPush
-{
+layout(push_constant) uniform RTShadowPush {
 	vec2 resolution;
 	vec2 invResolution;
 
 	RTShadowParams shadow;
 
+	uint rayBase;
+	uint rayCapacity;
 	uint hilbertLutID;
 
-	uint pad0[3];
+	float saturationEps;
+	float disocclusionScale;
+	uint  pad0[3];
 } sp;
 
 #endif

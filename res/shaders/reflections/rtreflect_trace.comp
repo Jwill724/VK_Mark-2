@@ -2,9 +2,9 @@
 
 #extension GL_GOOGLE_include_directive : require
 
+#include "../include/nrd_common.glsl"
 #include "../include/reflect_common.glsl"
 #include "../include/depth.glsl"
-#include "../include/nrd_common.glsl"
 
 layout(local_size_x = 64) in;
 
@@ -20,7 +20,7 @@ void main()
 
 	if (gl_GlobalInvocationID.x >= rtRayCount(rays, RT_RAY_SLOT_REFLECT, rp.rayCapacity)) return;
 
-	uint  idx = rtRayOffset(RT_RAY_SLOT_REFLECT, rp.rayCapacity) + gl_GlobalInvocationID.x;
+	uint  idx = rp.rayBase + gl_GlobalInvocationID.x;
 	ivec2 px  = ivec2(rtUnpackPixel(rays.payload[idx]));
 	vec2  uv  = (vec2(px) + 0.5) * rp.halfResTexel;
 
@@ -31,11 +31,13 @@ void main()
 	float roughness = textureLod(uRoughness, uv, 0.0).r;
 	float alpha     = max(roughness * roughness, 1e-3);
 
-	float viewZ = screenToViewDepth(depth, sd.depthLinearizeMult, sd.depthLinearizeAdd);
-
 	vec3 N = unpackGBufferNormal(textureLod(uNormalMetal, uv, 0.0).r);
 
-	vec3  P        = reconstructWorldPosFromDepth(uv, depth, sd.invProj, sd.invView).pos;
+	ViewReconstructResult vr = reconstructWorldPosFromDepth(uv, depth, sd.invProj, sd.invView);
+
+	vec3  P        = vr.pos;
+	float viewZ    = vr.viewDepth;
+
 	vec3  toCam    = sd.cameraPos.xyz - P;
 	float viewDist = length(toCam);
 	vec3  V        = toCam / max(viewDist, 1e-6);
@@ -61,6 +63,8 @@ void main()
 	float pathRough  = roughness;
 	float pathDist   = viewDist;
 
+	const float mipBias = 1.0;
+
 	for (uint bounce = 0u; bounce < rp.maxBounces; ++bounce)
 	{
 		rayQueryEXT rq;
@@ -70,12 +74,11 @@ void main()
 
 		while (rayQueryProceedEXT(rq))
 		{
-			if (rayQueryGetIntersectionTypeEXT(rq, false) == gl_RayQueryCandidateIntersectionTriangleEXT
-			 && rtAlphaTestPasses(
+			if (rtAlphaTestPasses(
 					rayQueryGetIntersectionInstanceCustomIndexEXT(rq, false),
 					rayQueryGetIntersectionPrimitiveIndexEXT(rq, false),
 					rayQueryGetIntersectionBarycentricsEXT(rq, false),
-					rp.shadow.mipBias))
+					mipBias))
 				rayQueryConfirmIntersectionEXT(rq);
 		}
 
@@ -93,14 +96,11 @@ void main()
 			rayQueryGetIntersectionInstanceCustomIndexEXT(rq, true),
 			rayQueryGetIntersectionPrimitiveIndexEXT(rq, true),
 			rayQueryGetIntersectionBarycentricsEXT(rq, true),
-			t, rayOrigin, rayDir, rp.shadow.mipBias);
-
-		vec2 shadePixel  = vec2(px) + float(bounce) * 91.0;
-		int  shadowTaps  = (bounce == 0u) ? rtReflectionShadowTaps(pathRough) : 1;
+			t, rayOrigin, rayDir, mipBias);
 
 		if ((bounce + 1u >= rp.maxBounces) || (s.roughness > rp.bounceRoughnessCutoff))
 		{
-			radiance += throughput * rtShadeAnalytic(s, rayDir, shadePixel, shadowTaps, shade);
+			radiance += throughput * rtShadeAnalytic(s, rayDir, shade);
 			break;
 		}
 
@@ -109,7 +109,6 @@ void main()
 		vec3  hitV     = -rayDir;
 		float hitAlpha = max(s.roughness * s.roughness, 2.25e-4);
 		mat3  hitTBN   = buildTBN(s.normal);
-
 
 		vec3 hitH = hitTBN * sampleGGXVNDF(
 			normalize(hitV * hitTBN), hitAlpha,
@@ -120,7 +119,7 @@ void main()
 
 		if (hitNoL <= 0.0)
 		{
-			radiance += throughput * rtShadeAnalytic(s, rayDir, shadePixel, shadowTaps, shade);
+			radiance += throughput * rtShadeAnalytic(s, rayDir, shade);
 			break;
 		}
 

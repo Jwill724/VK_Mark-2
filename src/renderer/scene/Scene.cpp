@@ -9,7 +9,8 @@ constexpr float kMaxHiZRotationDeg = 15.0f;
 constexpr float kTaaMipBias        = -0.5f;
 constexpr float kTaaBiasFadeLod    = 2.0f;
 constexpr float kTaaBiasFadeSpan   = 4.0f;
-static constexpr uint32_t TAA_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_TAA);
+
+static constexpr uint32_t AA_OFF_U32 = static_cast<uint32_t>(RD::AntiAliasingMethod::AA_OFF);
 
 static glm::vec2 BuildTemporalJitterPixels(uint32_t frameIndex);
 static glm::vec2 ConvertJitterPixelsToNDC(
@@ -66,7 +67,7 @@ bool Scene::UpdateCamera(
 	bool isTemporalInvalid = false;
 
 	const auto& aaMode = profiler.debugToggles.aaMode;
-	const bool jitterOn = (aaMode == TAA_U32) && isTemporalAllowed;
+	const bool jitterOn = (aaMode != AA_OFF_U32) && isTemporalAllowed;
 
 	if (aaMode != m_lastAaMode || jitterOn != m_lastJitterOn)
 	{
@@ -430,7 +431,7 @@ void Scene::UpdateShadowTexel(RD::SunShadowFilter filterMode)
 // CULL MODE: FRONT BIT
 void Scene::UpdateCSMInfo()
 {
-	// Cascades not dependent FOV, these values worked best with trial and error tests with 4 cascades 
+	// Cascades not dependent FOV, these values worked best with trial and error tests with 4 cascades
 	constexpr float CASCADE_RADIUS_RATIO[RD::MAX_SHADOW_CASCADES] = {
 		0.017f,
 		0.046f,
@@ -545,30 +546,30 @@ void Scene::InitVolumetricShadowInfo(
 void Scene::UpdateVolumetricShadowInfo(float maxDistance)
 {
 	constexpr float SHADOW_SUN_MARGIN = glm::radians(50.0f);
-	
+
 	const glm::vec3 lightDir = GetLightDir();
-	
+
 	const glm::vec3 cameraForward =
 		-glm::normalize(glm::vec3(m_sceneInfo.invView[2]));
-	
+
 	const float tanHalfFovX = m_sceneInfo.tanHalfFov.x;
 	const float tanHalfFovY = m_sceneInfo.tanHalfFov.y;
-	
+
 	const float viewLightAngle =
 		std::acos(
 			glm::clamp(
 				glm::dot(cameraForward, lightDir),
 				-1.0f,
 				1.0f));
-	
+
 	const float halfFovDiagonal =
 		std::atan(
 			std::sqrt(
 				tanHalfFovX * tanHalfFovX +
 				tanHalfFovY * tanHalfFovY));
-	
+
 	const float visibleSunAngle = viewLightAngle - halfFovDiagonal;
-	
+
 	if (visibleSunAngle >= glm::half_pi<float>() - SHADOW_SUN_MARGIN)
 	{
 		m_volumetricShadowInfo.params.y = 0.0f;

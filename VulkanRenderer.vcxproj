@@ -115,6 +115,7 @@
     <ClCompile Include="src\renderer\Renderer.cpp" />
     <!-- renderer / rendergraph -->
     <ClCompile Include="src\renderer\rendergraph\passes\compute\RayTracedShadowsPass.cpp" />
+    <ClCompile Include="src\renderer\rendergraph\passes\compute\ContrastAdaptiveSharpeningPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\compute\VolumetricFogPass.cpp" />
     <ClCompile Include="src\renderer\rendergraph\passes\graphics\VolumetricShadowMap.cpp" />
     <ClCompile Include="src\renderer\rendergraph\RenderGraphExecute.cpp" />
@@ -177,15 +178,15 @@
     <ClCompile Include="src\renderer\backend\Device.cpp" />
     <ClCompile Include="src\renderer\backend\PhysicalDeviceSelector.cpp" />
     <ClCompile Include="src\renderer\backend\Queue.cpp" />
-    <ClCompile Include="src\renderer\backend\Shader.cpp" />
+    <ClCompile Include="src\renderer\backend\pipelines\Shader.cpp" />
     <ClCompile Include="src\renderer\backend\Swapchain.cpp" />
     <ClCompile Include="src\renderer\backend\Sync.cpp" />
-    <ClCompile Include="src\renderer\backend\DescriptorManager.cpp" />
-    <ClCompile Include="src\renderer\backend\DescriptorWriter.cpp" />
-    <ClCompile Include="src\renderer\backend\PipelineManager.cpp" />
+    <ClCompile Include="src\renderer\backend\descriptors\DescriptorManager.cpp" />
+    <ClCompile Include="src\renderer\backend\descriptors\DescriptorWriter.cpp" />
+    <ClCompile Include="src\renderer\backend\pipelines\PipelineManager.cpp" />
     <ClCompile Include="src\renderer\backend\ImageUtils.cpp" />
     <ClCompile Include="src\renderer\backend\BufferBarriers.cpp" />
-    <ClCompile Include="src\renderer\backend\NRDContext.cpp" />
+    <ClCompile Include="src\renderer\backend\nrd\NRDContext.cpp" />
     <!-- renderer / backend / memory -->
     <ClCompile Include="src\renderer\backend\memory\Staging.cpp" />
     <ClCompile Include="src\renderer\backend\memory\ResourceAllocator.cpp" />
@@ -343,19 +344,19 @@
     <ClInclude Include="src\renderer\backend\Device.h" />
     <ClInclude Include="src\renderer\backend\PhysicalDeviceSelector.h" />
     <ClInclude Include="src\renderer\backend\Queue.h" />
-    <ClInclude Include="src\renderer\backend\Shader.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\Shader.h" />
     <ClInclude Include="src\renderer\backend\Swapchain.h" />
     <ClInclude Include="src\renderer\backend\Sync.h" />
     <ClInclude Include="src\renderer\backend\VulkanExtensionFunctions.h" />
     <ClInclude Include="src\renderer\backend\Debugging.h" />
-    <ClInclude Include="src\renderer\backend\DescriptorManager.h" />
-    <ClInclude Include="src\renderer\backend\DescriptorWriter.h" />
-    <ClInclude Include="src\renderer\backend\PipelineManager.h" />
-    <ClInclude Include="src\renderer\backend\PipelineBuilder.h" />
-    <ClInclude Include="src\renderer\backend\PipelineBundles.h" />
+    <ClInclude Include="src\renderer\backend\descriptors\DescriptorManager.h" />
+    <ClInclude Include="src\renderer\backend\descriptors\DescriptorWriter.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineManager.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineBuilder.h" />
+    <ClInclude Include="src\renderer\backend\pipelines\PipelineBundles.h" />
     <ClInclude Include="src\renderer\backend\ImageUtils.h" />
     <ClInclude Include="src\renderer\backend\BufferBarriers.h" />
-    <ClInclude Include="src\renderer\backend\NRDContext.h" />
+    <ClInclude Include="src\renderer\backend\nrd\NRDContext.h" />
     <ClInclude Include="src\renderer\backend\VulkanForward.h" />
     <ClInclude Include="src\renderer\backend\VulkanTypes.h" />
     <ClInclude Include="src\renderer\backend\memory\Budgets.h" />
@@ -377,8 +378,8 @@
   </ItemGroup>
   <!-- ===================== Scripts / Resources ===================== -->
   <ItemGroup>
-      <None Include="build_nrd.bat" />
-      <None Include="res\shaders\compile_shaders.bat" />
+    <None Include="build_nrd.bat" />
+    <None Include="res\shaders\compile_shaders.bat" />
   </ItemGroup>
   <!-- ===================== Shaders/Assets (None) ===================== -->
   <ItemGroup>
@@ -419,9 +420,14 @@
     <None Include="res\shaders\core\hi_z_gen.comp" />
     <None Include="res\shaders\core\nrd_prepare.comp" />
     <None Include="res\shaders\core\rt_ray_args.comp" />
+    <None Include="res\shaders\post_process\cas.comp" />
+    <None Include="res\shaders\post_process\shading_signal_reduce.comp" />
     <None Include="res\shaders\reflections\rtreflect_trace.comp" />
     <None Include="res\shaders\reflections\reflect_classify.comp" />
+    <None Include="res\shaders\shadows\rtshadow_invalid_mask.comp" />
     <None Include="res\shaders\shadows\rtshadow_trace.comp" />
+    <None Include="res\shaders\shadows\rtshadow_classify.comp" />
+    <None Include="res\shaders\shadows\rtshadow_volume_build.comp" />
     <None Include="res\shaders\shadows\shadow_masked.mesh" />
     <None Include="res\shaders\shadows\shadow_maskedFS.frag" />
     <None Include="res\shaders\ssgi\hi_z_prefilter.comp" />

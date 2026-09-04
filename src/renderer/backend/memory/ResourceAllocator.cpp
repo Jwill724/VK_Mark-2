@@ -156,7 +156,7 @@ AllocatedBuffer Allocator::AllocateBuffer(const BufferDesc& desc)
 		const uint32_t g = m_deviceCtx.queueIndices.graphicsFamily.value();
 		const uint32_t t =  m_deviceCtx.queueIndices.transferFamily.value();
 		const uint32_t c=  m_deviceCtx.queueIndices.computeFamily.value();
- 
+
 		auto PushUnique = [&](uint32_t fam, uint8_t bit) {
 			for (uint32_t i = 0; i < qFamCount; ++i)
 			{

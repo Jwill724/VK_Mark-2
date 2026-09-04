@@ -1,13 +1,13 @@
 #include "pch.h"
 
 #include "NRDContext.h"
-#include "Device.h"
-#include "ImageUtils.h"
-#include "DescriptorWriter.h"
-#include "memory/ResourceAllocator.h"
-#include "memory/BindlessImageTable.h"
-#include "../rendergraph/scopes/ComputeScope.h"
-#include "../common/EngineTypes.h"
+#include "../Device.h"
+#include "../ImageUtils.h"
+#include "../descriptors/DescriptorWriter.h"
+#include "../memory/ResourceAllocator.h"
+#include "../memory/BindlessImageTable.h"
+#include "../../rendergraph/scopes/ComputeScope.h"
+#include "../../../common/EngineTypes.h"
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -469,7 +469,8 @@ void NRDContext::SetFrameSettings(
 	float deltaSeconds,
 	bool historyValid)
 {
-	m_frameSlot = m_nrdFrameIndex % RING_FRAMES;
+	//m_frameSlot = m_nrdFrameIndex % RING_FRAMES;
+	m_frameSlot = scene.temporal.x % RING_FRAMES;
 	m_ringCursor = 0u;
 	m_lastCBOffset = 0u;
 
@@ -540,7 +541,8 @@ void NRDContext::SetFrameSettings(
 	common.denoisingRange = scene.cameraClips.y;
 	common.disocclusionThreshold = 0.01f;
 	common.timeDeltaBetweenFrames = deltaSeconds * 1000.0f;
-	common.frameIndex = m_nrdFrameIndex++;
+	//common.frameIndex = m_nrdFrameIndex++;
+	common.frameIndex = scene.temporal.x;
 	common.isMotionVectorInWorldSpace = false;
 	common.accumulationMode = m_bAccumulationReset
 		? nrd::AccumulationMode::CLEAR_AND_RESTART

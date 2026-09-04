@@ -1,9 +1,9 @@
 #include <pch.h>
 
-#include "DescriptorWriter.h"
-#include "memory/AllocatedImage.h"
-#include "memory/AllocatedBuffer.h"
-#include "../RendererDefinitions.h"
+#include "../descriptors/DescriptorWriter.h"
+#include "../memory/AllocatedImage.h"
+#include "../memory/AllocatedBuffer.h"
+#include "../../RendererDefinitions.h"
 
 namespace RD = RendererDefinitions;
 

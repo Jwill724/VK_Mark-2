@@ -4,7 +4,7 @@
 namespace RD = RendererDefinitions;
 
 #include "../backend/VulkanTypes.h"
-#include "../backend/DescriptorWriter.h"
+#include "../backend/descriptors/DescriptorWriter.h"
 
 #include <variant>
 #include <functional>

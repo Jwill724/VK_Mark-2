@@ -7,22 +7,38 @@
 
 const float TAA_HISTORY_SECONDS     = 0.35;
 const float TAA_HISTORY_SECONDS_OIT = 0.09;
-const float TAA_MIN_FRAMES          = 8.0;    // jitter sequence coverage floor
-const float TAA_MAX_HISTORY         = 128.0;  // alpha encoding range only
+const float TAA_MIN_FRAMES          = 8.0;
+const float TAA_MAX_HISTORY         = 128.0;
 const float TAA_CLAMP_FRESH         = 1.0;
 const float TAA_OIT_MIN_WEIGHT      = 1e-4;
 const float TAA_REACTIVE_FRAMES     = 2.0;
+const float TAA_SHADING_MIN_FRAMES  = 1.0;
+const float TAA_SHADING_EPS         = 0.02;
+const float TAA_SHADING_BIAS        = 0.015;
+const float TAA_SHADING_BIAS_VIS    = 0.06;
+const float TAA_VIS_SCALE_RATIO     = 0.5;
+const float TAA_FLOOR_DARK          = 0.05;
+const float TAA_SPATIAL_FRAMES      = 8.0;
+const float TAA_SPATIAL_DEPTH_REL   = 0.02;
+
+const int TAA_TILE       = 16;
+const int TAA_HALO       = 2;
+const int TAA_TILE_WIDTH = TAA_TILE + 2 * TAA_HALO;
+const int TAA_TILE_COUNT = TAA_TILE_WIDTH * TAA_TILE_WIDTH;
+const int TAA_THREADS    = TAA_TILE * TAA_TILE;
 
 layout(local_size_x = 16, local_size_y = 16) in;
 
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1) uniform sampler2D inColorCurrent;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2) uniform sampler2D inColorHistory;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3) uniform sampler2D inVelocity;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4) uniform sampler2D inDepth;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5) uniform sampler2D inPrevDepth;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6) uniform sampler2D inTransparentReveal;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7) uniform sampler2D inTransparentAccum;
-layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8) uniform sampler2D inTransparentVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_1)  uniform sampler2D inColorCurrent;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_2)  uniform sampler2D inColorHistory;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_3)  uniform sampler2D inVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_4)  uniform sampler2D inDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_5)  uniform sampler2D inPrevDepth;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_6)  uniform sampler2D inTransparentReveal;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_7)  uniform sampler2D inTransparentAccum;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_8)  uniform sampler2D inTransparentVelocity;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_9)  uniform sampler2D inShadingCurrent;
+layout(set = PUSH_SET, binding = PUSH_BINDING_READ_10) uniform sampler2D inShadingHistory;
 layout(set = PUSH_SET, binding = PUSH_BINDING_WRITE_1) writeonly uniform image2D outColorResolved;
 
 layout(push_constant) uniform TAAPush {
@@ -32,7 +48,13 @@ layout(push_constant) uniform TAAPush {
 	float motionSpeedScale;
 	float sigmaFloor;
 	float shadingResponse;
+	float shadingRejectScale;
 } pc;
+
+shared vec4  sColor[TAA_TILE_COUNT];
+shared float sViewZ[TAA_TILE_COUNT];
+shared float sWeightTight[9];
+shared float sWeightWide[25];
 
 vec3 sanitize(vec3 c)
 {
@@ -89,9 +111,9 @@ vec3 sampleHistory(vec2 uv, vec2 resolution)
 
 	vec2 w12      = w1 + w2;
 	vec2 invRes   = 1.0 / resolution;
-	vec2 texPos0  = (texPos1 - 1.0)          * invRes;
-	vec2 texPos3  = (texPos1 + 2.0)          * invRes;
-	vec2 texPos12 = (texPos1 + w2 / w12)     * invRes;
+	vec2 texPos0  = (texPos1 - 1.0)      * invRes;
+	vec2 texPos3  = (texPos1 + 2.0)      * invRes;
+	vec2 texPos12 = (texPos1 + w2 / w12) * invRes;
 
 	vec3 result = vec3(0.0);
 	result += texture(inColorHistory, vec2(texPos12.x, texPos0.y )).rgb * w12.x * w0.y;
@@ -101,27 +123,6 @@ vec3 sampleHistory(vec2 uv, vec2 resolution)
 	result += texture(inColorHistory, vec2(texPos12.x, texPos3.y )).rgb * w12.x * w3.y;
 
 	return max(result / (w12.x + w12.y - w12.x * w12.y), vec3(0.0));
-}
-
-vec2 dilatedVelocity(ivec2 pixel, ivec2 res, out vec2 rawRange)
-{
-	ivec2 nearest    = pixel;
-	float nearestRaw = -1.0;
-	float rawMin     =  1e9;
-	float rawMax     = -1e9;
-
-	for (int y = -1; y <= 1; ++y) {
-		for (int x = -1; x <= 1; ++x) {
-			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
-			float z = texelFetch(inDepth, t, 0).r;
-			rawMin = min(rawMin, z);
-			rawMax = max(rawMax, z);
-			if (z > nearestRaw) { nearestRaw = z; nearest = t; }
-		}
-	}
-
-	rawRange = vec2(rawMin, rawMax);
-	return texelFetch(inVelocity, nearest, 0).rg;
 }
 
 struct TransparentTap
@@ -151,28 +152,15 @@ TransparentTap sampleTransparent(ivec2 pixel)
 	return t;
 }
 
-float depthRejection(vec2 historyUV, vec2 currRawRange, float linMult, float linAdd)
+float depthRejection(vec2 historyUV, vec2 currViewRange, float linMult, float linAdd)
 {
-	ivec2 prevRes   = textureSize(inPrevDepth, 0);
-	ivec2 prevPixel = clamp(ivec2(historyUV * vec2(prevRes)), ivec2(0), prevRes - 1);
+	vec4 g = textureGather(inPrevDepth, historyUV, 0);
 
-	float prevRawMin =  1e9;
-	float prevRawMax = -1e9;
+	float prevNear = screenToViewDepth(max(max(g.x, g.y), max(g.z, g.w)), linMult, linAdd);
+	float prevFar  = screenToViewDepth(min(min(g.x, g.y), min(g.z, g.w)), linMult, linAdd);
 
-	for (int y = -1; y <= 1; ++y) {
-		for (int x = -1; x <= 1; ++x) {
-			ivec2 t = clamp(prevPixel + ivec2(x, y), ivec2(0), prevRes - 1);
-			float z = texelFetch(inPrevDepth, t, 0).r;
-			prevRawMin = min(prevRawMin, z);
-			prevRawMax = max(prevRawMax, z);
-		}
-	}
-
-	// reversed-Z: larger raw is nearer, so the raw min/max swap on linearize
-	float currNear = screenToViewDepth(currRawRange.y, linMult, linAdd);
-	float currFar  = screenToViewDepth(currRawRange.x, linMult, linAdd);
-	float prevNear = screenToViewDepth(prevRawMax,     linMult, linAdd);
-	float prevFar  = screenToViewDepth(prevRawMin,     linMult, linAdd);
+	float currNear = currViewRange.x;
+	float currFar  = currViewRange.y;
 
 	float gap       = max(prevNear - currFar, currNear - prevFar);
 	float tolerance = max(max(currFar - currNear, prevFar - prevNear), currNear * 0.02);
@@ -180,22 +168,102 @@ float depthRejection(vec2 historyUV, vec2 currRawRange, float linMult, float lin
 	return saturate((gap / tolerance - 1.0) * pc.depthRejectScale);
 }
 
+float deltaOutsideBox(float curr, vec4 g)
+{
+	float mn = min(min(g.x, g.y), min(g.z, g.w));
+	float mx = max(max(g.x, g.y), max(g.z, g.w));
+	return max(max(mn - curr, curr - mx), 0.0);
+}
+
+float shadingRejection(vec2 uv, vec2 historyUV, float exposure)
+{
+	vec2 sc = texture(inShadingCurrent, uv).rg;
+
+	vec4 gLuma = textureGather(inShadingHistory, historyUV, 0) * exposure;
+	vec4 gVis  = textureGather(inShadingHistory, historyUV, 1);
+
+	float lc = sc.r * exposure;
+
+	float lumaOut = deltaOutsideBox(lc, gLuma);
+	float lumaRef = 0.25 * (gLuma.x + gLuma.y + gLuma.z + gLuma.w);
+
+	float lumaDelta = lumaOut / (lc + lumaRef + TAA_SHADING_EPS);
+	float visDelta  = deltaOutsideBox(sc.g, gVis);
+
+	float lumaReject = saturate((lumaDelta - TAA_SHADING_BIAS)     * pc.shadingRejectScale);
+	float visReject  = saturate((visDelta  - TAA_SHADING_BIAS_VIS) * pc.shadingRejectScale * TAA_VIS_SCALE_RATIO);
+
+	return max(lumaReject, visReject);
+}
+
 void main()
 {
-	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-	SceneData   scene = getSceneData();
+	SceneData scene = getSceneData();
 
-	const ivec2 res = ivec2(scene.renderExtentSize.xy);
-	if (pixel.x >= res.x || pixel.y >= res.y) return;
+	const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+	const ivec2 res   = ivec2(scene.renderExtentSize.xy);
 
 	const vec2  invRes   = scene.renderPixelSizes.xy;
 	const vec2  outRes   = vec2(res);
 	const vec2  uv       = (vec2(pixel) + 0.5) * invRes;
 	const float exposure = max(getLuminanceBuffer().luminanceSums[0].x, 1e-4);
 
+	const float linMult = scene.depthLinearizeMult;
+	const float linAdd  = scene.depthLinearizeAdd;
+
+	vec2 jitterPx = scene.temporalJitter.xy * 0.5 * outRes;
+	jitterPx.y    = -jitterPx.y;
+
+	const uint tid      = gl_LocalInvocationIndex;
+	const ivec2 tileBase = ivec2(gl_WorkGroupID.xy) * TAA_TILE - TAA_HALO;
+
+	for (uint i = tid; i < uint(TAA_TILE_COUNT); i += uint(TAA_THREADS))
+	{
+		ivec2 local = ivec2(int(i) % TAA_TILE_WIDTH, int(i) / TAA_TILE_WIDTH);
+		ivec2 src   = clamp(tileBase + local, ivec2(0), res - 1);
+
+		vec4 c = texelFetch(inColorCurrent, src, 0);
+
+		sColor[i] = vec4(toWorkingSpace(sanitize(c.rgb) * exposure), c.a);
+		sViewZ[i] = screenToViewDepth(texelFetch(inDepth, src, 0).r, linMult, linAdd);
+	}
+
+	if (tid < 9u)
+	{
+		int i  = int(tid);
+		vec2 d = vec2(float(i % 3 - 1), float(i / 3 - 1)) + jitterPx;
+		sWeightTight[i] = exp(-2.29 * dot(d, d));
+	}
+	else if (tid < 34u)
+	{
+		int i  = int(tid) - 9;
+		vec2 d = vec2(float(i % 5 - 2), float(i / 5 - 2)) + jitterPx;
+		sWeightWide[i] = exp(-0.55 * dot(d, d));
+	}
+
+	barrier();
+
+	if (pixel.x >= res.x || pixel.y >= res.y) return;
+
+	const ivec2 lp = ivec2(gl_LocalInvocationID.xy) + TAA_HALO;
+	const int   ci = lp.y * TAA_TILE_WIDTH + lp.x;
+
 	// 1. reproject
-	vec2 rawRange;
-	vec2 velocity = dilatedVelocity(pixel, res, rawRange);
+	ivec2 nearestPx = pixel;
+	float nearestZ  = 1e30;
+	float viewZMin  = 1e30;
+	float viewZMax  = -1e30;
+
+	for (int y = -1; y <= 1; ++y) {
+		for (int x = -1; x <= 1; ++x) {
+			float z = sViewZ[ci + y * TAA_TILE_WIDTH + x];
+			viewZMin = min(viewZMin, z);
+			viewZMax = max(viewZMax, z);
+			if (z < nearestZ) { nearestZ = z; nearestPx = clamp(pixel + ivec2(x, y), ivec2(0), res - 1); }
+		}
+	}
+
+	vec2 velocity = texelFetch(inVelocity, nearestPx, 0).rg;
 
 	TransparentTap trans = sampleTransparent(pixel);
 	velocity = mix(velocity, trans.velocity, trans.coverage);
@@ -203,33 +271,27 @@ void main()
 	vec2  historyUV = uv - velocity;
 	float motion    = saturate(length(velocity * outRes) * pc.invDeltaTime * pc.motionSpeedScale);
 
-	// 2. neighbourhood
-	vec2 jitterPx = scene.temporalJitter.xy * 0.5 * outRes;
-	jitterPx.y    = -jitterPx.y;
-
+	// 2. moments and tight filter — always needed
 	vec3  m1 = vec3(0.0);
 	vec3  m2 = vec3(0.0);
-	vec3  filtered     = vec3(0.0);
-	float filterWeight = 0.0;
+	vec3  tight  = vec3(0.0);
+	float tightW = 0.0;
 
 	for (int y = -1; y <= 1; ++y) {
 		for (int x = -1; x <= 1; ++x) {
-			ivec2 t = clamp(pixel + ivec2(x, y), ivec2(0), res - 1);
-			vec3  c = toWorkingSpace(sanitize(texelFetch(inColorCurrent, t, 0).rgb) * exposure);
+			vec3  c = sColor[ci + y * TAA_TILE_WIDTH + x].rgb;
+			float w = sWeightTight[(y + 1) * 3 + (x + 1)];
 
 			m1 += c;
 			m2 += c * c;
 
-			vec2  d = vec2(x, y) + jitterPx;
-			float w = exp(-2.29 * dot(d, d));
-			filtered     += c * w;
-			filterWeight += w;
+			tight  += c * w;
+			tightW += w;
 		}
 	}
 
-	vec3 current = filtered / max(filterWeight, 1e-5);
-	vec3 mean    = m1 / 9.0;
-	vec3 sigma   = max(sqrt(max(m2 / 9.0 - mean * mean, vec3(0.0))), vec3(pc.sigmaFloor));
+	vec3 mean  = m1 / 9.0;
+	vec3 sigma = sqrt(max(m2 / 9.0 - mean * mean, vec3(0.0)));
 
 	if (any(lessThan(historyUV, vec2(0.0))) || any(greaterThan(historyUV, vec2(1.0)))) {
 		vec3 rgb = fromWorkingSpace(mean) / exposure;
@@ -238,32 +300,66 @@ void main()
 		return;
 	}
 
-	// 3. history
-	vec3 historyRaw = toWorkingSpace(sanitize(sampleHistory(historyUV, outRes)) * exposure);
-
+	// 3. history length
 	vec4  gathered = textureGather(inColorHistory, historyUV, 3);
 	float frames   = min(min(gathered.x, gathered.y), min(gathered.z, gathered.w)) * TAA_MAX_HISTORY;
 
 	// 4. reject stale history
-	float rejected = max(motion, depthRejection(historyUV, rawRange,
-						   scene.depthLinearizeMult, scene.depthLinearizeAdd));
+	float rejected      = max(motion, depthRejection(historyUV, vec2(viewZMin, viewZMax), linMult, linAdd));
+	float shadingReject = shadingRejection(uv, historyUV, exposure);
 
 	float targetFrames = clamp(
 		mix(TAA_HISTORY_SECONDS, TAA_HISTORY_SECONDS_OIT, trans.coverage) * pc.invDeltaTime,
 		TAA_MIN_FRAMES, TAA_MAX_HISTORY);
 
-	float reactive = texelFetch(inColorCurrent, pixel, 0).a;
-	float reactiveFrames = mix(targetFrames, TAA_REACTIVE_FRAMES, reactive);
-	frames = min(frames, reactiveFrames) * (1.0 - rejected);
+	float reactive       = sColor[ci].a;
+	float reactiveFrames = mix(targetFrames, TAA_REACTIVE_FRAMES,    reactive);
+	float shadingFrames  = mix(targetFrames, TAA_SHADING_MIN_FRAMES, shadingReject);
 
-	// 5. constrain — the box widens with accumulated evidence
-	float trust  = frames / targetFrames;
-	vec3  extent = sigma * mix(TAA_CLAMP_FRESH, pc.clampGamma, trust);
+	frames = min(frames, min(reactiveFrames, shadingFrames)) * (1.0 - rejected);
 
-	float overshoot;
-	vec3  history = clipToBox(mean, extent, historyRaw, overshoot);
+	// 5. spatial fallback only where confidence is low
+	vec3  current = tight / max(tightW, 1e-5);
+	float spatial = 1.0 - saturate(frames / TAA_SPATIAL_FRAMES);
 
-	// 6. blend
+	if (spatial > 0.0)
+	{
+		float depthScale = 1.0 / max(sViewZ[ci] * TAA_SPATIAL_DEPTH_REL, 1e-3);
+
+		vec3  wide  = vec3(0.0);
+		float wideW = 0.0;
+
+		for (int y = -2; y <= 2; ++y) {
+			for (int x = -2; x <= 2; ++x) {
+				int   ti = ci + y * TAA_TILE_WIDTH + x;
+				float ww = sWeightWide[(y + 2) * 5 + (x + 2)]
+						 * exp(-abs(sViewZ[ti] - sViewZ[ci]) * depthScale);
+
+				wide  += sColor[ti].rgb * ww;
+				wideW += ww;
+			}
+		}
+
+		current = mix(current, wide / max(wideW, 1e-5), spatial);
+	}
+
+	// 6. constrain
+	float trust = frames / targetFrames;
+
+	float t        = clamp(mean.x, 0.0, 1.0);
+	vec3  boxFloor = vec3(pc.sigmaFloor * max(t * (1.0 - t), TAA_FLOOR_DARK));
+	vec3  extent   = max(sigma * mix(TAA_CLAMP_FRESH, pc.clampGamma, trust), boxFloor);
+
+	// 7. blend
+	vec3  history   = mean;
+	float overshoot = 0.0;
+
+	if (frames > 0.0)
+	{
+		vec3 historyRaw = toWorkingSpace(sanitize(sampleHistory(historyUV, outRes)) * exposure);
+		history = clipToBox(mean, extent, historyRaw, overshoot);
+	}
+
 	float blend = max(1.0 / (frames + 1.0), saturate((overshoot - 1.0) * pc.shadingResponse));
 
 	vec3 resolved = fromWorkingSpace(mix(history, current, blend)) / exposure;

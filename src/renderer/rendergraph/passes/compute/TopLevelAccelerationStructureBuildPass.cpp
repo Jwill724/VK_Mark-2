@@ -50,9 +50,10 @@ void RegisterTLASBuildPass(
 
 						const auto& rtInstances = ctx.frameCtx->GetGPUBuffer(RD::Renderer_Buffer::RTInstances);
 						const uint32_t rtCount = ctx.frameState->GetRTInstanceCount();
-						const uint32_t instanceCount = ctx.frameState->GetInstanceCount();
 
-						pass.scope = ComputeScope{ { instanceCount, 1u }, { WORKGROUP_64 } };
+						ASSERT(rtCount <= RD::MAX_RT_INSTANCES);
+
+						pass.scope = ComputeScope{ { rtCount, 1u }, { WORKGROUP_64 } };
 						auto& pso = std::get<ComputeScope>(pass.scope);
 
 						B::TLASInstanceReuseToCmdFill(cmd, rtInstances);
@@ -60,7 +61,7 @@ void RegisterTLASBuildPass(
 						B::CmdFillToComputeAS(cmd, rtInstances);
 
 						TlasPush push{};
-						push.instanceCount = instanceCount;
+						push.instanceCount = rtCount;
 
 						pso.SetPush(push);
 						pso.DispatchComputePass(cmd, pass.pipelines[PIPE_ID_BUILD], pass.pushWriter);

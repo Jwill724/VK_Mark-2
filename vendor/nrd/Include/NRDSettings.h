@@ -39,7 +39,7 @@ namespace nrd
     // Notes:
     //  - if checkerboarding is enabled, "mode" defines the orientation of even numbered frames
     //  - all inputs must have the same resolution - logical FULL resolution
-    //  - noisy input signals ("IN_DIFF_XXX", "IN_SPEC_XXX", "IN_PENUMBRA" and "IN_TRANSLUCENCY") are tightly packed to the LEFT HALF of the texture (the input pixel = 2x1 screen pixel)
+    //  - noisy input signals ("IN_DIFF_XXX / IN_SPEC_XXX") are tightly packed to the LEFT HALF of the texture (the input pixel = 2x1 screen pixel)
     //  - for others the input pixel = 1x1 screen pixel
     //  - upsampling is handled internally in checkerboard mode
     enum class CheckerboardMode : uint8_t
@@ -142,10 +142,9 @@ namespace nrd
         // - "IN_DISOCCLUSION_THRESHOLD_MIX" texture, if "isDisocclusionThresholdMixAvailable = true" (has higher priority and ignores "strandMaterialID")
         float disocclusionThresholdAlternate = 0.05f;
 
-        // (Optional) (>=0) - marks mirror self-reflections of camera attached objects (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
-        // This material ID can also mark camera attached objects themselves, even with self motion, if surface motion is expected to work better
-        // than virtual motion computed for the static world. This is not a generic solution: correct tracking requires specular MVs, which are
-        // hard to compute and are not currently requested by NRD
+        // (Optional) (>=0) - marks reflections of camera attached objects (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
+        // This material ID marks reflections of objects attached to the camera, not objects themselves. Unfortunately, this is only an improvement
+        // for critical cases, but not a generic solution. A generic solution requires reflection MVs, which NRD currently doesn't ask for
         float cameraAttachedReflectionMaterialID = 999.0f;
 
         // (Optional) (>=0) - marks hair (grass) geometry to enable "under-the-hood" tweaks (requires "NormalEncoding::R10_G10_B10_A2_UNORM")
@@ -172,9 +171,9 @@ namespace nrd
         uint32_t rectOrigin[2] = {};
 
         // A consecutively growing number. Valid usage:
-        // - must be incremented by 1 on each frame, not on each "SetCommonSettings" call
+        // - must be incremented by 1 on each frame (not by 1 on each "SetCommonSettings" call)
+        // - sequence can be restarted after passing "AccumulationMode != CONTINUE"
         // - must be in sync with "CheckerboardMode" (if not OFF)
-        // - may be restarted after setting "accumulationMode != AccumulationMode::CONTINUE"
         uint32_t frameIndex = 0;
 
         // To reset history set to RESTART or CLEAR_AND_RESTART for one frame
@@ -190,7 +189,7 @@ namespace nrd
         // If "true" "IN_DISOCCLUSION_THRESHOLD_MIX" is available
         bool isDisocclusionThresholdMixAvailable = false;
 
-        // Enables REBLUR / RELAX debug overlay (see "ResourceType::OUT_VALIDATION")
+        // Enables debug overlay in OUT_VALIDATION
         bool enableValidation = false;
     };
 
@@ -472,9 +471,6 @@ namespace nrd
         // 0 - disables the stabilization pass
         // Always accumulate in "seconds" not in "frames", use "GetMaxAccumulatedFrameNum" for conversion
         uint32_t maxStabilizedFrameNum = 5;
-
-        // Defines the orientation of valid input samples. Used only if "NRD_SUPPORTS_CHECKERBOARD = 1"
-        CheckerboardMode checkerboardMode = CheckerboardMode::OFF;
     };
 
     //====================================================================================================================================================

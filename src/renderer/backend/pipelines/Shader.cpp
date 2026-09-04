@@ -48,6 +48,8 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::BloomDownsample_c,           "post_process/bloom_downsample.spv"         },
 	{ RD::Renderer_Shader::BloomUpsample_c,             "post_process/bloom_upsample.spv"           },
 	{ RD::Renderer_Shader::TAA_c,                       "post_process/taa.spv"                      },
+	{ RD::Renderer_Shader::ShadingSignalReduce_c,       "post_process/shading_signal_reduce.spv"    },
+	{ RD::Renderer_Shader::CAS_c,                       "post_process/cas.spv"                      },
 	{ RD::Renderer_Shader::ChromaticAberration_c,       "post_process/chromatic_aberration.spv"     },
 	{ RD::Renderer_Shader::ClusterTileSliceRanges_c,    "clustered/cluster_tile_slice_ranges.spv"   },
 	{ RD::Renderer_Shader::TransparentClusterBounds_c,  "clustered/transparent_cluster_bounds.spv"  },
@@ -73,6 +75,9 @@ static const std::unordered_map<RD::Renderer_Shader, std::string> shaderPaths
 	{ RD::Renderer_Shader::TlasInstances_c,             "core/tlas_instances.spv"                   },
 	{ RD::Renderer_Shader::RTRayArgs_c,                 "core/rt_ray_args.spv"                      },
 	{ RD::Renderer_Shader::RTShadowTrace_c,             "shadows/rtshadow_trace.spv"                },
+	{ RD::Renderer_Shader::RTShadowVolumeBuild_c,       "shadows/rtshadow_volume_build.spv"         },
+	{ RD::Renderer_Shader::RTShadowInvalidMask_c,       "shadows/rtshadow_invalid_mask.spv"         },
+	{ RD::Renderer_Shader::RTShadowClassify_c,          "shadows/rtshadow_classify.spv"             },
 	{ RD::Renderer_Shader::ReflectClassify_c,           "reflections/reflect_classify.spv"          },
 	{ RD::Renderer_Shader::RTReflectTrace_c,            "reflections/rtreflect_trace.spv"           },
 };

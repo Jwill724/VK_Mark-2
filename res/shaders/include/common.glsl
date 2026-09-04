@@ -29,15 +29,16 @@ const uint MAX_CASCADES = 4u;
 
 const uint MAX_ENV_SETS = 8u;
 
-const uint AA_OFF   = 0u;
-const uint AA_TAA   = 1u;
+const uint AA_OFF     = 0u;
+const uint AA_TAA     = 1u;
+const uint AA_TAA_CAS = 2u;
 
 //const uint TM_ACESFILM = 0u;
 //const uint TM_GT7      = 1u;
 
-const uint SUN_SHADOW_FILTER_PCF     = 0u;
-const uint SUN_SHADOW_FILTER_PCSS    = 1u;
-const uint SUN_SHADOW_FILTER_RT_SOFT = 2u;
+const uint SUN_SHADOW_FILTER_PCF              = 0u;
+const uint SUN_SHADOW_FILTER_PCSS             = 1u;
+const uint SUN_SHADOW_FILTER_RT_SOFT          = 2u;
 
 const uint OFF   = 0u;
 const uint VBAO  = 1u;
@@ -390,7 +391,7 @@ float temporalInterleavedGradientNoise(vec2 screen_pos, int frame_count, float t
 float hash(float p) {
 	// scale input, convert to uint for bit manipulation
 	uint u = floatBitsToUint(p * 3141592653.0);
-	
+
 	// mix with multiply and xor, normalize to [0,1)
 	return float(u * u * 3141592653u) / 4294967295.0;
 }
@@ -399,7 +400,7 @@ float hash(float p) {
 float hash(vec2 p) {
 	// scale each component, convert to uint2
 	uvec2 u = floatBitsToUint(p * vec2(141421356.0, 2718281828.0));
-	
+
 	// combine with xor, mix, normalize to [0,1)
 	return float((u.x ^ u.y) * 3141592653u) / 4294967295.0;
 }
@@ -621,6 +622,7 @@ layout(set = GLOBAL_SET, binding = GLOBAL_BINDING_DEBUG_INLINE, scalar) uniform 
 
 DebugToggles getDebugToggles() { return debug; }
 
+bool IsTAAEnabled() { return debug.aaMode != AA_OFF; }
 
 // ============================================
 // === GLOBAL ADDRESSS TABLE BUFFER GETTERS ===
@@ -1104,6 +1106,23 @@ layout(buffer_reference, scalar) buffer ClusterTileTransparentNear {
 ClusterTileTransparentNear getClusterTileTransparentNearBuffer() {
 	uint64_t addr = getABTFrameAddress(ABT_ClusterTileTransparentNear);
 	return ClusterTileTransparentNear(addr);
+}
+
+
+struct ShadowInvalidVolume
+{
+	vec3 boundsMin;
+	vec3 boundsMax;
+};
+
+layout(buffer_reference, scalar) buffer ShadowInvalidVolumesBuffer {
+	uint count;
+	uint pad0[3];
+	ShadowInvalidVolume volumes[];
+};
+ShadowInvalidVolumesBuffer getShadowInvalidVolumesBuffer() {
+	uint64_t addr = getABTFrameAddress(ABT_ShadowInvalidVolumes);
+	return ShadowInvalidVolumesBuffer(addr);
 }
 
 // ==============================

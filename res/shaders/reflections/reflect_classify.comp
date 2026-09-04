@@ -2,6 +2,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 
+#include "../include/nrd_common.glsl"
 #include "../include/reflect_common.glsl"
 
 layout(local_size_x = 8, local_size_y = 8) in;
@@ -39,7 +40,7 @@ void main()
 
 	RTRayListBuffer rays = getRTRayListBuffer();
 
-	uint slot = rtCompactAppend(rays, RT_RAY_SLOT_REFLECT, rp.rayCapacity, reflective);
+	uint slot = rtCompactAppend(rays, RT_RAY_SLOT_REFLECT, rp.rayBase, rp.rayCapacity, reflective);
 
 	if (reflective)
 	{

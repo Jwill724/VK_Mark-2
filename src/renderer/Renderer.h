@@ -1,11 +1,11 @@
 #pragma once
 
 #include "backend/memory/ResourceAllocator.h"
-#include "renderer/backend/DescriptorWriter.h"
+#include "renderer/backend/descriptors/DescriptorWriter.h"
 #include "backend/memory/BindlessBDATable.h"
 #include "backend/memory/BindlessImageTable.h"
 #include "backend/Swapchain.h"
-#include "backend/NRDContext.h"
+#include "backend/nrd/NRDContext.h"
 #include "frame/FrameContext.h"
 #include "frame/ResizeCoordinator.h"
 #include "Material.h"

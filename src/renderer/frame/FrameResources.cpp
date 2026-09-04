@@ -73,7 +73,7 @@ void ClusterBufferSizes::UpdateClusterBufferSizes(
 		static_cast<size_t>(RD::MAX_LIGHTS_PER_CLUSTER) *
 		sizeof(uint32_t);
 
-	clusterTileSliceRangesBytes = static_cast<size_t>(tileCount) * sizeof(glm::uvec2); 
+	clusterTileSliceRangesBytes = static_cast<size_t>(tileCount) * sizeof(glm::uvec2);
 
 	clusterScanScratchBytes = 4u;
 
@@ -107,13 +107,16 @@ void RTRayListLayout::Update(uint32_t screenWidth, uint32_t screenHeight)
 	halfHeight = (screenHeight + 1u) / 2u;
 
 	const uint32_t halfPixels = halfWidth * halfHeight;
+	const uint32_t fullPixels = screenWidth * screenHeight;
 
 	capacities[RD::RT_RAY_SLOT_REFLECT] = halfPixels;
 	capacities[RD::RT_RAY_SLOT_TRANSPARENCY] = 0u;
+	capacities[RD::RT_RAY_SLOT_SHADOW] = fullPixels;
 
 	uint32_t cursor = 0u;
 	for (uint32_t i = 0; i < RD::RT_RAY_SLOT_COUNT; ++i)
 	{
+		bases[i] = cursor;
 		cursor += capacities[i];
 	}
 
